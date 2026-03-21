@@ -7,7 +7,7 @@ from sentinel.models import AlertRecord, Article, ClassificationResult, Event
 
 
 class Database:
-    """SQLite database access layer for Sentinel."""
+    """SQLite database access layer for Project Sentinel."""
 
     def __init__(self, db_path: str) -> None:
         """Create the database file (and parent dirs) and tables if they don't exist."""

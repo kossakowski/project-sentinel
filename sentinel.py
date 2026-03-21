@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sentinel - Military Alert Monitoring System"""
+"""Project Sentinel - Military Alert Monitoring System"""
 
 import argparse
 import sys
@@ -12,7 +12,7 @@ from sentinel.logging_setup import setup_logging
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Sentinel - Military Alert Monitoring System",
+        description="Project Sentinel - Military Alert Monitoring System",
     )
     parser.add_argument(
         "--dry-run",
@@ -89,7 +89,7 @@ def main() -> None:
     gdelt_status = "enabled" if config.sources.gdelt.enabled else "disabled"
     telegram_status = "enabled" if config.sources.telegram.enabled else "disabled"
 
-    logger.info("Sentinel v%s initialized successfully", __version__)
+    logger.info("Project Sentinel v%s initialized successfully", __version__)
     logger.info(
         "Config loaded: %d RSS sources, %d Google News queries, GDELT %s, Telegram %s",
         rss_count,
@@ -116,7 +116,7 @@ def main() -> None:
         db.close()
         sys.exit(0)
 
-    print("Sentinel initialized successfully. Pipeline execution will be implemented in Phase 6.")
+    print("Project Sentinel initialized successfully. Pipeline execution will be implemented in Phase 6.")
     db.close()
     sys.exit(0)
 

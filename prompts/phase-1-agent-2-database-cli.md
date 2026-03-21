@@ -4,9 +4,9 @@ Use standard thinking.
 
 ## Your Task
 
-Implement the SQLite database access layer, logging setup, and CLI entry point for the Sentinel project. The data models (`sentinel/models.py`) and config system (`sentinel/config.py`) are already implemented by a previous agent.
+Implement the SQLite database access layer, logging setup, and CLI entry point for the Project Sentinel project. The data models (`sentinel/models.py`) and config system (`sentinel/config.py`) are already implemented by a previous agent.
 
-**Working directory**: `/home/kossa/code/twilio-plaground`
+**Working directory**: `/home/kossa/code/project-sentinel`
 
 ## Before You Start
 

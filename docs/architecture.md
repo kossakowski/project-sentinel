@@ -1,10 +1,10 @@
-# Sentinel -- System Architecture
+# Project Sentinel -- System Architecture
 
 ## 1. System Purpose
 
-Sentinel is an automated early-warning system that continuously monitors media sources across multiple languages (Polish, English, Ukrainian, Russian) for signals of military attacks or invasions targeting Poland and the Baltic states (Lithuania, Latvia, Estonia) by Russia, Belarus, or their allies.
+Project Sentinel is an automated early-warning system that continuously monitors media sources across multiple languages (Polish, English, Ukrainian, Russian) for signals of military attacks or invasions targeting Poland and the Baltic states (Lithuania, Latvia, Estonia) by Russia, Belarus, or their allies.
 
-When a credible threat is detected, Sentinel calls the user's phone immediately (any hour), speaks the alert in Polish, and follows up with SMS/WhatsApp for ongoing updates.
+When a credible threat is detected, Project Sentinel calls the user's phone immediately (any hour), speaks the alert in Polish, and follows up with SMS/WhatsApp for ongoing updates.
 
 ## 2. High-Level Data Flow
 
@@ -249,7 +249,7 @@ The configuration is complex (nested lists of sources, keyword lists in 4 langua
 ## 8. File Structure (Target)
 
 ```
-twilio-plaground/
+project-sentinel/
 ├── CLAUDE.md
 ├── sentinel.py                  # Main entry point + CLI
 ├── app.py                       # Existing Flask app (manual testing)

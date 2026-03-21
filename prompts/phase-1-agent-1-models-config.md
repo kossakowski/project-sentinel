@@ -4,9 +4,9 @@ Use standard thinking.
 
 ## Your Task
 
-Implement the data models and configuration system for the Sentinel project. You are writing foundational code that all other components depend on. Correctness and clean interfaces are critical.
+Implement the data models and configuration system for the Project Sentinel project. You are writing foundational code that all other components depend on. Correctness and clean interfaces are critical.
 
-**Working directory**: `/home/kossa/code/twilio-plaground`
+**Working directory**: `/home/kossa/code/project-sentinel`
 
 ## Before You Start
 

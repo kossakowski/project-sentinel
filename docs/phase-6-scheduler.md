@@ -136,7 +136,7 @@ class SentinelScheduler:
             self._run_with_error_handling,
             trigger=IntervalTrigger(minutes=interval, jitter=jitter),
             id="sentinel_pipeline",
-            name="Sentinel Pipeline",
+            name="Project Sentinel Pipeline",
             max_instances=1,  # Never run two cycles concurrently
             coalesce=True,    # If missed, run once (not N times)
         )
@@ -180,7 +180,7 @@ import sys
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Sentinel - Military Alert Monitoring System"
+        description="Project Sentinel - Military Alert Monitoring System"
     )
     parser.add_argument("--dry-run", action="store_true",
         help="Run pipeline but don't send Twilio alerts")
@@ -233,13 +233,13 @@ def main():
 
     # Mode: continuous (default)
     scheduler = SentinelScheduler(pipeline, config)
-    print("Sentinel started. Press Ctrl+C to stop.")
+    print("Project Sentinel started. Press Ctrl+C to stop.")
     try:
         scheduler.start()
         asyncio.get_event_loop().run_forever()
     except KeyboardInterrupt:
         scheduler.stop()
-        print("Sentinel stopped.")
+        print("Project Sentinel stopped.")
 
 if __name__ == "__main__":
     main()
@@ -273,10 +273,10 @@ If a fetcher fails 5 consecutive times:
 - Continue running other fetchers
 - After 10 consecutive failures:
   - Log an ERROR
-  - Send an SMS to the user: "Sentinel: źródło {source_name} nie odpowiada od {N} cykli. System nadal monitoruje pozostałe źródła."
+  - Send an SMS to the user: "Project Sentinel: źródło {source_name} nie odpowiada od {N} cykli. System nadal monitoruje pozostałe źródła."
 
 If the entire pipeline fails 3 consecutive times:
-- Send an SMS: "Sentinel: system napotkał krytyczny błąd. Sprawdź logi."
+- Send an SMS: "Project Sentinel: system napotkał krytyczny błąd. Sprawdź logi."
 - Continue attempting on next cycle
 
 ### 6.5 Telegram Lifecycle Integration

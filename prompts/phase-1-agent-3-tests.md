@@ -4,9 +4,9 @@ Use standard thinking.
 
 ## Your Task
 
-Write the complete test suite for Phase 1 of the Sentinel project and ensure all tests pass. All source code (models, config, database, CLI, logging) is already implemented by previous agents.
+Write the complete test suite for Phase 1 of the Project Sentinel project and ensure all tests pass. All source code (models, config, database, CLI, logging) is already implemented by previous agents.
 
-**Working directory**: `/home/kossa/code/twilio-plaground`
+**Working directory**: `/home/kossa/code/project-sentinel`
 
 ## Before You Start
 

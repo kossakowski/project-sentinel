@@ -261,7 +261,7 @@ usage: sentinel.py [-h] [--dry-run] [--test-headline HEADLINE]
                    [--test-file FILE] [--config CONFIG] [--once]
                    [--log-level LEVEL]
 
-Sentinel - Military Alert Monitoring System
+Project Sentinel - Military Alert Monitoring System
 
 options:
   --dry-run           Run pipeline but don't send any Twilio alerts (log only)
@@ -278,7 +278,7 @@ In Phase 1, the CLI only needs to:
 - Load and validate config
 - Initialize database
 - Set up logging
-- Print "Sentinel initialized successfully" and exit
+- Print "Project Sentinel initialized successfully" and exit
 
 The actual pipeline execution is wired in Phase 6.
 

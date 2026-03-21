@@ -17,7 +17,7 @@ def make_alert_call(self, phone_number: str, message_pl: str, event_id: str) -> 
     twiml = (
         f'<Response>'
         f'<Say language="pl-PL" voice="Polly.Ewa">'
-        f'Uwaga! Alert systemu Sentinel. {message_pl}'
+        f'Uwaga! Alert systemu Project Sentinel. {message_pl}'
         f'</Say>'
         f'<Pause length="2"/>'
         f'<Say language="pl-PL" voice="Polly.Ewa">'
@@ -51,7 +51,7 @@ def make_alert_call(self, phone_number: str, message_pl: str, event_id: str) -> 
 
 #### Call Structure
 The phone call speaks in Polish using Amazon Polly's `Ewa` voice (native Polish):
-1. "Uwaga! Alert systemu Sentinel." (Attention! Sentinel system alert.)
+1. "Uwaga! Alert systemu Project Sentinel." (Attention! Project Sentinel system alert.)
 2. The actual alert message (from `summary_pl`)
 3. 2-second pause
 4. Repeats the alert message (in case user just woke up)
@@ -87,7 +87,7 @@ def send_sms(self, phone_number: str, message: str, event_id: str) -> AlertRecor
 
 #### SMS Message Format
 ```
-🚨 SENTINEL ALERT 🚨
+🚨 PROJECT SENTINEL ALERT 🚨
 Typ: {event_type}
 Pilność: {urgency_score}/10
 Kraje: {affected_countries}
@@ -318,7 +318,7 @@ EVENT_TYPE_PL = {
 
 #### SMS Template
 ```
-🚨 SENTINEL: {event_type_pl}
+🚨 PROJECT SENTINEL: {event_type_pl}
 Pilność: {urgency_score}/10
 Kraje: {affected_countries_str}
 Agresor: {aggressor}
@@ -333,7 +333,7 @@ Wykryto: {first_seen_at_local}
 
 #### SMS Update Template (for acknowledged events)
 ```
-ℹ️ SENTINEL UPDATE: {event_type_pl}
+ℹ️ PROJECT SENTINEL UPDATE: {event_type_pl}
 Nowe informacje ({new_source_name}):
 {new_summary}
 

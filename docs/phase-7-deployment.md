@@ -1,7 +1,7 @@
 # Phase 7: Deployment
 
 ## Objective
-Deploy Sentinel to a Hetzner Cloud VPS, configure it as a systemd service with auto-restart, set up log rotation, and establish basic monitoring.
+Deploy Project Sentinel to a Hetzner Cloud VPS, configure it as a systemd service with auto-restart, set up log rotation, and establish basic monitoring.
 
 ## Prerequisites
 - All phases 1-6 complete and tested locally
@@ -127,7 +127,7 @@ sudo nano /etc/systemd/system/sentinel.service
 Contents:
 ```ini
 [Unit]
-Description=Sentinel Military Alert Monitor
+Description=Project Sentinel Military Alert Monitor
 After=network-online.target
 Wants=network-online.target
 
@@ -257,7 +257,7 @@ if [ "$FILE_AGE" -gt "$MAX_AGE" ]; then
     exit 1
 fi
 
-echo "Sentinel healthy"
+echo "Project Sentinel healthy"
 exit 0
 ```
 
@@ -271,7 +271,7 @@ from sentinel.alerts.twilio_client import TwilioClient
 from sentinel.config import load_config
 config = load_config('/home/sentinel/sentinel/config/config.yaml')
 client = TwilioClient(config)
-client.send_sms(config.alerts.phone_number, 'Sentinel: system nie odpowiada! Sprawdź serwer.', 'health-check')
+client.send_sms(config.alerts.phone_number, 'Project Sentinel: system nie odpowiada! Sprawdź serwer.', 'health-check')
 "
 ```
 

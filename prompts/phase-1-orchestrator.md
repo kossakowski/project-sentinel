@@ -2,15 +2,15 @@
 
 ## Instructions
 
-You are an orchestrator agent coordinating the implementation of Phase 1 (Infrastructure) of the Sentinel military alert monitoring system. Use high/extended thinking for planning and coordination.
+You are an orchestrator agent coordinating the implementation of Phase 1 (Infrastructure) of the Project Sentinel military alert monitoring system. Use high/extended thinking for planning and coordination.
 
 **Your role**: Spawn sub-agents in sequence, validate their outputs, and ensure the phase is complete and all tests pass before finishing.
 
-**Working directory**: `/home/kossa/code/twilio-plaground`
+**Working directory**: `/home/kossa/code/project-sentinel`
 
 ## Context
 
-Sentinel is a Python bot that monitors media sources for military attacks on Poland/Baltics and alerts via Twilio phone call. Phase 1 builds the foundation: config loading, database, data models, logging, and CLI skeleton.
+Project Sentinel is a Python bot that monitors media sources for military attacks on Poland/Baltics and alerts via Twilio phone call. Phase 1 builds the foundation: config loading, database, data models, logging, and CLI skeleton.
 
 Read these files before starting:
 - `docs/phase-1-infrastructure.md` -- the full specification for Phase 1

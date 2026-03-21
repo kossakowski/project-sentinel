@@ -1,6 +1,6 @@
 # Media Sources Reference
 
-Comprehensive list of all data sources Sentinel can monitor, organized by type and priority. Based on analysis of the September 2025 Russian drone incursion into Poland and general military intelligence monitoring best practices.
+Comprehensive list of all data sources Project Sentinel can monitor, organized by type and priority. Based on analysis of the September 2025 Russian drone incursion into Poland and general military intelligence monitoring best practices.
 
 ## Source Speed Tiers
 
@@ -14,7 +14,7 @@ Based on the September 9-10, 2025 drone incursion case study:
 | **4** | 1-6 hours | TV special editions, official military statements |
 | **5** | 6+ hours | Government citizen alerts (RCB) |
 
-Sentinel targets **Tiers 2-3** for automated monitoring, with **Tier 1** via Telegram.
+Project Sentinel targets **Tiers 2-3** for automated monitoring, with **Tier 1** via Telegram.
 
 ---
 
@@ -111,7 +111,7 @@ Monitored for adversary narrative signals, NOT for factual reporting.
 | Coverage | 100+ languages, global |
 | API key required | No |
 
-**Key features for Sentinel:**
+**Key features for Project Sentinel:**
 - Theme filtering: `ARMEDCONFLICT`, `WB_2462_POLITICAL_VIOLENCE_AND_WAR`
 - CAMEO event codes: 18 (Assault), 19 (Fight), 20 (Mass Violence)
 - Goldstein scale: -10 (max conflict) to +10 (max cooperation)
@@ -196,11 +196,11 @@ These can be added later if needed. The current source set provides sufficient c
 To add a new RSS source:
 1. Find the RSS feed URL
 2. Add an entry to `config/config.yaml` under `sources.rss`
-3. Restart Sentinel
+3. Restart Project Sentinel
 
 To add a new Telegram channel:
 1. Find the channel username
 2. Add to `config/config.yaml` under `sources.telegram.channels`
-3. Restart Sentinel
+3. Restart Project Sentinel
 
 No code changes needed -- all sources are config-driven.

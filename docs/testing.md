@@ -72,7 +72,7 @@ python sentinel.py --test-headline "Large military convoy spotted near Polish bo
 **Expected output format:**
 ```
 ═══════════════════════════════════════════════════════════
-SENTINEL TEST CLASSIFICATION
+PROJECT SENTINEL TEST CLASSIFICATION
 ═══════════════════════════════════════════════════════════
 Headline:    Russia launches full-scale invasion of Poland
 ───────────────────────────────────────────────────────────
@@ -305,7 +305,7 @@ headlines:
 
 ```
 ═══════════════════════════════════════════════════════════════════════════
-SENTINEL TEST FILE: tests/fixtures/test_headlines.yaml (25 headlines)
+PROJECT SENTINEL TEST FILE: tests/fixtures/test_headlines.yaml (25 headlines)
 ═══════════════════════════════════════════════════════════════════════════
 
 # | Headline (first 60 chars)                          | Score | Expected | PASS?
@@ -346,7 +346,7 @@ Before going live, verify Twilio works:
 # Use the existing Flask app to test a call
 curl -X POST http://localhost:5000/api/call \
   -H "Content-Type: application/json" \
-  -d '{"to": "+48XXXXXXXXX", "message": "Test alertu Sentinel. To jest test.", "language": "pl-PL"}'
+  -d '{"to": "+48XXXXXXXXX", "message": "Test alertu Project Sentinel. To jest test.", "language": "pl-PL"}'
 ```
 
 ### Testing the Full Alert Flow

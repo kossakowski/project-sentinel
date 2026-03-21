@@ -1,4 +1,4 @@
-# Sentinel -- Implementation Phases
+# Project Sentinel -- Implementation Phases
 
 ## Overview
 

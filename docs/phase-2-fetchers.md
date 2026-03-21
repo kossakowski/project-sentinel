@@ -55,7 +55,7 @@ Polls all RSS feeds defined in `config.sources.rss` where `enabled: true`.
 #### HTTP Headers
 ```python
 headers = {
-    "User-Agent": "Sentinel/1.0 (military-alert-monitor)",
+    "User-Agent": "ProjectSentinel/1.0 (military-alert-monitor)",
     "Accept": "application/rss+xml, application/xml, text/xml",
 }
 # Add conditional headers if cached:

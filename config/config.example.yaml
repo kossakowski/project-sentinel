@@ -1,5 +1,5 @@
 # =============================================================================
-# Sentinel Configuration
+# Project Sentinel Configuration
 # =============================================================================
 # Copy this file to config/config.yaml and adjust values.
 # Secrets (API keys, phone numbers) are referenced via ${ENV_VAR} and loaded

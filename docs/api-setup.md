@@ -1,6 +1,6 @@
 # API Setup Guide
 
-This guide covers setting up all external service accounts needed by Sentinel.
+This guide covers setting up all external service accounts needed by Project Sentinel.
 
 ## 1. Anthropic API (Claude Haiku)
 
@@ -15,7 +15,7 @@ You need an Anthropic API account to use Claude Haiku for article classification
 5. Add credits -- **$5 is enough for months** of usage at Haiku rates
 6. Navigate to **Settings → API Keys**
 7. Click **Create Key**
-8. Name it `sentinel` (for your reference)
+8. Name it `project-sentinel` (for your reference)
 9. Copy the key -- it starts with `sk-ant-...`
 10. Add to your `.env` file:
     ```
@@ -25,7 +25,7 @@ You need an Anthropic API account to use Claude Haiku for article classification
 ### Pricing (Claude Haiku 4.5)
 - Input: $1 per million tokens
 - Output: $5 per million tokens
-- Sentinel uses ~50-100 classifications/day = ~$1.50-2.50/month
+- Project Sentinel uses ~50-100 classifications/day = ~$1.50-2.50/month
 
 ### Verify It Works
 
@@ -74,7 +74,7 @@ You likely already have this set up (your existing `app.py` uses Twilio). For re
 
 ### Polish TTS Voice
 
-Sentinel uses Amazon Polly's **Ewa** voice for Polish TTS in phone calls. This is available through Twilio's `<Say>` verb with:
+Project Sentinel uses Amazon Polly's **Ewa** voice for Polish TTS in phone calls. This is available through Twilio's `<Say>` verb with:
 ```xml
 <Say language="pl-PL" voice="Polly.Ewa">Treść wiadomości po polsku</Say>
 ```
@@ -91,7 +91,7 @@ client = Client(os.environ['TWILIO_ACCOUNT_SID'], os.environ['TWILIO_AUTH_TOKEN'
 msg = client.messages.create(
     from_=os.environ['TWILIO_PHONE_NUMBER'],
     to=os.environ['ALERT_PHONE_NUMBER'],
-    body='Sentinel test SMS'
+    body='Project Sentinel test SMS'
 )
 print(f'SMS sent: {msg.sid}')
 "
@@ -117,8 +117,8 @@ Telegram monitoring uses a personal account via `telethon`. You do NOT need a bo
 2. Log in with your phone number
 3. Go to **API Development Tools**
 4. Create a new application:
-   - **App title:** Sentinel
-   - **Short name:** sentinel
+   - **App title:** Project Sentinel
+   - **Short name:** project-sentinel
    - **Platform:** Other
    - **Description:** Military alert monitoring
 5. Note your:
@@ -219,7 +219,7 @@ If you want to add Reddit monitoring (r/worldnews, r/europe):
 1. Go to **https://www.reddit.com/prefs/apps**
 2. Click **Create App** (or **Create Another App**)
 3. Fill in:
-   - **Name:** Sentinel
+   - **Name:** Project Sentinel
    - **Type:** Script
    - **Redirect URI:** `http://localhost:8080` (required but unused)
 4. Note the **client ID** (under the app name) and **client secret**

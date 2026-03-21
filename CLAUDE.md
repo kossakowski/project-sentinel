@@ -1,4 +1,4 @@
-# Sentinel -- Military Alert Monitoring System
+# Project Sentinel -- Military Alert Monitoring System
 
 ## Overview
 Real-time monitoring bot that scans media sources (PL/EN/UA/RU) for military attacks or invasions targeting Poland and the Baltic states, and alerts via Twilio phone call.
