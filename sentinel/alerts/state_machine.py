@@ -345,9 +345,7 @@ class AlertStateMachine:
 
     def _send_followup_sms(self, event_id: str) -> None:
         """Send a follow-up SMS after a call is acknowledged."""
-        # Retrieve the event from the database to get current details
-        active_events = self.db.get_active_events(within_hours=24)
-        event = next((e for e in active_events if e.id == event_id), None)
+        event = self.db.get_event_by_id(event_id)
         if event is None:
             return
 

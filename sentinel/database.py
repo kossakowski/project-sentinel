@@ -240,6 +240,17 @@ class Database:
             return None
         return Article.from_row(row)
 
+    def get_event_by_id(self, event_id: str) -> Event | None:
+        """Return the Event with the given ID, or None if not found."""
+        cursor = self.conn.execute(
+            "SELECT * FROM events WHERE id = ? LIMIT 1",
+            (event_id,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return Event.from_row(row)
+
     def update_alert_record(self, record_id: str, **kwargs: object) -> None:
         """Update specific fields of an alert record.
 
