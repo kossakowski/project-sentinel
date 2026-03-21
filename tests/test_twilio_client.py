@@ -188,3 +188,36 @@ def test_twilio_error_handled(twilio_client):
 
     record = twilio_client.send_whatsapp("+48123456789", "Test", "evt-err3")
     assert record is None
+
+
+# --------------------------------------------------------------------------
+# 9. test_call_twiml_xml_escaping
+# --------------------------------------------------------------------------
+def test_call_twiml_xml_escaping(twilio_client):
+    """Messages with XML special characters are properly escaped in TwiML."""
+    mock_call = MagicMock()
+    mock_call.sid = "CA_escape_test"
+    twilio_client.client.calls.create.return_value = mock_call
+
+    # Message with all XML special characters
+    message = 'Atak <dronów> z "kierunku" północ & wschód'
+    twilio_client.make_alert_call("+48123456789", message, "evt-esc")
+
+    call_kwargs = twilio_client.client.calls.create.call_args
+    twiml = call_kwargs.kwargs.get("twiml", "")
+
+    # Raw special chars must NOT appear unescaped in TwiML
+    assert "<dronów>" not in twiml
+    assert "& " not in twiml  # bare ampersand followed by space
+
+    # Escaped versions must be present
+    assert "&lt;dronów&gt;" in twiml
+    assert "&amp;" in twiml
+
+    # The escaped message should appear twice (repeated for waking user)
+    escaped = 'Atak &lt;dronów&gt; z "kierunku" północ &amp; wschód'
+    assert twiml.count(escaped) == 2
+
+    # The TwiML should still be well-structured
+    assert twiml.startswith("<Response>")
+    assert twiml.endswith("</Response>")

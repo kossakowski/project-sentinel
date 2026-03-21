@@ -2,6 +2,7 @@ import logging
 import os
 from datetime import datetime, timezone
 from uuid import uuid4
+from xml.sax.saxutils import escape as xml_escape
 
 from twilio.base.exceptions import TwilioRestException
 from twilio.rest import Client
@@ -34,14 +35,15 @@ class TwilioClient:
         The message is spoken twice (for waking the user).
         Returns an AlertRecord on success, None on Twilio error.
         """
+        safe_message = xml_escape(message_pl)
         twiml = (
             f"<Response>"
             f'<Say language="pl-PL" voice="Polly.Ewa">'
-            f"Uwaga! Alert systemu Project Sentinel. {message_pl}"
+            f"Uwaga! Alert systemu Project Sentinel. {safe_message}"
             f"</Say>"
             f'<Pause length="2"/>'
             f'<Say language="pl-PL" voice="Polly.Ewa">'
-            f"Powtarzam. {message_pl}"
+            f"Powtarzam. {safe_message}"
             f"</Say>"
             f'<Pause length="1"/>'
             f'<Say language="pl-PL" voice="Polly.Ewa">'

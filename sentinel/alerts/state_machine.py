@@ -330,12 +330,21 @@ class AlertStateMachine:
             self._update_alert_record(
                 record, status=call_status, duration_seconds=duration
             )
-            self.logger.info(
-                "Event %s call result: %s (duration=%ds), will retry",
-                record.event_id,
-                call_status,
-                duration,
-            )
+            if call_status in ("failed", "canceled"):
+                self.logger.warning(
+                    "Event %s call %s (duration=%ds), "
+                    "terminal status — moving to retry/fallback",
+                    record.event_id,
+                    call_status,
+                    duration,
+                )
+            else:
+                self.logger.info(
+                    "Event %s call result: %s (duration=%ds), will retry",
+                    record.event_id,
+                    call_status,
+                    duration,
+                )
             # Retry logic is handled by process_event on next cycle
             # The alert_status remains "call_placed" so it will be retried
             self.db.update_event(

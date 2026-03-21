@@ -10,3 +10,4 @@ sentinel_session.*
 .coverage
 .code-refiner-state/
 review_report_pending.md
+config/config.yaml
