@@ -7,7 +7,6 @@ and SentinelScheduler (APScheduler wrapper with jitter, coalesce, health monitor
 import json
 import logging
 import os
-import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 
@@ -221,8 +220,16 @@ class SentinelPipeline:
         # Step 5: Classify (only if there are relevant articles)
         classifications = []
         if relevant:
-            classifications = self.classifier.classify_batch(relevant)
-            self.logger.info("Classified %d articles", len(classifications))
+            try:
+                classifications = self.classifier.classify_batch(relevant)
+                self.logger.info("Classified %d articles", len(classifications))
+            except Exception as e:
+                self.logger.error(
+                    "Classifier failed, continuing with empty classifications: %s",
+                    e,
+                    exc_info=True,
+                )
+                classifications = []
 
         # Step 6: Corroborate (group into events)
         events = self.corroborator.process_classifications(classifications)
@@ -303,8 +310,8 @@ class SentinelPipeline:
             # Send SMS notification (only once at the 10th failure)
             if failures == 10:
                 self._send_system_sms(
-                    f"Project Sentinel: zrodlo {fetcher_name} nie odpowiada "
-                    f"od {failures} cykli. System nadal monitoruje pozostale zrodla."
+                    f"Project Sentinel: źródło {fetcher_name} nie odpowiada "
+                    f"od {failures} cykli. System nadal monitoruje pozostałe źródła."
                 )
         elif failures >= 5:
             self.logger.warning(
@@ -372,7 +379,7 @@ class SentinelScheduler:
         failures = self.pipeline.stats.consecutive_failures
         if failures == 3:
             self.pipeline._send_system_sms(
-                "Project Sentinel: system napotkal krytyczny blad. Sprawdz logi."
+                "Project Sentinel: system napotkał krytyczny błąd. Sprawdź logi."
             )
 
     def _update_health(

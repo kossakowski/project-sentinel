@@ -106,7 +106,14 @@ async def run_continuous(config) -> None:
     from sentinel.scheduler import SentinelPipeline, SentinelScheduler
 
     pipeline = SentinelPipeline(config)
-    await pipeline.startup()
+    try:
+        await pipeline.startup()
+    except Exception as e:
+        logging.getLogger("sentinel").error(
+            "Pipeline startup failed: %s", e, exc_info=True
+        )
+        await pipeline.shutdown()
+        raise
 
     scheduler = SentinelScheduler(pipeline, config)
     scheduler.start()

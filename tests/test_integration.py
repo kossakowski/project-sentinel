@@ -227,7 +227,7 @@ async def test_pipeline_survives_fetcher_failure(pipeline_config):
 
 @pytest.mark.asyncio
 async def test_pipeline_survives_classifier_failure(pipeline_config):
-    """Classifier API error, pipeline logs error and continues."""
+    """Classifier API error, pipeline logs error and continues with subsequent steps."""
     articles = [_make_article("Military attack on Poland detected")]
 
     with (
@@ -251,21 +251,22 @@ async def test_pipeline_survives_classifier_failure(pipeline_config):
 
         pipeline = SentinelPipeline(pipeline_config)
 
-        # The pipeline should not crash -- classify_batch is called only if
-        # there are relevant articles, and its error will propagate.
-        # However the spec says "pipeline logs error and continues".
-        # The pipeline's run_cycle will raise if classify_batch fails.
-        # Let's verify the pipeline handles it at the scheduler level.
-        # For the pipeline itself, this means run_cycle may raise,
-        # and the scheduler catches it.
-        try:
+        # Spy on corroborator and dispatcher to verify they still execute
+        with (
+            patch.object(pipeline.corroborator, "process_classifications", wraps=pipeline.corroborator.process_classifications) as mock_corroborate,
+            patch.object(pipeline.dispatcher, "dispatch", wraps=pipeline.dispatcher.dispatch) as mock_dispatch,
+        ):
+            # Pipeline should NOT raise -- it catches classifier errors and continues
             result = await pipeline.run_cycle()
-            # If keyword filter filters everything out, classify won't be called
-            # and we get a clean result
+
+            # Verify we got a complete CycleResult (pipeline didn't abort)
+            assert isinstance(result, CycleResult)
             assert result.articles_fetched == 1
-        except RuntimeError:
-            # This is expected if classify_batch fails
-            pass
+            assert result.articles_classified == 0  # Classifier failed, so 0
+
+            # Verify subsequent pipeline steps still executed
+            mock_corroborate.assert_called_once_with([])
+            mock_dispatch.assert_called_once()
 
         await pipeline.shutdown()
 
