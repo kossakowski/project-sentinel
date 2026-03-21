@@ -107,7 +107,8 @@ def test_new_critical_event_triggers_call(_sleep, state_machine, mock_twilio):
     # With the aggressive retry loop, all 5 attempts fail (no-answer),
     # so make_alert_call is called 5 times, then falls back to SMS
     assert mock_twilio.make_alert_call.call_count == 5
-    mock_twilio.send_sms.assert_called_once()  # SMS fallback
+    # 2 SMS: confirmation SMS at start + fallback SMS after all calls fail
+    assert mock_twilio.send_sms.call_count == 2
 
 
 # --------------------------------------------------------------------------
@@ -261,7 +262,8 @@ def test_round_exhausted_sends_sms_and_retries(_sleep, state_machine, db, mock_t
 
     # 5 call attempts made, then SMS fallback
     assert mock_twilio.make_alert_call.call_count == 5
-    mock_twilio.send_sms.assert_called_once()
+    # 2 SMS: confirmation SMS at start + fallback SMS after all calls fail
+    assert mock_twilio.send_sms.call_count == 2
 
     # Status should be retry_pending, not sms_fallback (will retry next cycle)
     updated = db.get_event_by_id(event.id)

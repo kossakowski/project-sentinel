@@ -284,6 +284,9 @@ class AlertStateMachine:
         max_per_round = self.config.alerts.acknowledgment.max_call_retries
         total_attempts = len(call_records)
 
+        # Send confirmation SMS (reply "1" to confirm) — backup to DTMF
+        self._send_confirmation_sms(event)
+
         # Aggressive retry loop — call repeatedly until answered
         for attempt in range(1, max_per_round + 1):
             total_attempts += 1
@@ -343,22 +346,78 @@ class AlertStateMachine:
         self._execute_sms(event)
         self.db.update_event(event.id, alert_status="retry_pending")
 
+    def _send_confirmation_sms(self, event: Event) -> None:
+        """Send an SMS asking the user to reply '1' to confirm alert receipt."""
+        phone_number = self.config.alerts.phone_number
+        event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
+        message = (
+            f"🚨 PROJECT SENTINEL: {event_type_pl}\n"
+            f"{event.summary_pl}\n\n"
+            f"Odpowiedz 1 aby potwierdzić odbiór alertu."
+        )
+        record = self.twilio.send_sms(phone_number, message, event.id)
+        if record is not None:
+            self.db.insert_alert_record(record)
+
+    def _check_sms_confirmation(self, since: datetime) -> bool:
+        """Check if the user replied '1' to the confirmation SMS.
+
+        Polls Twilio for incoming messages from the user's phone number
+        to our Twilio number sent after the given time.
+        """
+        phone_number = self.config.alerts.phone_number
+        try:
+            messages = self.twilio.client.messages.list(
+                to=self.twilio.twilio_phone,
+                from_=phone_number,
+                date_sent_after=since,
+                limit=10,
+            )
+            for msg in messages:
+                body = msg.body.strip() if msg.body else ""
+                if body == "1" or body.lower().startswith("1"):
+                    self.logger.info(
+                        "SMS confirmation received: '%s' from %s",
+                        body,
+                        phone_number,
+                    )
+                    return True
+        except Exception as exc:
+            self.logger.warning("Failed to check SMS confirmations: %s", exc)
+        return False
+
     def _wait_for_call_result(
         self, record: AlertRecord, threshold: int
     ) -> bool:
-        """Poll Twilio for call status until the call completes or times out.
+        """Poll Twilio for call status and SMS confirmation.
 
-        Returns True if the call was answered and held long enough (acknowledged).
-        Returns False if the call was not answered, too short, or failed.
+        Returns True if confirmed by either:
+        - DTMF keypress during call (short duration < 60s on completed call)
+        - SMS reply '1' from the user
+
+        Returns False if not confirmed.
         """
         max_wait = 90  # seconds — enough for a call to ring out
         poll_interval = 5  # seconds between status checks
         waited = 0
+        call_placed_at = record.sent_at
 
         while waited < max_wait:
             time.sleep(poll_interval)
             waited += poll_interval
 
+            # Check SMS confirmation (user might reply before call ends)
+            if self._check_sms_confirmation(call_placed_at):
+                # Update call record if still in progress
+                status = self.twilio.get_call_status(record.twilio_sid)
+                if status:
+                    self._update_alert_record(
+                        record, status="confirmed_via_sms",
+                        duration_seconds=status.get("duration", 0),
+                    )
+                return True
+
+            # Check call status
             status = self.twilio.get_call_status(record.twilio_sid)
             if status is None:
                 continue
@@ -370,41 +429,48 @@ class AlertStateMachine:
             if call_status in ("queued", "ringing", "in-progress"):
                 continue
 
-            # Call finished — check result
+            # Call finished — check DTMF result
             self._update_alert_record(
                 record, status=call_status, duration_seconds=duration
             )
 
             if call_status != "completed":
-                # busy, no-answer, canceled, failed
                 return False
 
-            # DTMF confirmation logic:
-            # - Human picks up and presses a key → Gather completes early → short call (~15-40s)
-            # - Voicemail answers, no keypress → full TTS + 30s Gather timeout → long call (~80s+)
-            # - Human picks up but doesn't press key → also long call (timeout)
-            # Threshold: < 60s = confirmed (keypress ended Gather early)
+            # DTMF detection: short call = human pressed key, long call = voicemail
             voicemail_threshold = 60
-            if duration < voicemail_threshold:
+            if duration < voicemail_threshold and duration >= threshold:
                 self.logger.info(
-                    "Event %s: call confirmed via DTMF (duration=%ds < %ds threshold)",
+                    "Event %s: call confirmed via DTMF (duration=%ds)",
                     record.event_id[:8],
                     duration,
-                    voicemail_threshold,
                 )
-                return True  # Human pressed a key
+                return True
 
+            # Call completed but likely voicemail — wait for SMS confirmation
             self.logger.info(
-                "Event %s: call likely voicemail or no DTMF (duration=%ds >= %ds threshold)",
+                "Event %s: call completed (duration=%ds) but may be voicemail, "
+                "waiting for SMS confirmation...",
                 record.event_id[:8],
                 duration,
-                voicemail_threshold,
             )
+            # Give extra time for SMS reply after call ends
+            sms_wait = 30
+            sms_waited = 0
+            while sms_waited < sms_wait:
+                time.sleep(5)
+                sms_waited += 5
+                if self._check_sms_confirmation(call_placed_at):
+                    return True
+
             return False
 
-        # Timed out waiting — treat as not answered
+        # Timed out — last chance SMS check
+        if self._check_sms_confirmation(call_placed_at):
+            return True
+
         self.logger.warning(
-            "Event %s: timed out waiting for call %s result",
+            "Event %s: no confirmation (call or SMS) for %s",
             record.event_id[:8],
             record.twilio_sid,
         )
