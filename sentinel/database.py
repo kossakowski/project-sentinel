@@ -229,6 +229,36 @@ class Database:
         )
         return [AlertRecord.from_row(row) for row in cursor.fetchall()]
 
+    def get_article_by_id(self, article_id: str) -> Article | None:
+        """Return the Article with the given ID, or None if not found."""
+        cursor = self.conn.execute(
+            "SELECT * FROM articles WHERE id = ? LIMIT 1",
+            (article_id,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return Article.from_row(row)
+
+    def update_alert_record(self, record_id: str, **kwargs: object) -> None:
+        """Update specific fields of an alert record.
+
+        Only update the fields passed as kwargs.
+        """
+        if not kwargs:
+            return
+
+        set_clause = ", ".join(f"{key} = ?" for key in kwargs)
+        values = list(kwargs.values())
+        values.append(record_id)
+
+        with self.conn:
+            self.conn.execute(
+                f"UPDATE alert_records SET {set_clause} WHERE id = ?",
+                values,
+            )
+        self.logger.debug("Alert record updated: %s", record_id)
+
     def cleanup_old_records(self, article_days: int, event_days: int) -> int:
         """Delete articles older than article_days and events older than event_days.
 

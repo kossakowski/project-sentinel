@@ -107,11 +107,41 @@ class AcknowledgmentConfig(BaseModel):
     cooldown_hours: int = 6
 
 
+class AlertTemplates(BaseModel):
+    call: str = (
+        "{event_type_pl} wykryte. {summary_pl}. "
+        "Źródła potwierdzające: {source_count}. "
+        "Pilność: {urgency_score} na 10."
+    )
+    sms: str = (
+        "\U0001f6a8 PROJECT SENTINEL: {event_type_pl}\n"
+        "Pilność: {urgency_score}/10\n"
+        "Kraje: {affected_countries_str}\n"
+        "Agresor: {aggressor}\n"
+        "\n"
+        "{summary_pl}\n"
+        "\n"
+        "Źródła ({source_count}):\n"
+        "{sources_list}\n"
+        "\n"
+        "Wykryto: {first_seen_at_local}"
+    )
+    sms_update: str = (
+        "\u2139\ufe0f PROJECT SENTINEL UPDATE: {event_type_pl}\n"
+        "Nowe informacje ({new_source_name}):\n"
+        "{summary_pl}\n"
+        "\n"
+        "Łącznie źródeł: {source_count}\n"
+        "Pilność: {urgency_score}/10"
+    )
+
+
 class AlertsConfig(BaseModel):
     phone_number: str
     language: str = "pl"
     urgency_levels: dict[str, UrgencyLevel]
     acknowledgment: AcknowledgmentConfig
+    templates: AlertTemplates = AlertTemplates()
 
 
 # ---------------------------------------------------------------------------

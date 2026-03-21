@@ -393,6 +393,11 @@ alerts:
       min_score: 1
       action: log_only
 
+  templates:
+    call: "{event_type_pl} wykryte. {summary_pl}. Źródła potwierdzające: {source_count}. Pilność: {urgency_score} na 10."
+    sms: "\U0001f6a8 PROJECT SENTINEL: {event_type_pl}\nPilność: {urgency_score}/10\nKraje: {affected_countries_str}\nAgresor: {aggressor}\n\n{summary_pl}\n\nŹródła ({source_count}):\n{sources_list}\n\nWykryto: {first_seen_at_local}"
+    sms_update: "\u2139\ufe0f PROJECT SENTINEL UPDATE: {event_type_pl}\nNowe informacje ({new_source_name}):\n{summary_pl}\n\nŁącznie źródeł: {source_count}\nPilność: {urgency_score}/10"
+
   acknowledgment:
     call_duration_threshold_seconds: 15
     max_call_retries: 3

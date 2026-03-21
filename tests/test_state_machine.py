@@ -1,4 +1,4 @@
-"""Tests for sentinel.alerts.state_machine — 14 tests per spec."""
+"""Tests for sentinel.alerts.state_machine."""
 
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
@@ -6,8 +6,13 @@ from uuid import uuid4
 
 import pytest
 
-from sentinel.alerts.state_machine import AlertStateMachine, _format_sms_message
-from sentinel.models import AlertRecord, Event
+from sentinel.alerts.state_machine import (
+    AlertStateMachine,
+    _format_call_message,
+    _format_sms_message,
+    _format_update_sms,
+)
+from sentinel.models import AlertRecord, Article, Event
 
 
 # --------------------------------------------------------------------------
@@ -367,3 +372,175 @@ def test_duplicate_alert_prevented(state_machine, db, mock_twilio):
     # with status "initiated", so the state machine should skip
     state_machine.process_event(event)
     assert mock_twilio.make_alert_call.call_count == 1
+
+
+# --------------------------------------------------------------------------
+# 15. test_corroboration_upgrade_triggers_call
+# --------------------------------------------------------------------------
+def test_corroboration_upgrade_triggers_call(state_machine, db, mock_twilio):
+    """Event starts with 1 source -> SMS, updated to 2 sources -> phone call."""
+    event_id = str(uuid4())
+    article_id_1 = str(uuid4())
+
+    # Step 1: event with 1 source -> should send SMS
+    event = Event(
+        id=event_id,
+        event_type="missile_strike",
+        urgency_score=10,
+        affected_countries=["PL"],
+        aggressor="RU",
+        summary_pl="Rosja wystrzeliła rakiety.",
+        first_seen_at=datetime.now(timezone.utc),
+        last_updated_at=datetime.now(timezone.utc),
+        source_count=1,
+        article_ids=[article_id_1],
+        alert_status="pending",
+    )
+    state_machine.process_event(event)
+    mock_twilio.send_sms.assert_called_once()
+    mock_twilio.make_alert_call.assert_not_called()
+
+    # Step 2: event now has 2 sources (corroborated)
+    # The sms_sent record is in the DB, but it's not a pending phone_call
+    # so the state machine should re-evaluate and trigger a phone call
+    article_id_2 = str(uuid4())
+    event.source_count = 2
+    event.article_ids = [article_id_1, article_id_2]
+    event.alert_status = "pending"
+
+    state_machine.process_event(event)
+    mock_twilio.make_alert_call.assert_called_once()
+
+
+# --------------------------------------------------------------------------
+# 16. test_retry_interval_enforced
+# --------------------------------------------------------------------------
+def test_retry_interval_enforced(state_machine, db, mock_twilio, config):
+    """Retry is not attempted before the configured retry interval has elapsed."""
+    event = _make_event(urgency_score=10, source_count=2)
+    db.insert_event(event)
+
+    # Insert a recent failed call attempt (sent just now)
+    recent_call = _make_alert_record(
+        event.id,
+        alert_type="phone_call",
+        status="no-answer",
+        attempt_number=1,
+        sent_at=datetime.now(timezone.utc),  # just now
+    )
+    db.insert_alert_record(recent_call)
+
+    # Process the event — should NOT retry because the interval hasn't elapsed
+    state_machine.process_event(event)
+    mock_twilio.make_alert_call.assert_not_called()
+
+
+# --------------------------------------------------------------------------
+# 17. test_retry_interval_elapsed_allows_call
+# --------------------------------------------------------------------------
+def test_retry_interval_elapsed_allows_call(state_machine, db, mock_twilio, config):
+    """Retry is allowed after the retry interval has elapsed."""
+    event = _make_event(urgency_score=10, source_count=2)
+    db.insert_event(event)
+
+    retry_minutes = config.alerts.acknowledgment.retry_interval_minutes
+
+    # Insert a failed call attempt that happened well past the retry interval
+    old_call = _make_alert_record(
+        event.id,
+        alert_type="phone_call",
+        status="no-answer",
+        attempt_number=1,
+        sent_at=datetime.now(timezone.utc) - timedelta(minutes=retry_minutes + 1),
+    )
+    db.insert_alert_record(old_call)
+
+    # Process the event — should retry because interval has elapsed
+    state_machine.process_event(event)
+    mock_twilio.make_alert_call.assert_called_once()
+
+
+# --------------------------------------------------------------------------
+# 18. test_sms_format_includes_source_details
+# --------------------------------------------------------------------------
+def test_sms_format_includes_source_details(db, config):
+    """SMS message includes per-source detail lines from the database."""
+    # Insert articles into DB so the formatter can look them up
+    article1 = Article(
+        source_name="PAP",
+        source_url="https://pap.pl/art1",
+        source_type="rss",
+        title="Atak rakietowy na Polskę",
+        summary="Rakiety wystrzelone...",
+        language="pl",
+        published_at=datetime.now(timezone.utc),
+        fetched_at=datetime.now(timezone.utc),
+    )
+    article2 = Article(
+        source_name="TVN24",
+        source_url="https://tvn24.pl/art2",
+        source_type="rss",
+        title="Rosja atakuje Polskę rakietami",
+        summary="Potwierdzony atak...",
+        language="pl",
+        published_at=datetime.now(timezone.utc),
+        fetched_at=datetime.now(timezone.utc),
+    )
+    db.insert_article(article1)
+    db.insert_article(article2)
+
+    event = Event(
+        id=str(uuid4()),
+        event_type="missile_strike",
+        urgency_score=10,
+        affected_countries=["PL"],
+        aggressor="RU",
+        summary_pl="Rosja wystrzeliła rakiety.",
+        first_seen_at=datetime.now(timezone.utc),
+        last_updated_at=datetime.now(timezone.utc),
+        source_count=2,
+        article_ids=[article1.id, article2.id],
+    )
+
+    message = _format_sms_message(event, db, config)
+
+    # Verify per-source lines are present
+    assert "- PAP: Atak rakietowy na Polskę" in message
+    assert "- TVN24: Rosja atakuje Polskę rakietami" in message
+    assert "Źródła (2):" in message
+
+
+# --------------------------------------------------------------------------
+# 19. test_update_sms_includes_source_name
+# --------------------------------------------------------------------------
+def test_update_sms_includes_source_name(db, config):
+    """Update SMS includes the name of the most recent source."""
+    article = Article(
+        source_name="Defence24",
+        source_url="https://defence24.pl/art99",
+        source_type="rss",
+        title="Nowe szczegóły ataku",
+        summary="Dodatkowe informacje...",
+        language="pl",
+        published_at=datetime.now(timezone.utc),
+        fetched_at=datetime.now(timezone.utc),
+    )
+    db.insert_article(article)
+
+    event = Event(
+        id=str(uuid4()),
+        event_type="missile_strike",
+        urgency_score=10,
+        affected_countries=["PL"],
+        aggressor="RU",
+        summary_pl="Nowe informacje o ataku.",
+        first_seen_at=datetime.now(timezone.utc),
+        last_updated_at=datetime.now(timezone.utc),
+        source_count=3,
+        article_ids=["old-id-1", "old-id-2", article.id],
+    )
+
+    message = _format_update_sms(event, db, config)
+
+    assert "Defence24" in message
+    assert "Nowe informacje (Defence24):" in message
