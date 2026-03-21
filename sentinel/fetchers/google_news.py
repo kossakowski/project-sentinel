@@ -63,7 +63,7 @@ class GoogleNewsFetcher(BaseFetcher):
         """Fetch and parse results for a single Google News query."""
         url = self.build_feed_url(query)
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(follow_redirects=True) as client:
             response = await client.get(
                 url,
                 timeout=30.0,

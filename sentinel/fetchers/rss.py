@@ -86,7 +86,7 @@ class RSSFetcher(BaseFetcher):
         if last_modified:
             headers["If-Modified-Since"] = last_modified
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(follow_redirects=True) as client:
             response = await client.get(url, headers=headers, timeout=30.0)
 
         if response.status_code == 304:

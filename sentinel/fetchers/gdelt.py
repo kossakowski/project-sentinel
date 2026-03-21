@@ -114,7 +114,7 @@ class GDELTFetcher(BaseFetcher):
             "sort": "DateDesc",
         }
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(follow_redirects=True) as client:
             response = await client.get(
                 GDELT_API_URL,
                 params=params,
@@ -136,7 +136,11 @@ class GDELTFetcher(BaseFetcher):
 
         response.raise_for_status()
 
-        data = response.json()
+        try:
+            data = response.json()
+        except Exception:
+            self.logger.warning("GDELT: empty or non-JSON response")
+            return []
         raw_articles = data.get("articles", [])
 
         if not raw_articles:
