@@ -1,4 +1,5 @@
 import logging
+import random
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -354,28 +355,36 @@ class AlertStateMachine:
         self._send_followup_sms(event.id)
 
     def _send_confirmation_whatsapp(self, event: Event) -> None:
-        """Send a WhatsApp asking the user to reply '1' to confirm alert receipt."""
+        """Send a WhatsApp with a random 6-digit confirmation code."""
         phone_number = self.config.alerts.phone_number
         event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
+
+        # Generate random 6-digit code, store it for verification
+        self._confirmation_code = f"{random.randint(100000, 999999)}"
+
         message = (
             f"🚨 PROJECT SENTINEL: {event_type_pl}\n\n"
             f"{event.summary_pl}\n\n"
-            f"⚠️ Odpowiedz 1 aby potwierdzić odbiór alertu.\n"
+            f"⚠️ Odpowiedz kodem aby potwierdzić odbiór alertu:\n\n"
+            f"👉 {self._confirmation_code}\n\n"
             f"Telefon będzie dzwonił dopóki nie potwierdzisz."
         )
         record = self.twilio.send_whatsapp(phone_number, message, event.id)
         if record is not None:
             self.db.insert_alert_record(record)
             self.logger.info(
-                "WhatsApp confirmation request sent for event %s", event.id[:8]
+                "WhatsApp confirmation request sent for event %s (code=%s)",
+                event.id[:8],
+                self._confirmation_code,
             )
 
     def _check_whatsapp_confirmation(self, since: datetime) -> bool:
-        """Check if the user replied '1' on WhatsApp.
-
-        Polls Twilio for incoming WhatsApp messages from the user.
-        """
+        """Check if the user replied with the correct 6-digit code on WhatsApp."""
         phone_number = self.config.alerts.phone_number
+        code = getattr(self, "_confirmation_code", None)
+        if not code:
+            return False
+
         try:
             messages = self.twilio.client.messages.list(
                 to=self.twilio.twilio_whatsapp,
@@ -385,10 +394,10 @@ class AlertStateMachine:
             )
             for msg in messages:
                 body = msg.body.strip() if msg.body else ""
-                if "1" in body:
+                if code in body:
                     self.logger.info(
-                        "WhatsApp confirmation received: '%s' from %s",
-                        body,
+                        "WhatsApp confirmation received (code=%s) from %s",
+                        code,
                         phone_number,
                     )
                     return True
