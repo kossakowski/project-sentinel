@@ -19,6 +19,14 @@ Real-time monitoring bot that scans media sources (PL/EN/UA/RU) for military att
 - Test single headline: `python sentinel.py --test-headline "headline text here"`
 - Tests: `pytest tests/ -v`
 
+## Known Issue: Project Rename History
+This project was renamed twice: `twilio-playground` → `sentinel` → `project-sentinel`. This left stale references baked into:
+- **Python venv**: packages/paths may resolve to old directory names (e.g. `/home/kossa/code/twilio-plaground/`)
+- **`__pycache__`**, `.pyc` files, egg-info, `.egg-link`, or `.pth` files referencing old paths
+- **pip editable installs** (`pip install -e .`) pointing at a now-nonexistent directory
+
+**If imports fail with paths to `twilio-plaground` or `sentinel`**: the fix is to recreate the venv from scratch (`rm -rf .venv && python -m venv .venv && pip install -r requirements.txt`) and clear all `__pycache__` dirs.
+
 ## Development Rules
 - **Nothing is hardcoded.** All keywords, sources, countries, thresholds, and URLs live in `config/config.yaml`.
 - **Every phase must pass its tests** before starting the next phase.
