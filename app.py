@@ -2,6 +2,7 @@ import os
 
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
+from twilio.base.exceptions import TwilioRestException
 from twilio.rest import Client
 
 load_dotenv()
@@ -24,23 +25,29 @@ def index():
 @app.route("/api/sms", methods=["POST"])
 def send_sms():
     data = request.json
-    msg = client.messages.create(
-        from_=TWILIO_PHONE,
-        to=data["to"],
-        body=data["body"],
-    )
-    return jsonify({"sid": msg.sid, "status": msg.status})
+    try:
+        msg = client.messages.create(
+            from_=TWILIO_PHONE,
+            to=data["to"],
+            body=data["body"],
+        )
+        return jsonify({"sid": msg.sid, "status": msg.status})
+    except TwilioRestException as e:
+        return jsonify({"error": e.msg, "code": e.code}), 400
 
 
 @app.route("/api/call", methods=["POST"])
 def make_call():
     data = request.json
-    call = client.calls.create(
-        from_=TWILIO_PHONE,
-        to=data["to"],
-        twiml=f'<Response><Say language="{data.get("language", "en-US")}">{data["message"]}</Say></Response>',
-    )
-    return jsonify({"sid": call.sid, "status": call.status})
+    try:
+        call = client.calls.create(
+            from_=TWILIO_PHONE,
+            to=data["to"],
+            twiml=f'<Response><Say language="{data.get("language", "en-US")}">{data["message"]}</Say></Response>',
+        )
+        return jsonify({"sid": call.sid, "status": call.status})
+    except TwilioRestException as e:
+        return jsonify({"error": e.msg, "code": e.code}), 400
 
 
 @app.route("/api/voice-message", methods=["POST"])
@@ -55,23 +62,29 @@ def send_voice_message():
         f'<Say language="{language}">This was an automated voice message. Goodbye.</Say>'
         f'</Response>'
     )
-    call = client.calls.create(
-        from_=TWILIO_PHONE,
-        to=data["to"],
-        twiml=twiml,
-    )
-    return jsonify({"sid": call.sid, "status": call.status})
+    try:
+        call = client.calls.create(
+            from_=TWILIO_PHONE,
+            to=data["to"],
+            twiml=twiml,
+        )
+        return jsonify({"sid": call.sid, "status": call.status})
+    except TwilioRestException as e:
+        return jsonify({"error": e.msg, "code": e.code}), 400
 
 
 @app.route("/api/whatsapp", methods=["POST"])
 def send_whatsapp():
     data = request.json
-    msg = client.messages.create(
-        from_=TWILIO_WHATSAPP,
-        to=f'whatsapp:{data["to"]}',
-        body=data["body"],
-    )
-    return jsonify({"sid": msg.sid, "status": msg.status})
+    try:
+        msg = client.messages.create(
+            from_=TWILIO_WHATSAPP,
+            to=f'whatsapp:{data["to"]}',
+            body=data["body"],
+        )
+        return jsonify({"sid": msg.sid, "status": msg.status})
+    except TwilioRestException as e:
+        return jsonify({"error": e.msg, "code": e.code}), 400
 
 
 if __name__ == "__main__":
