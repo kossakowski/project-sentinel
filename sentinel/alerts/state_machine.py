@@ -437,33 +437,35 @@ class AlertStateMachine:
             if call_status != "completed":
                 return False
 
-            # DTMF detection: short call = human pressed key, long call = voicemail
-            voicemail_threshold = 60
-            if duration < voicemail_threshold and duration >= threshold:
+            # DTMF confirmation:
+            # - Voicemail can't press keys, so any completed call where
+            #   the user had time to hear and press = confirmed
+            # - Instant rejection (red button) = ~1s, not confirmed
+            # - Human pressed key = 5s+ depending on how fast they press
+            # - Voicemail sat through full message + 30s Gather timeout = 60s+
+            if duration >= 60:
                 self.logger.info(
-                    "Event %s: call confirmed via DTMF (duration=%ds)",
+                    "Event %s: call duration %ds >= 60s, likely voicemail (no DTMF)",
                     record.event_id[:8],
                     duration,
                 )
-                return True
+                return False
 
-            # Call completed but likely voicemail — wait for SMS confirmation
+            if duration <= 2:
+                self.logger.info(
+                    "Event %s: call duration %ds, instant rejection",
+                    record.event_id[:8],
+                    duration,
+                )
+                return False
+
+            # 3-59s: human picked up and pressed a key
             self.logger.info(
-                "Event %s: call completed (duration=%ds) but may be voicemail, "
-                "waiting for SMS confirmation...",
+                "Event %s: call confirmed via DTMF (duration=%ds)",
                 record.event_id[:8],
                 duration,
             )
-            # Give extra time for SMS reply after call ends
-            sms_wait = 30
-            sms_waited = 0
-            while sms_waited < sms_wait:
-                time.sleep(5)
-                sms_waited += 5
-                if self._check_sms_confirmation(call_placed_at):
-                    return True
-
-            return False
+            return True
 
         # Timed out — last chance SMS check
         if self._check_sms_confirmation(call_placed_at):
@@ -509,9 +511,7 @@ class AlertStateMachine:
         threshold = (
             self.config.alerts.acknowledgment.call_duration_threshold_seconds
         )
-        voicemail_threshold = 60  # seconds — DTMF keypress ends call early
-
-        if call_status == "completed" and duration < voicemail_threshold and duration > threshold:
+        if call_status == "completed" and 2 < duration < 60:
             # Call was answered — acknowledged
             self.db.update_event(
                 record.event_id,

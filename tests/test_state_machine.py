@@ -204,8 +204,8 @@ def test_answered_call_acknowledged(state_machine, db, mock_twilio):
 # --------------------------------------------------------------------------
 # 7. test_short_call_not_acknowledged
 # --------------------------------------------------------------------------
-def test_short_call_not_acknowledged(state_machine, db, mock_twilio):
-    """Call completed, duration 5s -> not acknowledged, retry pending."""
+def test_instant_rejection_not_acknowledged(state_machine, db, mock_twilio):
+    """Call completed, duration 1s (instant rejection) -> not acknowledged."""
     event = _make_event(urgency_score=10, source_count=2)
     db.insert_event(event)
 
@@ -214,7 +214,7 @@ def test_short_call_not_acknowledged(state_machine, db, mock_twilio):
 
     mock_twilio.get_call_status.return_value = {
         "status": "completed",
-        "duration": 5,
+        "duration": 1,
     }
 
     state_machine.check_pending_calls()
