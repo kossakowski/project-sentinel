@@ -100,15 +100,14 @@ def state_machine(db, mock_twilio, config):
 # --------------------------------------------------------------------------
 @patch("sentinel.alerts.state_machine.time.sleep")
 def test_new_critical_event_triggers_call(_sleep, state_machine, mock_twilio):
-    """Urgency 10 + 2 sources -> phone call (retries until fallback to SMS)."""
+    """Urgency 10 + 2 sources -> phone call (retries, WhatsApp confirmation)."""
     event = _make_event(urgency_score=10, source_count=2)
     state_machine.process_event(event)
 
-    # With the aggressive retry loop, all 5 attempts fail (no-answer),
-    # so make_alert_call is called 5 times, then falls back to SMS
+    # 5 call attempts (no WhatsApp reply in mock)
     assert mock_twilio.make_alert_call.call_count == 5
-    # 2 SMS: confirmation SMS at start + fallback SMS after all calls fail
-    assert mock_twilio.send_sms.call_count == 2
+    # 1 WhatsApp confirmation request sent at start
+    assert mock_twilio.send_whatsapp.call_count == 1
 
 
 # --------------------------------------------------------------------------
@@ -179,8 +178,8 @@ def test_low_urgency_logs_only(state_machine, mock_twilio, config):
 # --------------------------------------------------------------------------
 # 6. test_answered_call_acknowledged
 # --------------------------------------------------------------------------
-def test_answered_call_acknowledged(state_machine, db, mock_twilio):
-    """Call completed, duration 30s -> acknowledged."""
+def test_call_completed_sets_retry_pending(state_machine, db, mock_twilio):
+    """Call completed -> retry_pending (confirmation is via WhatsApp, not call)."""
     event = _make_event(urgency_score=10, source_count=2)
     db.insert_event(event)
 
@@ -194,11 +193,10 @@ def test_answered_call_acknowledged(state_machine, db, mock_twilio):
 
     state_machine.check_pending_calls()
 
-    # Verify event was marked as acknowledged
+    # Call completion alone doesn't acknowledge — WhatsApp reply needed
     updated_events = db.get_active_events(within_hours=24)
     updated = next(e for e in updated_events if e.id == event.id)
-    assert updated.alert_status == "acknowledged"
-    assert updated.acknowledged_at is not None
+    assert updated.alert_status == "retry_pending"
 
 
 # --------------------------------------------------------------------------
@@ -260,10 +258,10 @@ def test_round_exhausted_sends_sms_and_retries(_sleep, state_machine, db, mock_t
     # Process the event — all 5 attempts fail (mock returns no-answer)
     state_machine.process_event(event)
 
-    # 5 call attempts made, then SMS fallback
+    # 5 call attempts made, no WhatsApp reply
     assert mock_twilio.make_alert_call.call_count == 5
-    # 2 SMS: confirmation SMS at start + fallback SMS after all calls fail
-    assert mock_twilio.send_sms.call_count == 2
+    # 1 WhatsApp confirmation request sent at start
+    assert mock_twilio.send_whatsapp.call_count == 1
 
     # Status should be retry_pending, not sms_fallback (will retry next cycle)
     updated = db.get_event_by_id(event.id)

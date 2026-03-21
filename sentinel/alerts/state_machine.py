@@ -280,15 +280,20 @@ class AlertStateMachine:
 
         phone_number = self.config.alerts.phone_number
         message = _format_call_message(event, self.config)
-        threshold = self.config.alerts.acknowledgment.call_duration_threshold_seconds
         max_per_round = self.config.alerts.acknowledgment.max_call_retries
         total_attempts = len(call_records)
+        call_placed_at = datetime.now(timezone.utc)
 
-        # Send confirmation SMS (reply "1" to confirm) — backup to DTMF
-        self._send_confirmation_sms(event)
+        # Send WhatsApp confirmation request — this is the ONLY confirmation mechanism
+        self._send_confirmation_whatsapp(event)
 
-        # Aggressive retry loop — call repeatedly until answered
+        # Call loop — calls are alarms only, not confirmation
         for attempt in range(1, max_per_round + 1):
+            # Check WhatsApp reply before each call
+            if self._check_whatsapp_confirmation(call_placed_at):
+                self._acknowledge_event(event, total_attempts)
+                return
+
             total_attempts += 1
             self.logger.info(
                 "Event %s: calling %s (round attempt %d/%d, total %d)",
@@ -308,175 +313,118 @@ class AlertStateMachine:
             self.db.insert_alert_record(record)
             self.db.update_event(event.id, alert_status="call_placed")
 
-            # Poll Twilio for call result (wait up to 90 seconds)
-            answered = self._wait_for_call_result(record, threshold)
+            # Wait for call to finish, polling WhatsApp in the meantime
+            self._wait_for_call_and_check_whatsapp(record, call_placed_at)
 
-            if answered:
-                # Call acknowledged — mark event and send follow-up SMS
-                self.db.update_event(
-                    event.id,
-                    alert_status="acknowledged",
-                    acknowledged_at=datetime.now(timezone.utc).isoformat(),
-                )
-                self.logger.info(
-                    "Event %s: call acknowledged on attempt %d",
-                    event.id[:8],
-                    total_attempts,
-                )
-                self._send_followup_sms(event.id)
+            # Check WhatsApp after call ends
+            if self._check_whatsapp_confirmation(call_placed_at):
+                self._acknowledge_event(event, total_attempts)
                 return
-
-            self.logger.warning(
-                "Event %s: call attempt %d not answered",
-                event.id[:8],
-                total_attempts,
-            )
 
             # Brief pause between retries (10 seconds)
             if attempt < max_per_round:
                 time.sleep(10)
 
-        # Round exhausted — send SMS and mark for retry on next cycle
+        # Round exhausted — check WhatsApp one more time
+        if self._check_whatsapp_confirmation(call_placed_at):
+            self._acknowledge_event(event, total_attempts)
+            return
+
+        # Still not confirmed — mark for retry on next cycle
         self.logger.warning(
-            "Event %s: %d calls this round failed, sending SMS, will retry in %d min",
+            "Event %s: %d calls this round, no WhatsApp confirmation, retry in %d min",
             event.id[:8],
             max_per_round,
             self.config.alerts.acknowledgment.retry_interval_minutes,
         )
-        self._execute_sms(event)
         self.db.update_event(event.id, alert_status="retry_pending")
 
-    def _send_confirmation_sms(self, event: Event) -> None:
-        """Send an SMS asking the user to reply '1' to confirm alert receipt."""
+    def _acknowledge_event(self, event: Event, total_attempts: int) -> None:
+        """Mark event as acknowledged and send follow-ups."""
+        self.db.update_event(
+            event.id,
+            alert_status="acknowledged",
+            acknowledged_at=datetime.now(timezone.utc).isoformat(),
+        )
+        self.logger.info(
+            "Event %s: confirmed via WhatsApp after %d call attempts",
+            event.id[:8],
+            total_attempts,
+        )
+        self._send_followup_sms(event.id)
+
+    def _send_confirmation_whatsapp(self, event: Event) -> None:
+        """Send a WhatsApp asking the user to reply '1' to confirm alert receipt."""
         phone_number = self.config.alerts.phone_number
         event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
         message = (
-            f"🚨 PROJECT SENTINEL: {event_type_pl}\n"
+            f"🚨 PROJECT SENTINEL: {event_type_pl}\n\n"
             f"{event.summary_pl}\n\n"
-            f"Odpowiedz 1 aby potwierdzić odbiór alertu."
+            f"⚠️ Odpowiedz 1 aby potwierdzić odbiór alertu.\n"
+            f"Telefon będzie dzwonił dopóki nie potwierdzisz."
         )
-        record = self.twilio.send_sms(phone_number, message, event.id)
+        record = self.twilio.send_whatsapp(phone_number, message, event.id)
         if record is not None:
             self.db.insert_alert_record(record)
+            self.logger.info(
+                "WhatsApp confirmation request sent for event %s", event.id[:8]
+            )
 
-    def _check_sms_confirmation(self, since: datetime) -> bool:
-        """Check if the user replied '1' to the confirmation SMS.
+    def _check_whatsapp_confirmation(self, since: datetime) -> bool:
+        """Check if the user replied '1' on WhatsApp.
 
-        Polls Twilio for incoming messages from the user's phone number
-        to our Twilio number sent after the given time.
+        Polls Twilio for incoming WhatsApp messages from the user.
         """
         phone_number = self.config.alerts.phone_number
         try:
             messages = self.twilio.client.messages.list(
-                to=self.twilio.twilio_phone,
-                from_=phone_number,
+                to=self.twilio.twilio_whatsapp,
+                from_=f"whatsapp:{phone_number}",
                 date_sent_after=since,
                 limit=10,
             )
             for msg in messages:
                 body = msg.body.strip() if msg.body else ""
-                if body == "1" or body.lower().startswith("1"):
+                if "1" in body:
                     self.logger.info(
-                        "SMS confirmation received: '%s' from %s",
+                        "WhatsApp confirmation received: '%s' from %s",
                         body,
                         phone_number,
                     )
                     return True
         except Exception as exc:
-            self.logger.warning("Failed to check SMS confirmations: %s", exc)
+            self.logger.warning("Failed to check WhatsApp confirmations: %s", exc)
         return False
 
-    def _wait_for_call_result(
-        self, record: AlertRecord, threshold: int
-    ) -> bool:
-        """Poll Twilio for call status and SMS confirmation.
-
-        Returns True if confirmed by either:
-        - DTMF keypress during call (short duration < 60s on completed call)
-        - SMS reply '1' from the user
-
-        Returns False if not confirmed.
-        """
-        max_wait = 90  # seconds — enough for a call to ring out
-        poll_interval = 5  # seconds between status checks
+    def _wait_for_call_and_check_whatsapp(
+        self, record: AlertRecord, whatsapp_since: datetime
+    ) -> None:
+        """Wait for a call to finish, checking WhatsApp confirmation in the meantime."""
+        max_wait = 90
+        poll_interval = 5
         waited = 0
-        call_placed_at = record.sent_at
 
         while waited < max_wait:
             time.sleep(poll_interval)
             waited += poll_interval
 
-            # Check SMS confirmation (user might reply before call ends)
-            if self._check_sms_confirmation(call_placed_at):
-                # Update call record if still in progress
-                status = self.twilio.get_call_status(record.twilio_sid)
-                if status:
-                    self._update_alert_record(
-                        record, status="confirmed_via_sms",
-                        duration_seconds=status.get("duration", 0),
-                    )
-                return True
+            # Check WhatsApp while call is in progress
+            if self._check_whatsapp_confirmation(whatsapp_since):
+                return
 
-            # Check call status
+            # Check if call is done
             status = self.twilio.get_call_status(record.twilio_sid)
             if status is None:
                 continue
 
             call_status = status["status"]
-            duration = status["duration"]
-
-            # Still in progress
-            if call_status in ("queued", "ringing", "in-progress"):
-                continue
-
-            # Call finished — check DTMF result
-            self._update_alert_record(
-                record, status=call_status, duration_seconds=duration
-            )
-
-            if call_status != "completed":
-                return False
-
-            # DTMF confirmation:
-            # - Voicemail can't press keys, so any completed call where
-            #   the user had time to hear and press = confirmed
-            # - Instant rejection (red button) = ~1s, not confirmed
-            # - Human pressed key = 5s+ depending on how fast they press
-            # - Voicemail sat through full message + 30s Gather timeout = 60s+
-            if duration >= 60:
-                self.logger.info(
-                    "Event %s: call duration %ds >= 60s, likely voicemail (no DTMF)",
-                    record.event_id[:8],
-                    duration,
+            if call_status not in ("queued", "ringing", "in-progress"):
+                # Call finished
+                self._update_alert_record(
+                    record, status=call_status,
+                    duration_seconds=status.get("duration", 0),
                 )
-                return False
-
-            if duration <= 2:
-                self.logger.info(
-                    "Event %s: call duration %ds, instant rejection",
-                    record.event_id[:8],
-                    duration,
-                )
-                return False
-
-            # 3-59s: human picked up and pressed a key
-            self.logger.info(
-                "Event %s: call confirmed via DTMF (duration=%ds)",
-                record.event_id[:8],
-                duration,
-            )
-            return True
-
-        # Timed out — last chance SMS check
-        if self._check_sms_confirmation(call_placed_at):
-            return True
-
-        self.logger.warning(
-            "Event %s: no confirmation (call or SMS) for %s",
-            record.event_id[:8],
-            record.twilio_sid,
-        )
-        return False
+                return
 
     def _execute_sms(self, event: Event) -> None:
         """Send an SMS alert."""
@@ -511,7 +459,7 @@ class AlertStateMachine:
         threshold = (
             self.config.alerts.acknowledgment.call_duration_threshold_seconds
         )
-        if call_status == "completed" and 2 < duration < 60:
+        if False:  # Confirmation is now via WhatsApp only, not call duration
             # Call was answered — acknowledged
             self.db.update_event(
                 record.event_id,

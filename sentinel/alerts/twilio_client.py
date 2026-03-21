@@ -37,27 +37,13 @@ class TwilioClient:
         """
         safe_message = xml_escape(message_pl)
 
-        # DTMF confirmation flow:
-        # - Gather plays the alert and waits for a keypress
-        # - If human presses any key → Gather completes → falls through to confirmation message
-        # - If no keypress (voicemail/timeout) → 30s timeout → falls through to "no confirmation"
-        # - The state machine uses duration to distinguish: < 60s = human confirmed, >= 60s = voicemail
-        #
-        # TwiML structure: Gather (with nested Say) → Say (confirmation on keypress)
-        # When Gather gets digits (no action URL), it skips to the FIRST verb after </Gather>.
-        # When Gather times out (no input), it also skips to the first verb after </Gather>.
-        # To differentiate: we can't with inline TwiML alone. Both paths hit the same next verb.
-        #
-        # Solution: Put the confirmation message after Gather. On keypress it plays quickly
-        # and hangs up (short call = acknowledged). On timeout it plays after the long wait
-        # (long call = not acknowledged). Duration-based detection still works.
+        # Simple alert call — no DTMF, no Gather.
+        # The call is just an alarm to wake the user.
+        # Confirmation happens via WhatsApp reply only.
         twiml = (
             f"<Response>"
-            f'<Gather numDigits="1" timeout="30">'
             f'<Say language="pl-PL" voice="Polly.Ewa">'
-            f"Uwaga! Alert systemu Project Sentinel. "
-            f"Naciśnij dowolny klawisz, aby potwierdzić odbiór. "
-            f"{safe_message}"
+            f"Uwaga! Alert systemu Project Sentinel. {safe_message}"
             f"</Say>"
             f'<Pause length="2"/>'
             f'<Say language="pl-PL" voice="Polly.Ewa">'
@@ -65,11 +51,7 @@ class TwilioClient:
             f"</Say>"
             f'<Pause length="1"/>'
             f'<Say language="pl-PL" voice="Polly.Ewa">'
-            f"Naciśnij dowolny klawisz, aby potwierdzić odbiór alertu."
-            f"</Say>"
-            f"</Gather>"
-            f'<Say language="pl-PL" voice="Polly.Ewa">'
-            f"Potwierdzono odbiór alertu. Szczegóły otrzymasz SMS-em i na WhatsApp. Bądź bezpieczny."
+            f"Potwierdź odbiór alertu odpowiadając na wiadomość WhatsApp."
             f"</Say>"
             f"</Response>"
         )
