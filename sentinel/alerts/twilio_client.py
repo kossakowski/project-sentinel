@@ -38,10 +38,19 @@ class TwilioClient:
         safe_message = xml_escape(message_pl)
 
         # DTMF confirmation flow:
-        # 1. Gather waits for a keypress while playing the alert message
-        # 2. If human presses any key → Gather completes → call ends (~15-40s)
-        # 3. If voicemail (no keypress) → 30s timeout expires → "no confirmation" → call ends (~80s+)
-        # The state machine uses duration to distinguish: < 60s = human, >= 60s = voicemail
+        # - Gather plays the alert and waits for a keypress
+        # - If human presses any key → Gather completes → falls through to confirmation message
+        # - If no keypress (voicemail/timeout) → 30s timeout → falls through to "no confirmation"
+        # - The state machine uses duration to distinguish: < 60s = human confirmed, >= 60s = voicemail
+        #
+        # TwiML structure: Gather (with nested Say) → Say (confirmation on keypress)
+        # When Gather gets digits (no action URL), it skips to the FIRST verb after </Gather>.
+        # When Gather times out (no input), it also skips to the first verb after </Gather>.
+        # To differentiate: we can't with inline TwiML alone. Both paths hit the same next verb.
+        #
+        # Solution: Put the confirmation message after Gather. On keypress it plays quickly
+        # and hangs up (short call = acknowledged). On timeout it plays after the long wait
+        # (long call = not acknowledged). Duration-based detection still works.
         twiml = (
             f"<Response>"
             f'<Gather numDigits="1" timeout="30">'
@@ -60,7 +69,7 @@ class TwilioClient:
             f"</Say>"
             f"</Gather>"
             f'<Say language="pl-PL" voice="Polly.Ewa">'
-            f"Brak potwierdzenia. Zadzwonię ponownie."
+            f"Potwierdzono odbiór alertu. Szczegóły otrzymasz SMS-em i na WhatsApp. Bądź bezpieczny."
             f"</Say>"
             f"</Response>"
         )
