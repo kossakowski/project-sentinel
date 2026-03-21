@@ -20,12 +20,8 @@ pytest tests/ -v -m "not integration"
 pytest tests/ -v -m integration
 
 # Specific phase
-pytest tests/test_config.py tests/test_database.py tests/test_models.py -v  # Phase 1
-pytest tests/test_fetchers/ -v                                                # Phase 2
-pytest tests/test_processing/ -v                                              # Phase 3
-pytest tests/test_classification/ -v                                          # Phase 4
-pytest tests/test_alerts/ -v                                                  # Phase 5
-pytest tests/test_integration.py tests/test_scheduler.py -v                   # Phase 6
+pytest tests/test_config.py tests/test_database.py tests/test_models.py tests/test_cli.py -v  # Phase 1
+pytest tests/test_rss.py tests/test_gdelt.py tests/test_google_news.py tests/test_telegram.py -v  # Phase 2
 
 # With coverage
 pytest tests/ -v --cov=sentinel --cov-report=term-missing

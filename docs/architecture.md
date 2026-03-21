@@ -212,7 +212,7 @@ AlertRecord:
 | Phone/SMS | Twilio SDK | Already integrated in existing app |
 | Telegram | telethon | Mature async Telegram client |
 | Scheduler | APScheduler | In-process scheduler, no external dependencies |
-| Testing | pytest + pytest-mock | Standard Python testing |
+| Testing | pytest + pytest-mock + pytest-asyncio | Standard Python testing with async support |
 | Deployment | systemd on Hetzner VPS | Simple, reliable, low-cost |
 
 ## 6. Key Design Decisions
@@ -246,12 +246,13 @@ The configuration is complex (nested lists of sources, keyword lists in 4 langua
 - The Telegram client uses a personal account -- protect the session file
 - No web interface exposed -- the bot is a background daemon only
 
-## 8. File Structure (Target)
+## 8. File Structure
 
 ```
 project-sentinel/
 ├── CLAUDE.md
 ├── sentinel.py                  # Main entry point + CLI
+├── run.sh                       # Launcher (auto-activates venv)
 ├── app.py                       # Existing Flask app (manual testing)
 ├── requirements.txt             # All dependencies
 ├── .env                         # Secrets (not in git)
@@ -286,46 +287,26 @@ project-sentinel/
 │   │   ├── gdelt.py             # GDELT DOC 2.0 API fetcher
 │   │   ├── google_news.py       # Google News RSS fetcher
 │   │   └── telegram.py          # Telegram channel listener
-│   ├── processing/
-│   │   ├── __init__.py
-│   │   ├── normalizer.py        # Normalize fetcher outputs
-│   │   ├── deduplicator.py      # URL hash + fuzzy title dedup
-│   │   └── keyword_filter.py    # Bilingual keyword matching
-│   ├── classification/
-│   │   ├── __init__.py
-│   │   ├── classifier.py        # Claude Haiku classification
-│   │   └── corroborator.py      # Cross-source event matching
-│   ├── alerts/
-│   │   ├── __init__.py
-│   │   ├── dispatcher.py        # Alert routing by urgency
-│   │   ├── twilio_client.py     # Twilio call/SMS/WhatsApp
-│   │   └── state_machine.py     # Call state tracking
-│   └── scheduler.py             # APScheduler orchestration
-├── tests/
+│   ├── processing/              # (Phase 3 -- not yet implemented)
+│   │   └── ...
+│   ├── classification/          # (Phase 4 -- not yet implemented)
+│   │   └── ...
+│   ├── alerts/                  # (Phase 5 -- not yet implemented)
+│   │   └── ...
+│   └── scheduler.py             # (Phase 6 -- not yet implemented)
+├── tests/                       # Flat structure (all test files at top level)
+│   ├── __init__.py
 │   ├── conftest.py              # Shared fixtures
 │   ├── fixtures/
-│   │   ├── test_headlines.yaml  # Test headlines with expected scores
-│   │   ├── sample_rss.xml       # Sample RSS feed
-│   │   └── sample_gdelt.json    # Sample GDELT response
-│   ├── test_config.py
-│   ├── test_database.py
-│   ├── test_fetchers/
-│   │   ├── test_rss.py
-│   │   ├── test_gdelt.py
-│   │   ├── test_google_news.py
-│   │   └── test_telegram.py
-│   ├── test_processing/
-│   │   ├── test_normalizer.py
-│   │   ├── test_deduplicator.py
-│   │   └── test_keyword_filter.py
-│   ├── test_classification/
-│   │   ├── test_classifier.py
-│   │   └── test_corroborator.py
-│   ├── test_alerts/
-│   │   ├── test_dispatcher.py
-│   │   ├── test_twilio_client.py
-│   │   └── test_state_machine.py
-│   └── test_integration.py      # End-to-end pipeline test
+│   │   └── test_headlines.yaml  # Test headlines with expected scores
+│   ├── test_config.py           # Phase 1
+│   ├── test_database.py         # Phase 1
+│   ├── test_models.py           # Phase 1
+│   ├── test_cli.py              # Phase 1
+│   ├── test_rss.py              # Phase 2
+│   ├── test_gdelt.py            # Phase 2
+│   ├── test_google_news.py      # Phase 2
+│   └── test_telegram.py         # Phase 2
 └── logs/                        # Created at runtime
     └── sentinel.log
 ```
