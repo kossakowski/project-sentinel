@@ -106,6 +106,31 @@ def _format_update_sms(
     )
 
 
+def _format_article_links_message(event: Event, db: Database) -> str:
+    """Format a WhatsApp message with clickable links to source articles."""
+    event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
+    lines = [
+        f"🔗 PROJECT SENTINEL — Źródła: {event_type_pl}",
+        "",
+        f"{event.summary_pl}",
+        "",
+        f"Artykuły źródłowe ({event.source_count}):",
+    ]
+
+    for article_id in event.article_ids:
+        article = db.get_article_by_id(article_id)
+        if article is not None:
+            lines.append(f"• {article.source_name}: {article.title}")
+            if article.source_url:
+                lines.append(f"  {article.source_url}")
+            lines.append("")
+        else:
+            lines.append(f"• (źródło {article_id[:8]})")
+            lines.append("")
+
+    return "\n".join(lines).strip()
+
+
 class AlertStateMachine:
     """Manages the lifecycle of event alerts."""
 
@@ -466,6 +491,21 @@ class AlertStateMachine:
         record = self.twilio.send_sms(phone_number, message, event_id)
         if record is not None:
             self.db.insert_alert_record(record)
+
+        # Also send WhatsApp with clickable article links
+        self._send_article_links_whatsapp(event)
+
+    def _send_article_links_whatsapp(self, event: Event) -> None:
+        """Send a WhatsApp message with links to the source articles."""
+        phone_number = self.config.alerts.phone_number
+        message = _format_article_links_message(event, self.db)
+
+        record = self.twilio.send_whatsapp(phone_number, message, event.id)
+        if record is not None:
+            self.db.insert_alert_record(record)
+            self.logger.info(
+                "Article links WhatsApp sent for event %s", event.id[:8]
+            )
 
     def _send_update_sms(self, event: Event) -> None:
         """Send an SMS update for an event that was already acknowledged."""
