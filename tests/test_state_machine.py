@@ -250,26 +250,22 @@ def test_no_answer_retry(state_machine, db, mock_twilio):
 # --------------------------------------------------------------------------
 # 9. test_max_retries_sms_fallback
 # --------------------------------------------------------------------------
-def test_max_retries_sms_fallback(state_machine, db, mock_twilio):
-    """5 failed calls -> SMS fallback."""
+@patch("sentinel.alerts.state_machine.time.sleep")
+def test_round_exhausted_sends_sms_and_retries(_sleep, state_machine, db, mock_twilio):
+    """5 failed calls in a round -> SMS sent, status retry_pending (will retry next cycle)."""
     event = _make_event(urgency_score=10, source_count=2)
     db.insert_event(event)
 
-    # Insert 5 previous failed call attempts (max_call_retries is now 5)
-    for i in range(5):
-        rec = _make_alert_record(
-            event.id,
-            alert_type="phone_call",
-            status="no-answer",
-            attempt_number=i + 1,
-        )
-        db.insert_alert_record(rec)
-
-    # Process the event again — should fall back to SMS immediately
+    # Process the event — all 5 attempts fail (mock returns no-answer)
     state_machine.process_event(event)
 
-    mock_twilio.make_alert_call.assert_not_called()
+    # 5 call attempts made, then SMS fallback
+    assert mock_twilio.make_alert_call.call_count == 5
     mock_twilio.send_sms.assert_called_once()
+
+    # Status should be retry_pending, not sms_fallback (will retry next cycle)
+    updated = db.get_event_by_id(event.id)
+    assert updated.alert_status == "retry_pending"
 
 
 # --------------------------------------------------------------------------
@@ -367,17 +363,16 @@ def test_acknowledged_event_gets_sms_update(state_machine, db, mock_twilio):
 # --------------------------------------------------------------------------
 @patch("sentinel.alerts.state_machine.time.sleep")
 def test_duplicate_alert_prevented(_sleep, state_machine, db, mock_twilio):
-    """Same event processed twice in same cycle -> second call doesn't re-trigger full retry loop."""
+    """Same event processed twice in same cycle -> second call respects retry interval."""
     event = _make_event(urgency_score=10, source_count=2)
 
-    # First call — triggers the full retry loop (5 attempts + SMS fallback)
+    # First call — triggers the full retry loop (5 attempts + SMS)
     state_machine.process_event(event)
     first_call_count = mock_twilio.make_alert_call.call_count
     assert first_call_count == 5  # all retries exhausted
 
-    # Second call — max retries already reached, goes straight to SMS
+    # Second call — retry interval not elapsed, skips
     state_machine.process_event(event)
-    # No new call attempts since max retries already in DB
     assert mock_twilio.make_alert_call.call_count == first_call_count
 
 

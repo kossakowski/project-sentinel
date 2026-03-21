@@ -254,33 +254,18 @@ class AlertStateMachine:
         """Place a phone call alert with aggressive immediate retries.
 
         Calls up to max_call_retries times in a tight loop, polling Twilio
-        for call status between attempts. Does not wait for the next scheduler
-        cycle to retry — retries happen immediately within this method.
-
-        If all retries fail, falls back to SMS.
+        for call status between attempts. If the entire round fails, sends
+        an SMS and sets status to retry_pending so the next pipeline cycle
+        triggers another round. Never stops until acknowledged.
         """
         if existing_alerts is None:
             existing_alerts = self.db.get_alert_records(event.id)
 
-        # Count previous call attempts (from earlier cycles)
+        # Enforce retry interval: if there was a previous call from a prior
+        # cycle, check that enough time has elapsed
         call_records = [
             a for a in existing_alerts if a.alert_type == "phone_call"
         ]
-        call_attempts = len(call_records)
-        max_retries = self.config.alerts.acknowledgment.max_call_retries
-
-        if call_attempts >= max_retries:
-            self.logger.warning(
-                "Event %s: max call retries (%d) reached, falling back to SMS",
-                event.id,
-                max_retries,
-            )
-            self._execute_sms(event)
-            self.db.update_event(event.id, alert_status="sms_fallback")
-            return
-
-        # Enforce retry interval: if there was a previous call from a prior
-        # cycle, check that enough time has elapsed
         if call_records:
             last_call_time = max(a.sent_at for a in call_records)
             retry_interval = timedelta(
@@ -296,17 +281,19 @@ class AlertStateMachine:
         phone_number = self.config.alerts.phone_number
         message = _format_call_message(event, self.config)
         threshold = self.config.alerts.acknowledgment.call_duration_threshold_seconds
+        max_per_round = self.config.alerts.acknowledgment.max_call_retries
+        total_attempts = len(call_records)
 
-        # Aggressive retry loop — call repeatedly until answered or max retries
-        remaining = max_retries - call_attempts
-        for attempt in range(1, remaining + 1):
-            attempt_num = call_attempts + attempt
+        # Aggressive retry loop — call repeatedly until answered
+        for attempt in range(1, max_per_round + 1):
+            total_attempts += 1
             self.logger.info(
-                "Event %s: calling %s (attempt %d/%d)",
+                "Event %s: calling %s (round attempt %d/%d, total %d)",
                 event.id[:8],
                 phone_number,
-                attempt_num,
-                max_retries,
+                attempt,
+                max_per_round,
+                total_attempts,
             )
 
             record = self.twilio.make_alert_call(phone_number, message, event.id)
@@ -314,7 +301,7 @@ class AlertStateMachine:
                 self.logger.error("Event %s: Twilio call failed to initiate", event.id[:8])
                 continue
 
-            record.attempt_number = attempt_num
+            record.attempt_number = total_attempts
             self.db.insert_alert_record(record)
             self.db.update_event(event.id, alert_status="call_placed")
 
@@ -331,7 +318,7 @@ class AlertStateMachine:
                 self.logger.info(
                     "Event %s: call acknowledged on attempt %d",
                     event.id[:8],
-                    attempt_num,
+                    total_attempts,
                 )
                 self._send_followup_sms(event.id)
                 return
@@ -339,21 +326,22 @@ class AlertStateMachine:
             self.logger.warning(
                 "Event %s: call attempt %d not answered",
                 event.id[:8],
-                attempt_num,
+                total_attempts,
             )
 
             # Brief pause between retries (10 seconds)
-            if attempt < remaining:
+            if attempt < max_per_round:
                 time.sleep(10)
 
-        # All retries exhausted — fall back to SMS
+        # Round exhausted — send SMS and mark for retry on next cycle
         self.logger.warning(
-            "Event %s: all %d call attempts failed, falling back to SMS",
+            "Event %s: %d calls this round failed, sending SMS, will retry in %d min",
             event.id[:8],
-            max_retries,
+            max_per_round,
+            self.config.alerts.acknowledgment.retry_interval_minutes,
         )
         self._execute_sms(event)
-        self.db.update_event(event.id, alert_status="sms_fallback")
+        self.db.update_event(event.id, alert_status="retry_pending")
 
     def _wait_for_call_result(
         self, record: AlertRecord, threshold: int
