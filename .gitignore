@@ -7,3 +7,4 @@ data/
 logs/
 *.session
 sentinel_session.*
+.coverage
