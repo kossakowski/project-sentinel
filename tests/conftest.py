@@ -88,7 +88,7 @@ def sample_config_dict():
             },
             "acknowledgment": {
                 "call_duration_threshold_seconds": 15,
-                "max_call_retries": 3,
+                "max_call_retries": 5,
                 "retry_interval_minutes": 5,
                 "cooldown_hours": 6,
             },

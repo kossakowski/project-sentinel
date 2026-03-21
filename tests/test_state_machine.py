@@ -84,6 +84,8 @@ def mock_twilio():
     twilio.make_alert_call.side_effect = _make_call_record
     twilio.send_sms.side_effect = _make_sms_record
     twilio.send_whatsapp.side_effect = _make_wa_record
+    # Default: calls are not answered (no-answer on first poll)
+    twilio.get_call_status.return_value = {"status": "no-answer", "duration": 0}
     return twilio
 
 
@@ -96,13 +98,16 @@ def state_machine(db, mock_twilio, config):
 # --------------------------------------------------------------------------
 # 1. test_new_critical_event_triggers_call
 # --------------------------------------------------------------------------
-def test_new_critical_event_triggers_call(state_machine, mock_twilio):
-    """Urgency 10 + 2 sources -> phone call."""
+@patch("sentinel.alerts.state_machine.time.sleep")
+def test_new_critical_event_triggers_call(_sleep, state_machine, mock_twilio):
+    """Urgency 10 + 2 sources -> phone call (retries until fallback to SMS)."""
     event = _make_event(urgency_score=10, source_count=2)
     state_machine.process_event(event)
 
-    mock_twilio.make_alert_call.assert_called_once()
-    mock_twilio.send_sms.assert_not_called()
+    # With the aggressive retry loop, all 5 attempts fail (no-answer),
+    # so make_alert_call is called 5 times, then falls back to SMS
+    assert mock_twilio.make_alert_call.call_count == 5
+    mock_twilio.send_sms.assert_called_once()  # SMS fallback
 
 
 # --------------------------------------------------------------------------
@@ -246,12 +251,12 @@ def test_no_answer_retry(state_machine, db, mock_twilio):
 # 9. test_max_retries_sms_fallback
 # --------------------------------------------------------------------------
 def test_max_retries_sms_fallback(state_machine, db, mock_twilio):
-    """3 failed calls -> SMS fallback."""
+    """5 failed calls -> SMS fallback."""
     event = _make_event(urgency_score=10, source_count=2)
     db.insert_event(event)
 
-    # Insert 3 previous failed call attempts
-    for i in range(3):
+    # Insert 5 previous failed call attempts (max_call_retries is now 5)
+    for i in range(5):
         rec = _make_alert_record(
             event.id,
             alert_type="phone_call",
@@ -260,7 +265,7 @@ def test_max_retries_sms_fallback(state_machine, db, mock_twilio):
         )
         db.insert_alert_record(rec)
 
-    # Process the event again — should fall back to SMS
+    # Process the event again — should fall back to SMS immediately
     state_machine.process_event(event)
 
     mock_twilio.make_alert_call.assert_not_called()
@@ -288,7 +293,8 @@ def test_cooldown_prevents_recall(state_machine, mock_twilio):
 # --------------------------------------------------------------------------
 # 11. test_cooldown_expired_allows_call
 # --------------------------------------------------------------------------
-def test_cooldown_expired_allows_call(state_machine, mock_twilio, config):
+@patch("sentinel.alerts.state_machine.time.sleep")
+def test_cooldown_expired_allows_call(_sleep, state_machine, mock_twilio, config):
     """Acknowledged event after cooldown -> can call again."""
     cooldown_hours = config.alerts.acknowledgment.cooldown_hours
     event = _make_event(
@@ -300,16 +306,15 @@ def test_cooldown_expired_allows_call(state_machine, mock_twilio, config):
 
     state_machine.process_event(event)
 
-    # The cooldown has expired, but the event may still have acknowledged alerts
-    # in the DB. Since there are no alerts in the DB for this event yet
-    # (we didn't insert any), it should proceed to call.
-    mock_twilio.make_alert_call.assert_called_once()
+    # The cooldown has expired — calls are attempted
+    assert mock_twilio.make_alert_call.call_count >= 1
 
 
 # --------------------------------------------------------------------------
 # 12. test_new_event_bypasses_cooldown
 # --------------------------------------------------------------------------
-def test_new_event_bypasses_cooldown(state_machine, mock_twilio):
+@patch("sentinel.alerts.state_machine.time.sleep")
+def test_new_event_bypasses_cooldown(_sleep, state_machine, mock_twilio):
     """Different event during cooldown -> calls normally."""
     # Event 1: acknowledged, in cooldown
     event1 = _make_event(
@@ -327,7 +332,7 @@ def test_new_event_bypasses_cooldown(state_machine, mock_twilio):
         event_type="invasion",
     )
     state_machine.process_event(event2)
-    mock_twilio.make_alert_call.assert_called_once()
+    assert mock_twilio.make_alert_call.call_count >= 1
 
 
 # --------------------------------------------------------------------------
@@ -360,24 +365,27 @@ def test_acknowledged_event_gets_sms_update(state_machine, db, mock_twilio):
 # --------------------------------------------------------------------------
 # 14. test_duplicate_alert_prevented
 # --------------------------------------------------------------------------
-def test_duplicate_alert_prevented(state_machine, db, mock_twilio):
-    """Same event processed twice in same cycle -> alerted only once."""
+@patch("sentinel.alerts.state_machine.time.sleep")
+def test_duplicate_alert_prevented(_sleep, state_machine, db, mock_twilio):
+    """Same event processed twice in same cycle -> second call doesn't re-trigger full retry loop."""
     event = _make_event(urgency_score=10, source_count=2)
 
-    # First call — should trigger
+    # First call — triggers the full retry loop (5 attempts + SMS fallback)
     state_machine.process_event(event)
-    assert mock_twilio.make_alert_call.call_count == 1
+    first_call_count = mock_twilio.make_alert_call.call_count
+    assert first_call_count == 5  # all retries exhausted
 
-    # Second call — the alert record from the first call is now in the DB
-    # with status "initiated", so the state machine should skip
+    # Second call — max retries already reached, goes straight to SMS
     state_machine.process_event(event)
-    assert mock_twilio.make_alert_call.call_count == 1
+    # No new call attempts since max retries already in DB
+    assert mock_twilio.make_alert_call.call_count == first_call_count
 
 
 # --------------------------------------------------------------------------
 # 15. test_corroboration_upgrade_triggers_call
 # --------------------------------------------------------------------------
-def test_corroboration_upgrade_triggers_call(state_machine, db, mock_twilio):
+@patch("sentinel.alerts.state_machine.time.sleep")
+def test_corroboration_upgrade_triggers_call(_sleep, state_machine, db, mock_twilio):
     """Event starts with 1 source -> SMS, updated to 2 sources -> phone call."""
     event_id = str(uuid4())
     article_id_1 = str(uuid4())
@@ -409,7 +417,7 @@ def test_corroboration_upgrade_triggers_call(state_machine, db, mock_twilio):
     event.alert_status = "pending"
 
     state_machine.process_event(event)
-    mock_twilio.make_alert_call.assert_called_once()
+    assert mock_twilio.make_alert_call.call_count >= 1
 
 
 # --------------------------------------------------------------------------
@@ -438,7 +446,8 @@ def test_retry_interval_enforced(state_machine, db, mock_twilio, config):
 # --------------------------------------------------------------------------
 # 17. test_retry_interval_elapsed_allows_call
 # --------------------------------------------------------------------------
-def test_retry_interval_elapsed_allows_call(state_machine, db, mock_twilio, config):
+@patch("sentinel.alerts.state_machine.time.sleep")
+def test_retry_interval_elapsed_allows_call(_sleep, state_machine, db, mock_twilio, config):
     """Retry is allowed after the retry interval has elapsed."""
     event = _make_event(urgency_score=10, source_count=2)
     db.insert_event(event)
@@ -457,7 +466,7 @@ def test_retry_interval_elapsed_allows_call(state_machine, db, mock_twilio, conf
 
     # Process the event — should retry because interval has elapsed
     state_machine.process_event(event)
-    mock_twilio.make_alert_call.assert_called_once()
+    assert mock_twilio.make_alert_call.call_count >= 1
 
 
 # --------------------------------------------------------------------------

@@ -1,4 +1,5 @@
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 
 from sentinel.alerts.twilio_client import TwilioClient
@@ -225,15 +226,18 @@ class AlertStateMachine:
     def _execute_phone_call(
         self, event: Event, existing_alerts: list[AlertRecord] | None = None
     ) -> None:
-        """Place a phone call alert.
+        """Place a phone call alert with aggressive immediate retries.
 
-        Checks max retries and enforces the retry interval before allowing
-        another call attempt.
+        Calls up to max_call_retries times in a tight loop, polling Twilio
+        for call status between attempts. Does not wait for the next scheduler
+        cycle to retry — retries happen immediately within this method.
+
+        If all retries fail, falls back to SMS.
         """
         if existing_alerts is None:
             existing_alerts = self.db.get_alert_records(event.id)
 
-        # Collect previous call attempts
+        # Count previous call attempts (from earlier cycles)
         call_records = [
             a for a in existing_alerts if a.alert_type == "phone_call"
         ]
@@ -250,8 +254,8 @@ class AlertStateMachine:
             self.db.update_event(event.id, alert_status="sms_fallback")
             return
 
-        # Enforce retry interval: if there was a previous call, check that
-        # enough time has elapsed since the last attempt
+        # Enforce retry interval: if there was a previous call from a prior
+        # cycle, check that enough time has elapsed
         if call_records:
             last_call_time = max(a.sent_at for a in call_records)
             retry_interval = timedelta(
@@ -266,12 +270,111 @@ class AlertStateMachine:
 
         phone_number = self.config.alerts.phone_number
         message = _format_call_message(event, self.config)
+        threshold = self.config.alerts.acknowledgment.call_duration_threshold_seconds
 
-        record = self.twilio.make_alert_call(phone_number, message, event.id)
-        if record is not None:
-            record.attempt_number = call_attempts + 1
+        # Aggressive retry loop — call repeatedly until answered or max retries
+        remaining = max_retries - call_attempts
+        for attempt in range(1, remaining + 1):
+            attempt_num = call_attempts + attempt
+            self.logger.info(
+                "Event %s: calling %s (attempt %d/%d)",
+                event.id[:8],
+                phone_number,
+                attempt_num,
+                max_retries,
+            )
+
+            record = self.twilio.make_alert_call(phone_number, message, event.id)
+            if record is None:
+                self.logger.error("Event %s: Twilio call failed to initiate", event.id[:8])
+                continue
+
+            record.attempt_number = attempt_num
             self.db.insert_alert_record(record)
             self.db.update_event(event.id, alert_status="call_placed")
+
+            # Poll Twilio for call result (wait up to 90 seconds)
+            answered = self._wait_for_call_result(record, threshold)
+
+            if answered:
+                # Call acknowledged — mark event and send follow-up SMS
+                self.db.update_event(
+                    event.id,
+                    alert_status="acknowledged",
+                    acknowledged_at=datetime.now(timezone.utc).isoformat(),
+                )
+                self.logger.info(
+                    "Event %s: call acknowledged on attempt %d",
+                    event.id[:8],
+                    attempt_num,
+                )
+                self._send_followup_sms(event.id)
+                return
+
+            self.logger.warning(
+                "Event %s: call attempt %d not answered",
+                event.id[:8],
+                attempt_num,
+            )
+
+            # Brief pause between retries (10 seconds)
+            if attempt < remaining:
+                time.sleep(10)
+
+        # All retries exhausted — fall back to SMS
+        self.logger.warning(
+            "Event %s: all %d call attempts failed, falling back to SMS",
+            event.id[:8],
+            max_retries,
+        )
+        self._execute_sms(event)
+        self.db.update_event(event.id, alert_status="sms_fallback")
+
+    def _wait_for_call_result(
+        self, record: AlertRecord, threshold: int
+    ) -> bool:
+        """Poll Twilio for call status until the call completes or times out.
+
+        Returns True if the call was answered and held long enough (acknowledged).
+        Returns False if the call was not answered, too short, or failed.
+        """
+        max_wait = 90  # seconds — enough for a call to ring out
+        poll_interval = 5  # seconds between status checks
+        waited = 0
+
+        while waited < max_wait:
+            time.sleep(poll_interval)
+            waited += poll_interval
+
+            status = self.twilio.get_call_status(record.twilio_sid)
+            if status is None:
+                continue
+
+            call_status = status["status"]
+            duration = status["duration"]
+
+            # Still in progress
+            if call_status in ("queued", "ringing", "in-progress"):
+                continue
+
+            # Call finished — check result
+            self._update_alert_record(
+                record, status=call_status, duration_seconds=duration
+            )
+
+            if call_status == "completed" and duration >= threshold:
+                return True  # Answered and held long enough
+
+            # Not answered or too short
+            return False
+
+        # Timed out waiting — treat as not answered
+        self.logger.warning(
+            "Event %s: timed out waiting for call %s result",
+            record.event_id[:8],
+            record.twilio_sid,
+        )
+        return False
 
     def _execute_sms(self, event: Event) -> None:
         """Send an SMS alert."""
