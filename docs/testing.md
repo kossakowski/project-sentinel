@@ -25,6 +25,7 @@ pytest tests/test_rss.py tests/test_gdelt.py tests/test_google_news.py tests/tes
 pytest tests/test_normalizer.py tests/test_deduplicator.py tests/test_keyword_filter.py -v  # Phase 3
 pytest tests/test_classifier.py tests/test_corroborator.py -v  # Phase 4
 pytest tests/test_twilio_client.py tests/test_state_machine.py tests/test_dispatcher.py -v  # Phase 5
+pytest tests/test_scheduler.py tests/test_integration.py tests/test_cli.py -v  # Phase 6
 
 # With coverage
 pytest tests/ -v --cov=sentinel --cov-report=term-missing
@@ -99,7 +100,15 @@ Classify multiple headlines from a YAML file and optionally compare against expe
 python sentinel.py --test-file tests/fixtures/test_headlines.yaml
 ```
 
-### 4. Test Headlines Fixture Format
+### 4. Health Check Mode (`--health`)
+
+Print the current system health status from `data/health.json`. This file is written after each pipeline cycle and includes: last cycle timestamp, duration, articles fetched, alerts sent, consecutive failures, per-fetcher status, DB size, and uptime.
+
+```bash
+python sentinel.py --health
+```
+
+### 5. Test Headlines Fixture Format
 
 `tests/fixtures/test_headlines.yaml`:
 
@@ -300,7 +309,7 @@ headlines:
       affected_countries: ["LT"]
 ```
 
-### 5. Test File Output Format
+### 6. Test File Output Format
 
 ```
 ═══════════════════════════════════════════════════════════════════════════

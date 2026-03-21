@@ -15,8 +15,11 @@ Real-time monitoring bot that scans media sources (PL/EN/UA/RU) for military att
 ## Quick Reference
 - Config: `config/config.yaml` (see `config/config.example.yaml`)
 - Run: `./run.sh` (auto-activates venv, forwards all args to `sentinel.py`)
+- Run once: `./run.sh --once` (single pipeline cycle, then exit)
 - Dry run: `./run.sh --dry-run`
+- Continuous dry run: `./run.sh --dry-run` (default mode, scheduled every 15 min)
 - Test single headline: `./run.sh --test-headline "headline text here"`
+- Health check: `./run.sh --health` (prints `data/health.json`)
 - Tests: `.venv/bin/pytest tests/ -v`
 
 ## Known Issue: Project Rename History

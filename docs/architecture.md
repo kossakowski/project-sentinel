@@ -126,8 +126,9 @@ When a credible threat is detected, Project Sentinel calls the user's phone imme
 | **Twilio Client** | Transport layer: place calls (Polish TTS via Polly.Ewa), send SMS (1600-char truncation), send WhatsApp, check call status | `twilio` |
 | **Alert State Machine** | Alert lifecycle: decision matrix routing, call acknowledgment (duration >15s), retries with 5-min interval, max 3 retries then SMS fallback, 6h cooldown, corroboration upgrade, config-driven Polish templates | `sqlite3` |
 | **Alert Dispatcher** | Route events sorted by urgency to state machine, support dry-run mode | -- |
-| **Scheduler** | Orchestrate the pipeline on intervals | `apscheduler` |
-| **CLI** | Parse arguments (`--dry-run`, `--test-headline`, etc.) | `argparse` (stdlib) |
+| **Pipeline** | Orchestrate full fetch→process→classify→alert cycle, error isolation per component, cycle statistics tracking | -- |
+| **Scheduler** | Run pipeline on configurable interval with jitter, max_instances=1, coalesce=True, health monitoring to `data/health.json`, daily summary logging, self-healing SMS on repeated failures | `apscheduler` |
+| **CLI** | Parse arguments (`--dry-run`, `--once`, `--health`, `--test-headline`, `--test-file`, `--config`, `--log-level`), continuous and single-cycle modes, graceful Ctrl+C shutdown | `argparse` (stdlib) |
 
 ## 4. Data Models
 
@@ -239,6 +240,9 @@ The configuration is complex (nested lists of sources, keyword lists in 4 langua
 ### 6.7 Why three-layer alert architecture?
 The alert system is split into three layers: **TwilioClient** (transport -- places calls, sends SMS/WhatsApp, checks call status), **AlertStateMachine** (lifecycle logic -- decision matrix, retries, acknowledgment, cooldown, corroboration upgrade), and **AlertDispatcher** (routing -- sorts events by urgency, supports dry-run). This separation keeps transport concerns out of business logic and makes each layer independently testable.
 
+### 6.8 Why error isolation in the pipeline?
+Each pipeline component (fetchers, classifier, corroborator) is wrapped in try/except so a failure in one does not crash the entire cycle. A failing fetcher still allows other fetchers to contribute articles. A classifier failure still allows the cycle to complete (with zero classifications). This resilience is critical for an unattended monitoring system.
+
 ## 7. Security Considerations
 
 - **API keys** stored in `.env`, never in config.yaml or version control
@@ -255,7 +259,7 @@ The alert system is split into three layers: **TwilioClient** (transport -- plac
 ```
 project-sentinel/
 ├── CLAUDE.md
-├── sentinel.py                  # Main entry point + CLI
+├── sentinel.py                  # Main entry point + CLI (--once, --dry-run, --health, etc.)
 ├── run.sh                       # Launcher (auto-activates venv)
 ├── app.py                       # Existing Flask app (manual testing)
 ├── requirements.txt             # All dependencies
@@ -305,7 +309,7 @@ project-sentinel/
 │   │   ├── twilio_client.py     # Twilio SDK wrapper: calls (Polish TTS), SMS, WhatsApp
 │   │   ├── state_machine.py     # Alert lifecycle: retries, acknowledgment, cooldown
 │   │   └── dispatcher.py        # Routes events by urgency, dry-run support
-│   └── scheduler.py             # (Phase 6 -- not yet implemented)
+│   └── scheduler.py             # Pipeline orchestrator + APScheduler wrapper + health monitoring
 ├── tests/                       # Flat structure (all test files at top level)
 │   ├── __init__.py
 │   ├── conftest.py              # Shared fixtures
@@ -314,7 +318,7 @@ project-sentinel/
 │   ├── test_config.py           # Phase 1
 │   ├── test_database.py         # Phase 1
 │   ├── test_models.py           # Phase 1
-│   ├── test_cli.py              # Phase 1
+│   ├── test_cli.py              # Phase 1 + Phase 6
 │   ├── test_rss.py              # Phase 2
 │   ├── test_gdelt.py            # Phase 2
 │   ├── test_google_news.py      # Phase 2
@@ -326,7 +330,12 @@ project-sentinel/
 │   ├── test_corroborator.py     # Phase 4
 │   ├── test_twilio_client.py    # Phase 5
 │   ├── test_state_machine.py    # Phase 5
-│   └── test_dispatcher.py       # Phase 5
+│   ├── test_dispatcher.py       # Phase 5
+│   ├── test_scheduler.py        # Phase 6
+│   └── test_integration.py      # Phase 6 (end-to-end pipeline tests)
+├── data/                        # Created at runtime
+│   ├── sentinel.db              # SQLite database
+│   └── health.json              # Health status (written after each cycle)
 └── logs/                        # Created at runtime
     └── sentinel.log
 ```
