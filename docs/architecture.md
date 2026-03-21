@@ -287,8 +287,11 @@ project-sentinel/
 │   │   ├── gdelt.py             # GDELT DOC 2.0 API fetcher
 │   │   ├── google_news.py       # Google News RSS fetcher
 │   │   └── telegram.py          # Telegram channel listener
-│   ├── processing/              # (Phase 3 -- not yet implemented)
-│   │   └── ...
+│   ├── processing/
+│   │   ├── __init__.py          # Pipeline entry point (process_articles)
+│   │   ├── normalizer.py        # HTML/URL/timestamp cleaning, language mapping
+│   │   ├── deduplicator.py      # URL hash + fuzzy title dedup via rapidfuzz
+│   │   └── keyword_filter.py    # Language-aware keyword matching + exclusion
 │   ├── classification/          # (Phase 4 -- not yet implemented)
 │   │   └── ...
 │   ├── alerts/                  # (Phase 5 -- not yet implemented)
@@ -306,7 +309,10 @@ project-sentinel/
 │   ├── test_rss.py              # Phase 2
 │   ├── test_gdelt.py            # Phase 2
 │   ├── test_google_news.py      # Phase 2
-│   └── test_telegram.py         # Phase 2
+│   ├── test_telegram.py         # Phase 2
+│   ├── test_normalizer.py       # Phase 3
+│   ├── test_deduplicator.py     # Phase 3
+│   └── test_keyword_filter.py   # Phase 3
 └── logs/                        # Created at runtime
     └── sentinel.log
 ```
