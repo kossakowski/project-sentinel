@@ -2,6 +2,10 @@
 """Project Sentinel - Military Alert Monitoring System"""
 
 import argparse
+import asyncio
+import json
+import logging
+import os
 import sys
 from datetime import datetime, timezone
 
@@ -9,7 +13,6 @@ import yaml
 
 from sentinel import __version__
 from sentinel.config import ConfigError, load_config
-from sentinel.database import Database
 from sentinel.logging_setup import setup_logging
 from sentinel.models import Article
 
@@ -53,9 +56,81 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--health",
         action="store_true",
-        help="Run a health check and exit",
+        help="Print health status and exit",
     )
     return parser
+
+
+def print_health(config) -> None:
+    """Read and print health.json."""
+    health_path = os.path.join(
+        os.path.dirname(config.database.path) or "data", "health.json"
+    )
+    if not os.path.exists(health_path):
+        print("No health data found. Has the pipeline run yet?")
+        return
+
+    with open(health_path, "r", encoding="utf-8") as f:
+        health = json.load(f)
+
+    print(json.dumps(health, indent=2))
+
+
+def print_cycle_result(result) -> None:
+    """Print a CycleResult summary to stdout."""
+    print(f"\nPipeline cycle completed in {result.duration_seconds:.1f}s:")
+    print(f"  Articles fetched:    {result.articles_fetched}")
+    print(f"  Articles unique:     {result.articles_unique}")
+    print(f"  Articles relevant:   {result.articles_relevant}")
+    print(f"  Articles classified: {result.articles_classified}")
+    print(f"  Events created:      {result.events_created}")
+    print(f"  Alerts sent:         {result.alerts_sent}")
+    print()
+
+
+async def run_once(config) -> None:
+    """Run the pipeline once and exit."""
+    from sentinel.scheduler import SentinelPipeline
+
+    pipeline = SentinelPipeline(config)
+    try:
+        await pipeline.startup()
+        result = await pipeline.run_cycle()
+        print_cycle_result(result)
+    finally:
+        await pipeline.shutdown()
+
+
+async def run_continuous(config) -> None:
+    """Run the scheduler in continuous mode."""
+    from sentinel.scheduler import SentinelPipeline, SentinelScheduler
+
+    pipeline = SentinelPipeline(config)
+    await pipeline.startup()
+
+    scheduler = SentinelScheduler(pipeline, config)
+    scheduler.start()
+
+    # Run the first cycle immediately
+    try:
+        await pipeline.run_cycle()
+    except Exception as e:
+        logging.getLogger("sentinel").error(
+            "Initial cycle failed: %s", e, exc_info=True
+        )
+
+    print("Project Sentinel started. Press Ctrl+C to stop.")
+
+    try:
+        # Keep running until interrupted
+        while True:
+            await asyncio.sleep(1)
+    except asyncio.CancelledError:
+        pass
+    finally:
+        scheduler.stop()
+        await pipeline.shutdown()
+        print("\nProject Sentinel stopped.")
 
 
 def main() -> None:
@@ -81,11 +156,7 @@ def main() -> None:
     # Set up logging
     setup_logging(config)
 
-    import logging
     logger = logging.getLogger("sentinel")
-
-    # Initialize database
-    db = Database(config.database.path)
 
     # Count sources for log message
     rss_count = len([s for s in config.sources.rss if s.enabled])
@@ -107,22 +178,27 @@ def main() -> None:
     # Classification dry-run modes
     if args.test_headline:
         _run_test_headline(args.test_headline, config, logger)
-        db.close()
         sys.exit(0)
 
     if args.test_file:
         _run_test_file(args.test_file, config, logger)
-        db.close()
         sys.exit(0)
 
+    # Mode: health check
     if args.health:
-        print("Health check not yet implemented")
-        db.close()
+        print_health(config)
         sys.exit(0)
 
-    print("Project Sentinel initialized successfully. Pipeline execution will be implemented in Phase 6.")
-    db.close()
-    sys.exit(0)
+    # Mode: run once
+    if args.once:
+        asyncio.run(run_once(config))
+        sys.exit(0)
+
+    # Mode: continuous (default)
+    try:
+        asyncio.run(run_continuous(config))
+    except KeyboardInterrupt:
+        print("\nProject Sentinel stopped.")
 
 
 def _make_synthetic_article(headline: str, source_name: str = "test-headline") -> Article:

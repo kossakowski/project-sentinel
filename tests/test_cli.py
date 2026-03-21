@@ -29,15 +29,46 @@ def test_invalid_config_exits():
     assert "Error" in result.stderr or "error" in result.stderr.lower()
 
 
-def test_dry_run_flag():
+def test_dry_run_flag(tmp_path):
     """Test that --dry-run is recognized and reported."""
+    import yaml
+
+    # Use a minimal config with all sources disabled to avoid real network calls
+    config_dict = {
+        "monitoring": {
+            "target_countries": [{"code": "PL", "name": "Poland", "name_native": "Polska"}],
+            "aggressor_countries": [{"code": "RU", "name": "Russia", "name_native": "Rosja"}],
+            "keywords": {"en": {"critical": ["military attack"]}},
+        },
+        "sources": {
+            "rss": [{"name": "T", "url": "https://example.com/rss", "language": "en", "enabled": False}],
+            "gdelt": {"enabled": False, "themes": ["A"], "cameo_codes": ["19"]},
+            "google_news": {"enabled": False, "queries": [{"query": "test", "language": "en"}]},
+            "telegram": {"enabled": False},
+        },
+        "classification": {},
+        "alerts": {
+            "phone_number": "+48123456789",
+            "urgency_levels": {
+                "critical": {"min_score": 9, "action": "phone_call"},
+            },
+            "acknowledgment": {},
+        },
+        "scheduler": {},
+        "database": {"path": str(tmp_path / "dry_run_test.db")},
+        "logging": {"file": str(tmp_path / "dry_run_test.log")},
+        "testing": {},
+        "processing": {"dedup": {}},
+    }
+    config_path = tmp_path / "dry_run_config.yaml"
+    with open(config_path, "w") as f:
+        yaml.dump(config_dict, f)
+
     env = os.environ.copy()
     env["ALERT_PHONE_NUMBER"] = "+48123456789"
-    env["TELEGRAM_API_ID"] = "12345"
-    env["TELEGRAM_API_HASH"] = "abc123"
 
     result = subprocess.run(
-        [sys.executable, "sentinel.py", "--dry-run", "--once", "--config", "config/config.example.yaml"],
+        [sys.executable, "sentinel.py", "--dry-run", "--once", "--config", str(config_path)],
         capture_output=True,
         text=True,
         cwd=os.path.join(os.path.dirname(__file__), ".."),
