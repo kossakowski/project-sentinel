@@ -3,11 +3,15 @@
 
 import argparse
 import sys
+from datetime import datetime, timezone
+
+import yaml
 
 from sentinel import __version__
 from sentinel.config import ConfigError, load_config
 from sentinel.database import Database
 from sentinel.logging_setup import setup_logging
+from sentinel.models import Article
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -100,14 +104,14 @@ def main() -> None:
     logger.info("Database: %s", config.database.path)
     logger.info("Dry run: %s", config.testing.dry_run)
 
-    # Phase 1 stubs for not-yet-implemented features
+    # Classification dry-run modes
     if args.test_headline:
-        print("Test headline mode not yet implemented")
+        _run_test_headline(args.test_headline, config, logger)
         db.close()
         sys.exit(0)
 
     if args.test_file:
-        print("Test file mode not yet implemented")
+        _run_test_file(args.test_file, config, logger)
         db.close()
         sys.exit(0)
 
@@ -119,6 +123,111 @@ def main() -> None:
     print("Project Sentinel initialized successfully. Pipeline execution will be implemented in Phase 6.")
     db.close()
     sys.exit(0)
+
+
+def _make_synthetic_article(headline: str, source_name: str = "test-headline") -> Article:
+    """Create a synthetic Article from a headline for testing."""
+    now = datetime.now(timezone.utc)
+    return Article(
+        source_name=source_name,
+        source_url=f"https://test.sentinel/{headline[:40]}",
+        source_type="test",
+        title=headline,
+        summary=headline,
+        language="en",
+        published_at=now,
+        fetched_at=now,
+    )
+
+
+def _print_classification_result(result, headline: str = "") -> None:
+    """Print a ClassificationResult in a readable format."""
+    if headline:
+        print(f"\nHeadline: {headline}")
+    print(f"  Military event:     {result.is_military_event}")
+    print(f"  Event type:         {result.event_type}")
+    print(f"  Urgency score:      {result.urgency_score}")
+    print(f"  Affected countries: {result.affected_countries}")
+    print(f"  Aggressor:          {result.aggressor}")
+    print(f"  Confidence:         {result.confidence:.2f}")
+    print(f"  Summary (PL):       {result.summary_pl}")
+    print(f"  Tokens:             {result.input_tokens} in / {result.output_tokens} out")
+    print()
+
+
+def _run_test_headline(headline: str, config, logger) -> None:
+    """Classify a single headline and print the result."""
+    from sentinel.classification.classifier import Classifier
+
+    logger.info("Test headline mode: '%s'", headline)
+    classifier = Classifier(config)
+    article = _make_synthetic_article(headline)
+
+    try:
+        result = classifier.classify(article)
+        _print_classification_result(result, headline)
+    except Exception as e:
+        print(f"Classification failed: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _run_test_file(filepath: str, config, logger) -> None:
+    """Load headlines from a YAML file, classify each, and print results."""
+    from sentinel.classification.classifier import Classifier
+
+    logger.info("Test file mode: %s", filepath)
+
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+    except FileNotFoundError:
+        print(f"Error: file not found: {filepath}", file=sys.stderr)
+        sys.exit(1)
+    except yaml.YAMLError as e:
+        print(f"Error: invalid YAML in {filepath}: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    headlines = data.get("headlines", [])
+    if not headlines:
+        print("No headlines found in file.", file=sys.stderr)
+        sys.exit(1)
+
+    classifier = Classifier(config)
+
+    print(f"\nClassifying {len(headlines)} headlines from {filepath}\n")
+    print("-" * 80)
+
+    for entry in headlines:
+        if isinstance(entry, str):
+            headline_text = entry
+            expected = None
+        elif isinstance(entry, dict):
+            headline_text = entry.get("text", entry.get("headline", ""))
+            expected = entry.get("expected", None)
+        else:
+            continue
+
+        article = _make_synthetic_article(headline_text)
+        try:
+            result = classifier.classify(article)
+            _print_classification_result(result, headline_text)
+
+            # Compare against expected values if provided
+            if expected:
+                mismatches = []
+                for key, exp_val in expected.items():
+                    actual_val = getattr(result, key, None)
+                    if actual_val != exp_val:
+                        mismatches.append(f"  {key}: expected={exp_val}, got={actual_val}")
+                if mismatches:
+                    print("  MISMATCHES:")
+                    for m in mismatches:
+                        print(m)
+                    print()
+        except Exception as e:
+            print(f"  FAILED: {e}\n")
+
+    print("-" * 80)
 
 
 if __name__ == "__main__":
