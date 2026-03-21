@@ -36,10 +36,19 @@ class TwilioClient:
         Returns an AlertRecord on success, None on Twilio error.
         """
         safe_message = xml_escape(message_pl)
+
+        # DTMF confirmation flow:
+        # 1. Gather waits for a keypress while playing the alert message
+        # 2. If human presses any key → Gather completes → call ends (~15-40s)
+        # 3. If voicemail (no keypress) → 30s timeout expires → "no confirmation" → call ends (~80s+)
+        # The state machine uses duration to distinguish: < 60s = human, >= 60s = voicemail
         twiml = (
             f"<Response>"
+            f'<Gather numDigits="1" timeout="30">'
             f'<Say language="pl-PL" voice="Polly.Ewa">'
-            f"Uwaga! Alert systemu Project Sentinel. {safe_message}"
+            f"Uwaga! Alert systemu Project Sentinel. "
+            f"Naciśnij dowolny klawisz, aby potwierdzić odbiór. "
+            f"{safe_message}"
             f"</Say>"
             f'<Pause length="2"/>'
             f'<Say language="pl-PL" voice="Polly.Ewa">'
@@ -47,7 +56,11 @@ class TwilioClient:
             f"</Say>"
             f'<Pause length="1"/>'
             f'<Say language="pl-PL" voice="Polly.Ewa">'
-            f"Koniec alertu. Dalsze aktualizacje otrzymasz SMS-em."
+            f"Naciśnij dowolny klawisz, aby potwierdzić odbiór alertu."
+            f"</Say>"
+            f"</Gather>"
+            f'<Say language="pl-PL" voice="Polly.Ewa">'
+            f"Brak potwierdzenia. Zadzwonię ponownie."
             f"</Say>"
             f"</Response>"
         )
@@ -57,7 +70,6 @@ class TwilioClient:
                 from_=self.twilio_phone,
                 to=phone_number,
                 twiml=twiml,
-                machine_detection="Enable",
             )
         except TwilioRestException as exc:
             self.logger.error(

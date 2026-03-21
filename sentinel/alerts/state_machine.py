@@ -371,27 +371,35 @@ class AlertStateMachine:
                 continue
 
             # Call finished — check result
-            answered_by = status.get("answered_by")
-
             self._update_alert_record(
                 record, status=call_status, duration_seconds=duration
             )
 
-            # Voicemail picked up — treat as not answered
-            if answered_by and answered_by in ("machine_start", "machine_end_beep",
-                                                "machine_end_silence", "machine_end_other",
-                                                "fax"):
-                self.logger.info(
-                    "Event %s: call answered by %s (voicemail), treating as not answered",
-                    record.event_id[:8],
-                    answered_by,
-                )
+            if call_status != "completed":
+                # busy, no-answer, canceled, failed
                 return False
 
-            if call_status == "completed" and duration >= threshold:
-                return True  # Answered by human and held long enough
+            # DTMF confirmation logic:
+            # - Human picks up and presses a key → Gather completes early → short call (~15-40s)
+            # - Voicemail answers, no keypress → full TTS + 30s Gather timeout → long call (~80s+)
+            # - Human picks up but doesn't press key → also long call (timeout)
+            # Threshold: < 60s = confirmed (keypress ended Gather early)
+            voicemail_threshold = 60
+            if duration < voicemail_threshold:
+                self.logger.info(
+                    "Event %s: call confirmed via DTMF (duration=%ds < %ds threshold)",
+                    record.event_id[:8],
+                    duration,
+                    voicemail_threshold,
+                )
+                return True  # Human pressed a key
 
-            # Not answered or too short
+            self.logger.info(
+                "Event %s: call likely voicemail or no DTMF (duration=%ds >= %ds threshold)",
+                record.event_id[:8],
+                duration,
+                voicemail_threshold,
+            )
             return False
 
         # Timed out waiting — treat as not answered
@@ -432,27 +440,12 @@ class AlertStateMachine:
         """
         call_status = status["status"]
         duration = status["duration"]
-        answered_by = status.get("answered_by")
         threshold = (
             self.config.alerts.acknowledgment.call_duration_threshold_seconds
         )
+        voicemail_threshold = 60  # seconds — DTMF keypress ends call early
 
-        # Voicemail — treat as not answered
-        if answered_by and answered_by in ("machine_start", "machine_end_beep",
-                                            "machine_end_silence", "machine_end_other",
-                                            "fax"):
-            self._update_alert_record(
-                record, status="voicemail", duration_seconds=duration
-            )
-            self.logger.info(
-                "Event %s: call answered by %s (voicemail), will retry",
-                record.event_id[:8],
-                answered_by,
-            )
-            self.db.update_event(record.event_id, alert_status="retry_pending")
-            return
-
-        if call_status == "completed" and duration > threshold:
+        if call_status == "completed" and duration < voicemail_threshold and duration > threshold:
             # Call was answered — acknowledged
             self.db.update_event(
                 record.event_id,
