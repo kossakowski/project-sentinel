@@ -11,8 +11,8 @@
 git clone <repo-url>
 cd project-sentinel
 
-python3 -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+python3 -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 ```
 
 ## 2. Install Dependencies
@@ -89,22 +89,27 @@ python -c "from sentinel.database import Database; db = Database('data/sentinel.
 
 ## 6. Launch
 
+Use `./run.sh` — it activates the virtual environment automatically, so you never
+need to run `source .venv/bin/activate` manually. All arguments are forwarded to `sentinel.py`.
+
 ```bash
 # Dry run -- processes pipeline but does NOT send alerts
-python sentinel.py --once --dry-run
+./run.sh --once --dry-run
 
 # Single run -- poll all sources, process, alert if needed, then exit
-python sentinel.py --once
+./run.sh --once
 
 # Daemon mode -- continuous monitoring on 15-minute schedule
-python sentinel.py
+./run.sh
 
 # Test a specific headline
-python sentinel.py --test-headline "Russia invades Poland"
+./run.sh --test-headline "Russia invades Poland"
 
 # Test headlines from fixture file
-python sentinel.py --test-file tests/fixtures/test_headlines.yaml
+./run.sh --test-file tests/fixtures/test_headlines.yaml
 ```
+
+> **Without the launcher:** `source .venv/bin/activate && python sentinel.py [args]`
 
 ### CLI Options
 
@@ -139,9 +144,8 @@ These are in `.gitignore` -- you must create them locally:
 
 ## Quick Start Checklist
 
-1. `python3 -m venv venv && source venv/bin/activate`
-2. `pip install -r requirements.txt`
-3. `cp .env.example .env` -- fill in API keys
-4. `cp config/config.example.yaml config/config.yaml`
-5. `pytest tests/ -v` -- all tests should pass
-6. `python sentinel.py --once --dry-run` -- verify it runs
+1. `python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`
+2. `cp .env.example .env` -- fill in API keys
+3. `cp config/config.example.yaml config/config.yaml`
+4. `pytest tests/ -v` -- all tests should pass
+5. `./run.sh --once --dry-run` -- verify it runs (no manual venv activation needed)

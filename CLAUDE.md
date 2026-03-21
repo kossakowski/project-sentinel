@@ -14,10 +14,10 @@ Real-time monitoring bot that scans media sources (PL/EN/UA/RU) for military att
 
 ## Quick Reference
 - Config: `config/config.yaml` (see `config/config.example.yaml`)
-- Main entry: `python sentinel.py`
-- Dry run: `python sentinel.py --dry-run`
-- Test single headline: `python sentinel.py --test-headline "headline text here"`
-- Tests: `pytest tests/ -v`
+- Run: `./run.sh` (auto-activates venv, forwards all args to `sentinel.py`)
+- Dry run: `./run.sh --dry-run`
+- Test single headline: `./run.sh --test-headline "headline text here"`
+- Tests: `.venv/bin/pytest tests/ -v`
 
 ## Known Issue: Project Rename History
 This project was renamed twice: `twilio-playground` → `sentinel` → `project-sentinel`. This left stale references baked into:
