@@ -269,7 +269,7 @@ classification:
 
 ### `alerts`
 
-Controls alert dispatch, thresholds, and acknowledgment.
+Controls alert dispatch, thresholds, acknowledgment, and message templates.
 
 ```yaml
 alerts:
@@ -294,6 +294,10 @@ alerts:
     low:
       min_score: 1
       action: log_only
+  templates:
+    call: "{event_type_pl} wykryte. {summary_pl}. Źródła potwierdzające: {source_count}. Pilność: {urgency_score} na 10."
+    sms: "... (see config.example.yaml for full default)"
+    sms_update: "... (see config.example.yaml for full default)"
   acknowledgment:
     call_duration_threshold_seconds: 15
     max_call_retries: 3
@@ -311,6 +315,16 @@ alerts:
 | `retry_attempts` | int | How many times to retry if call fails |
 | `retry_interval_minutes` | int | Wait between retries |
 | `fallback` | string | Action if all retries fail |
+
+#### Template Fields
+
+Alert message templates are Python format strings with named placeholders. Defaults are built into the `AlertTemplates` Pydantic model; override them in config to customize.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `call` | string | `"{event_type_pl} wykryte. {summary_pl}. ..."` | Phone call TTS message. Placeholders: `{event_type_pl}`, `{summary_pl}`, `{source_count}`, `{urgency_score}` |
+| `sms` | string | (see `config.example.yaml`) | SMS alert body. Placeholders: `{event_type_pl}`, `{urgency_score}`, `{affected_countries_str}`, `{aggressor}`, `{summary_pl}`, `{source_count}`, `{sources_list}`, `{first_seen_at_local}` |
+| `sms_update` | string | (see `config.example.yaml`) | SMS update for acknowledged events. Placeholders: `{event_type_pl}`, `{new_source_name}`, `{summary_pl}`, `{source_count}`, `{urgency_score}` |
 
 #### Acknowledgment Fields
 

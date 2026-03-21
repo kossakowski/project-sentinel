@@ -24,6 +24,7 @@ pytest tests/test_config.py tests/test_database.py tests/test_models.py tests/te
 pytest tests/test_rss.py tests/test_gdelt.py tests/test_google_news.py tests/test_telegram.py -v  # Phase 2
 pytest tests/test_normalizer.py tests/test_deduplicator.py tests/test_keyword_filter.py -v  # Phase 3
 pytest tests/test_classifier.py tests/test_corroborator.py -v  # Phase 4
+pytest tests/test_twilio_client.py tests/test_state_machine.py tests/test_dispatcher.py -v  # Phase 5
 
 # With coverage
 pytest tests/ -v --cov=sentinel --cov-report=term-missing

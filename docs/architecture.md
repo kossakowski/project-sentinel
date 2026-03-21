@@ -123,8 +123,9 @@ When a credible threat is detected, Project Sentinel calls the user's phone imme
 | **Keyword Filter** | Match articles against bilingual keyword lists | -- |
 | **Classifier** | Classify articles via Claude Haiku 4.5, extract structured event data, track token usage | `anthropic` |
 | **Corroborator** | Group classifications into events, check source independence, determine alert level | `rapidfuzz`, `sqlite3` |
-| **Alert Dispatcher** | Send calls/SMS/WhatsApp via Twilio | `twilio` |
-| **Call State Machine** | Track call status, retries, acknowledgment | `sqlite3` |
+| **Twilio Client** | Transport layer: place calls (Polish TTS via Polly.Ewa), send SMS (1600-char truncation), send WhatsApp, check call status | `twilio` |
+| **Alert State Machine** | Alert lifecycle: decision matrix routing, call acknowledgment (duration >15s), retries with 5-min interval, max 3 retries then SMS fallback, 6h cooldown, corroboration upgrade, config-driven Polish templates | `sqlite3` |
+| **Alert Dispatcher** | Route events sorted by urgency to state machine, support dry-run mode | -- |
 | **Scheduler** | Orchestrate the pipeline on intervals | `apscheduler` |
 | **CLI** | Parse arguments (`--dry-run`, `--test-headline`, etc.) | `argparse` (stdlib) |
 
@@ -235,6 +236,9 @@ Keywords alone produce too many false positives. "Military exercise near Polish 
 ### 6.6 Why YAML config, not environment variables?
 The configuration is complex (nested lists of sources, keyword lists in 4 languages, multiple threshold levels). Environment variables can't express this cleanly. YAML is human-readable and diffable. Secrets (API keys, phone numbers) still come from `.env` and are referenced in YAML via `${VARIABLE_NAME}` syntax.
 
+### 6.7 Why three-layer alert architecture?
+The alert system is split into three layers: **TwilioClient** (transport -- places calls, sends SMS/WhatsApp, checks call status), **AlertStateMachine** (lifecycle logic -- decision matrix, retries, acknowledgment, cooldown, corroboration upgrade), and **AlertDispatcher** (routing -- sorts events by urgency, supports dry-run). This separation keeps transport concerns out of business logic and makes each layer independently testable.
+
 ## 7. Security Considerations
 
 - **API keys** stored in `.env`, never in config.yaml or version control
@@ -296,8 +300,11 @@ project-sentinel/
 │   │   ├── __init__.py          # Exports Classifier, Corroborator
 │   │   ├── classifier.py        # Claude Haiku 4.5 article classification
 │   │   └── corroborator.py      # Event grouping, source independence, alert levels
-│   ├── alerts/                  # (Phase 5 -- not yet implemented)
-│   │   └── ...
+│   ├── alerts/
+│   │   ├── __init__.py          # Exports AlertDispatcher, AlertStateMachine, TwilioClient
+│   │   ├── twilio_client.py     # Twilio SDK wrapper: calls (Polish TTS), SMS, WhatsApp
+│   │   ├── state_machine.py     # Alert lifecycle: retries, acknowledgment, cooldown
+│   │   └── dispatcher.py        # Routes events by urgency, dry-run support
 │   └── scheduler.py             # (Phase 6 -- not yet implemented)
 ├── tests/                       # Flat structure (all test files at top level)
 │   ├── __init__.py
@@ -316,7 +323,10 @@ project-sentinel/
 │   ├── test_deduplicator.py     # Phase 3
 │   ├── test_keyword_filter.py   # Phase 3
 │   ├── test_classifier.py       # Phase 4
-│   └── test_corroborator.py     # Phase 4
+│   ├── test_corroborator.py     # Phase 4
+│   ├── test_twilio_client.py    # Phase 5
+│   ├── test_state_machine.py    # Phase 5
+│   └── test_dispatcher.py       # Phase 5
 └── logs/                        # Created at runtime
     └── sentinel.log
 ```
