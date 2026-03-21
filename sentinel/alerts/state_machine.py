@@ -383,12 +383,25 @@ class AlertStateMachine:
                 continue
 
             # Call finished — check result
+            answered_by = status.get("answered_by")
+
             self._update_alert_record(
                 record, status=call_status, duration_seconds=duration
             )
 
+            # Voicemail picked up — treat as not answered
+            if answered_by and answered_by in ("machine_start", "machine_end_beep",
+                                                "machine_end_silence", "machine_end_other",
+                                                "fax"):
+                self.logger.info(
+                    "Event %s: call answered by %s (voicemail), treating as not answered",
+                    record.event_id[:8],
+                    answered_by,
+                )
+                return False
+
             if call_status == "completed" and duration >= threshold:
-                return True  # Answered and held long enough
+                return True  # Answered by human and held long enough
 
             # Not answered or too short
             return False
@@ -431,9 +444,25 @@ class AlertStateMachine:
         """
         call_status = status["status"]
         duration = status["duration"]
+        answered_by = status.get("answered_by")
         threshold = (
             self.config.alerts.acknowledgment.call_duration_threshold_seconds
         )
+
+        # Voicemail — treat as not answered
+        if answered_by and answered_by in ("machine_start", "machine_end_beep",
+                                            "machine_end_silence", "machine_end_other",
+                                            "fax"):
+            self._update_alert_record(
+                record, status="voicemail", duration_seconds=duration
+            )
+            self.logger.info(
+                "Event %s: call answered by %s (voicemail), will retry",
+                record.event_id[:8],
+                answered_by,
+            )
+            self.db.update_event(record.event_id, alert_status="retry_pending")
+            return
 
         if call_status == "completed" and duration > threshold:
             # Call was answered — acknowledged

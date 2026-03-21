@@ -57,6 +57,7 @@ class TwilioClient:
                 from_=self.twilio_phone,
                 to=phone_number,
                 twiml=twiml,
+                machine_detection="Enable",
             )
         except TwilioRestException as exc:
             self.logger.error(
@@ -164,6 +165,7 @@ class TwilioClient:
             return {
                 "status": call.status,
                 "duration": int(call.duration) if call.duration else 0,
+                "answered_by": getattr(call, "answered_by", None),
             }
         except TwilioRestException as exc:
             self.logger.error(
