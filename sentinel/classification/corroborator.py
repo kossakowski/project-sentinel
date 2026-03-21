@@ -8,7 +8,7 @@ from rapidfuzz import fuzz
 
 from sentinel.config import SentinelConfig
 from sentinel.database import Database
-from sentinel.models import Article, ClassificationResult, Event
+from sentinel.models import Article, ClassificationResult, Event, list_to_json
 
 # Compatible event types -- if two event types are in each other's sets, they
 # can be grouped into the same real-world event.
@@ -30,13 +30,17 @@ _MIN_EVENT_URGENCY = 5
 # Title similarity threshold for detecting syndicated content (same underlying source)
 _SYNDICATION_SIMILARITY_THRESHOLD = 90
 
+# Minimum summary_pl similarity (fuzzy) to consider two classifications as the same event
+_SUMMARY_SIMILARITY_THRESHOLD = 55
+
 
 class Corroborator:
     """Groups classifications into events and determines alert levels."""
 
-    def __init__(self, db: Database, config: SentinelConfig) -> None:
+    def __init__(self, db: Database, config: SentinelConfig, *, dry_run: bool = False) -> None:
         self.db = db
         self.config = config
+        self.dry_run = dry_run or config.testing.dry_run
         self.logger = logging.getLogger("sentinel.corroborator")
 
     def process_classifications(
@@ -50,7 +54,10 @@ class Corroborator:
         alertable_events: list[Event] = []
 
         for result in results:
-            # Skip non-military or low-urgency classifications
+            # Store every classification for auditing/cost tracking
+            self.db.insert_classification(result)
+
+            # Only create events for military classifications with urgency >= 5
             if not result.is_military_event or result.urgency_score < _MIN_EVENT_URGENCY:
                 self.logger.debug(
                     "Skipping low-urgency/non-military classification: article=%s urgency=%d",
@@ -58,9 +65,6 @@ class Corroborator:
                     result.urgency_score,
                 )
                 continue
-
-            # Store the classification
-            self.db.insert_classification(result)
 
             # Try to match to an existing event
             matching_event = self._find_matching_event(result)
@@ -103,6 +107,20 @@ class Corroborator:
                 (result.classified_at - event.first_seen_at).total_seconds()
             )
             if time_diff > window_minutes * 60:
+                continue
+
+            # Check summary_pl semantic similarity (fuzzy match)
+            summary_similarity = fuzz.token_sort_ratio(
+                result.summary_pl, event.summary_pl
+            )
+            if summary_similarity < _SUMMARY_SIMILARITY_THRESHOLD:
+                self.logger.debug(
+                    "Summary mismatch (%.0f%% < %d%%): '%s' vs '%s'",
+                    summary_similarity,
+                    _SUMMARY_SIMILARITY_THRESHOLD,
+                    result.summary_pl[:60],
+                    event.summary_pl[:60],
+                )
                 continue
 
             return event
@@ -237,14 +255,12 @@ class Corroborator:
         )
 
         # Persist changes
-        from sentinel.models import _list_to_json
-
         self.db.update_event(
             event.id,
             urgency_score=event.urgency_score,
             source_count=event.source_count,
-            article_ids=_list_to_json(event.article_ids),
-            affected_countries=_list_to_json(event.affected_countries),
+            article_ids=list_to_json(event.article_ids),
+            affected_countries=list_to_json(event.affected_countries),
             alert_status=event.alert_status,
         )
 
@@ -261,10 +277,15 @@ class Corroborator:
     def _determine_alert_status(self, urgency: int, source_count: int) -> str:
         """Determine the alert level for an event.
 
+        When dry_run is active, always returns "dry_run" instead of a real status.
+
         - phone_call: urgency >= 9 AND source_count >= corroboration_required
         - sms: urgency >= 7
         - whatsapp: urgency >= 5
         """
+        if self.dry_run:
+            return "dry_run"
+
         corroboration_required = self.config.classification.corroboration_required
 
         if urgency >= 9 and source_count >= corroboration_required:

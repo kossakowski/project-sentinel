@@ -31,7 +31,7 @@ def _iso_to_dt(s: str | None) -> datetime | None:
     return datetime.fromisoformat(s)
 
 
-def _list_to_json(lst: list | None) -> str:
+def list_to_json(lst: list | None) -> str:
     if lst is None:
         return "[]"
     return json.dumps(lst, ensure_ascii=False)
@@ -129,7 +129,7 @@ class ClassificationResult:
             "is_military_event": int(self.is_military_event),
             "event_type": self.event_type,
             "urgency_score": self.urgency_score,
-            "affected_countries": _list_to_json(self.affected_countries),
+            "affected_countries": list_to_json(self.affected_countries),
             "aggressor": self.aggressor,
             "is_new_event": int(self.is_new_event),
             "confidence": self.confidence,
@@ -184,13 +184,13 @@ class Event:
             "id": self.id,
             "event_type": self.event_type,
             "urgency_score": self.urgency_score,
-            "affected_countries": _list_to_json(self.affected_countries),
+            "affected_countries": list_to_json(self.affected_countries),
             "aggressor": self.aggressor,
             "summary_pl": self.summary_pl,
             "first_seen_at": _dt_to_iso(self.first_seen_at),
             "last_updated_at": _dt_to_iso(self.last_updated_at),
             "source_count": self.source_count,
-            "article_ids": _list_to_json(self.article_ids),
+            "article_ids": list_to_json(self.article_ids),
             "alert_status": self.alert_status,
             "acknowledged_at": _dt_to_iso(self.acknowledged_at),
         }

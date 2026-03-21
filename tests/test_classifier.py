@@ -315,8 +315,9 @@ class TestClassifier:
         assert result.is_military_event is True
         assert result.urgency_score == 10
 
+    @patch("sentinel.classification.classifier.time.sleep")
     @patch("sentinel.classification.classifier.anthropic.Anthropic")
-    def test_api_error_handled(self, mock_anthropic_cls, config):
+    def test_api_error_handled(self, mock_anthropic_cls, mock_sleep, config):
         """API returns 500 -> logged, article skipped in batch."""
         mock_client = MagicMock()
         mock_anthropic_cls.return_value = mock_client
@@ -335,6 +336,7 @@ class TestClassifier:
         results = classifier.classify_batch([article])
 
         assert len(results) == 0
+        mock_sleep.assert_called_once_with(5)
 
     @patch("sentinel.classification.classifier.anthropic.Anthropic")
     def test_token_usage_logged(self, mock_anthropic_cls, config):

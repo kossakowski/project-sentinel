@@ -348,3 +348,87 @@ class TestCorroborator:
         events = corroborator.process_classifications([classification])
 
         assert len(events) == 0
+
+    def test_dry_run_sets_alert_status(self, db, config):
+        """In dry-run mode, events get alert_status='dry_run' instead of real statuses."""
+        corroborator = Corroborator(db, config, dry_run=True)
+
+        article = _make_article()
+        db.insert_article(article)
+
+        classification = _make_classification(article, urgency_score=10)
+        events = corroborator.process_classifications([classification])
+
+        assert len(events) == 1
+        assert events[0].alert_status == "dry_run"
+
+    def test_dry_run_via_config(self, db, config):
+        """Dry-run flag from config.testing.dry_run is picked up by Corroborator."""
+        config.testing.dry_run = True
+        corroborator = Corroborator(db, config)
+
+        article = _make_article()
+        db.insert_article(article)
+
+        classification = _make_classification(article, urgency_score=9)
+        events = corroborator.process_classifications([classification])
+
+        assert len(events) == 1
+        assert events[0].alert_status == "dry_run"
+
+    def test_different_summaries_not_merged(self, db, config):
+        """Same type/country/window but very different summary_pl -> separate events."""
+        corroborator = Corroborator(db, config)
+
+        article1 = _make_article(
+            source_name="SourceA",
+            source_url="https://source-a.com/article/1",
+            title="Russian missile hits Warsaw",
+        )
+        article2 = _make_article(
+            source_name="SourceB",
+            source_url="https://source-b.com/article/2",
+            title="Cyberattack on Polish power grid",
+        )
+        db.insert_article(article1)
+        db.insert_article(article2)
+
+        c1 = _make_classification(
+            article1,
+            event_type="invasion",
+            affected_countries=["PL"],
+            summary_pl="Rosja dokonala inwazji na Polske, wojska przekroczyly granice.",
+        )
+        c2 = _make_classification(
+            article2,
+            event_type="invasion",
+            affected_countries=["PL"],
+            summary_pl="Trzesienie ziemi w Turcji spowodowalo duze zniszczenia.",
+        )
+
+        events = corroborator.process_classifications([c1, c2])
+
+        # Despite same event_type and country, completely different summaries should not merge
+        assert len(events) == 2
+        assert events[0].id != events[1].id
+
+    def test_low_urgency_classification_stored(self, db, config):
+        """Low-urgency classifications are stored in the database even though no event is created."""
+        corroborator = Corroborator(db, config)
+
+        article = _make_article()
+        db.insert_article(article)
+
+        classification = _make_classification(
+            article, urgency_score=2, is_military_event=False
+        )
+        events = corroborator.process_classifications([classification])
+
+        assert len(events) == 0
+
+        # The classification should still be in the database
+        row = db.conn.execute(
+            "SELECT * FROM classifications WHERE id = ?", (classification.id,)
+        ).fetchone()
+        assert row is not None
+        assert row["urgency_score"] == 2
