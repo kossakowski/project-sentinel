@@ -23,6 +23,7 @@ pytest tests/ -v -m integration
 pytest tests/test_config.py tests/test_database.py tests/test_models.py tests/test_cli.py -v  # Phase 1
 pytest tests/test_rss.py tests/test_gdelt.py tests/test_google_news.py tests/test_telegram.py -v  # Phase 2
 pytest tests/test_normalizer.py tests/test_deduplicator.py tests/test_keyword_filter.py -v  # Phase 3
+pytest tests/test_classifier.py tests/test_corroborator.py -v  # Phase 4
 
 # With coverage
 pytest tests/ -v --cov=sentinel --cov-report=term-missing

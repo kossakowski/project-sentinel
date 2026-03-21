@@ -51,7 +51,7 @@ USER_PROMPT_TEMPLATE = (
     '  "aggressor": "RU|BY|unknown|none",\n'
     '  "is_new_event": true/false,\n'
     '  "confidence": 0.0-1.0,\n'
-    '  "summary_pl": "Krotkie podsumowanie po polsku (1-2 zdania) do komunikatu telefonicznego"\n'
+    '  "summary_pl": "Krótkie podsumowanie po polsku (1-2 zdania) do komunikatu telefonicznego"\n'
     "}}\n"
     "\n"
     "Urgency scale:\n"

@@ -121,8 +121,8 @@ When a credible threat is detected, Project Sentinel calls the user's phone imme
 | **Normalizer** | Convert all fetcher outputs to unified Article format | -- |
 | **Deduplicator** | Reject already-seen articles | `rapidfuzz`, `sqlite3` |
 | **Keyword Filter** | Match articles against bilingual keyword lists | -- |
-| **Classifier** | Score articles using Claude Haiku 4.5 | `anthropic` |
-| **Corroborator** | Count independent sources for same event | `sqlite3` |
+| **Classifier** | Classify articles via Claude Haiku 4.5, extract structured event data, track token usage | `anthropic` |
+| **Corroborator** | Group classifications into events, check source independence, determine alert level | `rapidfuzz`, `sqlite3` |
 | **Alert Dispatcher** | Send calls/SMS/WhatsApp via Twilio | `twilio` |
 | **Call State Machine** | Track call status, retries, acknowledgment | `sqlite3` |
 | **Scheduler** | Orchestrate the pipeline on intervals | `apscheduler` |
@@ -292,8 +292,10 @@ project-sentinel/
 │   │   ├── normalizer.py        # HTML/URL/timestamp cleaning, language mapping
 │   │   ├── deduplicator.py      # URL hash + fuzzy title dedup via rapidfuzz
 │   │   └── keyword_filter.py    # Language-aware keyword matching + exclusion
-│   ├── classification/          # (Phase 4 -- not yet implemented)
-│   │   └── ...
+│   ├── classification/
+│   │   ├── __init__.py          # Exports Classifier, Corroborator
+│   │   ├── classifier.py        # Claude Haiku 4.5 article classification
+│   │   └── corroborator.py      # Event grouping, source independence, alert levels
 │   ├── alerts/                  # (Phase 5 -- not yet implemented)
 │   │   └── ...
 │   └── scheduler.py             # (Phase 6 -- not yet implemented)
@@ -312,7 +314,9 @@ project-sentinel/
 │   ├── test_telegram.py         # Phase 2
 │   ├── test_normalizer.py       # Phase 3
 │   ├── test_deduplicator.py     # Phase 3
-│   └── test_keyword_filter.py   # Phase 3
+│   ├── test_keyword_filter.py   # Phase 3
+│   ├── test_classifier.py       # Phase 4
+│   └── test_corroborator.py     # Phase 4
 └── logs/                        # Created at runtime
     └── sentinel.log
 ```
