@@ -349,10 +349,10 @@ sources:
         channel_id: "@DeepStateUA"
         language: uk
         priority: 2
-      # - name: NEXTA Live
-      #   channel_id: "@nexta_live"
-      #   language: en
-      #   priority: 1
+    - name: NEXTA Live
+      channel_id: "@nexta_live"
+      language: ru
+      priority: 1
 
 # -----------------------------------------------------------------------------
 # PROCESSING -- Deduplication settings
