@@ -169,7 +169,7 @@ Channel IDs in config use the format `@channel_name` (the public username). To f
 
 | Channel | ID | Language | Notes |
 |---|---|---|---|
-| Ukrainian Air Force | `@ps_ukr` | UK | Fastest for cross-border drone events |
+| Ukrainian Air Force | `@kpszsu` | UK | Fastest for cross-border drone events |
 | NEXTA Live | `@nexta_live` | EN/RU | Belarusian opposition, fast on military events |
 | Rybar | `@rybar_force` | RU | Russian mil-blogger, detailed maps |
 

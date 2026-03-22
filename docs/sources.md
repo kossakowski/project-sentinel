@@ -8,13 +8,13 @@ Based on the September 9-10, 2025 drone incursion case study:
 
 | Tier | Speed | Sources |
 |---|---|---|
-| **1** | Seconds to minutes | Ukrainian military Telegram, OSINT X accounts, flight trackers |
-| **2** | 2-15 minutes | Wire services (Reuters, AP, PAP), NEXTA |
-| **3** | 15-60 minutes | GDELT, 24h news portals (TVN24, RMF24), defense outlets |
-| **4** | 1-6 hours | TV special editions, official military statements |
-| **5** | 6+ hours | Government citizen alerts (RCB) |
+| **1** | Seconds to minutes | Ukrainian military Telegram (@kpszsu), NEXTA Live, RBC-Ukraine |
+| **2** | 2-30 minutes | Ukrainian media (Ukrainska Pravda), Polish official X (@DowOperSZ), RMF24, Onet |
+| **3** | 30-60 minutes | PAP, TVN24, Reuters, AP, defense outlets (Defence24) |
+| **4** | 1-3 hours | GDELT, BBC, Al Jazeera, France 24, international outlets |
+| **5** | 3+ hours | Government citizen alerts (RCB), TV special editions |
 
-Project Sentinel targets **Tiers 2-3** for automated monitoring, with **Tier 1** via Telegram.
+Project Sentinel targets **Tiers 1-3** for fast detection, with **Tiers 4-5** for corroboration.
 
 ---
 
@@ -141,7 +141,7 @@ Language/country codes: `en/US`, `pl/PL`, `uk/UA`, `ru/RU`
 
 | Channel | Username | Language | Priority | Notes |
 |---|---|---|---|---|
-| Ukrainian Air Force | `@ps_ukr` | UK | 1 | Fastest source for cross-border drone events (broke the Sep 2025 story 1h before anyone else) |
+| Ukrainian Air Force | `@kpszsu` | UK | 1 | Fastest source for cross-border drone events (broke the Sep 2025 story 1h before anyone else) |
 | NEXTA Live | `@nexta_live` | EN/RU | 1 | Belarusian opposition media, very fast on military events |
 | Rybar | `@rybar_force` | RU | 2 | Russian mil-blogger, detailed maps, cited by Western analysts |
 | DeepState | (varies) | UK | 2 | Ukrainian front-line mapping |

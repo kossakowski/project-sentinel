@@ -211,7 +211,7 @@ Telegram channel monitoring.
     enabled: true
     channels:
       - name: Ukrainian Air Force
-        channel_id: "@ps_ukr"
+        channel_id: "@kpszsu"
         language: uk
         priority: 1
       - name: NEXTA

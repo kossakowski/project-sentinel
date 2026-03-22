@@ -72,6 +72,12 @@ monitoring:
         - "artillery fire"
         - "troop deployment"
         - "military convoy"
+        - "Shahed"
+        - "Geran"
+        - "Gerbera"
+        - "Iskander"
+        - "Kinzhal"
+        - "Kalibr"
 
     pl:
       critical:
@@ -109,6 +115,12 @@ monitoring:
         - "cyberatak"
         - "rozmieszczenie wojsk"
         - "prowokacja"
+        - "Shahed"
+        - "Geran"
+        - "Gerbera"
+        - "Iskander"
+        - "Kindżał"
+        - "Kalibr"
 
     uk:
       critical:
@@ -130,6 +142,12 @@ monitoring:
         - "дрони"
         - "ракетна атака"
         - "кібератака"
+        - "Шахед"
+        - "Герань"
+        - "Гербера"
+        - "Іскандер"
+        - "Кинджал"
+        - "Калібр"
 
     ru:
       critical:
@@ -151,6 +169,12 @@ monitoring:
         - "концентрация войск"
         - "беспилотник"
         - "кибератака"
+        - "Шахед"
+        - "Герань"
+        - "Гербера"
+        - "Искандер"
+        - "Кинжал"
+        - "Калибр"
 
   # Articles matching these keywords (without critical match) are filtered out
   exclude_keywords:
@@ -353,6 +377,20 @@ sources:
         language: uk
       - query: "NATO Article 5"
         language: en
+      - query: "drone incursion Poland"
+        language: en
+      - query: "airspace violation Poland"
+        language: en
+      - query: "scrambled jets Poland"
+        language: en
+      - query: "rosyjskie drony Polska"
+        language: pl
+      - query: "naruszenie przestrzeni powietrznej"
+        language: pl
+      - query: "zamknięcie lotniska Polska"
+        language: pl
+      - query: "дрони Польща"
+        language: uk
 
   # --- Telegram ---
   telegram:
