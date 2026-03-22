@@ -1,3 +1,4 @@
+import asyncio
 import calendar
 import html.parser
 import time
@@ -53,29 +54,38 @@ class RSSFetcher(BaseFetcher):
         return len(self.config.sources.rss) > 0
 
     async def fetch(self, *, max_priority: int | None = None) -> list[Article]:
-        """Fetch articles from enabled RSS sources.
+        """Fetch articles from enabled RSS sources concurrently.
 
         Args:
             max_priority: If set, only fetch sources with priority <= this value.
                           Used by fast-lane scheduler to poll only high-priority sources.
         """
+        sources = [
+            s for s in self.config.sources.rss
+            if s.enabled and (max_priority is None or s.priority <= max_priority)
+        ]
+
+        if not sources:
+            return []
+
+        results = await asyncio.gather(
+            *(self._fetch_source_safe(source) for source in sources)
+        )
+
         all_articles: list[Article] = []
-
-        for source in self.config.sources.rss:
-            if not source.enabled:
-                continue
-            if max_priority is not None and source.priority > max_priority:
-                continue
-
-            try:
-                articles = await self._fetch_source(source)
-                all_articles.extend(articles)
-            except Exception as exc:
-                self.logger.error(
-                    "Failed to fetch RSS source %s: %s", source.name, exc
-                )
-
+        for articles in results:
+            all_articles.extend(articles)
         return all_articles
+
+    async def _fetch_source_safe(self, source) -> list[Article]:
+        """Fetch a single source, catching errors so gather() doesn't abort."""
+        try:
+            return await self._fetch_source(source)
+        except Exception as exc:
+            self.logger.error(
+                "Failed to fetch RSS source %s: %s", source.name, exc
+            )
+            return []
 
     async def _fetch_source(self, source) -> list[Article]:
         """Fetch and parse a single RSS source."""

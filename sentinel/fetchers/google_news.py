@@ -1,3 +1,4 @@
+import asyncio
 import urllib.parse
 from datetime import datetime, timezone
 
@@ -42,22 +43,32 @@ class GoogleNewsFetcher(BaseFetcher):
         )
 
     async def fetch(self) -> list[Article]:
-        """Fetch articles from all configured Google News queries."""
+        """Fetch articles from all configured Google News queries concurrently."""
         if not self.is_enabled():
             return []
 
+        queries = self.config.sources.google_news.queries
+        if not queries:
+            return []
+
+        results = await asyncio.gather(
+            *(self._fetch_query_safe(query) for query in queries)
+        )
+
         all_articles: list[Article] = []
-
-        for query in self.config.sources.google_news.queries:
-            try:
-                articles = await self._fetch_query(query)
-                all_articles.extend(articles)
-            except Exception as exc:
-                self.logger.error(
-                    "Google News query '%s' failed: %s", query.query, exc
-                )
-
+        for articles in results:
+            all_articles.extend(articles)
         return all_articles
+
+    async def _fetch_query_safe(self, query: GoogleNewsQuery) -> list[Article]:
+        """Fetch a single query, catching errors so gather() doesn't abort."""
+        try:
+            return await self._fetch_query(query)
+        except Exception as exc:
+            self.logger.error(
+                "Google News query '%s' failed: %s", query.query, exc
+            )
+            return []
 
     async def _fetch_query(self, query: GoogleNewsQuery) -> list[Article]:
         """Fetch and parse results for a single Google News query."""
