@@ -158,6 +158,7 @@ class ClassificationConfig(BaseModel):
 
 class SchedulerConfig(BaseModel):
     interval_minutes: int = 15
+    fast_interval_minutes: int = 3
     jitter_seconds: int = 30
 
 

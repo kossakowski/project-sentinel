@@ -52,12 +52,19 @@ class RSSFetcher(BaseFetcher):
     def is_enabled(self) -> bool:
         return len(self.config.sources.rss) > 0
 
-    async def fetch(self) -> list[Article]:
-        """Fetch articles from all enabled RSS sources."""
+    async def fetch(self, *, max_priority: int | None = None) -> list[Article]:
+        """Fetch articles from enabled RSS sources.
+
+        Args:
+            max_priority: If set, only fetch sources with priority <= this value.
+                          Used by fast-lane scheduler to poll only high-priority sources.
+        """
         all_articles: list[Article] = []
 
         for source in self.config.sources.rss:
             if not source.enabled:
+                continue
+            if max_priority is not None and source.priority > max_priority:
                 continue
 
             try:

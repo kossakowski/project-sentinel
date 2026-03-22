@@ -197,14 +197,21 @@ class SentinelPipeline:
                     )
         self.db.close()
 
-    async def run_cycle(self) -> CycleResult:
-        """Execute one full pipeline cycle. Returns stats about the run."""
-        cycle_start = datetime.now(timezone.utc)
-        self.logger.info("=== Pipeline cycle starting ===")
+    async def run_cycle(self, *, fast_only: bool = False) -> CycleResult:
+        """Execute one full pipeline cycle. Returns stats about the run.
 
-        # Step 1: Fetch from all sources
-        raw_articles = await self._fetch_all()
-        self.logger.info("Fetched %d raw articles", len(raw_articles))
+        Args:
+            fast_only: If True, only fetch from fast-lane sources (Telegram,
+                       priority-1 RSS, Google News). Slow-lane sources (GDELT,
+                       lower-priority RSS) are skipped.
+        """
+        cycle_start = datetime.now(timezone.utc)
+        lane = "FAST" if fast_only else "FULL"
+        self.logger.info("=== Pipeline cycle starting [%s] ===", lane)
+
+        # Step 1: Fetch from sources (filtered by lane)
+        raw_articles = await self._fetch_all(fast_only=fast_only)
+        self.logger.info("[%s] Fetched %d raw articles", lane, len(raw_articles))
 
         # Step 2: Normalize
         normalized = self.normalizer.normalize_batch(raw_articles)
@@ -278,12 +285,29 @@ class SentinelPipeline:
 
         return result
 
-    async def _fetch_all(self) -> list[Article]:
-        """Fetch from all enabled sources. Errors in one source don't affect others."""
+    # Fetchers that always run in the fast lane
+    _FAST_LANE_FETCHERS = frozenset({"telegram", "google_news"})
+    # Fetchers that only run in the slow (full) lane
+    _SLOW_LANE_FETCHERS = frozenset({"gdelt"})
+
+    async def _fetch_all(self, *, fast_only: bool = False) -> list[Article]:
+        """Fetch from enabled sources, filtered by lane.
+
+        Fast lane: Telegram (buffer drain) + priority-1 RSS + Google News.
+        Full lane: everything (superset of fast lane, acts as safety net).
+        """
         all_articles: list[Article] = []
         for fetcher in self.fetchers:
+            # In fast-only mode, skip slow-lane-only fetchers
+            if fast_only and fetcher.name in self._SLOW_LANE_FETCHERS:
+                continue
+
             try:
-                articles = await fetcher.fetch()
+                # RSS fetcher supports priority filtering for fast lane
+                if fetcher.name == "rss" and fast_only:
+                    articles = await fetcher.fetch(max_priority=1)
+                else:
+                    articles = await fetcher.fetch()
                 all_articles.extend(articles)
                 self.logger.debug(
                     "%s: fetched %d articles", fetcher.name, len(articles)
@@ -344,32 +368,58 @@ class SentinelScheduler:
         self._last_daily_summary: str | None = None
 
     def start(self) -> None:
-        """Start the scheduler."""
-        interval = self.config.scheduler.interval_minutes
+        """Start the scheduler with fast-lane and slow-lane jobs."""
+        fast_interval = self.config.scheduler.fast_interval_minutes
+        slow_interval = self.config.scheduler.interval_minutes
         jitter = self.config.scheduler.jitter_seconds
 
+        # Fast lane: priority-1 RSS + Telegram + Google News
         self.scheduler.add_job(
-            self._run_with_error_handling,
-            trigger=IntervalTrigger(minutes=interval, jitter=jitter),
-            id="sentinel_pipeline",
-            name="Project Sentinel Pipeline",
+            self._run_fast_lane,
+            trigger=IntervalTrigger(minutes=fast_interval, jitter=min(jitter, 10)),
+            id="sentinel_fast_lane",
+            name="Project Sentinel Fast Lane",
+            max_instances=1,
+            coalesce=True,
+        )
+
+        # Slow lane: all sources (superset of fast lane)
+        self.scheduler.add_job(
+            self._run_slow_lane,
+            trigger=IntervalTrigger(minutes=slow_interval, jitter=jitter),
+            id="sentinel_slow_lane",
+            name="Project Sentinel Slow Lane",
             max_instances=1,
             coalesce=True,
         )
 
         self.scheduler.start()
         self.logger.info(
-            "Scheduler started: interval=%dmin, jitter=%ds", interval, jitter
+            "Scheduler started: fast_lane=%dmin, slow_lane=%dmin, jitter=%ds",
+            fast_interval,
+            slow_interval,
+            jitter,
         )
 
-    async def _run_with_error_handling(self) -> None:
+    async def _run_fast_lane(self) -> None:
+        """Run a fast-lane cycle (priority-1 sources only)."""
+        await self._run_with_error_handling(fast_only=True)
+
+    async def _run_slow_lane(self) -> None:
+        """Run a slow-lane cycle (all sources)."""
+        await self._run_with_error_handling(fast_only=False)
+
+    async def _run_with_error_handling(self, *, fast_only: bool = False) -> None:
         """Run the pipeline with top-level error handling."""
         try:
-            result = await self.pipeline.run_cycle()
+            result = await self.pipeline.run_cycle(fast_only=fast_only)
             self._update_health(healthy=True, result=result)
             self._maybe_log_daily_summary()
         except Exception as e:
-            self.logger.critical("Pipeline cycle failed: %s", e, exc_info=True)
+            lane = "fast" if fast_only else "slow"
+            self.logger.critical(
+                "Pipeline %s-lane cycle failed: %s", lane, e, exc_info=True
+            )
             self.pipeline.stats.record_failure()
             self._update_health(healthy=False, error=str(e))
             self._check_pipeline_health()

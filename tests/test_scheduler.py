@@ -82,15 +82,20 @@ async def test_scheduler_fires_at_interval(mock_pipeline, scheduler_config):
     scheduler.start()
 
     try:
-        # Verify the job was added with correct interval
+        # Verify both fast-lane and slow-lane jobs were added
         jobs = scheduler.scheduler.get_jobs()
-        assert len(jobs) == 1
-        job = jobs[0]
-        assert job.id == "sentinel_pipeline"
+        assert len(jobs) == 2
+        job_ids = {j.id for j in jobs}
+        assert "sentinel_fast_lane" in job_ids
+        assert "sentinel_slow_lane" in job_ids
 
-        # The trigger should have the configured interval
-        trigger = job.trigger
-        assert trigger.interval.total_seconds() == scheduler_config.scheduler.interval_minutes * 60
+        # The slow-lane trigger should have the configured interval
+        slow_job = next(j for j in jobs if j.id == "sentinel_slow_lane")
+        assert slow_job.trigger.interval.total_seconds() == scheduler_config.scheduler.interval_minutes * 60
+
+        # The fast-lane trigger should use fast_interval_minutes
+        fast_job = next(j for j in jobs if j.id == "sentinel_fast_lane")
+        assert fast_job.trigger.interval.total_seconds() == scheduler_config.scheduler.fast_interval_minutes * 60
     finally:
         scheduler.stop()
 
@@ -129,12 +134,12 @@ async def test_scheduler_jitter_applied(sample_config_dict, tmp_path):
 
         try:
             jobs = scheduler.scheduler.get_jobs()
-            assert len(jobs) == 1
-            trigger = jobs[0].trigger
+            assert len(jobs) == 2
 
-            # The jitter should be set on the trigger
+            # The slow-lane trigger should have full jitter
+            slow_job = next(j for j in jobs if j.id == "sentinel_slow_lane")
+            trigger = slow_job.trigger
             assert trigger.jitter is not None
-            # APScheduler may store jitter as int (seconds) or timedelta
             jitter_val = trigger.jitter
             if hasattr(jitter_val, "total_seconds"):
                 assert jitter_val.total_seconds() == 30
@@ -157,9 +162,10 @@ async def test_max_instances_enforced(mock_pipeline, scheduler_config):
 
     try:
         jobs = scheduler.scheduler.get_jobs()
-        assert len(jobs) == 1
-        # max_instances is set on the job
-        assert jobs[0].max_instances == 1
+        assert len(jobs) == 2
+        # max_instances is set on both jobs
+        for job in jobs:
+            assert job.max_instances == 1
     finally:
         scheduler.stop()
 

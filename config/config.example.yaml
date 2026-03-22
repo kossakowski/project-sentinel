@@ -408,10 +408,13 @@ sources:
         channel_id: "@DeepStateUA"
         language: uk
         priority: 2
-    - name: NEXTA Live
-      channel_id: "@nexta_live"
-      language: ru
-      priority: 1
+      - name: NEXTA Live
+        channel_id: "@nexta_live"
+        language: ru
+        priority: 1
+    api_id: "${TELEGRAM_API_ID}"
+    api_hash: "${TELEGRAM_API_HASH}"
+    session_name: sentinel_session
 
 # -----------------------------------------------------------------------------
 # PROCESSING -- Deduplication settings
@@ -474,6 +477,9 @@ alerts:
 # SCHEDULER
 # -----------------------------------------------------------------------------
 scheduler:
+  # Fast lane: Telegram + priority-1 RSS + Google News
+  fast_interval_minutes: 3
+  # Slow lane: all sources (GDELT, lower-priority RSS, etc.)
   interval_minutes: 15
   jitter_seconds: 30
 
