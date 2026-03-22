@@ -6,6 +6,7 @@ Deploy Project Sentinel to a Hetzner Cloud VPS, configure it as a systemd servic
 ## Prerequisites
 - All phases 1-6 complete and tested locally
 - Hetzner Cloud account created
+- **[VPS Security Hardening](security/vps-hardening.md) completed** -- do this BEFORE deployment
 - Domain name (optional, not required)
 - Local `.env` file with all secrets configured and working
 

@@ -9,6 +9,7 @@ Real-time monitoring bot that scans media sources (PL/EN/UA/RU) for military att
 - Phase specs: [1-Infrastructure](docs/phase-1-infrastructure.md) | [2-Fetchers](docs/phase-2-fetchers.md) | [3-Processing](docs/phase-3-processing.md) | [4-Classification](docs/phase-4-classification.md) | [5-Alerts](docs/phase-5-alerts.md) | [6-Scheduler](docs/phase-6-scheduler.md) | [7-Deployment](docs/phase-7-deployment.md)
 - [Configuration Reference](docs/config-reference.md) -- every configurable parameter
 - [Testing Strategy](docs/testing.md) -- dry run, fixtures, manual testing
+- [VPS Security Hardening](docs/security/vps-hardening.md) -- do this BEFORE deployment
 - [API Setup Guide](docs/api-setup.md) -- Anthropic, Twilio, Telegram account setup
 - [Media Sources Reference](docs/sources.md) -- all monitored sources with URLs/RSS
 
