@@ -267,7 +267,7 @@ sources:
 
     # International media
     - name: BBC World
-      url: http://feeds.bbci.co.uk/news/world/rss.xml
+      url: https://feeds.bbci.co.uk/news/world/rss.xml
       language: en
       enabled: true
       priority: 3
@@ -335,17 +335,24 @@ sources:
 
   # --- Telegram ---
   telegram:
-    enabled: false  # Set to true after configuring API credentials
+    enabled: true
     channels:
       - name: Ukrainian Air Force
-        channel_id: "@ps_ukr"
+        channel_id: "@kpszsu"
         language: uk
         priority: 1
-      - name: NEXTA Live
-        channel_id: "@nexta_live"
-        language: en
+      - name: General Staff of Ukraine
+        channel_id: "@GeneralStaffZSU"
+        language: uk
         priority: 1
-      # Add more channels as needed
+      - name: DeepState UA
+        channel_id: "@DeepStateUA"
+        language: uk
+        priority: 2
+      # - name: NEXTA Live
+      #   channel_id: "@nexta_live"
+      #   language: en
+      #   priority: 1
 
 # -----------------------------------------------------------------------------
 # PROCESSING -- Deduplication settings
