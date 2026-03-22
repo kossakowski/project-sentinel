@@ -241,7 +241,7 @@ sources:
       priority: 2
 
     - name: Gazeta Wyborcza
-      url: https://wyborcza.pl/pub/rss/najnowsze
+      url: https://rss.gazeta.pl/pub/rss/najnowsze_wyborcza.xml
       language: pl
       enabled: true
       priority: 2
@@ -290,6 +290,27 @@ sources:
       language: en
       enabled: true
       priority: 3
+
+    # Ukrainian media (Ukrainian language -- publishes before EN edition)
+    - name: Ukrainska Pravda UA
+      url: https://www.pravda.com.ua/rss/view_news/
+      language: uk
+      enabled: true
+      priority: 1
+
+    # Polish portals
+    - name: Onet Wiadomości
+      url: https://wiadomosci.onet.pl/.feed
+      language: pl
+      enabled: true
+      priority: 2
+
+    # Ukrainian wire service (English)
+    - name: Interfax-Ukraine EN
+      url: https://en.interfax.com.ua/news/last.rss
+      language: en
+      enabled: true
+      priority: 2
 
   # --- GDELT ---
   gdelt:

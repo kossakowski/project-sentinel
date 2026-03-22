@@ -47,7 +47,7 @@ Project Sentinel targets **Tiers 2-3** for automated monitoring, with **Tier 1**
 | Source | URL | RSS Feed | Language | Priority | Notes |
 |---|---|---|---|---|---|
 | **Rzeczpospolita** | rp.pl | `rp.pl/rss_main` | PL | 2 | Major daily, strong on security |
-| **Gazeta Wyborcza** | wyborcza.pl | `wyborcza.pl/pub/rss/najnowsze` | PL | 2 | Major daily |
+| **Gazeta Wyborcza** | wyborcza.pl | `rss.gazeta.pl/pub/rss/najnowsze_wyborcza.xml` | PL | 2 | Major daily |
 | **Onet** | onet.pl | `wiadomosci.onet.pl/rss` | PL | 3 | Major portal |
 
 ---
