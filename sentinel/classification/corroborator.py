@@ -148,9 +148,10 @@ class Corroborator:
         """Determine if the new classification comes from an independent source.
 
         Two articles from the same underlying source don't count as independent:
-        - Different source_type (rss vs gdelt vs telegram) -> likely independent
-        - Different media organizations (different domains) -> independent
-        - Same story syndicated (title similarity > 90%) -> count as 1 source
+        - Same domain -> not independent (regardless of source_type)
+        - High title similarity (>= 90%) -> syndicated content, not independent
+          (checked across ALL source types to catch e.g. an RSS article quoting
+          a Telegram post verbatim)
         """
         # Retrieve the article for this classification
         article_row = self.db.conn.execute(
@@ -171,26 +172,26 @@ class Corroborator:
 
             existing_article = Article.from_row(existing_row)
 
-            # Different source_type -> likely independent
-            if new_article.source_type != existing_article.source_type:
-                continue
-
-            # Same source_type -- check domain
+            # Same domain -> not independent (regardless of source_type)
             new_domain = self._extract_domain(new_article.source_url)
             existing_domain = self._extract_domain(existing_article.source_url)
 
             if new_domain == existing_domain:
-                # Same domain -> not independent
                 return False
 
-            # Different domain but check for syndication (high title similarity)
+            # Check for syndication across ALL source types.
+            # Catches: RSS article quoting a Telegram post, GDELT picking up
+            # the same wire story, Google News linking to an already-seen article.
             title_similarity = fuzz.ratio(
                 new_article.title_normalized, existing_article.title_normalized
             )
             if title_similarity >= _SYNDICATION_SIMILARITY_THRESHOLD:
                 self.logger.debug(
-                    "Syndicated content detected (%.0f%% title similarity): '%s' vs '%s'",
+                    "Syndicated content detected (%.0f%% similarity, %s vs %s): "
+                    "'%s' vs '%s'",
                     title_similarity,
+                    new_article.source_type,
+                    existing_article.source_type,
                     new_article.title[:60],
                     existing_article.title[:60],
                 )

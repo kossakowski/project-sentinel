@@ -412,6 +412,45 @@ class TestCorroborator:
         assert len(events) == 2
         assert events[0].id != events[1].id
 
+    def test_cross_source_type_syndication(self, db, config):
+        """Telegram post + RSS article quoting it verbatim -> source_count=1, not 2."""
+        corroborator = Corroborator(db, config)
+
+        # Telegram post from official source
+        article1 = _make_article(
+            source_name="Ukrainian Air Force",
+            source_url="https://t.me/kpszsu/12345",
+            source_type="telegram",
+            title="Russian drones detected entering Polish airspace near Zamość",
+        )
+        # RSS article quoting the same Telegram post
+        article2 = _make_article(
+            source_name="RMF24",
+            source_url="https://rmf24.pl/article/1",
+            source_type="rss",
+            title="Russian drones detected entering Polish airspace near Zamość",
+        )
+        db.insert_article(article1)
+        db.insert_article(article2)
+
+        c1 = _make_classification(
+            article1,
+            event_type="airspace_violation",
+            summary_pl="Rosyjskie drony wykryto nad Polską w rejonie Zamościa.",
+        )
+        c2 = _make_classification(
+            article2,
+            event_type="airspace_violation",
+            summary_pl="Rosyjskie drony wykryto nad Polską w rejonie Zamościa.",
+        )
+
+        events = corroborator.process_classifications([c1, c2])
+
+        final_event = events[-1]
+        # Despite different source_types, identical titles should be detected
+        # as syndicated content -> source_count stays at 1
+        assert final_event.source_count == 1
+
     def test_low_urgency_classification_stored(self, db, config):
         """Low-urgency classifications are stored in the database even though no event is created."""
         corroborator = Corroborator(db, config)
