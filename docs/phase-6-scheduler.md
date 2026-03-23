@@ -1,13 +1,13 @@
 # Phase 6: Scheduler & Integration
 
 ## Objective
-Wire all components together into a single pipeline, run it on a 15-minute schedule with APScheduler, handle errors gracefully so that a failure in one component doesn't crash the system, and provide health monitoring.
+Wire all components together into a single pipeline, run it on a dual-lane schedule (fast lane every 3 minutes, slow lane every 15 minutes) with APScheduler, handle errors gracefully so that a failure in one component doesn't crash the system, and provide health monitoring.
 
 ## Deliverables
 
 ### 6.1 Pipeline Orchestrator (`sentinel/scheduler.py`)
 
-The core loop that runs every 15 minutes:
+The pipeline supports two modes: **fast lane** (Telegram + Google News + priority-1 RSS only) and **slow lane** (all sources including GDELT and lower-priority RSS).
 
 ```python
 class SentinelPipeline:
@@ -28,13 +28,19 @@ class SentinelPipeline:
         self.logger = logging.getLogger("sentinel.pipeline")
         self.stats = PipelineStats()
 
-    async def run_cycle(self) -> CycleResult:
-        """Execute one full pipeline cycle. Returns stats about the run."""
-        cycle_start = datetime.utcnow()
-        self.logger.info("=== Pipeline cycle starting ===")
+    async def run_cycle(self, *, fast_only: bool = False) -> CycleResult:
+        """Execute one pipeline cycle. Returns stats about the run.
 
-        # Step 1: Fetch from all sources
-        raw_articles = await self._fetch_all()
+        Args:
+            fast_only: When True, skips GDELT and filters RSS to priority-1 only.
+                       Used by the fast-lane scheduler job.
+        """
+        cycle_start = datetime.utcnow()
+        lane = "fast" if fast_only else "slow"
+        self.logger.info(f"=== Pipeline cycle starting ({lane} lane) ===")
+
+        # Step 1: Fetch from sources (fast_only skips GDELT, limits RSS to priority 1)
+        raw_articles = await self._fetch_all(fast_only=fast_only)
         self.logger.info(f"Fetched {len(raw_articles)} raw articles")
 
         # Step 2: Normalize
@@ -100,12 +106,22 @@ class SentinelPipeline:
 
         return result
 
-    async def _fetch_all(self) -> list[Article]:
-        """Fetch from all enabled sources. Errors in one source don't affect others."""
+    async def _fetch_all(self, fast_only: bool = False) -> list[Article]:
+        """Fetch from all enabled sources. Errors in one source don't affect others.
+
+        Args:
+            fast_only: When True, skips GDELT and passes max_priority=1 to RSS fetcher.
+        """
         all_articles = []
         for fetcher in self.fetchers:
             try:
-                articles = await fetcher.fetch()
+                # Fast lane: skip GDELT, limit RSS to priority-1 sources
+                if fast_only and fetcher.name == "gdelt":
+                    continue
+                if fast_only and fetcher.name == "rss":
+                    articles = await fetcher.fetch(max_priority=1)
+                else:
+                    articles = await fetcher.fetch()
                 all_articles.extend(articles)
                 self.logger.debug(f"{fetcher.name}: fetched {len(articles)} articles")
             except Exception as e:
@@ -113,7 +129,12 @@ class SentinelPipeline:
         return all_articles
 ```
 
-### 6.2 Scheduler Setup
+### 6.2 Dual-Lane Scheduler Setup
+
+The scheduler runs two APScheduler jobs -- a **fast lane** for time-critical sources and a **slow lane** for comprehensive coverage:
+
+- **`sentinel_fast_lane`**: Runs every `fast_interval_minutes` (default 3 min). Fetches Telegram + Google News + priority-1 RSS only.
+- **`sentinel_slow_lane`**: Runs every `interval_minutes` (default 15 min). Fetches ALL sources including GDELT and lower-priority RSS.
 
 ```python
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -128,33 +149,54 @@ class SentinelScheduler:
         self.logger = logging.getLogger("sentinel.scheduler")
 
     def start(self):
-        """Start the scheduler."""
-        interval = self.config.scheduler.interval_minutes
+        """Start the scheduler with fast-lane and slow-lane jobs."""
+        fast_interval = self.config.scheduler.fast_interval_minutes
+        slow_interval = self.config.scheduler.interval_minutes
         jitter = self.config.scheduler.jitter_seconds
 
+        # Fast lane: Telegram + Google News + priority-1 RSS
         self.scheduler.add_job(
-            self._run_with_error_handling,
-            trigger=IntervalTrigger(minutes=interval, jitter=jitter),
-            id="sentinel_pipeline",
-            name="Project Sentinel Pipeline",
-            max_instances=1,  # Never run two cycles concurrently
-            coalesce=True,    # If missed, run once (not N times)
+            self._run_fast_lane,
+            trigger=IntervalTrigger(minutes=fast_interval, jitter=jitter),
+            id="sentinel_fast_lane",
+            name="Sentinel Fast Lane (Telegram + Google News + P1 RSS)",
+            max_instances=1,
+            coalesce=True,
+        )
+
+        # Slow lane: ALL sources including GDELT and lower-priority RSS
+        self.scheduler.add_job(
+            self._run_slow_lane,
+            trigger=IntervalTrigger(minutes=slow_interval, jitter=jitter),
+            id="sentinel_slow_lane",
+            name="Sentinel Slow Lane (all sources)",
+            max_instances=1,
+            coalesce=True,
         )
 
         self.scheduler.start()
         self.logger.info(
-            f"Scheduler started: interval={interval}min, jitter={jitter}s"
+            f"Scheduler started: fast_lane={fast_interval}min, "
+            f"slow_lane={slow_interval}min, jitter={jitter}s"
         )
 
-    async def _run_with_error_handling(self):
-        """Run the pipeline with top-level error handling."""
+    async def _run_fast_lane(self):
+        """Run the pipeline in fast-only mode (Telegram + Google News + P1 RSS)."""
         try:
-            result = await self.pipeline.run_cycle()
+            result = await self.pipeline.run_cycle(fast_only=True)
             self._update_health(healthy=True, result=result)
         except Exception as e:
-            self.logger.critical(f"Pipeline cycle failed: {e}", exc_info=True)
+            self.logger.critical(f"Fast lane cycle failed: {e}", exc_info=True)
             self._update_health(healthy=False, error=str(e))
-            # Don't re-raise -- let the scheduler continue on next cycle
+
+    async def _run_slow_lane(self):
+        """Run the pipeline with all sources."""
+        try:
+            result = await self.pipeline.run_cycle(fast_only=False)
+            self._update_health(healthy=True, result=result)
+        except Exception as e:
+            self.logger.critical(f"Slow lane cycle failed: {e}", exc_info=True)
+            self._update_health(healthy=False, error=str(e))
 
     def stop(self):
         """Stop the scheduler gracefully."""
@@ -166,7 +208,8 @@ class SentinelScheduler:
 The `jitter` parameter adds a random offset (up to ±30 seconds by default) to each scheduled run. This avoids polling sources exactly on the quarter-hour when many other bots do the same.
 
 #### Coalesce & Max Instances
-- `max_instances=1`: If a cycle takes longer than 15 minutes (unlikely), don't start another one concurrently.
+Both jobs use `max_instances=1, coalesce=True`:
+- `max_instances=1`: If a cycle takes longer than its interval, don't start another one concurrently.
 - `coalesce=True`: If the system was suspended/sleeping and missed a run, only run once when it wakes up (not multiple make-up runs).
 
 ### 6.3 CLI Entry Point (`sentinel.py`)

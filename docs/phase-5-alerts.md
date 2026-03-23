@@ -12,20 +12,23 @@ Wraps the Twilio SDK for outbound calls, SMS, and WhatsApp.
 #### Phone Call
 
 ```python
-def make_alert_call(self, phone_number: str, message_pl: str, event_id: str) -> AlertRecord:
-    """Place an outbound call with Polish TTS message."""
+def make_alert_call(self, phone_number: str, message_pl: str, event_id: str,
+                    confirmation_code: str) -> AlertRecord:
+    """Place an outbound call with Polish TTS message.
+
+    The call instructs the user to check WhatsApp and reply with the
+    6-digit confirmation code to acknowledge receipt.
+    """
     twiml = (
         f'<Response>'
         f'<Say language="pl-PL" voice="Polly.Ewa">'
-        f'Uwaga! Alert systemu Project Sentinel. {message_pl}'
+        f'Uwaga! Alert systemu Project Sentinel. {message_pl}. '
+        f'Sprawdź WhatsApp i odpowiedz kodem: {confirmation_code}.'
         f'</Say>'
         f'<Pause length="2"/>'
         f'<Say language="pl-PL" voice="Polly.Ewa">'
-        f'Powtarzam. {message_pl}'
-        f'</Say>'
-        f'<Pause length="1"/>'
-        f'<Say language="pl-PL" voice="Polly.Ewa">'
-        f'Koniec alertu. Dalsze aktualizacje otrzymasz SMS-em.'
+        f'Powtarzam. {message_pl}. '
+        f'Sprawdź WhatsApp i odpowiedz kodem: {confirmation_code}.'
         f'</Say>'
         f'</Response>'
     )
@@ -53,9 +56,9 @@ def make_alert_call(self, phone_number: str, message_pl: str, event_id: str) -> 
 The phone call speaks in Polish using Amazon Polly's `Ewa` voice (native Polish):
 1. "Uwaga! Alert systemu Project Sentinel." (Attention! Project Sentinel system alert.)
 2. The actual alert message (from `summary_pl`)
-3. 2-second pause
-4. Repeats the alert message (in case user just woke up)
-5. "Koniec alertu. Dalsze aktualizacje otrzymasz SMS-em." (End of alert. Further updates will be sent via SMS.)
+3. Instructs the user to check WhatsApp and reply with the 6-digit confirmation code
+4. 2-second pause
+5. Repeats the alert message and confirmation code (in case user just woke up)
 
 #### SMS
 
@@ -126,19 +129,44 @@ def send_whatsapp(self, phone_number: str, message: str, event_id: str) -> Alert
     )
 ```
 
-#### Check Call Status
+#### WhatsApp Confirmation Code
 
-After placing a call, we need to check its status to determine acknowledgment:
+Before the call loop starts, the system sends a WhatsApp message with a random 6-digit confirmation code. The user must reply with this code on WhatsApp to acknowledge receipt.
 
 ```python
-def get_call_status(self, twilio_sid: str) -> dict:
-    """Check the status of a previously placed call."""
-    call = self.client.calls(twilio_sid).fetch()
-    return {
-        "status": call.status,  # "queued", "ringing", "in-progress", "completed", "busy", "no-answer", "canceled", "failed"
-        "duration": int(call.duration) if call.duration else 0,
-    }
+def send_confirmation_code(self, phone_number: str, code: str, event_id: str) -> AlertRecord:
+    """Send a WhatsApp message with a 6-digit confirmation code."""
+    message = (
+        f"🚨 PROJECT SENTINEL ALERT 🚨\n"
+        f"Otrzymasz połączenie alarmowe.\n"
+        f"Aby potwierdzić odbiór, odpowiedz kodem: {code}"
+    )
+    return self.send_whatsapp(phone_number, message, event_id)
+
+def check_confirmation(self, phone_number: str, code: str) -> bool:
+    """Poll incoming WhatsApp messages to check if the user replied with the code."""
+    messages = self.client.messages.list(
+        from_=f"whatsapp:{phone_number}",
+        to=self.twilio_whatsapp,
+        limit=10,
+    )
+    for msg in messages:
+        if code in msg.body.strip():
+            return True
+    return False
 ```
+
+#### Call Loop
+
+The full call sequence with WhatsApp code confirmation:
+
+1. Generate a random 6-digit code
+2. Send WhatsApp message with the code
+3. Place call (up to **5** attempts, 10 seconds between calls)
+4. After each call attempt, poll WhatsApp for the code reply
+5. If code confirmed → acknowledge event
+6. If all 5 calls exhausted without confirmation → mark `retry_pending`
+7. Next pipeline cycle retries after `retry_interval_minutes` (default 5)
 
 ### 5.2 Call State Machine (`sentinel/alerts/state_machine.py`)
 
@@ -153,35 +181,43 @@ Tracks the lifecycle of each alert to prevent spam and manage retries.
                     └────────────┬──────────────┘
                                  │
                     ┌────────────▼──────────────┐
-                    │       CALL_PLACED         │
-                    │  (Twilio call initiated)   │
+                    │   SEND WHATSAPP CODE      │
+                    │  (random 6-digit code)     │
                     └────────────┬──────────────┘
                                  │
                     ┌────────────▼──────────────┐
-                    │     CHECK CALL STATUS     │
-                    │  (poll Twilio after 60s)   │
+                    │       CALL_PLACED         │
+                    │  (up to 5 attempts,        │
+                    │   10s between calls)       │
+                    └────────────┬──────────────┘
+                                 │
+                    ┌────────────▼──────────────┐
+                    │  CHECK WHATSAPP REPLY     │
+                    │  (poll for code after      │
+                    │   each call attempt)       │
                     └──────┬─────────────┬──────┘
                            │             │
               ┌────────────▼──┐   ┌──────▼───────────┐
-              │  ANSWERED     │   │  NOT ANSWERED     │
-              │  duration>15s │   │  (no-answer/busy/ │
-              │               │   │   failed/short)   │
+              │  CODE         │   │  NO REPLY         │
+              │  CONFIRMED    │   │  (attempt < 5)    │
               └──────┬────────┘   └──────┬────────────┘
                      │                    │
           ┌──────────▼────────┐  ┌───────▼──────────────┐
-          │  ACKNOWLEDGED     │  │  RETRY?              │
-          │  Send follow-up   │  │  attempt < max_retry │
-          │  SMS with details │  └──┬──────────────┬────┘
-          │  Set cooldown     │     │              │
-          └───────────────────┘  ┌──▼────┐   ┌────▼────────┐
-                                 │ WAIT  │   │ MAX RETRIES │
-                                 │ 5 min │   │ REACHED     │
-                                 └──┬────┘   └────┬────────┘
-                                    │              │
-                              ┌─────▼────┐   ┌────▼─────────┐
-                              │ RETRY    │   │ SMS FALLBACK │
-                              │ CALL     │   │ Send SMS     │
-                              └──────────┘   └──────────────┘
+          │  ACKNOWLEDGED     │  │  RETRY CALL          │
+          │  Send confirm SMS │  │  (next attempt)      │
+          │  Send WhatsApp    │  └──┬──────────────┬────┘
+          │  with source links│     │              │
+          │  Set cooldown     │  ┌──▼────┐   ┌────▼────────┐
+          └───────────────────┘  │ CALL  │   │ ALL 5 CALLS │
+                                 │ AGAIN │   │ EXHAUSTED   │
+                                 └───────┘   └────┬────────┘
+                                                   │
+                                          ┌────────▼────────┐
+                                          │  RETRY_PENDING  │
+                                          │  retry after    │
+                                          │  5 min (next    │
+                                          │  cycle)         │
+                                          └─────────────────┘
 ```
 
 #### State Machine Implementation
@@ -221,31 +257,31 @@ class AlertStateMachine:
         # action == "log_only" → do nothing
 
     def check_pending_calls(self) -> None:
-        """Check status of calls that were placed but not yet confirmed.
+        """Check WhatsApp for confirmation code replies on pending calls.
         Called on each scheduler cycle."""
         pending_calls = self.db.get_pending_call_records()
         for record in pending_calls:
-            status = self.twilio.get_call_status(record.twilio_sid)
-            self._handle_call_result(record, status)
+            confirmed = self.twilio.check_confirmation(
+                record.phone_number, record.confirmation_code
+            )
+            self._handle_call_result(record, confirmed)
 ```
 
-#### Cooldown Logic
+#### Post-Acknowledgment Behavior
 
-After an event is acknowledged:
-- No more phone calls for this event for `cooldown_hours` (default: 6)
-- SMS/WhatsApp updates can still be sent if the event is updated with new information
-- A completely NEW event (different event_type or different country) bypasses cooldown
-
-After an event transitions to SMS fallback:
-- No more phone calls for this event
-- Further updates go via SMS
+After event is acknowledged (user replies with 6-digit code on WhatsApp):
+1. Send confirmation SMS with event details
+2. Send WhatsApp message with article source links
+3. Start cooldown (default: 6 hours)
+4. If new sources arrive during cooldown → SMS update only
+5. A completely NEW event (different event_type or different country) bypasses cooldown
 
 #### Preventing Alert Spam
 
 Multiple safeguards:
 1. **Event deduplication** (Corroborator in Phase 4) -- same incident = one event
 2. **Cooldown period** -- no re-call for same event for N hours
-3. **Max retries** -- max 3 call attempts, then SMS fallback
+3. **Max retries** -- max 5 call attempts per call loop, then `retry_pending` until next cycle
 4. **Acknowledged flag** -- once acknowledged, only SMS updates
 5. **Source count threshold** -- phone calls require 2+ independent sources
 
@@ -346,12 +382,14 @@ Pilność: {urgency_score}/10
 ### test_twilio_client.py
 1. `test_make_call_returns_record` -- call creates AlertRecord with correct fields
 2. `test_call_twiml_polish` -- TwiML contains Polish language tag and Polly.Ewa voice
-3. `test_call_message_repeated` -- TwiML contains message twice (for waking user)
+3. `test_call_message_repeated` -- TwiML contains message and confirmation code twice (for waking user)
 4. `test_send_sms_returns_record` -- SMS creates AlertRecord
 5. `test_sms_truncation` -- message > 1600 chars truncated
 6. `test_send_whatsapp_returns_record` -- WhatsApp creates AlertRecord
-7. `test_get_call_status` -- fetches call status from Twilio API
-8. `test_twilio_error_handled` -- TwilioRestException logged, not raised
+7. `test_send_confirmation_code` -- sends WhatsApp message with 6-digit code
+8. `test_check_confirmation_found` -- detects correct code in WhatsApp reply
+9. `test_check_confirmation_not_found` -- returns False when no matching reply
+10. `test_twilio_error_handled` -- TwilioRestException logged, not raised
 
 ### test_state_machine.py
 1. `test_new_critical_event_triggers_call` -- urgency 10 + 2 sources → phone call
@@ -359,10 +397,10 @@ Pilność: {urgency_score}/10
 3. `test_high_urgency_triggers_sms` -- urgency 8 → SMS
 4. `test_medium_urgency_triggers_whatsapp` -- urgency 6 → WhatsApp
 5. `test_low_urgency_logs_only` -- urgency 3 → no alert sent
-6. `test_answered_call_acknowledged` -- call completed, duration 30s → acknowledged
-7. `test_short_call_not_acknowledged` -- call completed, duration 5s → not acknowledged, retry
+6. `test_whatsapp_code_confirmed_acknowledged` -- user replies with correct code → acknowledged
+7. `test_whatsapp_code_not_confirmed_retry` -- no code reply after call → retry next attempt
 8. `test_no_answer_retry` -- call no-answer → retry after interval
-9. `test_max_retries_sms_fallback` -- 3 failed calls → SMS fallback
+9. `test_max_retries_retry_pending` -- 5 failed calls → retry_pending, retried next cycle
 10. `test_cooldown_prevents_recall` -- acknowledged event within cooldown → no call
 11. `test_cooldown_expired_allows_call` -- acknowledged event after cooldown → can call again
 12. `test_new_event_bypasses_cooldown` -- different event during cooldown → calls normally

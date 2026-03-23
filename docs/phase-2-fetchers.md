@@ -42,15 +42,51 @@ All fetchers:
 Polls all RSS feeds defined in `config.sources.rss` where `enabled: true`.
 
 #### Behavior
-1. For each enabled RSS source in config:
+1. All enabled RSS sources are fetched **concurrently** using `asyncio.gather()`. Each source is wrapped in a safe handler so one timeout or failure doesn't block others -- total fetch time is the time of the slowest source, not the sum of all.
+2. For each enabled RSS source in config:
    - Send HTTP GET with `If-Modified-Since` / `If-None-Match` headers (cache previous ETag/Last-Modified per source)
    - Parse response with `feedparser`
    - For each entry in the feed:
      - Extract `title`, `link`, `published` (or `updated`), `summary`
      - Create an `Article` with `source_type="rss"`, `source_name` from config, `language` from config
      - Store GDELT-style metadata if available (tone, themes) in `raw_metadata`
-2. Handle errors per source (one broken feed shouldn't skip all others)
-3. Return all collected articles
+3. Handle errors per source (one broken feed shouldn't skip all others)
+4. Return all collected articles
+
+#### `max_priority` Parameter
+
+```python
+async def fetch(self, *, max_priority: int | None = None) -> list[Article]:
+    """Fetch articles from all enabled RSS sources.
+
+    Args:
+        max_priority: When set (e.g., max_priority=1), only fetches RSS sources
+                      with priority <= max_priority. Used by the fast-lane
+                      scheduler job to fetch only priority-1 (critical) sources.
+    """
+```
+
+#### RSS Source Priority Field
+
+Each RSS source in config has an integer `priority` field:
+- **Priority 1**: Fast-lane sources -- checked every 3 minutes (e.g., major national news agencies, military-focused feeds)
+- **Priority 2-3**: Slow-lane only -- checked every 15 minutes (e.g., regional sources, less critical feeds)
+
+Example config:
+```yaml
+sources:
+  rss:
+    - name: "PAP"
+      url: "https://www.pap.pl/rss.xml"
+      language: "pl"
+      priority: 1
+      enabled: true
+    - name: "Gazeta Wyborcza"
+      url: "https://wyborcza.pl/0,0.rss"
+      language: "pl"
+      priority: 2
+      enabled: true
+```
 
 #### HTTP Headers
 ```python
@@ -176,13 +212,14 @@ def build_feed_url(self, query: GoogleNewsQuery) -> str:
 The `when:1h` parameter limits results to the last hour, ensuring freshness.
 
 #### Behavior
-1. For each query in `config.sources.google_news.queries`:
+1. All queries are fetched **concurrently** using `asyncio.gather()`. Each query is wrapped in a safe handler so one timeout or failure doesn't block others -- total fetch time is the time of the slowest query, not the sum of all.
+2. For each query in `config.sources.google_news.queries`:
    - Build the RSS URL
    - Fetch and parse with `feedparser`
    - Extract articles same as RSS fetcher
    - Set `source_type = "google_news"`, `source_name = f"GoogleNews:{query.query}"`
-2. Google News entries often link to the original source article -- extract the actual URL from the redirect if possible
-3. Handle HTTP 429 (rate limited) by backing off
+3. Google News entries often link to the original source article -- extract the actual URL from the redirect if possible
+4. Handle HTTP 429 (rate limited) by backing off
 
 #### Google News Redirect Resolution
 Google News RSS links are redirects (`https://news.google.com/rss/articles/...`). To get the actual article URL:
@@ -282,6 +319,9 @@ Errors in one source must never prevent other sources from being polled.
 7. `test_disabled_feed_skipped` -- feed with `enabled: false` not polled
 8. `test_timeout_handling` -- request timeout returns empty list for that feed
 9. `test_html_stripped_from_summary` -- HTML tags removed from summary text
+10. `test_concurrent_fetch` -- multiple feeds fetched concurrently via asyncio.gather
+11. `test_max_priority_filters_sources` -- `fetch(max_priority=1)` only fetches priority-1 sources
+12. `test_max_priority_none_fetches_all` -- `fetch()` without max_priority fetches all sources
 
 ### test_gdelt.py
 1. `test_parse_valid_response` -- parse sample GDELT JSON, verify Article fields
@@ -296,6 +336,7 @@ Errors in one source must never prevent other sources from being polled.
 2. `test_parse_results` -- parse Google News RSS entries
 3. `test_polish_query` -- Polish-language query URL constructed correctly
 4. `test_rate_limit_handling` -- HTTP 429 handled gracefully
+5. `test_concurrent_fetch` -- multiple queries fetched concurrently via asyncio.gather
 
 ### test_telegram.py
 1. `test_message_to_article` -- Telegram message converted to Article correctly
