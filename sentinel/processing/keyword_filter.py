@@ -92,6 +92,49 @@ class KeywordFilter:
                 result.append(article)
         return result
 
+    def diagnose(self, article: Article) -> dict:
+        """Return detailed keyword filter analysis for diagnostic purposes.
+
+        Always returns a dict with keys: passed, critical, high, excluded_by.
+        """
+        lang = article.language
+        keywords_cfg = self.config.monitoring.keywords
+
+        if lang in keywords_cfg:
+            keyword_set = keywords_cfg[lang]
+        else:
+            keyword_set = keywords_cfg.get("en")
+            if keyword_set is None:
+                return {
+                    "passed": False,
+                    "critical": [],
+                    "high": [],
+                    "excluded_by": [],
+                }
+            lang = "en"
+
+        searchable = f"{article.title} {article.summary}".lower()
+
+        critical = self._find_matches(searchable, keyword_set.critical, lang)
+        high = self._find_matches(searchable, keyword_set.high, lang)
+
+        excluded_by: list[str] = []
+        if not critical:
+            exclude_lists = self.config.monitoring.exclude_keywords
+            exclude_kws = exclude_lists.get(lang, [])
+            if lang != "en":
+                exclude_kws = exclude_kws + exclude_lists.get("en", [])
+            excluded_by = self._find_matches(searchable, exclude_kws, lang)
+
+        passed = bool(critical or (high and not excluded_by))
+
+        return {
+            "passed": passed,
+            "critical": critical,
+            "high": high,
+            "excluded_by": excluded_by,
+        }
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------

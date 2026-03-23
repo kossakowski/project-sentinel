@@ -16,13 +16,17 @@ class Deduplicator:
         self.db = db
         self.config = config
         self.logger = logging.getLogger("sentinel.deduplicator")
+        self.diagnostic_reasons: dict[str, str] = {}
 
-    def is_duplicate(self, article: Article) -> bool:
-        """Check if article is a duplicate. Returns True if it should be skipped."""
+    def _check_duplicate(self, article: Article) -> str | None:
+        """Check if article is a duplicate.
+
+        Returns a reason string if duplicate, None if unique.
+        """
         # Strategy 1: exact URL dedup
         if self.db.article_exists(article.url_hash):
             self.logger.debug("URL duplicate: %s", article.source_url[:80])
-            return True
+            return "URL already seen"
 
         # Strategy 2: fuzzy title dedup
         dedup_cfg = self.config.processing.dedup
@@ -38,7 +42,7 @@ class Deduplicator:
                     ratio,
                     article.title[:60],
                 )
-                return True
+                return f"Title ~{ratio:.0f}% (cross-source)"
 
             # Similar within same source -> duplicate (republished)
             if (
@@ -50,14 +54,23 @@ class Deduplicator:
                     ratio,
                     article.title[:60],
                 )
-                return True
+                return f"Title ~{ratio:.0f}% (same source)"
 
-        return False
+        return None
 
-    def deduplicate_batch(self, articles: list[Article]) -> list[Article]:
+    def is_duplicate(self, article: Article) -> bool:
+        """Check if article is a duplicate. Returns True if it should be skipped."""
+        return self._check_duplicate(article) is not None
+
+    def deduplicate_batch(
+        self, articles: list[Article], *, diagnostic: bool = False
+    ) -> list[Article]:
         """Filter out duplicates from a batch. Non-duplicates are inserted into DB."""
         unique: list[Article] = []
         seen_hashes: set[str] = set()
+
+        if diagnostic:
+            self.diagnostic_reasons.clear()
 
         for article in articles:
             # Batch-internal dedup: skip if we already accepted an article
@@ -66,9 +79,14 @@ class Deduplicator:
                 self.logger.debug(
                     "Batch-internal duplicate: %s", article.title[:60]
                 )
+                if diagnostic:
+                    self.diagnostic_reasons[article.id] = "Batch-internal duplicate"
                 continue
 
-            if self.is_duplicate(article):
+            reason = self._check_duplicate(article)
+            if reason is not None:
+                if diagnostic:
+                    self.diagnostic_reasons[article.id] = reason
                 continue
 
             # Insert into DB so subsequent articles in the batch can dedup against it

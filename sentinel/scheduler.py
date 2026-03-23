@@ -223,7 +223,9 @@ class SentinelPipeline:
         normalized = self.normalizer.normalize_batch(raw_articles)
 
         # Step 3: Deduplicate
-        unique = self.deduplicator.deduplicate_batch(normalized)
+        unique = self.deduplicator.deduplicate_batch(
+            normalized, diagnostic=diagnostic
+        )
         self.logger.info("After dedup: %d unique articles", len(unique))
 
         # Step 4: Keyword filter
@@ -244,26 +246,23 @@ class SentinelPipeline:
                 )
                 classifications = []
 
-        # Build diagnostic data if requested
-        if diagnostic:
-            self._build_diagnostic_data(
-                cycle_start, normalized, unique, relevant, classifications
-            )
+        # Step 6: Corroborate (group into events)
+        events = self.corroborator.process_classifications(classifications)
+        alertable_events = [e for e in events if e.alert_status != "pending"]
+        self.logger.info("Events needing alerts: %d", len(alertable_events))
 
         if not diagnostic:
-            # Step 6: Corroborate (group into events)
-            events = self.corroborator.process_classifications(classifications)
-            alertable_events = [e for e in events if e.alert_status != "pending"]
-            self.logger.info("Events needing alerts: %d", len(alertable_events))
-
             # Step 7: Dispatch alerts
             self.dispatcher.dispatch(alertable_events)
 
             # Step 8: Check pending call statuses from previous cycles
             self.state_machine.check_pending_calls()
-        else:
-            events = []
-            alertable_events = []
+
+        # Build diagnostic data if requested (after corroboration so we capture events)
+        if diagnostic:
+            self._build_diagnostic_data(
+                cycle_start, normalized, unique, relevant, classifications, events
+            )
 
         # Step 9: Cleanup old records
         self.db.cleanup_old_records(
@@ -313,27 +312,52 @@ class SentinelPipeline:
         unique: list[Article],
         relevant: list[Article],
         classifications: list,
+        events: list,
     ) -> None:
         """Build diagnostic data from pipeline intermediate results."""
         unique_ids = {a.id for a in unique}
         relevant_ids = {a.id for a in relevant}
         cls_map = {c.article_id: c for c in classifications}
 
+        # Reverse map: article_id -> event
+        article_to_event: dict = {}
+        for event in events:
+            for aid in event.article_ids:
+                article_to_event[aid] = event
+
         items: list[DiagnosticArticle] = []
         for article in normalized:
-            if article.id not in unique_ids:
-                items.append(DiagnosticArticle(article=article, stage="duplicate"))
-            elif article.id not in relevant_ids:
-                items.append(DiagnosticArticle(article=article, stage="filtered"))
-            else:
-                items.append(
-                    DiagnosticArticle(
-                        article=article,
-                        stage="classified",
-                        keyword_match=article.raw_metadata.get("keyword_match"),
-                        classification=cls_map.get(article.id),
-                    )
+            is_dup = article.id not in unique_ids
+
+            # Dedup stage
+            if is_dup:
+                dedup_reason = self.deduplicator.diagnostic_reasons.get(
+                    article.id, "Duplicate"
                 )
+            else:
+                dedup_reason = ""
+
+            # Keyword filter stage (only for non-duplicates)
+            kw_info = None
+            if not is_dup:
+                kw_info = self.keyword_filter.diagnose(article)
+
+            # Classification (only for keyword-matched articles)
+            cls_result = cls_map.get(article.id) if article.id in relevant_ids else None
+
+            # Corroboration (only for classified articles)
+            event = article_to_event.get(article.id)
+
+            items.append(
+                DiagnosticArticle(
+                    article=article,
+                    dedup_passed=not is_dup,
+                    dedup_reason=dedup_reason,
+                    keyword_info=kw_info,
+                    classification=cls_result,
+                    event=event,
+                )
+            )
 
         self.diagnostic_data = DiagnosticData(
             cycle_start=cycle_start,
@@ -342,6 +366,7 @@ class SentinelPipeline:
             total_unique=len(unique),
             total_relevant=len(relevant),
             total_classified=len(classifications),
+            total_events=len(events),
             items=items,
         )
 
