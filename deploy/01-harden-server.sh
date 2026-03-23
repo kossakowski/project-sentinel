@@ -178,12 +178,32 @@ fi
 echo "[10/10] Hardening SSH configuration..."
 
 # Install the sshd_config.d drop-in snippet (survives package upgrades)
-export SSH_PORT
-envsubst '$SSH_PORT' < "$DEPLOY_DIR/configs/sshd_config" > /etc/ssh/sshd_config.d/99-sentinel-hardening.conf
+sed "s/SSH_PORT_PLACEHOLDER/$SSH_PORT/" "$DEPLOY_DIR/configs/sshd_config" \
+    > /etc/ssh/sshd_config.d/99-sentinel-hardening.conf
+
+# Ubuntu 24.04 uses socket activation (ssh.socket) which overrides sshd_config Port.
+# We must override the socket to change the listening port.
+if systemctl is-enabled ssh.socket &>/dev/null; then
+    mkdir -p /etc/systemd/system/ssh.socket.d
+    cat > /etc/systemd/system/ssh.socket.d/override.conf << SOCKEOF
+[Socket]
+ListenStream=
+ListenStream=0.0.0.0:$SSH_PORT
+ListenStream=[::]:$SSH_PORT
+SOCKEOF
+    echo "  ssh.socket override created for port $SSH_PORT."
+fi
+
+systemctl daemon-reload
 
 # Validate BEFORE restarting
 if sshd -t; then
-    systemctl restart sshd
+    # Restart via socket if socket-activated, otherwise via service
+    if systemctl is-enabled ssh.socket &>/dev/null; then
+        systemctl restart ssh.socket
+    else
+        systemctl restart ssh || systemctl restart sshd
+    fi
     echo "  SSH hardened and restarted on port $SSH_PORT."
 
     # Remove the temporary port 22 rule
@@ -192,6 +212,7 @@ if sshd -t; then
 else
     echo "  ERROR: SSH config validation failed. Removing snippet."
     rm -f /etc/ssh/sshd_config.d/99-sentinel-hardening.conf
+    rm -rf /etc/systemd/system/ssh.socket.d
     die "SSH config invalid -- removed snippet, SSH unchanged."
 fi
 

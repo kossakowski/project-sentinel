@@ -3,7 +3,7 @@
 # Applied by 01-harden-server.sh
 # Port can be overridden by setting SSH_PORT before running the script.
 
-Port ${SSH_PORT:-2222}
+Port SSH_PORT_PLACEHOLDER
 
 # Authentication
 PermitRootLogin no
