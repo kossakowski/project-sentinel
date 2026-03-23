@@ -147,7 +147,7 @@ sources:
 | `url` | URL | yes | -- | RSS/Atom feed URL |
 | `language` | string | yes | -- | ISO 639-1 language code |
 | `enabled` | bool | no | `true` | Whether to poll this feed |
-| `priority` | int | no | `2` | Source priority (1-3) |
+| `priority` | int | no | `2` | Source priority (1-3). Priority 1 sources are included in the fast lane (polled every `fast_interval_minutes`) |
 
 #### `sources.gdelt`
 
@@ -280,7 +280,7 @@ alerts:
       min_score: 9
       action: phone_call
       corroboration_required: 2
-      retry_attempts: 3
+      retry_attempts: 5
       retry_interval_minutes: 5
       fallback: sms
     high:
@@ -299,8 +299,7 @@ alerts:
     sms: "... (see config.example.yaml for full default)"
     sms_update: "... (see config.example.yaml for full default)"
   acknowledgment:
-    call_duration_threshold_seconds: 15
-    max_call_retries: 3
+    max_call_retries: 5
     retry_interval_minutes: 5
     cooldown_hours: 6
 ```
@@ -328,11 +327,12 @@ Alert message templates are Python format strings with named placeholders. Defau
 
 #### Acknowledgment Fields
 
+Confirmation is via WhatsApp 6-digit code reply. Before calls begin, a confirmation code is sent via WhatsApp. After each call attempt, the system checks WhatsApp for the correct code. If received, the event is acknowledged.
+
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `call_duration_threshold_seconds` | int | `15` | Call duration to consider "answered" |
-| `max_call_retries` | int | `3` | Max call attempts before SMS fallback |
-| `retry_interval_minutes` | int | `5` | Wait between call retries |
+| `max_call_retries` | int | `5` | Max call attempts before marking `retry_pending` |
+| `retry_interval_minutes` | int | `5` | Wait between retry cycles after all call attempts are exhausted |
 | `cooldown_hours` | int | `6` | No re-call for same event within this period |
 
 ---
@@ -342,12 +342,14 @@ Alert message templates are Python format strings with named placeholders. Defau
 ```yaml
 scheduler:
   interval_minutes: 15
+  fast_interval_minutes: 3
   jitter_seconds: 30
 ```
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `interval_minutes` | int | `15` | Pipeline execution interval |
+| `interval_minutes` | int | `15` | Slow-lane pipeline execution interval (all sources incl. GDELT) |
+| `fast_interval_minutes` | int | `3` | Fast-lane interval in minutes. Controls how often Telegram, Google News, and priority-1 RSS are polled |
 | `jitter_seconds` | int | `30` | Random offset added/subtracted to interval |
 
 ---

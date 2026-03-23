@@ -70,7 +70,10 @@ When a credible threat is detected, Project Sentinel calls the user's phone imme
 │                                                             │
 │  Corroboration check:                                       │
 │    - Count independent sources reporting same event         │
-│    - Require 2+ sources for phone call trigger              │
+│    - Independence checked across ALL source types            │
+│    - Title similarity (>=90%) + domain match detects         │
+│      syndication (prevents false triggers)                  │
+│    - Require 2+ independent sources for phone call trigger  │
 │                                                             │
 └─────────────────────────────┬───────────────────────────────┘
                               │
@@ -126,9 +129,9 @@ When a credible threat is detected, Project Sentinel calls the user's phone imme
 |---|---|---|
 | **Config Loader** | Load and validate `config/config.yaml` | `pyyaml`, `pydantic` |
 | **Database** | Store articles, events, alert state | `sqlite3` (stdlib) |
-| **RSS Fetcher** | Poll RSS feeds from configured sources | `feedparser`, `httpx` |
+| **RSS Fetcher** | Poll RSS feeds from configured sources (concurrently via `asyncio.gather()`) | `feedparser`, `httpx` |
 | **GDELT Fetcher** | Query GDELT DOC 2.0 API for conflict events | `httpx` |
-| **Google News Fetcher** | Poll Google News keyword RSS feeds | `feedparser`, `httpx` |
+| **Google News Fetcher** | Poll Google News keyword RSS feeds (concurrently via `asyncio.gather()`) | `feedparser`, `httpx` |
 | **Telegram Fetcher** | Listen to configured Telegram channels | `telethon` |
 | **Normalizer** | Convert all fetcher outputs to unified Article format | -- |
 | **Deduplicator** | Reject already-seen articles | `rapidfuzz`, `sqlite3` |
@@ -136,10 +139,10 @@ When a credible threat is detected, Project Sentinel calls the user's phone imme
 | **Classifier** | Classify articles via Claude Haiku 4.5, extract structured event data, track token usage | `anthropic` |
 | **Corroborator** | Group classifications into events, check source independence, determine alert level | `rapidfuzz`, `sqlite3` |
 | **Twilio Client** | Transport layer: place calls (Polish TTS via Polly.Ewa), send SMS (1600-char truncation), send WhatsApp, check call status | `twilio` |
-| **Alert State Machine** | Alert lifecycle: decision matrix routing, call acknowledgment (duration >15s), retries with 5-min interval, max 3 retries then SMS fallback, 6h cooldown, corroboration upgrade, config-driven Polish templates | `sqlite3` |
+| **Alert State Machine** | Alert lifecycle: decision matrix routing, WhatsApp 6-digit code confirmation, calls up to 5 attempts (10s apart), retry_pending after exhaustion, 6h cooldown, corroboration upgrade, config-driven Polish templates | `sqlite3` |
 | **Alert Dispatcher** | Route events sorted by urgency to state machine, support dry-run mode | -- |
 | **Pipeline** | Orchestrate full fetch→process→classify→alert cycle, error isolation per component, cycle statistics tracking | -- |
-| **Scheduler** | Run pipeline on configurable interval with jitter, max_instances=1, coalesce=True, health monitoring to `data/health.json`, daily summary logging, self-healing SMS on repeated failures | `apscheduler` |
+| **Scheduler** | Dual-lane pipeline: fast lane (3 min, Telegram + Google News + priority-1 RSS) and slow lane (15 min, all sources incl. GDELT), both with max_instances=1, coalesce=True, jitter, health monitoring to `data/health.json`, daily summary logging, self-healing SMS on repeated failures | `apscheduler` |
 | **CLI** | Parse arguments (`--dry-run`, `--once`, `--health`, `--test-headline`, `--test-file`, `--config`, `--log-level`), continuous and single-cycle modes, graceful Ctrl+C shutdown | `argparse` (stdlib) |
 
 ## 4. Data Models
@@ -232,13 +235,13 @@ AlertRecord:
 ## 6. Key Design Decisions
 
 ### 6.1 Why polling, not streaming?
-Most sources (RSS, GDELT, Google News) don't support streaming/webhooks. Telegram does support real-time events, so the Telegram fetcher runs as a background listener that buffers messages between poll cycles. Everything else is polled every 15 minutes -- matching GDELT's update frequency.
+Most sources (RSS, GDELT, Google News) don't support streaming/webhooks. Telegram does support real-time events, so the Telegram fetcher runs as a background listener that buffers messages between poll cycles. The scheduler uses a dual-lane architecture: a **fast lane** (every 3 minutes) polls Telegram, Google News, and priority-1 RSS feeds for rapid detection, while a **slow lane** (every 15 minutes) polls all sources including GDELT and lower-priority RSS -- matching GDELT's update frequency. Both lanes use `max_instances=1, coalesce=True` to prevent overlapping runs. Intervals are configurable via `scheduler.fast_interval_minutes` (fast) and `scheduler.interval_minutes` (slow).
 
 ### 6.2 Why corroboration before phone call?
-A single source could be wrong, hacked, or misinterpreted. Requiring 2+ independent sources before triggering a phone call dramatically reduces false positives. For lower-severity alerts (SMS, WhatsApp), a single source suffices.
+A single source could be wrong, hacked, or misinterpreted. Requiring 2+ independent sources before triggering a phone call dramatically reduces false positives. For lower-severity alerts (SMS, WhatsApp), a single source suffices. Source independence is checked across **all** source types (not just within the same type) using title similarity (>= 90% fuzzy match via rapidfuzz) and domain matching to detect syndication. This prevents false phone call triggers from syndicated content republished across multiple outlets.
 
-### 6.3 Why call duration as acknowledgment?
-The simplest approach that doesn't require the monitoring server to be publicly accessible (no inbound webhooks needed). If a call is answered and lasts >15 seconds, the user heard the message. This avoids needing to expose the VPS to inbound Twilio webhooks, reducing attack surface and complexity.
+### 6.3 Why WhatsApp confirmation codes?
+Before placing calls, the system sends a 6-digit confirmation code via WhatsApp. After each call attempt (up to 5, configurable via `max_call_retries`), the system checks WhatsApp for the correct code reply. This is more reliable than call-duration heuristics and doesn't require the monitoring server to be publicly accessible (no inbound webhooks needed). If the code is received, the event is acknowledged, and a follow-up SMS with article links is sent via WhatsApp. If all call attempts are exhausted without confirmation, the event is marked `retry_pending` and retried after `retry_interval_minutes` (default 5). After acknowledgment, a cooldown period (default 6 hours) prevents re-calling for the same event; new sources for an acknowledged event trigger SMS updates only.
 
 ### 6.4 Why SQLite, not Postgres?
 At the expected volume (~100-500 articles/day, ~1-5 events/day), SQLite is more than sufficient. It's zero-configuration, single-file (easy backup), and has no network overhead. If the system scales beyond a single instance, migrate to Postgres then.
