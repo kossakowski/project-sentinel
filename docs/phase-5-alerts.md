@@ -413,5 +413,25 @@ Pilność: {urgency_score}/10
 3. `test_events_sorted_by_urgency` -- highest urgency processed first
 4. `test_dry_run_log_format` -- dry run log contains urgency, action, summary
 
+### 5.4 End-to-End Alert Testing (`--test-alert`)
+
+The `--test-alert` CLI flag fires a real Twilio alert without running the pipeline. It creates a synthetic event directly in the database and dispatches it through `AlertStateMachine.process_event()`, bypassing fetching, classification, and corroboration entirely.
+
+```bash
+python sentinel.py --test-alert              # phone call (default)
+python sentinel.py --test-alert sms          # SMS
+python sentinel.py --test-alert whatsapp     # WhatsApp
+```
+
+**Synthetic event properties:**
+- `event_type`: `missile_strike`
+- `urgency_score`: `10`
+- `source_count`: `2` (satisfies `corroboration_required`)
+- `aggressor`: `TEST`
+- `summary_pl`: `[TEST] To jest próba alertu systemu Project Sentinel. Nie ma zagrożenia.`
+- `alert_status`: matches the requested alert type
+
+This flag forces `dry_run=False` regardless of config. No Claude API costs — only Twilio charges for the actual call/message.
+
 ## Dependencies
 No new dependencies (Twilio SDK already in requirements.txt).

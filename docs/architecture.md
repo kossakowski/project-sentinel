@@ -143,7 +143,7 @@ When a credible threat is detected, Project Sentinel calls the user's phone imme
 | **Alert Dispatcher** | Route events sorted by urgency to state machine, support dry-run mode | -- |
 | **Pipeline** | Orchestrate full fetch→process→classify→alert cycle, error isolation per component, cycle statistics tracking | -- |
 | **Scheduler** | Dual-lane pipeline: fast lane (3 min, Telegram + Google News + priority-1 RSS) and slow lane (15 min, all sources incl. GDELT), both with max_instances=1, coalesce=True, jitter, health monitoring to `data/health.json`, daily summary logging, self-healing SMS on repeated failures | `apscheduler` |
-| **CLI** | Parse arguments (`--dry-run`, `--once`, `--health`, `--test-headline`, `--test-file`, `--config`, `--log-level`), continuous and single-cycle modes, graceful Ctrl+C shutdown | `argparse` (stdlib) |
+| **CLI** | Parse arguments (`--dry-run`, `--once`, `--health`, `--test-headline`, `--test-file`, `--test-alert`, `--diagnostic`, `--config`, `--log-level`), continuous and single-cycle modes, graceful Ctrl+C shutdown | `argparse` (stdlib) |
 
 ## 4. Data Models
 

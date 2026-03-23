@@ -257,20 +257,26 @@ Use Python's `logging` module with `RotatingFileHandler`:
 ### 1.5 CLI Entry Point (`sentinel.py`)
 
 ```
-usage: sentinel.py [-h] [--dry-run] [--test-headline HEADLINE]
-                   [--test-file FILE] [--config CONFIG] [--once]
-                   [--log-level LEVEL]
+usage: sentinel.py [-h] [--dry-run] [--test-headline TEXT]
+                   [--test-file FILE] [--config PATH] [--once]
+                   [--log-level LEVEL] [--health] [--diagnostic]
+                   [--test-alert [TYPE]]
 
 Project Sentinel - Military Alert Monitoring System
 
 options:
-  --dry-run           Run pipeline but don't send any Twilio alerts (log only)
-  --test-headline TXT Feed a single headline through the classifier and print result
-  --test-file FILE    Feed all headlines from a YAML file through the classifier
-  --config PATH       Path to config file (default: config/config.yaml)
-  --once              Run the pipeline once and exit (don't schedule)
-  --log-level LEVEL   Override config log level (DEBUG, INFO, WARNING, ERROR)
-  -h, --help          Show this help message
+  --dry-run            Run pipeline but don't send any Twilio alerts (log only)
+  --test-headline TEXT Feed a single headline through the classifier and print result
+  --test-file FILE     Feed all headlines from a YAML file through the classifier
+  --config PATH        Path to config file (default: config/config.yaml)
+  --once               Run the pipeline once and exit (don't schedule)
+  --log-level LEVEL    Override config log level (DEBUG, INFO, WARNING, ERROR)
+  --health             Print health status and exit
+  --diagnostic         Run one cycle and generate an HTML diagnostic report
+  --test-alert [TYPE]  Fire a real test alert through Twilio (default: phone_call).
+                       Choices: phone_call, sms, whatsapp. Bypasses fetching,
+                       classification, and corroboration.
+  -h, --help           Show this help message
 ```
 
 In Phase 1, the CLI only needs to:

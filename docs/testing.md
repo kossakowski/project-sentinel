@@ -100,7 +100,46 @@ Classify multiple headlines from a YAML file and optionally compare against expe
 python sentinel.py --test-file tests/fixtures/test_headlines.yaml
 ```
 
-### 4. Health Check Mode (`--health`)
+### 4. Diagnostic Mode (`--diagnostic`)
+
+Run one full pipeline cycle and generate an HTML report at `data/diagnostic.html` with every fetched article, its keyword match, classification result, and corroboration status. Automatically enables dry-run (no alerts sent). Useful for tuning keyword lists and classifier accuracy against live data.
+
+```bash
+python sentinel.py --diagnostic
+# → opens data/diagnostic.html
+```
+
+### 5. Test Alert Mode (`--test-alert`)
+
+Fire a **real** Twilio alert (phone call, SMS, or WhatsApp) without fetching any sources, running classification, or requiring corroboration. Injects a synthetic event directly into the alert state machine. Use this to verify that Twilio credentials work, the phone rings, and the WhatsApp confirmation flow operates correctly.
+
+```bash
+# Default: phone call (includes WhatsApp confirmation code + call loop)
+python sentinel.py --test-alert
+
+# Explicit type choices
+python sentinel.py --test-alert phone_call
+python sentinel.py --test-alert sms
+python sentinel.py --test-alert whatsapp
+```
+
+**What happens:**
+1. A synthetic article (`[TEST] Próba alertu systemu Project Sentinel`) is created and stored in the DB
+2. A synthetic event is created with `urgency=10`, `source_count=2`, bypassing corroboration
+3. The event is routed through the real `AlertStateMachine.process_event()`
+4. For `phone_call`: sends a WhatsApp with a 6-digit confirmation code, then starts calling (up to 5 attempts). Reply with the code on WhatsApp to stop the calls.
+5. For `sms`/`whatsapp`: sends a single message via the respective channel
+
+**What to check:**
+- Phone rings / SMS arrives / WhatsApp message received
+- Message content is in Polish with `[TEST]` prefix
+- For phone calls: WhatsApp confirmation code flow works end-to-end
+- No classification API costs (Claude Haiku is not called)
+- Twilio charges apply (one real call/message is placed)
+
+**Important:** This flag forces `dry_run=False` regardless of config, since the whole point is to fire a real alert.
+
+### 6. Health Check Mode (`--health`)
 
 Print the current system health status from `data/health.json`. This file is written after each pipeline cycle and includes: last cycle timestamp, duration, articles fetched, alerts sent, consecutive failures, per-fetcher status, DB size, and uptime.
 
@@ -108,7 +147,7 @@ Print the current system health status from `data/health.json`. This file is wri
 python sentinel.py --health
 ```
 
-### 5. Test Headlines Fixture Format
+### 7. Test Headlines Fixture Format
 
 `tests/fixtures/test_headlines.yaml`:
 
@@ -309,7 +348,7 @@ headlines:
       affected_countries: ["LT"]
 ```
 
-### 6. Test File Output Format
+### 8. Test File Output Format
 
 ```
 ═══════════════════════════════════════════════════════════════════════════
@@ -346,25 +385,22 @@ python sentinel.py --once --dry-run --log-level DEBUG
 sqlite3 data/sentinel.db "SELECT source_name, title, urgency_score FROM articles a LEFT JOIN classifications c ON a.id = c.article_id ORDER BY a.fetched_at DESC LIMIT 20;"
 ```
 
-### Testing Twilio Integration
-
-Before going live, verify Twilio works:
-
-```bash
-# Use the existing Flask app to test a call
-curl -X POST http://localhost:5000/api/call \
-  -H "Content-Type: application/json" \
-  -d '{"to": "+48XXXXXXXXX", "message": "Test alertu Project Sentinel. To jest test.", "language": "pl-PL"}'
-```
-
 ### Testing the Full Alert Flow
 
-1. Set `testing.dry_run: false` in config
-2. Modify `test_headlines.yaml` to have a single critical headline
-3. Run: `python sentinel.py --test-headline "Russia invades Poland"` -- verify classification is correct
-4. Temporarily lower `corroboration_required` to 1
-5. Run: `python sentinel.py --once` -- verify phone call received
-6. Restore `corroboration_required` to 2
+Use `--test-alert` to verify the entire Twilio alert path end-to-end:
+
+```bash
+# 1. Test that a phone call arrives and WhatsApp confirmation works
+python sentinel.py --test-alert phone_call
+
+# 2. Test that SMS delivery works
+python sentinel.py --test-alert sms
+
+# 3. Test that WhatsApp delivery works
+python sentinel.py --test-alert whatsapp
+```
+
+This bypasses fetching, classification, and corroboration — it injects a synthetic event directly into the alert state machine with `urgency=10` and `source_count=2`. No API costs except Twilio itself.
 
 ## pytest Configuration
 

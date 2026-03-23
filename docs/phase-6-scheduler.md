@@ -239,6 +239,11 @@ def main():
         help="Override log level")
     parser.add_argument("--health", action="store_true",
         help="Print health status and exit")
+    parser.add_argument("--diagnostic", action="store_true",
+        help="Run one cycle and generate an HTML diagnostic report")
+    parser.add_argument("--test-alert", nargs="?", const="phone_call",
+        choices=["phone_call", "sms", "whatsapp"], metavar="TYPE",
+        help="Fire a real test alert through Twilio (default: phone_call)")
 
     args = parser.parse_args()
 
@@ -262,9 +267,20 @@ def main():
         asyncio.run(test_headline_file(config, args.test_file))
         sys.exit(0)
 
+    # Mode: test alert (fires real Twilio alert with synthetic event)
+    if args.test_alert:
+        _run_test_alert(args.test_alert, config, logger)
+        sys.exit(0)
+
     # Mode: health check
     if args.health:
         print_health(config)
+        sys.exit(0)
+
+    # Mode: diagnostic (one cycle, HTML report, dry-run forced)
+    if args.diagnostic:
+        config.testing.dry_run = True
+        asyncio.run(run_diagnostic(config))
         sys.exit(0)
 
     # Mode: run once
