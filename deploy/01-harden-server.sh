@@ -105,9 +105,10 @@ echo "[5/10] Configuring firewall (UFW)..."
 apt install -y ufw
 ufw default deny incoming
 ufw default allow outgoing
+ufw allow 22/tcp comment 'SSH (temporary, removed after port change)'
 ufw allow "$SSH_PORT/tcp" comment 'SSH'
 echo "y" | ufw enable
-echo "  Firewall active. Only port $SSH_PORT/tcp allowed inbound."
+echo "  Firewall active. Ports 22 + $SSH_PORT/tcp allowed (22 removed after SSH moves)."
 
 # --- Step 6: Fail2ban ---------------------------------------------------------
 
@@ -181,6 +182,10 @@ envsubst < "$DEPLOY_DIR/configs/sshd_config" > /etc/ssh/sshd_config.d/99-sentine
 if sshd -t; then
     systemctl restart sshd
     echo "  SSH hardened and restarted on port $SSH_PORT."
+
+    # Now remove the temporary port 22 rule
+    ufw delete allow 22/tcp
+    echo "  Port 22 removed from firewall. Only $SSH_PORT remains."
 else
     echo "  ERROR: SSH config validation failed. Removing snippet."
     rm -f /etc/ssh/sshd_config.d/99-sentinel-hardening.conf
