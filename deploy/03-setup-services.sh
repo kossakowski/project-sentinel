@@ -2,8 +2,8 @@
 # =============================================================================
 # Project Sentinel -- Service & Monitoring Setup
 # =============================================================================
-# Run as: sentinel user (needs sudo)
-# Prerequisites: 02-deploy-app.sh completed, .env in place
+# Run as: deploy user (needs sudo)
+# Prerequisites: 02-deploy-app.sh completed, secrets in /etc/sentinel/sentinel.env
 #
 # This script:
 #   1. Installs systemd service (auto-start on boot, auto-restart on crash)
@@ -15,13 +15,13 @@
 
 set -euo pipefail
 
-APP_DIR="/home/sentinel/project-sentinel"
+APP_DIR="/home/deploy/sentinel"
 DEPLOY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # --- Preflight ----------------------------------------------------------------
 
 if [ "$(whoami)" = "root" ]; then
-    echo "ERROR: Do not run this as root. Run as the sentinel user."
+    echo "ERROR: Do not run this as root. Run as the deploy user."
     exit 1
 fi
 
@@ -39,6 +39,11 @@ sudo cp "$DEPLOY_DIR/configs/sentinel.service" /etc/systemd/system/sentinel.serv
 sudo systemctl daemon-reload
 sudo systemctl enable sentinel
 echo "  Service installed and enabled (will start on boot)."
+
+# Verify sandbox score
+echo "  Checking sandbox score..."
+SCORE=$(sudo systemd-analyze security sentinel.service 2>/dev/null | tail -1 | grep -oP '[\d.]+' || echo "?")
+echo "  Exposure score: $SCORE (aim for under 4.0)"
 
 # --- Step 2: Log rotation -----------------------------------------------------
 
@@ -66,26 +71,26 @@ fi
 
 echo "[4/5] Setting up health check cron..."
 chmod +x "$DEPLOY_DIR/scripts/check-health.sh"
-cp "$DEPLOY_DIR/scripts/check-health.sh" /home/sentinel/check-health.sh
+cp "$DEPLOY_DIR/scripts/check-health.sh" /home/deploy/check-health.sh
 
-# Install cron job (replace existing sentinel crons to avoid duplicates)
+# Install cron jobs (replace existing sentinel crons to avoid duplicates)
 CRON_TMP=$(mktemp)
 crontab -l 2>/dev/null | grep -v 'check-health.sh' | grep -v 'backup-db.sh' > "$CRON_TMP" || true
 cat >> "$CRON_TMP" << 'CRONEOF'
 # Project Sentinel -- health check every 30 min
-*/30 * * * * /home/sentinel/check-health.sh >> /home/sentinel/project-sentinel/logs/health-check.log 2>&1
+*/30 * * * * /home/deploy/check-health.sh 2>&1 | logger -t sentinel-health
 CRONEOF
-echo "  Health check cron installed (every 30 min)."
+echo "  Health check cron installed (every 30 min, alerts via SMS)."
 
 # --- Step 5: Database backup cron ---------------------------------------------
 
 echo "[5/5] Setting up database backup cron..."
 chmod +x "$DEPLOY_DIR/scripts/backup-db.sh"
-cp "$DEPLOY_DIR/scripts/backup-db.sh" /home/sentinel/backup-db.sh
+cp "$DEPLOY_DIR/scripts/backup-db.sh" /home/deploy/backup-db.sh
 
 cat >> "$CRON_TMP" << 'CRONEOF'
 # Project Sentinel -- daily database backup at 03:00
-0 3 * * * /home/sentinel/backup-db.sh >> /home/sentinel/project-sentinel/logs/backup.log 2>&1
+0 3 * * * /home/deploy/backup-db.sh 2>&1 | logger -t sentinel-backup
 CRONEOF
 
 crontab "$CRON_TMP"
@@ -121,3 +126,4 @@ echo "  sudo systemctl status sentinel     -- check status"
 echo "  sudo systemctl restart sentinel    -- restart after changes"
 echo "  sudo journalctl -u sentinel -f     -- follow live logs"
 echo "  sudo journalctl -u sentinel --since '1 hour ago'  -- recent logs"
+echo "  sudo systemd-analyze security sentinel.service    -- check sandbox score"

@@ -7,22 +7,42 @@ Wants=network-online.target
 Type=simple
 User=sentinel
 Group=sentinel
-WorkingDirectory=/home/sentinel/project-sentinel
-ExecStart=/home/sentinel/project-sentinel/.venv/bin/python sentinel.py --config config/config.yaml
+WorkingDirectory=/home/deploy/sentinel
+ExecStart=/home/deploy/sentinel/venv/bin/python sentinel.py --config /etc/sentinel/config.yaml
 Restart=always
 RestartSec=30
 StartLimitBurst=5
 StartLimitIntervalSec=300
 
-# Environment
-EnvironmentFile=/home/sentinel/project-sentinel/.env
+# Environment -- loaded by PID 1 (root) before dropping to User=sentinel,
+# so the sentinel user never reads the file directly
+EnvironmentFile=/etc/sentinel/sentinel.env
 
-# Security hardening
+# --- Security sandbox ---
+# Prevent privilege escalation
 NoNewPrivileges=yes
+
+# Filesystem isolation
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/sentinel/project-sentinel/data /home/sentinel/project-sentinel/logs
+ReadWritePaths=/var/lib/sentinel /var/log/sentinel
 PrivateTmp=yes
+
+# Device and kernel isolation
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+
+# Restrict capabilities and syscalls
+CapabilityBoundingSet=
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 
 # Logging
 StandardOutput=journal

@@ -1,22 +1,34 @@
 #!/bin/bash
 # Health check for Project Sentinel -- called by cron every 30 min.
-# Sends an SMS via Twilio if the health file is stale or missing.
+# Runs as deploy user. Sends an SMS via Twilio if the service appears stuck or dead.
 
-HEALTH_FILE="/home/sentinel/project-sentinel/data/health.json"
+HEALTH_FILE="/var/lib/sentinel/health.json"
 MAX_AGE_MINUTES=30
+ENV_FILE="/etc/sentinel/sentinel.env"
+CONFIG="/etc/sentinel/config.yaml"
+PYTHON="/home/deploy/sentinel/venv/bin/python"
 
 if [ ! -f "$HEALTH_FILE" ]; then
-    echo "Health file missing -- sentinel may not be running"
-    exit 1
+    MSG="Health file missing -- sentinel may not be running."
+elif [ $(($(date +%s) - $(stat -c %Y "$HEALTH_FILE"))) -gt $((MAX_AGE_MINUTES * 60)) ]; then
+    MSG="Health file stale -- sentinel may be stuck."
+else
+    echo "Project Sentinel healthy"
+    exit 0
 fi
 
-FILE_AGE=$(($(date +%s) - $(stat -c %Y "$HEALTH_FILE")))
-MAX_AGE=$((MAX_AGE_MINUTES * 60))
+echo "$MSG"
 
-if [ "$FILE_AGE" -gt "$MAX_AGE" ]; then
-    echo "Health file is ${FILE_AGE}s old (max: ${MAX_AGE}s) -- sentinel may be stuck"
-    exit 1
+# Send SMS alert via Twilio
+if [ -f "$ENV_FILE" ] && [ -f "$CONFIG" ] && [ -x "$PYTHON" ]; then
+    set -a; source "$ENV_FILE"; set +a
+    $PYTHON -c "
+from sentinel.alerts.twilio_client import TwilioClient
+from sentinel.config import load_config
+config = load_config('$CONFIG')
+client = TwilioClient(config)
+client.send_sms(config.alerts.phone_number, 'Project Sentinel: $MSG Sprawdź serwer.', 'health-check')
+" 2>&1 || echo "Failed to send SMS alert"
 fi
 
-echo "Project Sentinel healthy"
-exit 0
+exit 1

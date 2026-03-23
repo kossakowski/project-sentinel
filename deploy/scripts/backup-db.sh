@@ -1,8 +1,9 @@
 #!/bin/bash
 # Daily SQLite backup for Project Sentinel -- called by cron at 03:00.
+# Runs as deploy user.
 
-BACKUP_DIR="/home/sentinel/backups"
-DB_FILE="/home/sentinel/project-sentinel/data/sentinel.db"
+BACKUP_DIR="/home/deploy/backups"
+DB_FILE="/var/lib/sentinel/sentinel.db"
 DATE=$(date +%Y%m%d)
 
 mkdir -p "$BACKUP_DIR"

@@ -1,4 +1,4 @@
-/home/sentinel/project-sentinel/logs/*.log {
+/var/log/sentinel/*.log {
     daily
     rotate 14
     compress

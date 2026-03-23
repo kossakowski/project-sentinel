@@ -1,4 +1,5 @@
 # Project Sentinel -- Hardened SSH Configuration
+# Installed to /etc/ssh/sshd_config.d/99-sentinel-hardening.conf
 # Applied by 01-harden-server.sh
 # Port can be overridden by setting SSH_PORT before running the script.
 
@@ -8,13 +9,13 @@ Port ${SSH_PORT:-2222}
 PermitRootLogin no
 PasswordAuthentication no
 PermitEmptyPasswords no
-ChallengeResponseAuthentication no
+KbdInteractiveAuthentication no
 KerberosAuthentication no
 GSSAPIAuthentication no
 MaxAuthTries 3
 
-# Only allow the sentinel user
-AllowUsers sentinel
+# Only allow the admin user (service user has no shell and cannot SSH)
+AllowUsers deploy
 
 # Disable unused features
 X11Forwarding no

@@ -2,18 +2,17 @@
 # =============================================================================
 # Project Sentinel -- Application Deployment
 # =============================================================================
-# Run as: sentinel user
+# Run as: deploy user
 # Prerequisites: 01-harden-server.sh completed
 #
 # This script:
 #   1. Clones the repo (or pulls if already cloned)
 #   2. Creates Python venv and installs dependencies
-#   3. Creates data/ and logs/ directories
-#   4. Copies config.example.yaml to config.yaml if not present
+#   3. Copies config and secrets to /etc/sentinel/
+#   4. Runs a smoke test
 #
 # After running, you still need to:
-#   - Copy .env with your secrets to ~/project-sentinel/.env
-#   - Edit config/config.yaml if needed
+#   - Edit /etc/sentinel/config.yaml (set absolute paths for DB, logs, session)
 #   - Run Telegram first-time auth (interactive)
 #   - Run 03-setup-services.sh
 # =============================================================================
@@ -21,12 +20,12 @@
 set -euo pipefail
 
 REPO_URL="${REPO_URL:-}"
-APP_DIR="/home/sentinel/project-sentinel"
+APP_DIR="/home/deploy/sentinel"
 
 # --- Preflight ----------------------------------------------------------------
 
 if [ "$(whoami)" = "root" ]; then
-    echo "ERROR: Do not run this as root. Run as the sentinel user."
+    echo "ERROR: Do not run this as root. Run as the deploy user."
     exit 1
 fi
 
@@ -59,36 +58,44 @@ fi
 
 echo "[2/4] Setting up Python virtual environment..."
 
-if [ -d "$APP_DIR/.venv" ]; then
+if [ -d "$APP_DIR/venv" ]; then
     echo "  Venv exists. Updating dependencies..."
-    "$APP_DIR/.venv/bin/pip" install -r "$APP_DIR/requirements.txt" --quiet
+    "$APP_DIR/venv/bin/pip" install -r "$APP_DIR/requirements.txt" --quiet
 else
-    python3 -m venv "$APP_DIR/.venv"
-    "$APP_DIR/.venv/bin/pip" install --upgrade pip --quiet
-    "$APP_DIR/.venv/bin/pip" install -r "$APP_DIR/requirements.txt" --quiet
+    python3 -m venv "$APP_DIR/venv"
+    "$APP_DIR/venv/bin/pip" install --upgrade pip --quiet
+    "$APP_DIR/venv/bin/pip" install -r "$APP_DIR/requirements.txt" --quiet
     echo "  Venv created and dependencies installed."
 fi
 
-# --- Step 3: Create directories -----------------------------------------------
+# --- Step 3: Config and secrets -----------------------------------------------
 
-echo "[3/4] Creating data and log directories..."
-mkdir -p "$APP_DIR/data" "$APP_DIR/logs"
+echo "[3/4] Setting up configuration and secrets..."
 
-# --- Step 4: Config -----------------------------------------------------------
-
-echo "[4/4] Checking configuration..."
-
-if [ ! -f "$APP_DIR/config/config.yaml" ]; then
-    cp "$APP_DIR/config/config.example.yaml" "$APP_DIR/config/config.yaml"
-    echo "  Copied config.example.yaml -> config.yaml (edit as needed)."
+# Config -- server copy with absolute paths
+if [ ! -f /etc/sentinel/config.yaml ]; then
+    sudo cp "$APP_DIR/config/config.example.yaml" /etc/sentinel/config.yaml
+    sudo chown deploy:deploy /etc/sentinel/config.yaml
+    sudo chmod 644 /etc/sentinel/config.yaml
+    echo "  Copied config.example.yaml -> /etc/sentinel/config.yaml"
+    echo "  IMPORTANT: Edit /etc/sentinel/config.yaml and set absolute paths:"
+    echo "    database.path:                /var/lib/sentinel/sentinel.db"
+    echo "    logging.file:                 /var/log/sentinel/sentinel.log"
+    echo "    sources.telegram.session_name: /var/lib/sentinel/sentinel_session"
 else
-    echo "  config.yaml already exists."
+    echo "  /etc/sentinel/config.yaml already exists."
 fi
 
-if [ ! -f "$APP_DIR/.env" ]; then
+# Secrets -- isolated from repo, readable only by root and deploy
+if [ -f "$APP_DIR/.env" ]; then
+    sudo cp "$APP_DIR/.env" /etc/sentinel/sentinel.env
+    sudo chown root:deploy /etc/sentinel/sentinel.env
+    sudo chmod 640 /etc/sentinel/sentinel.env
+    echo "  .env copied to /etc/sentinel/sentinel.env (root:deploy 0640)"
+    echo "  The .env in the repo is no longer used -- you can delete it."
+elif [ ! -f /etc/sentinel/sentinel.env ]; then
     echo ""
-    echo "  WARNING: .env file not found at $APP_DIR/.env"
-    echo "  You need to create it with your API keys. Required variables:"
+    echo "  WARNING: No .env file found. Create /etc/sentinel/sentinel.env with:"
     echo "    TWILIO_ACCOUNT_SID=..."
     echo "    TWILIO_AUTH_TOKEN=..."
     echo "    TWILIO_PHONE_NUMBER=..."
@@ -96,29 +103,45 @@ if [ ! -f "$APP_DIR/.env" ]; then
     echo "    ANTHROPIC_API_KEY=..."
     echo "    TELEGRAM_API_ID=..."
     echo "    TELEGRAM_API_HASH=..."
+    echo ""
+    echo "  Then set permissions:"
+    echo "    sudo chown root:deploy /etc/sentinel/sentinel.env"
+    echo "    sudo chmod 640 /etc/sentinel/sentinel.env"
 fi
 
-# --- Quick smoke test ---------------------------------------------------------
+# --- Step 4: Smoke test -------------------------------------------------------
 
 echo ""
-echo "Running smoke test (dry-run, single cycle)..."
+echo "[4/4] Running smoke test (dry-run, single cycle)..."
 cd "$APP_DIR"
-if "$APP_DIR/.venv/bin/python" sentinel.py --once --dry-run 2>&1 | tail -5; then
+
+if [ -f /etc/sentinel/sentinel.env ]; then
+    set -a; source /etc/sentinel/sentinel.env; set +a
+fi
+
+if "$APP_DIR/venv/bin/python" sentinel.py --config /etc/sentinel/config.yaml --once --dry-run 2>&1 | tail -5; then
     echo ""
     echo "=== Deployment complete ==="
 else
     echo ""
-    echo "Smoke test had issues (may be OK if .env is missing)."
+    echo "Smoke test had issues (may be OK if config paths need updating)."
     echo "=== Deployment complete (with warnings) ==="
 fi
 
 echo ""
 echo "NEXT STEPS:"
-echo "  1. Create .env file:  nano $APP_DIR/.env"
-echo "  2. Edit config if needed:  nano $APP_DIR/config/config.yaml"
-echo "  3. Telegram auth (interactive -- must do manually):"
-echo "       cd $APP_DIR && .venv/bin/python -c \\"
-echo "         'from telethon import TelegramClient; \\"
-echo "          c = TelegramClient(\"sentinel_session\", API_ID, API_HASH); \\"
-echo "          c.start(); c.disconnect()'"
-echo "  4. Run 03-setup-services.sh"
+echo "  1. Edit config:  nano /etc/sentinel/config.yaml"
+echo "     Set absolute paths for database, logging, and telegram session."
+echo "  2. Telegram auth (interactive -- must do manually):"
+echo "       cd $APP_DIR && source venv/bin/activate"
+echo "       set -a; source /etc/sentinel/sentinel.env; set +a"
+echo "       python -c \""
+echo "         import os, asyncio"
+echo "         from telethon import TelegramClient"
+echo "         client = TelegramClient('/var/lib/sentinel/sentinel_session',"
+echo "             int(os.environ['TELEGRAM_API_ID']), os.environ['TELEGRAM_API_HASH'])"
+echo "         asyncio.run(client.start())"
+echo "       \""
+echo "       sudo chown sentinel:sentinel /var/lib/sentinel/sentinel_session.session"
+echo "       sudo chmod 600 /var/lib/sentinel/sentinel_session.session"
+echo "  3. Run 03-setup-services.sh"
