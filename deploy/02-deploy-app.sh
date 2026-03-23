@@ -34,9 +34,13 @@ die()  { echo "FATAL: $1"; exit 1; }
 echo "[1/4] Setting up application code..."
 
 if [ -d "$APP_DIR/.git" ]; then
-    echo "  Repo already exists, pulling latest from master..."
     cd "$APP_DIR"
-    git pull origin master || die "git pull failed"
+    if git remote get-url origin &>/dev/null; then
+        echo "  Repo already exists, pulling latest from master..."
+        git pull origin master || die "git pull failed"
+    else
+        echo "  Repo exists but has no remote (copied via scp). Skipping pull."
+    fi
 elif [ -n "$REPO_URL" ]; then
     echo "  Cloning from $REPO_URL..."
     git clone "$REPO_URL" "$APP_DIR" || die "git clone failed"
