@@ -1,7 +1,7 @@
 # Project Sentinel -- Military Alert Monitoring System
 
 ## Overview
-Real-time monitoring bot that scans media sources (PL/EN/UA/RU) for military attacks or invasions targeting Poland and the Baltic states, and alerts via Twilio phone call.
+Real-time monitoring bot that scans media sources (PL/EN/UA/RU) for military attacks or invasions targeting Poland and the Baltic states, and alerts via Twilio phone call. **The application is running in production on a Hetzner VPS** — see [Server Runbook](docs/server-runbook.md) for access, operations, and troubleshooting.
 
 ## Documentation
 - [Architecture](docs/architecture.md) -- system design, data flow, components
