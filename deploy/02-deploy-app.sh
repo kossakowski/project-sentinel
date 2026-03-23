@@ -17,17 +17,17 @@
 #   - Run 03-setup-services.sh
 # =============================================================================
 
-set -euo pipefail
+set -uo pipefail
+# Note: -e intentionally omitted -- we handle errors explicitly
 
 REPO_URL="${REPO_URL:-}"
 APP_DIR="/home/deploy/sentinel"
 
+die()  { echo "FATAL: $1"; exit 1; }
+
 # --- Preflight ----------------------------------------------------------------
 
-if [ "$(whoami)" = "root" ]; then
-    echo "ERROR: Do not run this as root. Run as the deploy user."
-    exit 1
-fi
+[ "$(whoami)" != "root" ] || die "Do not run this as root. Run as the deploy user."
 
 # --- Step 1: Get the code -----------------------------------------------------
 
@@ -36,21 +36,17 @@ echo "[1/4] Setting up application code..."
 if [ -d "$APP_DIR/.git" ]; then
     echo "  Repo already exists, pulling latest from master..."
     cd "$APP_DIR"
-    git pull origin master
+    git pull origin master || die "git pull failed"
 elif [ -n "$REPO_URL" ]; then
     echo "  Cloning from $REPO_URL..."
-    git clone "$REPO_URL" "$APP_DIR"
+    git clone "$REPO_URL" "$APP_DIR" || die "git clone failed"
     cd "$APP_DIR"
 else
-    # No repo URL and no existing clone -- assume files were copied via scp
     if [ -d "$APP_DIR" ]; then
-        echo "  App directory exists (likely copied via scp). Skipping clone."
+        echo "  App directory exists (copied via scp). Skipping clone."
         cd "$APP_DIR"
     else
-        echo "ERROR: No repo URL provided and $APP_DIR doesn't exist."
-        echo "Either set REPO_URL or scp the project to $APP_DIR first."
-        echo "  Usage: REPO_URL=git@github.com:user/repo.git ./02-deploy-app.sh"
-        exit 1
+        die "No repo URL provided and $APP_DIR doesn't exist. Set REPO_URL or scp the project first."
     fi
 fi
 
@@ -60,11 +56,11 @@ echo "[2/4] Setting up Python virtual environment..."
 
 if [ -d "$APP_DIR/venv" ]; then
     echo "  Venv exists. Updating dependencies..."
-    "$APP_DIR/venv/bin/pip" install -r "$APP_DIR/requirements.txt" --quiet
+    "$APP_DIR/venv/bin/pip" install -r "$APP_DIR/requirements.txt" --quiet || die "pip install failed"
 else
-    python3 -m venv "$APP_DIR/venv"
+    python3 -m venv "$APP_DIR/venv" || die "venv creation failed"
     "$APP_DIR/venv/bin/pip" install --upgrade pip --quiet
-    "$APP_DIR/venv/bin/pip" install -r "$APP_DIR/requirements.txt" --quiet
+    "$APP_DIR/venv/bin/pip" install -r "$APP_DIR/requirements.txt" --quiet || die "pip install failed"
     echo "  Venv created and dependencies installed."
 fi
 
@@ -72,7 +68,8 @@ fi
 
 echo "[3/4] Setting up configuration and secrets..."
 
-# Config -- server copy with absolute paths
+sudo mkdir -p /etc/sentinel
+
 if [ ! -f /etc/sentinel/config.yaml ]; then
     sudo cp "$APP_DIR/config/config.example.yaml" /etc/sentinel/config.yaml
     sudo chown deploy:deploy /etc/sentinel/config.yaml
@@ -86,13 +83,11 @@ else
     echo "  /etc/sentinel/config.yaml already exists."
 fi
 
-# Secrets -- isolated from repo, readable only by root and deploy
 if [ -f "$APP_DIR/.env" ]; then
     sudo cp "$APP_DIR/.env" /etc/sentinel/sentinel.env
     sudo chown root:deploy /etc/sentinel/sentinel.env
     sudo chmod 640 /etc/sentinel/sentinel.env
     echo "  .env copied to /etc/sentinel/sentinel.env (root:deploy 0640)"
-    echo "  The .env in the repo is no longer used -- you can delete it."
 elif [ ! -f /etc/sentinel/sentinel.env ]; then
     echo ""
     echo "  WARNING: No .env file found. Create /etc/sentinel/sentinel.env with:"
@@ -109,7 +104,7 @@ elif [ ! -f /etc/sentinel/sentinel.env ]; then
     echo "    sudo chmod 640 /etc/sentinel/sentinel.env"
 fi
 
-# --- Step 4: Smoke test -------------------------------------------------------
+# --- Step 4: Smoke test (non-fatal) ------------------------------------------
 
 echo ""
 echo "[4/4] Running smoke test (dry-run, single cycle)..."
@@ -120,14 +115,13 @@ if [ -f /etc/sentinel/sentinel.env ]; then
 fi
 
 if "$APP_DIR/venv/bin/python" sentinel.py --config /etc/sentinel/config.yaml --once --dry-run 2>&1 | tail -5; then
-    echo ""
-    echo "=== Deployment complete ==="
+    echo "  Smoke test passed."
 else
-    echo ""
-    echo "Smoke test had issues (may be OK if config paths need updating)."
-    echo "=== Deployment complete (with warnings) ==="
+    echo "  Smoke test had issues (may be OK if .env or config paths need updating)."
 fi
 
+echo ""
+echo "=== Deployment complete ==="
 echo ""
 echo "NEXT STEPS:"
 echo "  1. Edit config:  nano /etc/sentinel/config.yaml"

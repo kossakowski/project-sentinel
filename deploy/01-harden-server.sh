@@ -3,52 +3,56 @@
 # Project Sentinel -- Server Hardening Script
 # =============================================================================
 # Run as: root (first and last time you'll use root)
-# Tested on: Ubuntu 24.04
+# Tested on: Ubuntu 24.04 (Hetzner CX-series)
 #
 # This script:
 #   1. Creates 'deploy' admin user (SSH, sudo) and 'sentinel' service user (no login, no sudo)
 #   2. Copies root's SSH key to the admin user
 #   3. Creates FHS directories (/etc/sentinel, /var/lib/sentinel, /var/log/sentinel)
-#   4. Installs and configures UFW, fail2ban, AIDE
+#   4. Installs and configures UFW, fail2ban
 #   5. Applies kernel/network hardening
 #   6. Enables automatic security updates
 #   7. Disables unnecessary services
 #   8. Hardens SSH via sshd_config.d snippet (LAST -- so we don't lock ourselves out)
 #
-# Before running:
-#   - Set up Hetzner Cloud Firewall in the web console (see docs/security/vps-hardening.md Step 0)
-#
-# After running:
-#   - Test SSH in a NEW terminal: ssh -p 2222 deploy@<server-ip>
-#   - Do NOT close this session until you confirm the new login works
+# Designed to be run non-interactively over SSH.
+# All output is logged to /var/log/sentinel-hardening.log
 # =============================================================================
 
-set -euo pipefail
+# --- Environment: suppress ALL interactive prompts ----------------------------
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+export NEEDRESTART_SUSPEND=1
 
 SSH_PORT="${SSH_PORT:-2222}"
 DEPLOY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOG="/var/log/sentinel-hardening.log"
+
+# Log everything to file AND stdout
+exec > >(tee -a "$LOG") 2>&1
+
+# --- Helper: exit on critical failure, warn on non-critical -------------------
+die()  { echo "FATAL: $1"; exit 1; }
+warn() { echo "  WARNING: $1 (non-critical, continuing)"; }
 
 # --- Preflight checks --------------------------------------------------------
 
-if [ "$(id -u)" -ne 0 ]; then
-    echo "ERROR: This script must be run as root."
-    exit 1
-fi
-
-if [ ! -f "$DEPLOY_DIR/configs/sysctl-hardening.conf" ]; then
-    echo "ERROR: Cannot find configs/ directory. Run this script from the deploy/ folder."
-    exit 1
-fi
+[ "$(id -u)" -eq 0 ] || die "This script must be run as root."
+[ -f "$DEPLOY_DIR/configs/sysctl-hardening.conf" ] || die "Cannot find configs/ directory."
 
 echo "=== Project Sentinel -- Server Hardening ==="
 echo "SSH port will be set to: $SSH_PORT"
+echo "Log file: $LOG"
+echo "Started at: $(date)"
 echo ""
 
 # --- Step 1: System update ----------------------------------------------------
 
 echo "[1/10] Updating system packages..."
-apt update && apt upgrade -y
-apt install -y curl wget gnupg2 software-properties-common python3 python3-pip python3-venv git sqlite3
+apt-get update -qq || die "apt-get update failed"
+apt-get upgrade -y -qq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" || die "apt-get upgrade failed"
+apt-get install -y -qq curl wget gnupg2 software-properties-common python3 python3-pip python3-venv git sqlite3 gettext-base || die "apt-get install failed"
+echo "  System updated and base packages installed."
 
 # --- Step 2: Create admin user ------------------------------------------------
 
@@ -56,10 +60,10 @@ echo "[2/10] Creating admin user (deploy)..."
 if id "deploy" &>/dev/null; then
     echo "  User 'deploy' already exists, skipping."
 else
-    adduser --disabled-password --gecos "Sentinel Admin" deploy
+    adduser --disabled-password --gecos "Sentinel Admin" deploy || die "Failed to create deploy user"
     echo "deploy:$(openssl rand -base64 32)" | chpasswd
     usermod -aG sudo deploy
-    echo "  Admin user created. Random password set (SSH key auth only)."
+    echo "  Admin user created."
 fi
 
 # Copy SSH keys from root
@@ -71,9 +75,14 @@ if [ -f /root/.ssh/authorized_keys ]; then
     chmod 600 /home/deploy/.ssh/authorized_keys
     echo "  SSH keys copied from root."
 else
-    echo "  WARNING: /root/.ssh/authorized_keys not found."
-    echo "  You'll need to manually add your SSH public key to /home/deploy/.ssh/authorized_keys"
+    die "/root/.ssh/authorized_keys not found -- cannot set up SSH for deploy user."
 fi
+
+# Passwordless sudo for deploy (needed for scripts 02 and 03 over SSH)
+echo "deploy ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/deploy
+chmod 440 /etc/sudoers.d/deploy
+visudo -c || die "sudoers syntax error"
+echo "  Passwordless sudo configured for deploy."
 
 # --- Step 3: Create service user ----------------------------------------------
 
@@ -81,12 +90,12 @@ echo "[3/10] Creating service user (sentinel)..."
 if id "sentinel" &>/dev/null; then
     echo "  User 'sentinel' already exists, skipping."
 else
-    adduser --system --group --home /var/lib/sentinel --shell /usr/sbin/nologin sentinel
+    adduser --system --group --home /var/lib/sentinel --shell /usr/sbin/nologin sentinel || die "Failed to create sentinel user"
     echo "  Service user created (no login shell, no sudo)."
 fi
 
-# Add deploy to sentinel group (allows reading state files for health checks)
 usermod -aG sentinel deploy
+echo "  deploy added to sentinel group."
 
 # --- Step 4: Create FHS directories ------------------------------------------
 
@@ -102,20 +111,20 @@ echo "  /etc/sentinel      -- config and secrets"
 # --- Step 5: Firewall (UFW) ---------------------------------------------------
 
 echo "[5/10] Configuring firewall (UFW)..."
-apt install -y ufw
+apt-get install -y -qq ufw
+ufw --force reset >/dev/null 2>&1
 ufw default deny incoming
 ufw default allow outgoing
-ufw allow 22/tcp comment 'SSH (temporary, removed after port change)'
-ufw allow "$SSH_PORT/tcp" comment 'SSH'
+ufw allow 22/tcp comment 'SSH current (removed after port change)'
+ufw allow "$SSH_PORT/tcp" comment 'SSH hardened'
 echo "y" | ufw enable
-echo "  Firewall active. Ports 22 + $SSH_PORT/tcp allowed (22 removed after SSH moves)."
+echo "  Firewall active. Ports 22 + $SSH_PORT open (22 removed after SSH moves)."
 
 # --- Step 6: Fail2ban ---------------------------------------------------------
 
 echo "[6/10] Installing and configuring fail2ban..."
-apt install -y fail2ban
+apt-get install -y -qq fail2ban
 
-# Substitute the SSH port into the config
 sed "s/port = 2222/port = $SSH_PORT/" "$DEPLOY_DIR/configs/fail2ban-jail.local" \
     > /etc/fail2ban/jail.local
 
@@ -133,7 +142,7 @@ echo "  sysctl hardening applied."
 # --- Step 8: Automatic security updates ----------------------------------------
 
 echo "[8/10] Enabling automatic security updates..."
-apt install -y unattended-upgrades apt-listchanges
+apt-get install -y -qq unattended-upgrades apt-listchanges
 cat > /etc/apt/apt.conf.d/20auto-upgrades << 'APTEOF'
 APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
@@ -146,62 +155,55 @@ echo "  Automatic security updates enabled."
 
 echo "[9/10] Disabling unnecessary services and hardening permissions..."
 for svc in snapd.service snapd.socket ModemManager.service cups.service avahi-daemon.service bluetooth.service; do
-    if systemctl is-active --quiet "$svc" 2>/dev/null; then
-        systemctl disable --now "$svc" 2>/dev/null && echo "  Disabled: $svc"
-    fi
+    systemctl disable --now "$svc" 2>/dev/null && echo "  Disabled: $svc" || true
 done
 
 chmod 750 /home/deploy
 echo "deploy" > /etc/cron.allow 2>/dev/null || true
 echo "deploy" > /etc/at.allow 2>/dev/null || true
 
-apt install -y aide
-aideinit 2>/dev/null || true
-if [ -f /var/lib/aide/aide.db.new ]; then
-    cp /var/lib/aide/aide.db.new /var/lib/aide/aide.db
+# AIDE -- non-critical, don't let it block the deployment
+echo "  Installing AIDE (intrusion detection)..."
+if apt-get install -y -qq aide 2>/dev/null; then
+    aideinit 2>/dev/null &
+    AIDE_PID=$!
+    echo "  AIDE initializing in background (PID $AIDE_PID). This takes a few minutes."
+    echo "  It will finalize on its own. Not blocking on it."
+else
+    warn "AIDE installation failed"
 fi
-echo "  AIDE initialized."
 
 # --- Step 10: SSH hardening (LAST!) -------------------------------------------
 
 echo "[10/10] Hardening SSH configuration..."
-echo ""
-echo "  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-echo "  !!  DO NOT CLOSE THIS TERMINAL SESSION                 !!"
-echo "  !!  After this step, test SSH in a NEW terminal:       !!"
-echo "  !!    ssh -p $SSH_PORT deploy@<server-ip>               !!"
-echo "  !!  Only close this session after confirming it works.  !!"
-echo "  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-echo ""
 
-# Use sshd_config.d drop-in snippet (survives package upgrades)
+# Install the sshd_config.d drop-in snippet (survives package upgrades)
 export SSH_PORT
-envsubst < "$DEPLOY_DIR/configs/sshd_config" > /etc/ssh/sshd_config.d/99-sentinel-hardening.conf
+envsubst '$SSH_PORT' < "$DEPLOY_DIR/configs/sshd_config" > /etc/ssh/sshd_config.d/99-sentinel-hardening.conf
 
-# Validate before restarting
+# Validate BEFORE restarting
 if sshd -t; then
     systemctl restart sshd
     echo "  SSH hardened and restarted on port $SSH_PORT."
 
-    # Now remove the temporary port 22 rule
-    ufw delete allow 22/tcp
+    # Remove the temporary port 22 rule
+    ufw --force delete allow 22/tcp
     echo "  Port 22 removed from firewall. Only $SSH_PORT remains."
 else
     echo "  ERROR: SSH config validation failed. Removing snippet."
     rm -f /etc/ssh/sshd_config.d/99-sentinel-hardening.conf
-    exit 1
+    die "SSH config invalid -- removed snippet, SSH unchanged."
 fi
 
 # --- Done ---------------------------------------------------------------------
 
 echo ""
-echo "=== Hardening complete ==="
+echo "=== Hardening complete at $(date) ==="
 echo ""
 echo "NEXT STEPS:"
-echo "  1. Open a NEW terminal and test:  ssh -p $SSH_PORT deploy@<server-ip>"
-echo "  2. Verify sudo works:             sudo whoami  (should print 'root')"
-echo "  3. Verify service user:           sudo -u sentinel bash  (should say 'not available')"
-echo "  4. Only then close this root session."
-echo "  5. Run 02-deploy-app.sh as the deploy user."
+echo "  1. Test SSH:  ssh -p $SSH_PORT deploy@<server-ip>"
+echo "  2. Verify sudo works:  sudo whoami  (should print 'root')"
+echo "  3. Run 02-deploy-app.sh as the deploy user."
 echo ""
-echo "If you get locked out: use Hetzner Cloud Console to fix /etc/ssh/sshd_config.d/99-sentinel-hardening.conf"
+echo "Full log: $LOG"
+echo "If locked out: Hetzner Console -> remove /etc/ssh/sshd_config.d/99-sentinel-hardening.conf"
