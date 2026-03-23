@@ -1,0 +1,33 @@
+[Unit]
+Description=Project Sentinel Military Alert Monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sentinel
+Group=sentinel
+WorkingDirectory=/home/sentinel/project-sentinel
+ExecStart=/home/sentinel/project-sentinel/.venv/bin/python sentinel.py --config config/config.yaml
+Restart=always
+RestartSec=30
+StartLimitBurst=5
+StartLimitIntervalSec=300
+
+# Environment
+EnvironmentFile=/home/sentinel/project-sentinel/.env
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/sentinel/project-sentinel/data /home/sentinel/project-sentinel/logs
+PrivateTmp=yes
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sentinel
+
+[Install]
+WantedBy=multi-user.target

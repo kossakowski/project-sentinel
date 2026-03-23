@@ -1,0 +1,24 @@
+# Project Sentinel -- Hardened SSH Configuration
+# Applied by 01-harden-server.sh
+# Port can be overridden by setting SSH_PORT before running the script.
+
+Port ${SSH_PORT:-2222}
+
+# Authentication
+PermitRootLogin no
+PasswordAuthentication no
+PermitEmptyPasswords no
+ChallengeResponseAuthentication no
+KerberosAuthentication no
+GSSAPIAuthentication no
+MaxAuthTries 3
+
+# Only allow the sentinel user
+AllowUsers sentinel
+
+# Disable unused features
+X11Forwarding no
+
+# Idle timeout (5 min)
+ClientAliveInterval 300
+ClientAliveCountMax 2
