@@ -21,6 +21,7 @@ Real-time monitoring bot that scans media sources (PL/EN/UA/RU) for military att
 - Continuous dry run: `./run.sh --dry-run` (default mode, dual-lane: fast every 3 min, slow every 15 min)
 - Test single headline: `./run.sh --test-headline "headline text here"`
 - Test headlines file: `./run.sh --test-file tests/fixtures/test_headlines.yaml`
+- Diagnostic: `./run.sh --diagnostic` (single cycle, generates `data/diagnostic.html` with all articles)
 - Custom config: `./run.sh --config path/to/config.yaml`
 - Log level: `./run.sh --log-level DEBUG` (DEBUG, INFO, WARNING, ERROR)
 - Health check: `./run.sh --health` (prints `data/health.json`)

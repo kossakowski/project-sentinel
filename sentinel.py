@@ -58,6 +58,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print health status and exit",
     )
+    parser.add_argument(
+        "--diagnostic",
+        action="store_true",
+        help="Run one cycle and generate an HTML diagnostic report (data/diagnostic.html)",
+    )
     return parser
 
 
@@ -97,6 +102,30 @@ async def run_once(config) -> None:
         await pipeline.startup()
         result = await pipeline.run_cycle()
         print_cycle_result(result)
+    finally:
+        await pipeline.shutdown()
+
+
+async def run_diagnostic(config) -> None:
+    """Run one pipeline cycle in diagnostic mode and generate HTML report."""
+    from sentinel.diagnostic import generate_html
+    from sentinel.scheduler import SentinelPipeline
+
+    pipeline = SentinelPipeline(config)
+    try:
+        await pipeline.startup()
+        result = await pipeline.run_cycle(diagnostic=True)
+        print_cycle_result(result)
+
+        if pipeline.diagnostic_data is not None:
+            output_path = os.path.join(
+                os.path.dirname(config.database.path) or "data",
+                "diagnostic.html",
+            )
+            abs_path = generate_html(pipeline.diagnostic_data, output_path)
+            print(f"Diagnostic report: {abs_path}")
+        else:
+            print("Warning: no diagnostic data collected.", file=sys.stderr)
     finally:
         await pipeline.shutdown()
 
@@ -194,6 +223,12 @@ def main() -> None:
     # Mode: health check
     if args.health:
         print_health(config)
+        sys.exit(0)
+
+    # Mode: diagnostic
+    if args.diagnostic:
+        config.testing.dry_run = True  # suppress all alerts
+        asyncio.run(run_diagnostic(config))
         sys.exit(0)
 
     # Mode: run once

@@ -27,6 +27,7 @@ from sentinel.fetchers import (
     TelegramFetcher,
 )
 from sentinel.fetchers.base import BaseFetcher
+from sentinel.diagnostic import DiagnosticArticle, DiagnosticData
 from sentinel.models import Article
 from sentinel.processing.deduplicator import Deduplicator
 from sentinel.processing.keyword_filter import KeywordFilter
@@ -154,6 +155,7 @@ class SentinelPipeline:
         self.dispatcher = AlertDispatcher(self.state_machine, config)
         self.logger = logging.getLogger("sentinel.pipeline")
         self.stats = PipelineStats()
+        self.diagnostic_data: DiagnosticData | None = None
 
     def _init_fetchers(self) -> list[BaseFetcher]:
         """Initialize all fetchers based on config."""
@@ -197,16 +199,20 @@ class SentinelPipeline:
                     )
         self.db.close()
 
-    async def run_cycle(self, *, fast_only: bool = False) -> CycleResult:
+    async def run_cycle(
+        self, *, fast_only: bool = False, diagnostic: bool = False
+    ) -> CycleResult:
         """Execute one full pipeline cycle. Returns stats about the run.
 
         Args:
             fast_only: If True, only fetch from fast-lane sources (Telegram,
                        priority-1 RSS, Google News). Slow-lane sources (GDELT,
                        lower-priority RSS) are skipped.
+            diagnostic: If True, capture intermediate data for HTML report
+                        generation and skip alert dispatch.
         """
         cycle_start = datetime.now(timezone.utc)
-        lane = "FAST" if fast_only else "FULL"
+        lane = "DIAG" if diagnostic else ("FAST" if fast_only else "FULL")
         self.logger.info("=== Pipeline cycle starting [%s] ===", lane)
 
         # Step 1: Fetch from sources (filtered by lane)
@@ -238,16 +244,26 @@ class SentinelPipeline:
                 )
                 classifications = []
 
-        # Step 6: Corroborate (group into events)
-        events = self.corroborator.process_classifications(classifications)
-        alertable_events = [e for e in events if e.alert_status != "pending"]
-        self.logger.info("Events needing alerts: %d", len(alertable_events))
+        # Build diagnostic data if requested
+        if diagnostic:
+            self._build_diagnostic_data(
+                cycle_start, normalized, unique, relevant, classifications
+            )
 
-        # Step 7: Dispatch alerts
-        self.dispatcher.dispatch(alertable_events)
+        if not diagnostic:
+            # Step 6: Corroborate (group into events)
+            events = self.corroborator.process_classifications(classifications)
+            alertable_events = [e for e in events if e.alert_status != "pending"]
+            self.logger.info("Events needing alerts: %d", len(alertable_events))
 
-        # Step 8: Check pending call statuses from previous cycles
-        self.state_machine.check_pending_calls()
+            # Step 7: Dispatch alerts
+            self.dispatcher.dispatch(alertable_events)
+
+            # Step 8: Check pending call statuses from previous cycles
+            self.state_machine.check_pending_calls()
+        else:
+            events = []
+            alertable_events = []
 
         # Step 9: Cleanup old records
         self.db.cleanup_old_records(
@@ -257,6 +273,11 @@ class SentinelPipeline:
 
         # Stats
         cycle_duration = (datetime.now(timezone.utc) - cycle_start).total_seconds()
+
+        # Update diagnostic duration now that cycle is complete
+        if diagnostic and self.diagnostic_data is not None:
+            self.diagnostic_data.duration_seconds = cycle_duration
+
         result = CycleResult(
             cycle_start=cycle_start,
             duration_seconds=cycle_duration,
@@ -284,6 +305,45 @@ class SentinelPipeline:
         )
 
         return result
+
+    def _build_diagnostic_data(
+        self,
+        cycle_start: datetime,
+        normalized: list[Article],
+        unique: list[Article],
+        relevant: list[Article],
+        classifications: list,
+    ) -> None:
+        """Build diagnostic data from pipeline intermediate results."""
+        unique_ids = {a.id for a in unique}
+        relevant_ids = {a.id for a in relevant}
+        cls_map = {c.article_id: c for c in classifications}
+
+        items: list[DiagnosticArticle] = []
+        for article in normalized:
+            if article.id not in unique_ids:
+                items.append(DiagnosticArticle(article=article, stage="duplicate"))
+            elif article.id not in relevant_ids:
+                items.append(DiagnosticArticle(article=article, stage="filtered"))
+            else:
+                items.append(
+                    DiagnosticArticle(
+                        article=article,
+                        stage="classified",
+                        keyword_match=article.raw_metadata.get("keyword_match"),
+                        classification=cls_map.get(article.id),
+                    )
+                )
+
+        self.diagnostic_data = DiagnosticData(
+            cycle_start=cycle_start,
+            duration_seconds=0.0,  # updated after cycle completes
+            total_fetched=len(normalized),
+            total_unique=len(unique),
+            total_relevant=len(relevant),
+            total_classified=len(classifications),
+            items=items,
+        )
 
     # Fetchers that always run in the fast lane
     _FAST_LANE_FETCHERS = frozenset({"telegram", "google_news"})
