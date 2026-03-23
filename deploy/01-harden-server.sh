@@ -103,7 +103,9 @@ echo "[4/10] Creating application directories..."
 mkdir -p /var/lib/sentinel /var/log/sentinel /etc/sentinel
 chown sentinel:sentinel /var/lib/sentinel /var/log/sentinel
 chmod 750 /var/lib/sentinel /var/log/sentinel
-chmod 700 /etc/sentinel
+# sentinel user needs to read config; deploy user needs to read secrets
+chown root:sentinel /etc/sentinel
+chmod 750 /etc/sentinel
 echo "  /var/lib/sentinel  -- state data (DB, Telegram session)"
 echo "  /var/log/sentinel  -- application logs"
 echo "  /etc/sentinel      -- config and secrets"
@@ -158,7 +160,7 @@ for svc in snapd.service snapd.socket ModemManager.service cups.service avahi-da
     systemctl disable --now "$svc" 2>/dev/null && echo "  Disabled: $svc" || true
 done
 
-chmod 750 /home/deploy
+chmod 755 /home/deploy
 echo "deploy" > /etc/cron.allow 2>/dev/null || true
 echo "deploy" > /etc/at.allow 2>/dev/null || true
 

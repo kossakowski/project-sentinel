@@ -76,8 +76,8 @@ sudo mkdir -p /etc/sentinel
 
 if [ ! -f /etc/sentinel/config.yaml ]; then
     sudo cp "$APP_DIR/config/config.example.yaml" /etc/sentinel/config.yaml
-    sudo chown deploy:deploy /etc/sentinel/config.yaml
-    sudo chmod 644 /etc/sentinel/config.yaml
+    sudo chown root:sentinel /etc/sentinel/config.yaml
+    sudo chmod 640 /etc/sentinel/config.yaml
     echo "  Copied config.example.yaml -> /etc/sentinel/config.yaml"
     echo "  IMPORTANT: Edit /etc/sentinel/config.yaml and set absolute paths:"
     echo "    database.path:                /var/lib/sentinel/sentinel.db"
