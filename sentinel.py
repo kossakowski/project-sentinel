@@ -63,6 +63,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Run one cycle and generate an HTML diagnostic report (data/diagnostic.html)",
     )
+    parser.add_argument(
+        "--test-alert",
+        nargs="?",
+        const="phone_call",
+        choices=["phone_call", "sms", "whatsapp"],
+        metavar="TYPE",
+        help="Fire a real test alert through Twilio (default: phone_call). "
+        "Choices: phone_call, sms, whatsapp. Bypasses fetching, classification, "
+        "and corroboration — injects a synthetic event directly into the alert system.",
+    )
     return parser
 
 
@@ -211,6 +221,11 @@ def main() -> None:
     logger.info("Database: %s", config.database.path)
     logger.info("Dry run: %s", config.testing.dry_run)
 
+    # Test alert mode — fires a real Twilio alert
+    if args.test_alert:
+        _run_test_alert(args.test_alert, config, logger)
+        sys.exit(0)
+
     # Classification dry-run modes
     if args.test_headline:
         _run_test_headline(args.test_headline, config, logger)
@@ -346,6 +361,71 @@ def _run_test_file(filepath: str, config, logger) -> None:
             print(f"  FAILED: {e}\n")
 
     print("-" * 80)
+
+
+def _run_test_alert(alert_type: str, config, logger) -> None:
+    """Fire a real test alert through Twilio without fetching or classification.
+
+    Creates a synthetic article + event with urgency=10 and source_count=2
+    (bypassing corroboration), then dispatches through the real alert system.
+    """
+    from sentinel.alerts.state_machine import AlertStateMachine
+    from sentinel.alerts.twilio_client import TwilioClient
+    from sentinel.database import Database
+    from sentinel.models import Event
+
+    logger.info("Test alert mode: firing real %s alert", alert_type)
+
+    # Force dry_run OFF — the whole point is to fire a real alert
+    config.testing.dry_run = False
+
+    db = Database(config.database.path)
+    twilio_client = TwilioClient(config)
+    state_machine = AlertStateMachine(db, twilio_client, config)
+
+    now = datetime.now(timezone.utc)
+
+    # Create and persist a synthetic article so DB lookups in the alert
+    # formatter don't fail
+    article = _make_synthetic_article(
+        headline="[TEST] Próba alertu systemu Project Sentinel",
+        source_name="test-alert",
+    )
+    db.insert_article(article)
+
+    # Build a synthetic event that satisfies all alert thresholds
+    # urgency=10 + source_count=2 → phone_call eligible
+    # We override alert_status to match the requested alert type
+    alert_status_map = {
+        "phone_call": "phone_call",
+        "sms": "sms",
+        "whatsapp": "whatsapp",
+    }
+
+    event = Event(
+        event_type="missile_strike",
+        urgency_score=10,
+        affected_countries=["PL"],
+        aggressor="TEST",
+        summary_pl="[TEST] To jest próba alertu systemu Project Sentinel. Nie ma zagrożenia.",
+        first_seen_at=now,
+        last_updated_at=now,
+        source_count=2,
+        article_ids=[article.id],
+        alert_status=alert_status_map[alert_type],
+    )
+    db.insert_event(event)
+
+    print(f"\nTest alert: {alert_type}")
+    print(f"  Event ID:  {event.id}")
+    print(f"  Phone:     {config.alerts.phone_number}")
+    print(f"  Message:   {event.summary_pl}")
+    print()
+
+    # Dispatch through the real state machine
+    state_machine.process_event(event)
+
+    print(f"Test alert dispatched. Check your phone ({config.alerts.phone_number}).")
 
 
 if __name__ == "__main__":
