@@ -18,8 +18,11 @@ Real-time monitoring bot that scans media sources (PL/EN/UA/RU) for military att
 - Run: `./run.sh` (auto-activates venv, forwards all args to `sentinel.py`)
 - Run once: `./run.sh --once` (single pipeline cycle, then exit)
 - Dry run: `./run.sh --dry-run`
-- Continuous dry run: `./run.sh --dry-run` (default mode, scheduled every 15 min)
+- Continuous dry run: `./run.sh --dry-run` (default mode, dual-lane: fast every 3 min, slow every 15 min)
 - Test single headline: `./run.sh --test-headline "headline text here"`
+- Test headlines file: `./run.sh --test-file tests/fixtures/test_headlines.yaml`
+- Custom config: `./run.sh --config path/to/config.yaml`
+- Log level: `./run.sh --log-level DEBUG` (DEBUG, INFO, WARNING, ERROR)
 - Health check: `./run.sh --health` (prints `data/health.json`)
 - Tests: `.venv/bin/pytest tests/ -v`
 
@@ -39,4 +42,4 @@ This project was renamed twice: `twilio-playground` → `sentinel` → `project-
 - **No quiet hours.** This is a critical alert system -- call at any hour.
 - **Don't spam.** Call once per event, then switch to SMS/WhatsApp for updates.
 - **Corroboration required.** Phone calls require 2+ independent sources confirming the event.
-- Config format: YAML. Database: SQLite. Scheduler: APScheduler.
+- Config format: YAML. Database: SQLite. Scheduler: APScheduler (dual-lane: fast lane every 3 min for Telegram + priority-1 RSS + Google News, slow lane every 15 min for all sources including GDELT).

@@ -11,7 +11,9 @@ When a credible threat is detected, Project Sentinel calls the user's phone imme
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    SCHEDULER (APScheduler)                   │
-│                   Fires every 15 minutes                     │
+│          Fast lane: every 3 min (Telegram, Google            │
+│          News, priority-1 RSS)                               │
+│          Slow lane: every 15 min (all sources incl. GDELT)   │
 └─────────────────────┬───────────────────────────────────────┘
                       │
                       ▼
@@ -93,16 +95,26 @@ When a credible threat is detected, Project Sentinel calls the user's phone imme
 │  ┌──────────────────────────────────────────────────────┐   │
 │  │ CALL STATE MACHINE                                    │  │
 │  │                                                       │  │
-│  │ NEW ──► CALLING ──► ANSWERED ──► ACKNOWLEDGED         │  │
-│  │              │          │                              │  │
-│  │              ▼          ▼                              │  │
-│  │         NO_ANSWER   CALL_SHORT ──► RETRY (max 3)      │  │
-│  │              │                        │               │  │
-│  │              ▼                        ▼               │  │
-│  │         RETRY (max 3) ──────► SMS_FALLBACK            │  │
+│  │ WhatsApp 6-digit confirmation code sent before calls  │  │
 │  │                                                       │  │
-│  │ After acknowledgment: updates via SMS/WhatsApp only   │  │
-│  │ Cooldown: no re-call for same event for 6 hours       │  │
+│  │ NEW ──► CALL_PLACED ──► CHECK_STATUS                  │  │
+│  │                             │                         │  │
+│  │              ┌──────────────┼──────────────┐          │  │
+│  │              ▼              ▼              ▼          │  │
+│  │     WHATSAPP_CONFIRMED  NO_ANSWER    NO_ANSWER       │  │
+│  │              │              │              │          │  │
+│  │              ▼              ▼              ▼          │  │
+│  │        ACKNOWLEDGED    RETRY (up to 5)  RETRY_PENDING│  │
+│  │                             │              │          │  │
+│  │                             ▼              ▼          │  │
+│  │                       RETRY_PENDING   SMS_FALLBACK    │  │
+│  │                                                       │  │
+│  │ Calls: up to 5 attempts (max_call_retries), 10s apart│  │
+│  │ After each call: check WhatsApp for correct code      │  │
+│  │ Code received → ACKNOWLEDGED, follow-up SMS + links   │  │
+│  │ All calls exhausted → RETRY_PENDING, retry after      │  │
+│  │   retry_interval_minutes (default 5)                  │  │
+│  │ After acknowledgment: cooldown (6h), SMS updates only │  │
 │  └──────────────────────────────────────────────────────┘   │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘

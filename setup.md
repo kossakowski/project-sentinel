@@ -67,8 +67,8 @@ The defaults are sensible out of the box. Key settings you may want to customize
 
 - **Monitored countries** -- default: Poland, Lithuania, Latvia, Estonia
 - **Keywords** -- critical and high-urgency terms in PL/EN/UA/RU
-- **RSS sources** -- 13 feeds preconfigured (PAP, TVN24, Defence24, BBC, etc.)
-- **Scan interval** -- default: every 15 minutes
+- **RSS sources** -- 17 feeds preconfigured (PAP, TVN24, Defence24, BBC, etc.)
+- **Scan interval** -- dual-lane: fast lane every 3 min (Telegram, Google News, priority-1 RSS), slow lane every 15 min (all sources including GDELT)
 - **Corroboration threshold** -- default: 2 independent sources before phone call
 - **Urgency routing** -- critical (9-10) = phone call, high (7-8) = SMS, medium (5-6) = WhatsApp, low (1-4) = log only
 
@@ -99,7 +99,7 @@ need to run `source .venv/bin/activate` manually. All arguments are forwarded to
 # Single run -- poll all sources, process, alert if needed, then exit
 ./run.sh --once
 
-# Daemon mode -- continuous monitoring on 15-minute schedule
+# Daemon mode -- continuous monitoring (fast lane: 3 min, slow lane: 15 min)
 ./run.sh
 
 # Test a specific headline
