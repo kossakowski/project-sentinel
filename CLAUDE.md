@@ -12,6 +12,7 @@ Real-time monitoring bot that scans media sources (PL/EN/UA/RU) for military att
 - [VPS Security Hardening](docs/security/vps-hardening.md) -- do this BEFORE deployment
 - [API Setup Guide](docs/api-setup.md) -- Anthropic, Twilio, Telegram account setup
 - [Media Sources Reference](docs/sources.md) -- all monitored sources with URLs/RSS
+- [Server Runbook](docs/server-runbook.md) -- production server access, file layout, service management, deployment, troubleshooting. **Read this first for anything server-related.**
 
 ## Quick Reference
 - Config: `config/config.yaml` (see `config/config.example.yaml`)
