@@ -4,12 +4,31 @@
 
 **Immediately after VPS creation, BEFORE deploying anything.** The correct order is:
 
-1. Create VPS
+1. Create VPS + configure Hetzner Cloud Firewall
 2. Complete this entire guide
 3. Reboot and verify everything works
 4. Only then deploy the application (Phase 7)
 
 Automated bots scan new IPs within minutes. Every step below should be done in your first SSH session.
+
+---
+
+## Step 0: Hetzner Cloud Firewall
+
+Configure a provider-level firewall **before your first SSH login**. This works at the hypervisor level -- even if UFW or sshd is misconfigured, this firewall still blocks traffic.
+
+1. In [Hetzner Cloud Console](https://console.hetzner.cloud), go to **Firewalls** → **Create Firewall**
+2. Name it `sentinel-fw`
+3. Add **inbound rules**:
+   | Protocol | Port | Source IPs | Description |
+   |----------|------|-----------|-------------|
+   | TCP | 2222 | `<your-admin-ip>/32` | SSH from admin IP only |
+4. **Outbound rules**: leave default (allow all) -- Sentinel only makes outbound connections
+5. Apply the firewall to your server
+
+> **Tip:** If your home IP is dynamic, use a small CIDR range (e.g., `<your-ip-prefix>.0/24`) or update the rule when your IP changes. You can also add a second source IP entry if you SSH from multiple locations.
+
+> **Fallback:** If you get locked out because your IP changed, use the Hetzner web console (browser-based) to access the server and update the firewall rule.
 
 ---
 
@@ -28,17 +47,31 @@ apt install -y curl wget gnupg2 software-properties-common
 
 ---
 
-## Step 2: Create a Non-Root User
+## Step 2: Create Users
 
-Never run services as root. Create a dedicated user.
+Two separate users provide privilege separation: a compromise of the daemon process does not give the attacker sudo, SSH access, or the ability to modify the codebase.
 
 ```bash
-# Create user
-adduser sentinel
-# (set a strong password -- you'll disable password login later, but it's needed for sudo)
+# --- Admin user: SSH access, sudo, manages the repo and deploys updates ---
+adduser deploy
+# (set a strong password -- needed for sudo, but password SSH login is disabled later)
 
-# Grant sudo access
-usermod -aG sudo sentinel
+usermod -aG sudo deploy
+
+# --- Service user: runs the daemon only, no login shell, no sudo ---
+adduser --system --group --home /var/lib/sentinel --shell /usr/sbin/nologin sentinel
+
+# Create state and log directories owned by the service user
+mkdir -p /var/lib/sentinel /var/log/sentinel
+chown sentinel:sentinel /var/lib/sentinel /var/log/sentinel
+chmod 750 /var/lib/sentinel /var/log/sentinel
+
+# Add deploy to the sentinel group (allows deploy to read state files for health checks)
+usermod -aG sentinel deploy
+
+# Create config/secrets directory
+mkdir -p /etc/sentinel
+chmod 700 /etc/sentinel
 ```
 
 ---
@@ -47,24 +80,35 @@ usermod -aG sudo sentinel
 
 This is the single most important step. SSH is the #1 attack vector on any VPS.
 
-### 3a: Copy SSH Key to New User
+### 3a: Set Up SSH Key for Admin User
+
+If you don't already have an ed25519 key on your **local machine**, generate one:
 
 ```bash
-# Still logged in as root:
-mkdir -p /home/sentinel/.ssh
-cp ~/.ssh/authorized_keys /home/sentinel/.ssh/
-chown -R sentinel:sentinel /home/sentinel/.ssh
-chmod 700 /home/sentinel/.ssh
-chmod 600 /home/sentinel/.ssh/authorized_keys
+# On your LOCAL machine:
+ssh-keygen -t ed25519 -a 100 -C "sentinel-vps"
+```
+
+> **Why ed25519?** Shorter keys, faster operations, and no known weak-parameter risks (unlike certain RSA or ECDSA configurations). If you already have an RSA-4096 key, it's fine to keep using it.
+
+Copy the key to the server:
+
+```bash
+# Still logged in as root on the server:
+mkdir -p /home/deploy/.ssh
+cp ~/.ssh/authorized_keys /home/deploy/.ssh/
+chown -R deploy:deploy /home/deploy/.ssh
+chmod 700 /home/deploy/.ssh
+chmod 600 /home/deploy/.ssh/authorized_keys
 ```
 
 ### 3b: Test the New User Login (BEFORE Locking Root)
 
-**Critical:** Open a NEW terminal window and verify you can log in as the new user before changing SSH config. If you lock yourself out, you'll need VPS console access to recover.
+**Critical:** Open a NEW terminal window and verify you can log in as the new user before changing SSH config. If you lock yourself out, you'll need the Hetzner web console to recover.
 
 ```bash
 # In a NEW terminal:
-ssh sentinel@<server-ip>
+ssh deploy@<server-ip>
 sudo whoami  # should print "root"
 ```
 
@@ -72,15 +116,11 @@ Only proceed if this works.
 
 ### 3c: Harden SSH Configuration
 
+Ubuntu 24.04 supports drop-in config snippets via `/etc/ssh/sshd_config.d/`. Use a snippet instead of editing the main config -- it's cleaner and survives package upgrades.
+
 ```bash
 # Back in the root session:
-cp /etc/ssh/sshd_config /etc/ssh/sshd_config.backup
-nano /etc/ssh/sshd_config
-```
-
-Find and change (or add) these lines:
-
-```
+cat > /etc/ssh/sshd_config.d/99-sentinel-hardening.conf << 'EOF'
 # Change default port (pick any unused port between 1024-65535)
 Port 2222
 
@@ -103,13 +143,14 @@ MaxAuthTries 3
 ClientAliveInterval 300
 ClientAliveCountMax 2
 
-# Only allow your specific user
-AllowUsers sentinel
+# Only allow the admin user (service user has no shell and cannot SSH)
+AllowUsers deploy
 
 # Disable unused authentication methods
-ChallengeResponseAuthentication no
+KbdInteractiveAuthentication no
 KerberosAuthentication no
 GSSAPIAuthentication no
+EOF
 ```
 
 ### 3d: Validate and Restart SSH
@@ -128,13 +169,13 @@ systemctl restart sshd
 
 ```bash
 # This should work:
-ssh -p 2222 sentinel@<server-ip>
+ssh -p 2222 deploy@<server-ip>
 
 # This should FAIL:
 ssh -p 2222 root@<server-ip>
 
 # This should FAIL (old port):
-ssh sentinel@<server-ip>
+ssh deploy@<server-ip>
 ```
 
 Only close the root session after confirming the new login works.
@@ -142,6 +183,8 @@ Only close the root session after confirming the new login works.
 ---
 
 ## Step 4: Firewall (UFW)
+
+UFW provides a host-level firewall as a second layer behind the Hetzner Cloud Firewall.
 
 ```bash
 # Install ufw (usually pre-installed on Ubuntu)
@@ -372,18 +415,18 @@ sudo systemctl disable --now bluetooth.service 2>/dev/null
 ## Step 9: File Permission Hardening
 
 ```bash
-# Restrict cron to the sentinel user only
-sudo bash -c 'echo "sentinel" > /etc/cron.allow'
+# Restrict cron to the admin user only (service user has no shell and doesn't need cron)
+sudo bash -c 'echo "deploy" > /etc/cron.allow'
 
-# Restrict at to the sentinel user only
-sudo bash -c 'echo "sentinel" > /etc/at.allow'
+# Restrict at to the admin user only
+sudo bash -c 'echo "deploy" > /etc/at.allow'
 
-# Secure the home directory
-chmod 750 /home/sentinel
+# Secure the admin home directory
+chmod 750 /home/deploy
 
 # Secure SSH directory
-chmod 700 /home/sentinel/.ssh
-chmod 600 /home/sentinel/.ssh/authorized_keys
+chmod 700 /home/deploy/.ssh
+chmod 600 /home/deploy/.ssh/authorized_keys
 ```
 
 ---
@@ -471,7 +514,7 @@ After reboot, verify everything survived:
 
 ```bash
 # Log in with new SSH config
-ssh -p 2222 sentinel@<server-ip>
+ssh -p 2222 deploy@<server-ip>
 
 # Verify firewall is active
 sudo ufw status
@@ -487,6 +530,10 @@ sudo systemctl status unattended-upgrades
 
 # Verify AIDE is installed
 sudo aide --check
+
+# Verify service user cannot log in
+sudo -u sentinel bash 2>&1 | head -1
+# Expected: "This account is currently not available."
 ```
 
 ---
@@ -497,16 +544,18 @@ Run through this checklist before proceeding to application deployment:
 
 | # | Check | Command | Expected |
 |---|-------|---------|----------|
-| 1 | Root SSH disabled | `ssh root@<ip> -p 2222` | Connection refused / denied |
-| 2 | Password auth disabled | `ssh -o PasswordAuthentication=yes sentinel@<ip> -p 2222` | Permission denied |
-| 3 | Old SSH port closed | `ssh sentinel@<ip> -p 22` | Connection refused |
-| 4 | UFW active, only SSH open | `sudo ufw status` | 2222/tcp ALLOW |
-| 5 | Fail2ban monitoring SSH | `sudo fail2ban-client status sshd` | Shows active jail |
-| 6 | Auto-updates enabled | `sudo systemctl status unattended-upgrades` | Active |
-| 7 | Sysctl hardening applied | `sudo sysctl net.ipv4.conf.all.rp_filter` | = 1 |
-| 8 | Non-root user has sudo | `sudo whoami` | root |
-| 9 | No unnecessary services | `sudo systemctl list-units --type=service --state=running` | Minimal list |
-| 10 | AIDE database initialized | `sudo aide --check` | No unexpected changes |
+| 1 | Hetzner Cloud Firewall active | Hetzner Console → Firewalls | `sentinel-fw` applied, only 2222/tcp from admin IP |
+| 2 | Root SSH disabled | `ssh root@<ip> -p 2222` | Connection refused / denied |
+| 3 | Password auth disabled | `ssh -o PasswordAuthentication=yes deploy@<ip> -p 2222` | Permission denied |
+| 4 | Old SSH port closed | `ssh deploy@<ip> -p 22` | Connection refused |
+| 5 | UFW active, only SSH open | `sudo ufw status` | 2222/tcp ALLOW |
+| 6 | Fail2ban monitoring SSH | `sudo fail2ban-client status sshd` | Shows active jail |
+| 7 | Auto-updates enabled | `sudo systemctl status unattended-upgrades` | Active |
+| 8 | Sysctl hardening applied | `sudo sysctl net.ipv4.conf.all.rp_filter` | = 1 |
+| 9 | Admin user has sudo | `sudo whoami` | root |
+| 10 | Service user has no shell | `sudo -u sentinel bash` | "This account is currently not available" |
+| 11 | No unnecessary services | `sudo systemctl list-units --type=service --state=running` | Minimal list |
+| 12 | AIDE database initialized | `sudo aide --check` | No unexpected changes |
 
 ---
 
@@ -523,6 +572,7 @@ Run through this checklist before proceeding to application deployment:
 - Check for new CVEs affecting your Ubuntu version
 - Review running services: `sudo systemctl list-units --type=service --state=running`
 - Update AIDE database after legitimate changes: `sudo aide --update && sudo cp /var/lib/aide/aide.db.new /var/lib/aide/aide.db`
+- Verify Hetzner Cloud Firewall rules still match your admin IP(s)
 
 ### After Every `apt upgrade`
 
@@ -534,8 +584,9 @@ Run through this checklist before proceeding to application deployment:
 
 If you lock yourself out of SSH:
 
-1. **Hetzner Cloud Console** -- go to the Hetzner dashboard, select your server, click "Console". This gives you direct access regardless of SSH config.
+1. **Hetzner Cloud Console** -- go to the Hetzner dashboard, select your server, click "Console". This gives you direct access regardless of SSH config or Cloud Firewall rules.
 2. **Rescue Mode** -- Hetzner lets you boot into a rescue system to fix config files.
-3. From rescue/console, fix `/etc/ssh/sshd_config` and restart sshd.
+3. From rescue/console, fix `/etc/ssh/sshd_config.d/99-sentinel-hardening.conf` and restart sshd.
+4. If locked out by the Cloud Firewall, update the firewall rules in the Hetzner Console web UI -- no SSH needed.
 
 **Tip:** Before making SSH config changes, always keep at least one existing session open as a safety net.
