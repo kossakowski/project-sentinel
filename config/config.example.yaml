@@ -460,7 +460,7 @@ classification:
   model: claude-haiku-4-5-20251001
   max_tokens: 512
   temperature: 0.0
-  corroboration_required: 2
+  corroboration_required: 1
   corroboration_window_minutes: 60
 
 # -----------------------------------------------------------------------------
@@ -474,7 +474,7 @@ alerts:
     critical:
       min_score: 9
       action: phone_call
-      corroboration_required: 2
+      corroboration_required: 1
       retry_attempts: 3
       retry_interval_minutes: 5
       fallback: sms
