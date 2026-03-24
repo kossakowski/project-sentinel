@@ -3,9 +3,10 @@ name: deploy
 description: >-
   Deploy Project Sentinel to production. Runs pre-flight checks (uncommitted changes,
   failing tests, unmerged branch), merges current branch to master, tags the deploy commit,
-  creates a full server backup (code, config, database, Telegram session), deploys code
-  via rsync, rebuilds the venv if needed, restarts the service, and verifies everything
-  is running. Only invoke when the user explicitly calls /deploy. Do NOT auto-trigger.
+  pushes master and tag to remote, creates a full server backup (code, config, database,
+  Telegram session), deploys code via rsync, rebuilds the venv if needed, restarts the
+  service, and verifies everything is running. Only invoke when the user explicitly calls
+  /deploy. Do NOT auto-trigger.
 ---
 
 # /deploy — Project Sentinel Production Deployment
@@ -39,7 +40,7 @@ You are deploying Project Sentinel to its production Hetzner VPS. Invoking /depl
 
 ## Deployment Pipeline
 
-Execute steps 1–6 in strict order. If ANY step fails, report the error clearly and **STOP**. Do not continue, do not attempt workarounds, do not auto-rollback.
+Execute steps 1–7 in strict order. If ANY step fails, report the error clearly and **STOP**. Do not continue, do not attempt workarounds, do not auto-rollback.
 
 ### Step 1: Pre-flight Checks
 
@@ -101,7 +102,20 @@ Report: "Tagged as `{tag}`."
 
 This tag marks the exact commit deployed to production. To rollback later: `git checkout {tag}` and re-deploy.
 
-### Step 4: Full Server Backup
+### Step 4: Push to Remote
+
+Push the merged `master` branch and the deploy tag to the remote repository so the git history is preserved remotely.
+
+```bash
+git push origin master
+git push origin "$DEPLOY_TAG"
+```
+
+If push fails → **STOP:** "Failed to push to remote. Check your network connection and remote access, then run /deploy again."
+
+On success, report: "Pushed `master` and tag `{tag}` to origin."
+
+### Step 5: Full Server Backup
 
 SSH to the server and create a timestamped backup directory containing all critical data. Compute the timestamp on the remote server.
 
@@ -144,9 +158,9 @@ If any backup step fails → **STOP:** "Backup failed — deployment aborted to 
 
 On success, report the backup location and its contents.
 
-### Step 5: Deploy Code
+### Step 6: Deploy Code
 
-**5a. Sync code via rsync** (transfers only changed files, excludes build artifacts and local state):
+**6a. Sync code via rsync** (transfers only changed files, excludes build artifacts and local state):
 
 ```bash
 rsync -avz --delete \
@@ -172,7 +186,7 @@ The `--delete` flag removes files on the server that no longer exist locally (ex
 
 If rsync fails → **STOP.** Report the error.
 
-**5b. Rebuild Python dependencies:**
+**6b. Rebuild Python dependencies:**
 
 ```bash
 ssh -p 2222 deploy@178.104.76.254 'cd /home/deploy/sentinel && venv/bin/pip install -r requirements.txt'
@@ -180,7 +194,7 @@ ssh -p 2222 deploy@178.104.76.254 'cd /home/deploy/sentinel && venv/bin/pip inst
 
 If pip install fails → **STOP.** Report the error and remind the user that a backup exists.
 
-**5c. Restart the service:**
+**6c. Restart the service:**
 
 ```bash
 ssh -p 2222 deploy@178.104.76.254 'sudo systemctl restart sentinel'
@@ -188,30 +202,30 @@ ssh -p 2222 deploy@178.104.76.254 'sudo systemctl restart sentinel'
 
 If restart fails → **STOP.** Report the error.
 
-### Step 6: Verify Deployment
+### Step 7: Verify Deployment
 
 Run ALL verification checks. Collect results, then report them together.
 
-**6a. Service status:**
+**7a. Service status:**
 ```bash
 ssh -p 2222 deploy@178.104.76.254 'sudo systemctl status sentinel --no-pager'
 ```
 Check that the service is `active (running)`. If not → **ALERT.**
 
-**6b. Immediate error scan** (first 15 seconds of logs after restart):
+**7b. Immediate error scan** (first 15 seconds of logs after restart):
 ```bash
 sleep 15
 ssh -p 2222 deploy@178.104.76.254 'sudo journalctl -u sentinel --since "30 seconds ago" --no-pager'
 ```
 Scan for `ERROR`, `Exception`, `Traceback`, `CRITICAL`. If found → **ALERT** and show the relevant lines.
 
-**6c. Health check:**
+**7c. Health check:**
 ```bash
 ssh -p 2222 deploy@178.104.76.254 'cat /var/lib/sentinel/health.json 2>/dev/null || echo "health.json not yet available"'
 ```
 Report the health status. Note: health.json may take up to 3 minutes to refresh (first fast-lane cycle after restart).
 
-**6d. Extended log check** (wait for first pipeline cycle):
+**7d. Extended log check** (wait for first pipeline cycle):
 ```bash
 sleep 30
 ssh -p 2222 deploy@178.104.76.254 'sudo journalctl -u sentinel --since "1 minute ago" --no-pager | tail -30'
@@ -229,6 +243,7 @@ After all steps succeed, output this summary:
 
 - Branch merged: {branch} → master (or "master deployed as-is")
 - Git tag: {deploy-YYYYMMDD-HHMMSS}
+- Pushed to remote: master + {tag}
 - Backup location: /home/deploy/backups/deploy-{timestamp}/
 - Backup contents: code.tar.gz, config.yaml, sentinel.db, sentinel_session.session
 - rsync: {N} files transferred, {size} total
