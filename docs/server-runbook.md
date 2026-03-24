@@ -8,12 +8,21 @@ Complete reference for operating the production server. Point Claude Code at thi
 ssh -p 2222 deploy@178.104.76.254
 ```
 
-- **Provider:** Hetzner Cloud, CX23 (2 vCPU, 4GB RAM), Falkenstein datacenter
+- **Provider:** Hetzner Cloud, CX23 (2 vCPU, 4GB RAM), Nuremberg datacenter
 - **OS:** Ubuntu 24.04 LTS
 - **SSH port:** 2222 (default 22 is firewalled off)
 - **Auth:** SSH key only, password auth disabled
 - **Admin user:** `deploy` (passwordless sudo, SSH key login)
 - **Service user:** `sentinel` (no login shell, no sudo, runs the app via systemd)
+
+> **IMPORTANT:** Always use `deploy@` when connecting. Do NOT use `root@` or `kossa@` — these will be rejected and count as failed login attempts. After **5 failed attempts** within 10 minutes, fail2ban will ban your IP for 1 hour. See [Locked out of SSH](#locked-out-of-ssh-fail2ban) below for recovery.
+
+### Emergency Console Access
+
+If SSH is completely inaccessible, use the **Hetzner Cloud web console**:
+1. Log in at https://console.hetzner.cloud
+2. Select the server → **Console** tab
+3. Log in as `root` (password set during VPS provisioning — check your password manager)
 
 ## File Layout
 
@@ -165,7 +174,7 @@ Run as the `deploy` user. View with: `ssh -p 2222 deploy@178.104.76.254 'crontab
 | Layer | Tool | Config |
 |-------|------|--------|
 | Firewall | UFW | Only port 2222/tcp open |
-| Brute force | fail2ban | Monitors SSH, bans after 3 failures for 24h |
+| Brute force | fail2ban | Monitors SSH, bans after 5 failures for 1h (79.184.239.122 whitelisted) |
 | Kernel | sysctl | `/etc/sysctl.d/99-sentinel-hardening.conf` |
 | SSH | sshd_config.d | `/etc/ssh/sshd_config.d/99-sentinel-hardening.conf` |
 | SSH socket | systemd override | `/etc/systemd/system/ssh.socket.d/override.conf` |
@@ -199,9 +208,57 @@ sudo chmod 600 /var/lib/sentinel/sentinel_session.session
 sudo systemctl restart sentinel
 ```
 
-**Locked out of SSH:**
-Hetzner Cloud Console → server → Console (web terminal) or Rescue Mode.
-Fix: `rm /etc/ssh/sshd_config.d/99-sentinel-hardening.conf && systemctl restart ssh`
+**Locked out of SSH (fail2ban):**
+
+Most likely cause: fail2ban banned your IP after repeated failed SSH attempts (e.g., connecting with the wrong username). Symptoms: `ssh` returns "Connection refused" but `ping` works.
+
+Diagnosis from local machine:
+```bash
+# "Connection refused" + ping works = fail2ban ban (port is open but your IP is rejected)
+# "Connection timed out" + ping works = firewall/sshd issue (port is blocked or not listening)
+ping 178.104.76.254
+ssh -p 2222 deploy@178.104.76.254
+```
+
+Recovery via Hetzner Cloud Console (web terminal):
+```bash
+# Log in as root at: Hetzner Cloud → server → Console tab
+
+# Check if your IP is banned (replace with your actual IP)
+fail2ban-client status sshd
+
+# Unban your IP
+fail2ban-client set sshd unbanip YOUR_IP_HERE
+
+# Verify the unban worked (test SSH from your local machine)
+```
+
+If sshd itself is broken (not fail2ban):
+```bash
+# Check if SSH socket is listening
+ss -tlnp | grep 2222
+
+# Check socket override exists
+cat /etc/systemd/system/ssh.socket.d/override.conf
+
+# Restart SSH
+systemctl daemon-reload
+systemctl restart ssh.socket
+
+# Nuclear option: remove hardening and restart
+rm /etc/ssh/sshd_config.d/99-sentinel-hardening.conf && systemctl restart ssh
+```
+
+**fail2ban configuration:**
+- Config: `/etc/fail2ban/jail.local` + `/etc/fail2ban/jail.d/whitelist.conf`
+- Whitelisted IPs: `79.184.239.122` (kossa's home IP)
+- Ban threshold: 5 failed attempts in 10 minutes → 1 hour ban
+- If your home IP changes, update the whitelist:
+  ```bash
+  sudo nano /etc/fail2ban/jail.d/whitelist.conf   # update the IP
+  sudo fail2ban-client reload
+  sudo fail2ban-client get sshd ignoreip           # verify
+  ```
 
 **Disk full:**
 ```bash

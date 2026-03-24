@@ -40,6 +40,7 @@ This project was renamed twice: `twilio-playground` → `sentinel` → `project-
 **If imports fail with paths to `twilio-plaground` or `sentinel`**: the fix is to recreate the venv from scratch (`rm -rf .venv && python -m venv .venv && pip install -r requirements.txt`) and clear all `__pycache__` dirs.
 
 ## Production Server Policy
+- **SSH access:** `ssh -p 2222 deploy@178.104.76.254` — **always use `deploy@`**, never `root@` or `kossa@`. Wrong usernames trigger fail2ban bans.
 - **NEVER modify files on the production server** unless the user explicitly asks for it.
 - If a task requires changing server files (deploy, config update, etc.), **ask the user for permission first** — do not do it autonomously.
 - Run and test code **locally** by default. Use local env vars for Twilio/API credentials when testing.
