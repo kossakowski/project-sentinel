@@ -33,6 +33,23 @@ Implemented 2026-03-24. `_build_sources_list()` now appends the article `source_
 - No SLA, fragile auth (OAuth tokens expire), rate limits tuned for human-speed interaction
 - A critical alert system cannot depend on a consumer subscription
 
+**Cost analysis (based on real production data, 2026-03-24):**
+
+First ~14 hours of operation: 51 classifications, avg 699 input / 146 output tokens each.
+Projected ~1,800 classifications/month at steady state (~60/day).
+Urgency distribution: 88% score 1-4, 4% score 5-6, 4% score 7-8, 4% score 9+.
+
+| Setup | Monthly cost |
+|---|---|
+| Current (Haiku only) | ~$2.57 |
+| Tiered (Haiku + Sonnet + Opus) | ~$3.70 |
+| Delta | +$1.13 (+44%) |
+
+Sonnet tier adds ~$0.92/mo (~216 re-classifications). Opus tier adds ~$0.21/mo (~10 verifications). Cost is negligible — the tiered approach is about accuracy, not savings.
+
+**Auditability requirement:**
+Every classification step must be saved to the database — not just the final result. When Sonnet re-classifies an article, store the Sonnet prompt, response, model used, tokens, and result alongside the original Haiku classification. Same for Opus verification. The `classifications` table needs a `tier` or `pass_number` column (or a separate `classification_passes` table) so we can trace the full decision chain for any article: what Haiku said → what Sonnet said → what Opus said → final decision.
+
 **Implementation notes:**
 - All three tiers use the API (`ANTHROPIC_API_KEY`), just different model IDs
 - The classification prompt improvement (tier 1) should be done first — it's free and addresses the root cause
