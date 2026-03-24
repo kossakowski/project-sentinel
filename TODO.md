@@ -15,3 +15,25 @@
 ## ~~2. Include clickable source links in SMS/WhatsApp messages~~ ✅ DONE
 
 Implemented 2026-03-24. `_build_sources_list()` now appends the article `source_url` below each source line. Google News URLs included as-is. Deployed to production.
+
+## 3. Smarter multi-tier classification to reduce false positives
+
+**Problem:** Haiku misclassifies headlines like "Poland scrambles jets in response to Russian strike on Ukraine" as a direct attack on Poland (urgency 9). Using Opus for all classifications would fix accuracy but is prohibitively expensive at 688+ articles per cycle.
+
+**Approach: Tiered classification pipeline (Haiku → Sonnet → Opus)**
+
+1. **Haiku (first pass, all articles):** Keep Haiku as the fast/cheap initial classifier. Improve the classification prompt to explicitly distinguish "country X is under direct attack" from "country X is responding defensively to an attack on a neighbor." This alone should eliminate most false positives — it's a prompt problem, not a model capability problem.
+
+2. **Sonnet (second pass, ambiguous cases):** When Haiku returns urgency ≥ 5, re-classify with Sonnet 4.6 for a second opinion. Sonnet is ~5x cheaper than Opus and significantly more capable than Haiku. Use the Sonnet score as the authoritative one.
+
+3. **Opus (final verification, before phone calls only):** Before triggering a phone call (urgency 9+, 2+ corroborating sources), run a single Opus 4.6 verification call. This is the highest-stakes action (waking someone up), so it warrants the best model. Expected volume: 0-2 Opus calls per day — negligible cost.
+
+**Why not use Claude CLI / Max plan instead of API:**
+- Max plan is for interactive personal use — automating it in a production pipeline violates TOS and risks account suspension
+- No SLA, fragile auth (OAuth tokens expire), rate limits tuned for human-speed interaction
+- A critical alert system cannot depend on a consumer subscription
+
+**Implementation notes:**
+- All three tiers use the API (`ANTHROPIC_API_KEY`), just different model IDs
+- The classification prompt improvement (tier 1) should be done first — it's free and addresses the root cause
+- Tiers 2-3 add cost but only for the small fraction of articles that score high
