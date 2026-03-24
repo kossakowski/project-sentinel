@@ -26,14 +26,18 @@ EVENT_TYPE_PL = {
 def _build_sources_list(event: Event, db: Database) -> str:
     """Build a formatted source list from event article_ids.
 
-    Looks up each article in the database to get source_name and title.
-    Falls back to a simple count if articles are not found.
+    Looks up each article in the database to get source_name, title,
+    and source_url.  Each source is rendered as a title line followed
+    by a clickable URL line so the recipient can immediately verify
+    the article.
     """
     lines = []
     for article_id in event.article_ids:
         article = db.get_article_by_id(article_id)
         if article is not None:
             lines.append(f"- {article.source_name}: {article.title}")
+            if article.source_url:
+                lines.append(f"  {article.source_url}")
         else:
             lines.append(f"- (źródło {article_id[:8]})")
     return "\n".join(lines) if lines else f"- {event.source_count} źródeł"
