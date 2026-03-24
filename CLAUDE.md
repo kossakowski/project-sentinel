@@ -39,6 +39,12 @@ This project was renamed twice: `twilio-playground` → `sentinel` → `project-
 
 **If imports fail with paths to `twilio-plaground` or `sentinel`**: the fix is to recreate the venv from scratch (`rm -rf .venv && python -m venv .venv && pip install -r requirements.txt`) and clear all `__pycache__` dirs.
 
+## Production Server Policy
+- **NEVER modify files on the production server** unless the user explicitly asks for it.
+- If a task requires changing server files (deploy, config update, etc.), **ask the user for permission first** — do not do it autonomously.
+- Run and test code **locally** by default. Use local env vars for Twilio/API credentials when testing.
+- The only exception is read-only commands (checking logs, health, DB queries) which are safe to run on the server.
+
 ## Development Rules
 - **Nothing is hardcoded.** All keywords, sources, countries, thresholds, and URLs live in `config/config.yaml`.
 - **Every phase must pass its tests** before starting the next phase.
