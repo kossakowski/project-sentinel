@@ -12,11 +12,6 @@
 - Consider a separate `target_country` field in classification to distinguish who is actually being attacked vs who is responding defensively.
 - The goal: when you glance at the WhatsApp message, you instantly know whether Poland itself is hit or whether it's a defensive response to an attack on a neighbor.
 
-## 2. Include clickable source links in SMS/WhatsApp messages
+## ~~2. Include clickable source links in SMS/WhatsApp messages~~ ✅ DONE
 
-**Problem:** Current alert messages reference sources by name (e.g., `GoogleNews:military attack Poland: Poland Mobilizes Fighter Jets...`) but don't include a clickable URL. When you receive the alert, you can't instantly verify the article content.
-
-**Requirements:**
-- Every SMS/WhatsApp alert must include the source article URL as a clickable link.
-- If the source is a Google News redirect URL, include the Google News URL as-is — do NOT try to resolve it to the underlying article. Google News links work fine in browsers and will redirect the user to the actual article.
-- The link should be placed prominently so it's immediately tappable on a phone.
+Implemented 2026-03-24. `_build_sources_list()` now appends the article `source_url` below each source line. Google News URLs included as-is. Deployed to production.
