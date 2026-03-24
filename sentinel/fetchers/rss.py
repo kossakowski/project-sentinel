@@ -124,6 +124,23 @@ class RSSFetcher(BaseFetcher):
 
         response.raise_for_status()
 
+        # Detect WAF/bot-protection interception (e.g. Incapsula returning HTML
+        # challenge page with HTTP 200 instead of actual RSS XML).
+        content_type = response.headers.get("content-type", "")
+        if (
+            "text/html" in content_type
+            and "xml" not in content_type
+            and len(response.content) < 2000
+        ):
+            self.logger.warning(
+                "RSS source %s: likely blocked by WAF/bot-protection "
+                "(got text/html, %d bytes instead of XML). "
+                "Consider routing through Google News site: operator.",
+                source.name,
+                len(response.content),
+            )
+            return []
+
         # Update conditional GET cache
         if "etag" in response.headers:
             self._etag_cache[url] = response.headers["etag"]

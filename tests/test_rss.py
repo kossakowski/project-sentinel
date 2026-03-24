@@ -76,10 +76,25 @@ SAMPLE_RSS_HTML_SUMMARY = """\
 
 MALFORMED_XML = """This is not valid XML at all!!!<broken"""
 
+INCAPSULA_CHALLENGE = """\
+<html>
+<head>
+<META NAME="robots" CONTENT="noindex,nofollow">
+<script src="/_Incapsula_Resource?SWJIYLWA=5074a744e2e3d891814e9a2dace20bd4"></script>
+<body>
+</body></html>"""
 
-def _make_response(content: str, status_code: int = 200, headers: dict | None = None):
+
+def _make_response(
+    content: str,
+    status_code: int = 200,
+    headers: dict | None = None,
+    content_type: str | None = None,
+):
     """Create a mock httpx.Response."""
-    resp_headers = headers or {}
+    resp_headers = dict(headers or {})
+    if content_type:
+        resp_headers["content-type"] = content_type
     return httpx.Response(
         status_code=status_code,
         text=content,
@@ -321,3 +336,24 @@ def test_strip_html_function():
     assert strip_html("<p>Hello <b>world</b></p>") == "Hello world"
     assert strip_html("plain text") == "plain text"
     assert strip_html("") == ""
+
+
+@pytest.mark.asyncio
+async def test_waf_bot_protection_detected(config):
+    """WAF/Incapsula challenge page returns empty list with warning."""
+    fetcher = RSSFetcher(config)
+    mock_resp = _make_response(
+        INCAPSULA_CHALLENGE,
+        content_type="text/html",
+    )
+
+    with patch("sentinel.fetchers.rss.httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        articles = await fetcher.fetch()
+
+    assert articles == []
