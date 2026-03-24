@@ -231,7 +231,7 @@ sources:
     - name: PAP
       url: https://www.pap.pl/rss.xml
       language: pl
-      enabled: true
+      enabled: false  # Blocked by Incapsula WAF since ~2026. Use site:pap.pl Google News query instead.
       priority: 1
 
     - name: TVN24
@@ -391,6 +391,10 @@ sources:
         language: pl
       - query: "дрони Польща"
         language: uk
+      # PAP workaround: pap.pl is behind Incapsula WAF blocking all non-browser
+      # requests. Route PAP content through Google News site: operator.
+      - query: "site:pap.pl"
+        language: pl
 
   # --- Telegram ---
   telegram:
