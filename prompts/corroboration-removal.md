@@ -14,10 +14,6 @@ Two independent checks gate phone calls on corroboration:
 Both must be changed. Changing only one leaves the other still blocking single-source phone calls.
 </context>
 
-<prerequisite_note>
-This change depends on Workstream B (classifier prompt fixes, commit 7651e3f) being deployed. Ideally, 24 hours of production data should confirm the classifier is no longer over-scoring Ukraine-only events as urgency 9+. Note this to the user as a reminder, but proceed with the config changes regardless — the user has accepted the risk of potential false alerts.
-</prerequisite_note>
-
 <critical_safety_rules>
 - Do NOT modify any Python files — this is config-only
 - Do NOT SSH to or modify files on the production server
@@ -117,4 +113,3 @@ Depends on classifier prompt fixes (7651e3f) being deployed.
 Tell the user:
 - The config changes are committed locally
 - Deployment to production is a separate step (use `/deploy`)
-- Remind them that the classifier prompt fixes (Workstream B) should be validated in production before deploying this change, but acknowledge they have accepted the risk
