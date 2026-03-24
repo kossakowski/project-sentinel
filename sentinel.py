@@ -8,6 +8,7 @@ import logging
 import os
 import sys
 from datetime import datetime, timezone
+from uuid import uuid4
 
 import yaml
 
@@ -263,7 +264,7 @@ def _make_synthetic_article(headline: str, source_name: str = "test-headline") -
     now = datetime.now(timezone.utc)
     return Article(
         source_name=source_name,
-        source_url=f"https://test.sentinel/{headline[:40]}",
+        source_url=f"https://test.sentinel/{uuid4().hex[:8]}",
         source_type="test",
         title=headline,
         summary=headline,
