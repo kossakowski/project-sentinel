@@ -28,6 +28,17 @@ SYSTEM_PROMPT = (
     "- Airspace violation by drones/aircraft CAN be a precursor to attack -- score these 6-8 depending on scale\n"
     '- A "special military operation" or similar euphemism from Russian media describing action '
     "against a target country IS an attack\n"
+    "- The 'Source:' field is metadata identifying WHERE the article was found, NOT what it says. "
+    "For Google News sources (e.g. 'GoogleNews:drone incursion Poland'), the source name contains "
+    "the search query -- this is NOT article content. Classify ONLY based on 'Title:' and 'Summary:'. "
+    "Do NOT infer that a country is affected because it appears in the source name.\n"
+    "- A country scrambling jets or activating air defense as a PRECAUTION in response to attacks on a "
+    "NEIGHBORING country is urgency 5-6, NOT 7-10. Urgency 7+ requires evidence that the country's own "
+    "territory or airspace was directly attacked or breached.\n"
+    "- An attack on assets associated with country X but physically located in country Y is an attack on "
+    "Y, NOT X. Score affected_countries based on the PHYSICAL LOCATION of the attack.\n"
+    "- If the headline and summary do NOT explicitly state which country was attacked, do NOT assume "
+    "it was a monitored country. Assign urgency 2-3 and confidence below 0.5.\n"
     "\n"
     "Respond ONLY with valid JSON. No markdown, no explanation, no preamble."
 )
@@ -61,7 +72,14 @@ USER_PROMPT_TEMPLATE = (
     "7-8: Serious escalation (shots fired at border, large-scale airspace violation, "
     "cyberattack on critical infrastructure, partial mobilization)\n"
     "9-10: Active military attack or invasion (troops crossing border, missiles striking targets, "
-    "declaration of war, Article 5 invoked)"
+    "declaration of war, Article 5 invoked)\n"
+    "\n"
+    "CRITICAL RULES:\n"
+    "- Urgency 9-10 is EXCLUSIVELY for attacks directly targeting PL, LT, LV, or EE territory. "
+    "Attacks on Ukraine or other countries MUST NOT exceed urgency 4, "
+    "UNLESS they directly impact monitored country territory.\n"
+    "- affected_countries: ONLY list countries EXPLICITLY mentioned in the article as attacked. "
+    "Do NOT infer affected countries from the monitoring scope. Use [] if none explicitly mentioned."
 )
 
 # Regex to extract JSON from markdown-wrapped responses

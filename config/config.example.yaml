@@ -78,6 +78,18 @@ monitoring:
         - "Iskander"
         - "Kinzhal"
         - "Kalibr"
+        - "drone crash"
+        - "drone crashed"
+        - "drone strike"
+        - "UAV"
+        - "scramble"
+        - "scrambled"
+        - "scrambles"
+        - "sabotage"
+        - "GPS jamming"
+        - "cyberattack"
+        - "cyberattacks"
+        - "Baltic states"
 
     pl:
       critical:
@@ -98,6 +110,9 @@ monitoring:
         - "ostrzał"
         - "wypowiedzenie wojny"
         - "agresja zbrojna"
+        - "alarm lotniczy"
+        - "atak na Polskę"
+        - "zaatakować Polskę"
       high:
         - "koncentracja wojsk"
         - "naruszenie przestrzeni powietrznej"
@@ -110,7 +125,7 @@ monitoring:
         - "stan wyjątkowy"
         - "alarm"
         - "zagrożenie"
-        - "drony"
+        - "dron"
         - "konwój wojskowy"
         - "cyberatak"
         - "rozmieszczenie wojsk"
@@ -121,6 +136,12 @@ monitoring:
         - "Iskander"
         - "Kindżał"
         - "Kalibr"
+        - "poderwał"
+        - "Szahed"
+        - "bezzałogowc"
+        - "rakiet"
+        - "sabotaż"
+        - "wojna hybrydowa"
 
     uk:
       critical:
@@ -139,7 +160,7 @@ monitoring:
         - "мобілізація"
         - "ескалація"
         - "концентрація військ"
-        - "дрони"
+        - "дрон"
         - "ракетна атака"
         - "кібератака"
         - "Шахед"
@@ -148,6 +169,9 @@ monitoring:
         - "Іскандер"
         - "Кинджал"
         - "Калібр"
+        - "безпілотник"
+        - "крилат"
+        - "пуски ракет"
 
     ru:
       critical:
