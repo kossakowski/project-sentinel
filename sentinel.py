@@ -422,8 +422,14 @@ def _run_test_alert(alert_type: str, config, logger) -> None:
     print(f"  Message:   {event.summary_pl}")
     print()
 
-    # Dispatch through the real state machine
-    state_machine.process_event(event)
+    # Bypass state machine routing — call the requested method directly
+    # (process_event would ignore alert_type and route based on urgency/sources)
+    if alert_type == "phone_call":
+        state_machine._execute_phone_call(event)
+    elif alert_type == "sms":
+        state_machine._execute_sms(event)
+    elif alert_type == "whatsapp":
+        state_machine._execute_whatsapp(event)
 
     print(f"Test alert dispatched. Check your phone ({config.alerts.phone_number}).")
 
