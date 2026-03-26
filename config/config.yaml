@@ -1,0 +1,478 @@
+monitoring:
+  target_countries:
+  - code: PL
+    name: Poland
+    name_native: Polska
+  - code: LT
+    name: Lithuania
+    name_native: Litwa
+  - code: LV
+    name: Latvia
+    name_native: Łotwa
+  - code: EE
+    name: Estonia
+    name_native: Estonia
+  aggressor_countries:
+  - code: RU
+    name: Russia
+    name_native: Rosja
+  - code: BY
+    name: Belarus
+    name_native: Białoruś
+  keywords:
+    en:
+      critical:
+      - military attack
+      - invasion
+      - troops crossed border
+      - missile strike
+      - aerial bombardment
+      - declaration of war
+      - Article 5
+      - armed attack
+      - act of war
+      - offensive operation
+      - ground invasion
+      - amphibious assault
+      - nuclear strike
+      - carpet bombing
+      - total war
+      - war declared
+      high:
+      - military buildup
+      - troops massing
+      - airspace violation
+      - shots fired
+      - border incident
+      - mobilization
+      - military escalation
+      - no-fly zone violated
+      - naval confrontation
+      - cyberattack on infrastructure
+      - martial law declared
+      - reservists called up
+      - border closed
+      - drone incursion
+      - drone strike
+      - drone crash
+      - drone attack
+      - jets scrambled
+      - airspace closed
+      - artillery fire
+      - troop deployment
+      - military convoy
+      - Shahed
+      - Geran
+      - Gerbera
+      - Iskander
+      - Kinzhal
+      - Kalibr
+    pl:
+      critical:
+      - atak militarny
+      - atak wojskowy
+      - inwazja
+      - wojska przekroczyły granicę
+      - przekroczenie granicy
+      - uderzenie rakietowe
+      - bombardowanie
+      - stan wojenny
+      - Artykuł 5
+      - atak zbrojny
+      - akt wojny
+      - operacja ofensywna
+      - inwazja lądowa
+      - nalot
+      - ostrzał
+      - wypowiedzenie wojny
+      - agresja zbrojna
+      high:
+      - koncentracja wojsk
+      - naruszenie przestrzeni powietrznej
+      - strzały
+      - incydent graniczny
+      - mobilizacja
+      - eskalacja
+      - zamknięcie granicy
+      - postawienie w gotowość
+      - stan wyjątkowy
+      - alarm
+      - zagrożenie
+      - dron
+      - konwój wojskowy
+      - cyberatak
+      - rozmieszczenie wojsk
+      - prowokacja
+      - Shahed
+      - Geran
+      - Gerbera
+      - Iskander
+      - Kindżał
+      - Kalibr
+    uk:
+      critical:
+      - військовий напад
+      - вторгнення
+      - ракетний удар
+      - перетин кордону
+      - бомбардування
+      - оголошення війни
+      - збройний напад
+      - наступальна операція
+      - сухопутне вторгнення
+      high:
+      - порушення повітряного простору
+      - обстріл
+      - мобілізація
+      - ескалація
+      - концентрація військ
+      - дрони
+      - ракетна атака
+      - кібератака
+      - Шахед
+      - Герань
+      - Гербера
+      - Іскандер
+      - Кинджал
+      - Калібр
+    ru:
+      critical:
+      - военная операция
+      - вторжение
+      - ракетный удар
+      - пересечение границы
+      - бомбардировка
+      - объявление войны
+      - вооруженное нападение
+      - наступательная операция
+      - специальная военная операция
+      high:
+      - провокация
+      - угроза
+      - нарушение границы
+      - мобилизация
+      - эскалация
+      - концентрация войск
+      - беспилотник
+      - кибератака
+      - Шахед
+      - Герань
+      - Гербера
+      - Искандер
+      - Кинжал
+      - Калибр
+  exclude_keywords:
+    en:
+    - exercise
+    - drill
+    - simulation
+    - memorial
+    - anniversary
+    - museum
+    - movie
+    - film
+    - game
+    - book
+    - historical
+    - World War II
+    - WWII
+    - Cold War
+    - veteran
+    - parade
+    - remembrance
+    - documentary
+    - fiction
+    - novel
+    - series
+    - recap
+    - review
+    - editorial
+    pl:
+    - ćwiczenia
+    - manewry
+    - symulacja
+    - rocznica
+    - muzeum
+    - film
+    - gra
+    - historyczny
+    - II wojna światowa
+    - zimna wojna
+    - weteran
+    - parada
+    - dokumentalny
+    - recenzja
+    - opinia
+    - felieton
+sources:
+  rss:
+  - name: PAP
+    url: https://www.pap.pl/rss.xml
+    language: pl
+    enabled: false  # Blocked by Incapsula/Imperva WAF since ~2026. Routed through Google News site:pap.pl instead.
+    priority: 1
+  - name: TVN24
+    url: https://tvn24.pl/najnowsze.xml
+    language: pl
+    enabled: true
+    priority: 1
+  - name: RMF24
+    url: https://www.rmf24.pl/feed
+    language: pl
+    enabled: true
+    priority: 1
+  - name: Polsat News
+    url: https://www.polsatnews.pl/rss/wszystkie.xml
+    language: pl
+    enabled: true
+    priority: 2
+  - name: Defence24
+    url: https://defence24.pl/_rss
+    language: pl
+    enabled: true
+    priority: 1
+    keyword_bypass: true
+  - name: Rzeczpospolita
+    url: https://www.rp.pl/rss_main
+    language: pl
+    enabled: true
+    priority: 2
+  - name: Gazeta Wyborcza
+    url: https://rss.gazeta.pl/pub/rss/najnowsze_wyborcza.xml
+    language: pl
+    enabled: true
+    priority: 2
+  - name: ERR Estonia
+    url: https://news.err.ee/rss
+    language: en
+    enabled: true
+    priority: 2
+  - name: LRT Lithuania
+    url: https://www.lrt.lt/en/news-in-english?rss
+    language: en
+    enabled: true
+    priority: 2
+  - name: LSM Latvia
+    url: https://eng.lsm.lv/rss/
+    language: en
+    enabled: true
+    priority: 2
+  - name: BBC World
+    url: https://feeds.bbci.co.uk/news/world/rss.xml
+    language: en
+    enabled: true
+    priority: 3
+  - name: Al Jazeera
+    url: https://www.aljazeera.com/xml/rss/all.xml
+    language: en
+    enabled: true
+    priority: 3
+  - name: Defence24 EN
+    url: https://defence24.com/_rss
+    language: en
+    enabled: true
+    priority: 2
+    keyword_bypass: true
+  - name: TASS
+    url: https://tass.com/rss/v2.xml
+    language: en
+    enabled: true
+    priority: 3
+  - name: Ukrainska Pravda EN
+    url: https://www.pravda.com.ua/eng/rss/view_news/
+    language: en
+    enabled: true
+    priority: 1
+  - name: Kyiv Independent
+    url: https://kyivindependent.com/feed/rss/
+    language: en
+    enabled: true
+    priority: 1
+  - name: France 24 Europe
+    url: https://www.france24.com/en/europe/rss
+    language: en
+    enabled: true
+    priority: 3
+  - name: Onet Wiadomości
+    url: https://wiadomosci.onet.pl/.feed
+    language: pl
+    enabled: true
+    priority: 2
+  - name: Ukrainska Pravda UA
+    url: https://www.pravda.com.ua/rss/view_news/
+    language: uk
+    enabled: true
+    priority: 1
+  - name: Interfax-Ukraine EN
+    url: https://en.interfax.com.ua/news/last.rss
+    language: en
+    enabled: true
+    priority: 2
+  gdelt:
+    enabled: true
+    update_interval_minutes: 15
+    themes:
+    - ARMEDCONFLICT
+    - WB_2462_POLITICAL_VIOLENCE_AND_WAR
+    - CRISISLEX_C03_WELLBEING_HEALTH
+    - TAX_FNCACT_MILITARY
+    cameo_codes:
+    - '18'
+    - '19'
+    - '190'
+    - '191'
+    - '192'
+    - '193'
+    - '194'
+    - '195'
+    - '20'
+    goldstein_threshold: -7.0
+  google_news:
+    enabled: true
+    queries:
+    - query: military attack Poland
+      language: en
+    - query: invasion Baltic states
+      language: en
+    - query: Russia attack NATO
+      language: en
+    - query: atak wojskowy Polska
+      language: pl
+    - query: inwazja Polska
+      language: pl
+    - query: Rosja atak
+      language: pl
+    - query: військовий напад Польща
+      language: uk
+    - query: NATO Article 5
+      language: en
+    - query: drone incursion Poland
+      language: en
+    - query: airspace violation Poland
+      language: en
+    - query: scrambled jets Poland
+      language: en
+    - query: rosyjskie drony Polska
+      language: pl
+    - query: naruszenie przestrzeni powietrznej
+      language: pl
+    - query: zamknięcie lotniska Polska
+      language: pl
+    # PAP workaround: pap.pl is behind Incapsula WAF blocking all non-browser
+    # requests. Route PAP content through Google News site: operator instead.
+    - query: site:pap.pl
+      language: pl
+    - query: дрони Польща
+      language: uk
+  telegram:
+    enabled: true
+    channels:
+    - name: Ukrainian Air Force
+      channel_id: '@kpszsu'
+      language: uk
+      priority: 1
+      keyword_bypass: true
+    - name: General Staff of Ukraine
+      channel_id: '@GeneralStaffZSU'
+      language: uk
+      priority: 1
+      keyword_bypass: true
+    - name: DeepState UA
+      channel_id: '@DeepStateUA'
+      language: uk
+      priority: 2
+      keyword_bypass: true
+    - name: NEXTA Live
+      channel_id: '@nexta_live'
+      language: ru
+      keyword_bypass: true
+      priority: 1
+    api_id: ${TELEGRAM_API_ID}
+    api_hash: ${TELEGRAM_API_HASH}
+    session_name: sentinel_session
+processing:
+  dedup:
+    same_source_title_threshold: 85
+    cross_source_title_threshold: 95
+    lookback_minutes: 60
+classification:
+  model: claude-haiku-4-5-20251001
+  max_tokens: 512
+  temperature: 0.0
+  corroboration_required: 1
+  corroboration_window_minutes: 60
+alerts:
+  phone_number: ${ALERT_PHONE_NUMBER}
+  language: pl
+  urgency_levels:
+    critical:
+      min_score: 9
+      action: phone_call
+      corroboration_required: 1
+      retry_attempts: 3
+      retry_interval_minutes: 5
+      fallback: sms
+    high:
+      min_score: 7
+      action: sms
+      corroboration_required: 1
+    medium:
+      min_score: 5
+      action: whatsapp
+      corroboration_required: 1
+    low:
+      min_score: 1
+      action: log_only
+  templates:
+    call: '{event_type_pl} wykryte. {summary_pl}. Źródła potwierdzające: {source_count}.
+      Pilność: {urgency_score} na 10.'
+    sms: '🚨 PROJECT SENTINEL: {event_type_pl}
+
+      Pilność: {urgency_score}/10
+
+      Kraje: {affected_countries_str}
+
+      Agresor: {aggressor}
+
+
+      {summary_pl}
+
+
+      Źródła ({source_count}):
+
+      {sources_list}
+
+
+      Wykryto: {first_seen_at_local}'
+    sms_update: 'ℹ️ PROJECT SENTINEL UPDATE: {event_type_pl}
+
+      Nowe informacje ({new_source_name}):
+
+      {summary_pl}
+
+
+      Łącznie źródeł: {source_count}
+
+      Pilność: {urgency_score}/10'
+  acknowledgment:
+    call_duration_threshold_seconds: 15
+    max_call_retries: 5
+    retry_interval_minutes: 5
+    cooldown_hours: 6
+scheduler:
+  fast_interval_minutes: 3
+  interval_minutes: 15
+  jitter_seconds: 30
+database:
+  path: data/sentinel.db
+  article_retention_days: 30
+  event_retention_days: 90
+logging:
+  level: INFO
+  file: logs/sentinel.log
+  max_size_mb: 50
+  backup_count: 5
+testing:
+  dry_run: false
+  test_mode: false
+  test_headlines_file: tests/fixtures/test_headlines.yaml

@@ -236,6 +236,95 @@ class TestKeywordFilter:
         assert "missile strike" in kws
         assert "armed attack" in kws
 
+    def test_bypass_source_passes_without_keywords(self, sample_config_dict):
+        """Articles from keyword_bypass sources pass without keyword matching."""
+        cfg = dict(sample_config_dict)
+        cfg["sources"] = dict(cfg["sources"])
+        cfg["sources"]["rss"] = [
+            {
+                "name": "Defence24",
+                "url": "https://defence24.pl/_rss",
+                "language": "pl",
+                "enabled": True,
+                "priority": 1,
+                "keyword_bypass": True,
+            },
+        ]
+        from sentinel.config import SentinelConfig
+
+        config = _make_config_with_keywords(cfg)
+        kf = KeywordFilter(config)
+        article = _make_article(
+            source_name="Defence24",
+            title="Nowy okręt dla Marynarki Wojennej",
+            summary="Podpisano kontrakt na budowę fregaty.",
+            language="pl",
+        )
+        filtered = kf.filter_batch([article])
+        assert len(filtered) == 1
+        assert filtered[0].raw_metadata["keyword_match"]["level"] == "bypass"
+
+    def test_bypass_does_not_affect_other_sources(self, sample_config_dict):
+        """Non-bypass sources still require keyword matching."""
+        cfg = dict(sample_config_dict)
+        cfg["sources"] = dict(cfg["sources"])
+        cfg["sources"]["rss"] = [
+            {
+                "name": "Defence24",
+                "url": "https://defence24.pl/_rss",
+                "language": "pl",
+                "enabled": True,
+                "priority": 1,
+                "keyword_bypass": True,
+            },
+            {
+                "name": "Onet",
+                "url": "https://wiadomosci.onet.pl/.feed",
+                "language": "pl",
+                "enabled": True,
+                "priority": 2,
+            },
+        ]
+        from sentinel.config import SentinelConfig
+
+        config = _make_config_with_keywords(cfg)
+        kf = KeywordFilter(config)
+        article = _make_article(
+            source_name="Onet",
+            title="Nowy okręt dla Marynarki Wojennej",
+            summary="Podpisano kontrakt na budowę fregaty.",
+            language="pl",
+        )
+        filtered = kf.filter_batch([article])
+        assert len(filtered) == 0
+
+    def test_bypass_diagnose(self, sample_config_dict):
+        """Diagnose returns bypass=True for bypass sources."""
+        cfg = dict(sample_config_dict)
+        cfg["sources"] = dict(cfg["sources"])
+        cfg["sources"]["rss"] = [
+            {
+                "name": "Defence24",
+                "url": "https://defence24.pl/_rss",
+                "language": "pl",
+                "enabled": True,
+                "priority": 1,
+                "keyword_bypass": True,
+            },
+        ]
+        from sentinel.config import SentinelConfig
+
+        config = _make_config_with_keywords(cfg)
+        kf = KeywordFilter(config)
+        article = _make_article(
+            source_name="Defence24",
+            title="Pogoda na poligonie",
+            language="pl",
+        )
+        result = kf.diagnose(article)
+        assert result["passed"] is True
+        assert result["bypass"] is True
+
     def test_russian_provocation_keyword(self, sample_config_dict):
         """Russian 'провокация' matches as high."""
         config = _make_config_with_keywords(sample_config_dict)

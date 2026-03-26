@@ -16,6 +16,19 @@ class KeywordFilter:
     def __init__(self, config: SentinelConfig) -> None:
         self.config = config
         self.logger = logging.getLogger("sentinel.keyword_filter")
+        self._bypass_sources = self._build_bypass_sources()
+
+    def _build_bypass_sources(self) -> frozenset[str]:
+        """Build set of source names that bypass keyword filtering."""
+        names: set[str] = set()
+        for src in self.config.sources.rss:
+            if src.keyword_bypass:
+                names.add(src.name)
+        if self.config.sources.telegram.enabled:
+            for ch in self.config.sources.telegram.channels:
+                if ch.keyword_bypass:
+                    names.add(ch.name)
+        return frozenset(names)
 
     def matches(self, article: Article) -> dict | None:
         """Check if article matches any keywords.
@@ -82,10 +95,20 @@ class KeywordFilter:
     def filter_batch(self, articles: list[Article]) -> list[Article]:
         """Filter articles to only those matching keywords.
 
+        Articles from keyword_bypass sources skip keyword matching and go
+        straight to the classifier.  All others require a keyword match.
         Annotates matched articles with keyword info in raw_metadata.
         """
         result: list[Article] = []
         for article in articles:
+            if article.source_name in self._bypass_sources:
+                article.raw_metadata["keyword_match"] = {
+                    "level": "bypass",
+                    "matched_keywords": [],
+                    "language_matched": article.language,
+                }
+                result.append(article)
+                continue
             match_info = self.matches(article)
             if match_info is not None:
                 article.raw_metadata["keyword_match"] = match_info
@@ -95,8 +118,17 @@ class KeywordFilter:
     def diagnose(self, article: Article) -> dict:
         """Return detailed keyword filter analysis for diagnostic purposes.
 
-        Always returns a dict with keys: passed, critical, high, excluded_by.
+        Always returns a dict with keys: passed, critical, high, excluded_by, bypass.
         """
+        if article.source_name in self._bypass_sources:
+            return {
+                "passed": True,
+                "critical": [],
+                "high": [],
+                "excluded_by": [],
+                "bypass": True,
+            }
+
         lang = article.language
         keywords_cfg = self.config.monitoring.keywords
 

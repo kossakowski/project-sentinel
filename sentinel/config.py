@@ -20,6 +20,7 @@ class RSSSource(BaseModel):
     language: str
     enabled: bool = True
     priority: int = 2
+    keyword_bypass: bool = False
 
 
 class GDELTConfig(BaseModel):
@@ -45,6 +46,7 @@ class TelegramChannel(BaseModel):
     channel_id: str
     language: str
     priority: int = 1
+    keyword_bypass: bool = False
 
 
 class TelegramConfig(BaseModel):

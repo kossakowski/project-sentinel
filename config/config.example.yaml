@@ -69,6 +69,11 @@ monitoring:
         - "reservists called up"
         - "border closed"
         - "drone incursion"
+        - "drone strike"
+        - "drone crash"
+        - "drone attack"
+        - "jets scrambled"
+        - "airspace closed"
         - "artillery fire"
         - "troop deployment"
         - "military convoy"
@@ -281,6 +286,7 @@ sources:
       language: pl
       enabled: true
       priority: 1
+      keyword_bypass: true  # Military-dedicated source — skip keyword filter
 
     - name: Rzeczpospolita
       url: https://www.rp.pl/rss_main
@@ -331,6 +337,7 @@ sources:
       language: en
       enabled: true
       priority: 2
+      keyword_bypass: true  # Military-dedicated source — skip keyword filter
 
     # Russian media (for counter-indicator monitoring)
     - name: TASS
@@ -428,18 +435,22 @@ sources:
         channel_id: "@kpszsu"
         language: uk
         priority: 1
+        keyword_bypass: true
       - name: General Staff of Ukraine
         channel_id: "@GeneralStaffZSU"
         language: uk
         priority: 1
+        keyword_bypass: true
       - name: DeepState UA
         channel_id: "@DeepStateUA"
         language: uk
         priority: 2
+        keyword_bypass: true
       - name: NEXTA Live
         channel_id: "@nexta_live"
         language: ru
         priority: 1
+        keyword_bypass: true
     api_id: "${TELEGRAM_API_ID}"
     api_hash: "${TELEGRAM_API_HASH}"
     session_name: sentinel_session
