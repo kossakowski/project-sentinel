@@ -3,7 +3,7 @@ import json
 import re
 import unicodedata
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 
@@ -222,6 +222,7 @@ class AlertRecord:
     sent_at: datetime
     message_body: str
     duration_seconds: int | None = None
+    user_id: str | None = None
     id: str = field(default_factory=lambda: str(uuid4()))
 
     def to_dict(self) -> dict:
@@ -235,6 +236,7 @@ class AlertRecord:
             "attempt_number": self.attempt_number,
             "sent_at": _dt_to_iso(self.sent_at),
             "message_body": self.message_body,
+            "user_id": self.user_id,
         }
 
     @classmethod
@@ -248,9 +250,171 @@ class AlertRecord:
             sent_at=_iso_to_dt(d["sent_at"]),
             message_body=d.get("message_body", ""),
             duration_seconds=d.get("duration_seconds"),
+            user_id=d.get("user_id"),
             id=d.get("id", str(uuid4())),
         )
 
     @classmethod
     def from_row(cls, row: dict) -> "AlertRecord":
+        return cls.from_dict(dict(row))
+
+
+@dataclass
+class Tier:
+    name: str
+    available_channels: list[str]
+    preference_mode: str
+    max_countries: int | None = None
+    preset_rules: dict | None = None
+    is_active: bool = True
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    id: str = field(default_factory=lambda: str(uuid4()))
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "available_channels": self.available_channels,
+            "max_countries": self.max_countries,
+            "preference_mode": self.preference_mode,
+            "preset_rules": self.preset_rules,
+            "is_active": bool(self.is_active),
+            "created_at": _dt_to_iso(self.created_at),
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Tier":
+        available_channels = d.get("available_channels", [])
+        if isinstance(available_channels, str):
+            available_channels = json.loads(available_channels)
+        preset_rules = d.get("preset_rules")
+        if isinstance(preset_rules, str):
+            preset_rules = json.loads(preset_rules)
+        return cls(
+            name=d["name"],
+            available_channels=available_channels,
+            preference_mode=d["preference_mode"],
+            max_countries=d.get("max_countries"),
+            preset_rules=preset_rules,
+            is_active=bool(d.get("is_active", True)),
+            created_at=_iso_to_dt(d.get("created_at", datetime.now(timezone.utc))),
+            id=d.get("id", str(uuid4())),
+        )
+
+    @classmethod
+    def from_row(cls, row: dict) -> "Tier":
+        return cls.from_dict(dict(row))
+
+
+@dataclass
+class User:
+    name: str
+    phone_number: str
+    tier_id: str
+    language: str = "pl"
+    is_active: bool = True
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    id: str = field(default_factory=lambda: str(uuid4()))
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "phone_number": self.phone_number,
+            "language": self.language,
+            "tier_id": self.tier_id,
+            "is_active": bool(self.is_active),
+            "created_at": _dt_to_iso(self.created_at),
+            "updated_at": _dt_to_iso(self.updated_at),
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "User":
+        return cls(
+            name=d["name"],
+            phone_number=d["phone_number"],
+            tier_id=d["tier_id"],
+            language=d.get("language", "pl"),
+            is_active=bool(d.get("is_active", True)),
+            created_at=_iso_to_dt(d.get("created_at", datetime.now(timezone.utc))),
+            updated_at=_iso_to_dt(d.get("updated_at", datetime.now(timezone.utc))),
+            id=d.get("id", str(uuid4())),
+        )
+
+    @classmethod
+    def from_row(cls, row: dict) -> "User":
+        return cls.from_dict(dict(row))
+
+
+@dataclass
+class UserAlertRule:
+    user_id: str
+    min_urgency: int
+    max_urgency: int
+    channel: str
+    corroboration_required: int = 1
+    priority: int = 0
+    id: str = field(default_factory=lambda: str(uuid4()))
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "min_urgency": self.min_urgency,
+            "max_urgency": self.max_urgency,
+            "channel": self.channel,
+            "corroboration_required": self.corroboration_required,
+            "priority": self.priority,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "UserAlertRule":
+        return cls(
+            user_id=d["user_id"],
+            min_urgency=d["min_urgency"],
+            max_urgency=d["max_urgency"],
+            channel=d["channel"],
+            corroboration_required=d.get("corroboration_required", 1),
+            priority=d.get("priority", 0),
+            id=d.get("id", str(uuid4())),
+        )
+
+    @classmethod
+    def from_row(cls, row: dict) -> "UserAlertRule":
+        return cls.from_dict(dict(row))
+
+
+@dataclass
+class ConfirmationCode:
+    user_id: str
+    event_id: str
+    code: str
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    used_at: datetime | None = None
+    id: str = field(default_factory=lambda: str(uuid4()))
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "event_id": self.event_id,
+            "code": self.code,
+            "created_at": _dt_to_iso(self.created_at),
+            "used_at": _dt_to_iso(self.used_at),
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ConfirmationCode":
+        return cls(
+            user_id=d["user_id"],
+            event_id=d["event_id"],
+            code=d["code"],
+            created_at=_iso_to_dt(d.get("created_at", datetime.now(timezone.utc))),
+            used_at=_iso_to_dt(d.get("used_at")),
+            id=d.get("id", str(uuid4())),
+        )
+
+    @classmethod
+    def from_row(cls, row: dict) -> "ConfirmationCode":
         return cls.from_dict(dict(row))

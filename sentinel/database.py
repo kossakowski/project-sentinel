@@ -1,12 +1,22 @@
 import logging
 from datetime import datetime, timezone
+from uuid import uuid4
 
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool
 
-from sentinel.models import AlertRecord, Article, ClassificationResult, Event
+from sentinel.models import (
+    AlertRecord,
+    Article,
+    ClassificationResult,
+    ConfirmationCode,
+    Event,
+    Tier,
+    User,
+    UserAlertRule,
+)
 
 
 def _adapt_values(values: list) -> list:
@@ -114,6 +124,58 @@ class Database:
                     CREATE INDEX IF NOT EXISTS idx_events_first_seen ON events(first_seen_at)
                 """)
 
+                # --- Tiers table (must be created before users) ---
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS tiers (
+                        id TEXT PRIMARY KEY,
+                        name TEXT NOT NULL UNIQUE,
+                        available_channels JSONB NOT NULL,
+                        max_countries INTEGER,
+                        preference_mode TEXT NOT NULL CHECK (preference_mode IN ('preset', 'customizable')),
+                        preset_rules JSONB,
+                        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
+                """)
+
+                # --- Users table ---
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS users (
+                        id TEXT PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        phone_number TEXT NOT NULL,
+                        language TEXT NOT NULL DEFAULT 'pl',
+                        tier_id TEXT NOT NULL REFERENCES tiers(id),
+                        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
+                """)
+
+                # --- User countries table ---
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS user_countries (
+                        id TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        country_code TEXT NOT NULL,
+                        UNIQUE(user_id, country_code)
+                    )
+                """)
+
+                # --- User alert rules table ---
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS user_alert_rules (
+                        id TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        min_urgency INTEGER NOT NULL,
+                        max_urgency INTEGER NOT NULL,
+                        channel TEXT NOT NULL,
+                        corroboration_required INTEGER NOT NULL DEFAULT 1,
+                        priority INTEGER NOT NULL DEFAULT 0,
+                        CHECK(min_urgency <= max_urgency)
+                    )
+                """)
+
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS alert_records (
                         id TEXT PRIMARY KEY,
@@ -124,11 +186,28 @@ class Database:
                         duration_seconds INTEGER,
                         attempt_number INTEGER NOT NULL DEFAULT 1,
                         sent_at TIMESTAMPTZ NOT NULL,
-                        message_body TEXT
+                        message_body TEXT,
+                        user_id TEXT REFERENCES users(id)
                     )
                 """)
                 cur.execute("""
                     CREATE INDEX IF NOT EXISTS idx_alerts_event_id ON alert_records(event_id)
+                """)
+
+                # --- Confirmation codes table (depends on users and events) ---
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS confirmation_codes (
+                        id TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL REFERENCES users(id),
+                        event_id TEXT NOT NULL REFERENCES events(id),
+                        code TEXT NOT NULL,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        used_at TIMESTAMPTZ
+                    )
+                """)
+                cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_confirmation_codes_lookup
+                        ON confirmation_codes(user_id, event_id, code)
                 """)
 
     def insert_article(self, article: Article) -> bool:
@@ -362,6 +441,218 @@ class Database:
 
         self.logger.info("Cleanup: deleted %d old records", total_deleted)
         return total_deleted
+
+    # ------------------------------------------------------------------
+    # Tier methods
+    # ------------------------------------------------------------------
+
+    def insert_tier(self, tier: Tier) -> None:
+        """Insert a tier."""
+        data = tier.to_dict()
+        columns = ", ".join(data.keys())
+        placeholders = ", ".join("%s" for _ in data)
+
+        with self.pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"INSERT INTO tiers ({columns}) VALUES ({placeholders})",
+                    _adapt_values(list(data.values())),
+                )
+        self.logger.debug("Tier inserted: %s", tier.name)
+
+    def get_tier_by_id(self, tier_id: str) -> Tier | None:
+        """Return the Tier with the given ID, or None if not found."""
+        with self.pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT * FROM tiers WHERE id = %s LIMIT 1",
+                    (tier_id,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    return None
+                return Tier.from_row(row)
+
+    def get_all_tiers(self) -> list[Tier]:
+        """Return all tiers ordered by name."""
+        with self.pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM tiers ORDER BY name")
+                return [Tier.from_row(row) for row in cur.fetchall()]
+
+    # ------------------------------------------------------------------
+    # User methods
+    # ------------------------------------------------------------------
+
+    def insert_user(self, user: User) -> None:
+        """Insert a user."""
+        data = user.to_dict()
+        columns = ", ".join(data.keys())
+        placeholders = ", ".join("%s" for _ in data)
+
+        with self.pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"INSERT INTO users ({columns}) VALUES ({placeholders})",
+                    _adapt_values(list(data.values())),
+                )
+        self.logger.debug("User inserted: %s", user.name)
+
+    def get_user_by_id(self, user_id: str) -> User | None:
+        """Return the User with the given ID, or None if not found."""
+        with self.pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT * FROM users WHERE id = %s LIMIT 1",
+                    (user_id,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    return None
+                return User.from_row(row)
+
+    def get_active_users(self) -> list[User]:
+        """Return all active users."""
+        with self.pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT * FROM users WHERE is_active = TRUE ORDER BY name"
+                )
+                return [User.from_row(row) for row in cur.fetchall()]
+
+    def get_users_by_country(self, country_code: str) -> list[User]:
+        """Return active users whose monitored countries include the given code."""
+        with self.pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT u.* FROM users u "
+                    "JOIN user_countries uc ON u.id = uc.user_id "
+                    "WHERE u.is_active = TRUE AND uc.country_code = %s "
+                    "ORDER BY u.name",
+                    (country_code,),
+                )
+                return [User.from_row(row) for row in cur.fetchall()]
+
+    # ------------------------------------------------------------------
+    # User country methods
+    # ------------------------------------------------------------------
+
+    def insert_user_country(self, user_id: str, country_code: str) -> None:
+        """Associate a country with a user."""
+        row_id = str(uuid4())
+        with self.pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO user_countries (id, user_id, country_code) "
+                    "VALUES (%s, %s, %s)",
+                    (row_id, user_id, country_code),
+                )
+        self.logger.debug("User country added: user=%s country=%s", user_id, country_code)
+
+    def get_user_countries(self, user_id: str) -> list[str]:
+        """Return country codes associated with a user."""
+        with self.pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT country_code FROM user_countries "
+                    "WHERE user_id = %s ORDER BY country_code",
+                    (user_id,),
+                )
+                return [row["country_code"] for row in cur.fetchall()]
+
+    def delete_user_countries(self, user_id: str) -> None:
+        """Delete all country associations for a user."""
+        with self.pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM user_countries WHERE user_id = %s",
+                    (user_id,),
+                )
+        self.logger.debug("User countries deleted for user: %s", user_id)
+
+    # ------------------------------------------------------------------
+    # User alert rule methods
+    # ------------------------------------------------------------------
+
+    def insert_user_alert_rule(self, rule: UserAlertRule) -> None:
+        """Insert a user alert rule."""
+        data = rule.to_dict()
+        columns = ", ".join(data.keys())
+        placeholders = ", ".join("%s" for _ in data)
+
+        with self.pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"INSERT INTO user_alert_rules ({columns}) VALUES ({placeholders})",
+                    _adapt_values(list(data.values())),
+                )
+        self.logger.debug("User alert rule inserted: %s", rule.id)
+
+    def get_user_alert_rules(self, user_id: str) -> list[UserAlertRule]:
+        """Return alert rules for a user, ordered by priority descending."""
+        with self.pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT * FROM user_alert_rules "
+                    "WHERE user_id = %s ORDER BY priority DESC",
+                    (user_id,),
+                )
+                return [UserAlertRule.from_row(row) for row in cur.fetchall()]
+
+    def delete_user_alert_rules(self, user_id: str) -> None:
+        """Delete all alert rules for a user (bulk delete for rule replacement)."""
+        with self.pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM user_alert_rules WHERE user_id = %s",
+                    (user_id,),
+                )
+        self.logger.debug("User alert rules deleted for user: %s", user_id)
+
+    # ------------------------------------------------------------------
+    # Confirmation code methods
+    # ------------------------------------------------------------------
+
+    def insert_confirmation_code(self, code: ConfirmationCode) -> None:
+        """Insert a confirmation code."""
+        data = code.to_dict()
+        columns = ", ".join(data.keys())
+        placeholders = ", ".join("%s" for _ in data)
+
+        with self.pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"INSERT INTO confirmation_codes ({columns}) VALUES ({placeholders})",
+                    _adapt_values(list(data.values())),
+                )
+        self.logger.debug("Confirmation code inserted: %s", code.id)
+
+    def get_active_confirmation_code(
+        self, user_id: str, event_id: str
+    ) -> ConfirmationCode | None:
+        """Return the most recent unused confirmation code for a user+event, or None."""
+        with self.pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT * FROM confirmation_codes "
+                    "WHERE user_id = %s AND event_id = %s AND used_at IS NULL "
+                    "ORDER BY created_at DESC LIMIT 1",
+                    (user_id, event_id),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    return None
+                return ConfirmationCode.from_row(row)
+
+    def mark_confirmation_code_used(self, code_id: str) -> None:
+        """Mark a confirmation code as used (set used_at to NOW())."""
+        with self.pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE confirmation_codes SET used_at = NOW() WHERE id = %s",
+                    (code_id,),
+                )
+        self.logger.debug("Confirmation code marked used: %s", code_id)
 
     def close(self) -> None:
         """Close the connection pool."""

@@ -5,7 +5,16 @@ import yaml
 
 from sentinel.config import SentinelConfig, load_config
 from sentinel.database import Database
-from sentinel.models import AlertRecord, Article, ClassificationResult, Event
+from sentinel.models import (
+    AlertRecord,
+    Article,
+    ClassificationResult,
+    ConfirmationCode,
+    Event,
+    Tier,
+    User,
+    UserAlertRule,
+)
 from datetime import datetime, timezone
 
 from testcontainers.postgres import PostgresContainer
@@ -58,7 +67,8 @@ def db(_db_tables):
     with _db_tables.pool.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "TRUNCATE TABLE alert_records, classifications, events, articles CASCADE"
+                "TRUNCATE TABLE confirmation_codes, alert_records, user_alert_rules, "
+                "user_countries, classifications, events, articles, users, tiers CASCADE"
             )
     yield _db_tables
 
@@ -254,4 +264,66 @@ def sample_alert_record(sample_event):
         attempt_number=1,
         sent_at=datetime.now(timezone.utc),
         message_body="Alert test message",
+    )
+
+
+@pytest.fixture
+def sample_tier():
+    """Create a sample Tier for testing."""
+    return Tier(
+        name="Standard",
+        available_channels=["phone_call", "sms", "whatsapp"],
+        max_countries=1,
+        preference_mode="preset",
+        preset_rules={"9-10": "phone_call", "7-8": "sms", "5-6": "whatsapp", "1-4": "log_only"},
+    )
+
+
+@pytest.fixture
+def sample_premium_tier():
+    """Create a sample Premium Tier for testing."""
+    return Tier(
+        name="Premium",
+        available_channels=["phone_call", "sms", "whatsapp"],
+        max_countries=None,
+        preference_mode="customizable",
+        preset_rules=None,
+    )
+
+
+@pytest.fixture
+def sample_user(sample_tier, db):
+    """Create a sample User for testing. Inserts the tier into DB first."""
+    db.insert_tier(sample_tier)
+    return User(
+        name="Test User",
+        phone_number="+48123456789",
+        tier_id=sample_tier.id,
+        language="pl",
+    )
+
+
+@pytest.fixture
+def sample_user_alert_rule(sample_user, db):
+    """Create a sample UserAlertRule for testing. Inserts the user into DB first."""
+    db.insert_user(sample_user)
+    return UserAlertRule(
+        user_id=sample_user.id,
+        min_urgency=7,
+        max_urgency=10,
+        channel="phone_call",
+        corroboration_required=2,
+        priority=10,
+    )
+
+
+@pytest.fixture
+def sample_confirmation_code(sample_user, sample_event, db):
+    """Create a sample ConfirmationCode for testing. Inserts user and event into DB first."""
+    db.insert_user(sample_user)
+    db.insert_event(sample_event)
+    return ConfirmationCode(
+        user_id=sample_user.id,
+        event_id=sample_event.id,
+        code="ABC123",
     )
