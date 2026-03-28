@@ -247,6 +247,26 @@ Migrate Project Sentinel from a single-user SQLite system to a multi-tenant Post
 - All existing test scenarios still pass (adapted for multi-user context).
 - `config.alerts.phone_number` no longer exists in config or code.
 
+### Reconciliation
+
+| Req | Status | Notes |
+|-----|--------|-------|
+| 3.1 | IMPLEMENTED | process_event queries users by country, deduplicates, iterates per-user |
+| 3.2 | IMPLEMENTED | _process_event_for_user with preset (range parsing) and customizable (priority-sorted rules) |
+| 3.3 | IMPLEMENTED | _fallback_channel validates against tier.available_channels with severity ordering |
+| 3.4 | IMPLEMENTED | All execution methods accept User, use user.phone_number, set user_id on AlertRecord |
+| 3.5 | IMPLEMENTED | Confirmation codes stored in DB via insert_confirmation_code. self._confirmation_code removed |
+| 3.6 | IMPLEMENTED | _check_whatsapp_confirmation uses get_active_confirmation_code + mark_used |
+| 3.7 | IMPLEMENTED | Per-user cooldown via _is_in_cooldown(event, user) checking user's alert_records |
+| 3.8 | IMPLEMENTED | _is_acknowledged filters by event_id AND user_id. Per-user isolation tested |
+| 3.9 | IMPLEMENTED | config.alerts.phone_number removed. system_phone_number added for ops alerts |
+| 3.10 | IMPLEMENTED | AlertDispatcher.dispatch() signature unchanged |
+| 3.11 | IMPLEMENTED | Format functions accept optional language parameter. Polish only for now |
+| 3.12 | IMPLEMENTED | check_pending_calls resolves user from alert_record.user_id |
+| 3.13 | IMPLEMENTED | 16 new tests covering all required scenarios |
+
+**All 13 requirements IMPLEMENTED. All gate criteria met. 222 tests passing.**
+
 ## Phase 4: Migration Script and Seed Data
 
 ### Deliverables
