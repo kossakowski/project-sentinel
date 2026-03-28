@@ -9,5 +9,7 @@ logs/
 sentinel_session.*
 .coverage
 .code-refiner-state/
+.code-surgeon-state/
+.code-surgeon-loop-state/
 review_report_pending.md
 config/config.yaml
