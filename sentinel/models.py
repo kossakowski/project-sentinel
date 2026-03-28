@@ -32,12 +32,6 @@ def _iso_to_dt(s: str | datetime | None) -> datetime | None:
     return datetime.fromisoformat(s)
 
 
-def list_to_json(lst: list | None) -> str:
-    if lst is None:
-        return "[]"
-    return json.dumps(lst, ensure_ascii=False)
-
-
 def _json_to_list(s: str | None) -> list:
     if s is None:
         return []

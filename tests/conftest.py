@@ -52,17 +52,15 @@ def _db_tables(pg_url):
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def db(pg_url, _db_tables):
-    """Create a function-scoped Database, truncating all tables between tests."""
-    database = Database(pg_url)
+def db(_db_tables):
+    """Reuse session-scoped Database, truncating all tables between tests."""
     # Truncate all tables before each test
-    with database.pool.connection() as conn:
+    with _db_tables.pool.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "TRUNCATE TABLE alert_records, classifications, events, articles CASCADE"
             )
-    yield database
-    database.close()
+    yield _db_tables
 
 
 @pytest.fixture

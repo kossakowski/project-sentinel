@@ -8,7 +8,7 @@ from rapidfuzz import fuzz
 
 from sentinel.config import SentinelConfig
 from sentinel.database import Database
-from sentinel.models import Article, ClassificationResult, Event, list_to_json
+from sentinel.models import Article, ClassificationResult, Event
 
 # Compatible event types -- if two event types are in each other's sets, they
 # can be grouped into the same real-world event.
@@ -252,8 +252,8 @@ class Corroborator:
             event.id,
             urgency_score=event.urgency_score,
             source_count=event.source_count,
-            article_ids=list_to_json(event.article_ids),
-            affected_countries=list_to_json(event.affected_countries),
+            article_ids=event.article_ids,
+            affected_countries=event.affected_countries,
             alert_status=event.alert_status,
         )
 

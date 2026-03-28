@@ -334,3 +334,30 @@ def test_concurrent_access(db):
             count = cur.fetchone()["cnt"]
 
     assert count == 100
+
+
+def test_column_types(db):
+    """Verify key columns have correct PostgreSQL types."""
+    expected = [
+        ("classifications", "is_military_event", "boolean"),
+        ("classifications", "is_new_event", "boolean"),
+        ("articles", "fetched_at", "timestamp with time zone"),
+        ("articles", "raw_metadata", "jsonb"),
+        ("events", "affected_countries", "jsonb"),
+        ("events", "article_ids", "jsonb"),
+    ]
+
+    with db.pool.connection() as conn:
+        with conn.cursor() as cur:
+            for table, column, expected_type in expected:
+                cur.execute(
+                    "SELECT data_type FROM information_schema.columns "
+                    "WHERE table_schema = 'public' AND table_name = %s AND column_name = %s",
+                    (table, column),
+                )
+                row = cur.fetchone()
+                assert row is not None, f"Column {table}.{column} not found"
+                actual_type = row["data_type"]
+                assert actual_type == expected_type, (
+                    f"{table}.{column}: expected '{expected_type}', got '{actual_type}'"
+                )

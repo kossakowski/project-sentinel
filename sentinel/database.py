@@ -10,26 +10,11 @@ from sentinel.models import AlertRecord, Article, ClassificationResult, Event
 
 
 def _adapt_values(values: list) -> list:
-    """Wrap dict/list values with Jsonb() for PostgreSQL JSONB columns.
-
-    Also detects JSON-encoded strings (from list_to_json) and converts them
-    back to native types before wrapping.
-    """
-    import json
-
+    """Wrap dict/list values with Jsonb() for PostgreSQL JSONB columns."""
     adapted = []
     for v in values:
         if isinstance(v, (dict, list)):
             adapted.append(Jsonb(v))
-        elif isinstance(v, str) and v and v[0] in ("{", "["):
-            try:
-                parsed = json.loads(v)
-                if isinstance(parsed, (dict, list)):
-                    adapted.append(Jsonb(parsed))
-                else:
-                    adapted.append(v)
-            except (json.JSONDecodeError, ValueError):
-                adapted.append(v)
         else:
             adapted.append(v)
     return adapted
@@ -226,7 +211,7 @@ class Database:
         Only update the fields passed as kwargs.
         Always update last_updated_at to current time.
         """
-        kwargs["last_updated_at"] = datetime.now(timezone.utc).isoformat()
+        kwargs["last_updated_at"] = datetime.now(timezone.utc)
 
         set_clause = ", ".join(f"{key} = %s" for key in kwargs)
         values = _adapt_values(list(kwargs.values()))
