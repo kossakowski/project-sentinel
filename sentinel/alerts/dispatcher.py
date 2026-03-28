@@ -21,6 +21,9 @@ class AlertDispatcher:
 
         Events are sorted by urgency (highest first) before processing.
         In dry_run mode, logs the intended action without sending anything.
+
+        Multi-user iteration happens inside the state machine's
+        process_event() method, not here.
         """
         sorted_events = sorted(
             events, key=lambda e: e.urgency_score, reverse=True
@@ -34,7 +37,11 @@ class AlertDispatcher:
             self.state_machine.process_event(event)
 
     def _log_dry_run(self, event: Event) -> None:
-        """Log what would happen without actually sending alerts."""
+        """Log what would happen without actually sending alerts.
+
+        Uses the legacy config-based action determination (no user context)
+        since dry run is for diagnostics only.
+        """
         action = self.state_machine._determine_action(event)
         self.logger.info(
             "[DRY RUN] Event %s: urgency=%d, sources=%d, "

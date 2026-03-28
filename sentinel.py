@@ -368,7 +368,7 @@ def _run_test_alert(alert_type: str, config, logger) -> None:
     from sentinel.alerts.state_machine import AlertStateMachine
     from sentinel.alerts.twilio_client import TwilioClient
     from sentinel.database import Database
-    from sentinel.models import Event
+    from sentinel.models import Event, User
 
     logger.info("Test alert mode: firing real %s alert", alert_type)
 
@@ -380,6 +380,16 @@ def _run_test_alert(alert_type: str, config, logger) -> None:
     state_machine = AlertStateMachine(db, twilio_client, config)
 
     now = datetime.now(timezone.utc)
+
+    # Find the first active user to use for test alerts
+    active_users = db.get_active_users()
+    if not active_users:
+        print("ERROR: No active users in the database. Create a user first.")
+        print("  Use: python scripts/create_initial_user.py --help")
+        return
+
+    test_user = active_users[0]
+    phone_number = test_user.phone_number
 
     # Create and persist a synthetic article so DB lookups in the alert
     # formatter don't fail
@@ -414,20 +424,20 @@ def _run_test_alert(alert_type: str, config, logger) -> None:
 
     print(f"\nTest alert: {alert_type}")
     print(f"  Event ID:  {event.id}")
-    print(f"  Phone:     {config.alerts.phone_number}")
+    print(f"  User:      {test_user.name} ({phone_number})")
     print(f"  Message:   {event.summary_pl}")
     print()
 
     # Bypass state machine routing — call the requested method directly
-    # (process_event would ignore alert_type and route based on urgency/sources)
+    # (process_event would iterate over users based on country matching)
     if alert_type == "phone_call":
-        state_machine._execute_phone_call(event)
+        state_machine._execute_phone_call(event, test_user)
     elif alert_type == "sms":
-        state_machine._execute_sms(event)
+        state_machine._execute_sms(event, test_user)
     elif alert_type == "whatsapp":
-        state_machine._execute_whatsapp(event)
+        state_machine._execute_whatsapp(event, test_user)
 
-    print(f"Test alert dispatched. Check your phone ({config.alerts.phone_number}).")
+    print(f"Test alert dispatched. Check your phone ({phone_number}).")
 
 
 if __name__ == "__main__":

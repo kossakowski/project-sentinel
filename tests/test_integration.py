@@ -72,7 +72,6 @@ def pipeline_config(sample_config_dict, tmp_path):
     with open(config_path, "w") as f:
         yaml.dump(sample_config_dict, f)
 
-    os.environ.setdefault("ALERT_PHONE_NUMBER", "+48123456789")
     os.environ.setdefault("TWILIO_ACCOUNT_SID", "test_sid")
     os.environ.setdefault("TWILIO_AUTH_TOKEN", "test_token")
     os.environ.setdefault("TWILIO_PHONE_NUMBER", "+15005550006")

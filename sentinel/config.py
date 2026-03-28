@@ -139,7 +139,7 @@ class AlertTemplates(BaseModel):
 
 
 class AlertsConfig(BaseModel):
-    phone_number: str
+    system_phone_number: str = ""
     language: str = "pl"
     urgency_levels: dict[str, UrgencyLevel]
     acknowledgment: AcknowledgmentConfig

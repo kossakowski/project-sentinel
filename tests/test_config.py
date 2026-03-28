@@ -10,7 +10,7 @@ from sentinel.config import ConfigError, SentinelConfig, load_config
 
 def test_load_valid_config(monkeypatch):
     """Load config/config.example.yaml with env vars set, verify key fields accessible."""
-    monkeypatch.setenv("ALERT_PHONE_NUMBER", "+48123456789")
+    monkeypatch.setenv("SYSTEM_PHONE_NUMBER", "+48000000000")
     monkeypatch.setenv("TELEGRAM_API_ID", "12345")
     monkeypatch.setenv("TELEGRAM_API_HASH", "abc123")
     monkeypatch.setenv("DATABASE_URL", "postgresql://sentinel:sentinel@localhost:5432/sentinel")
@@ -18,7 +18,7 @@ def test_load_valid_config(monkeypatch):
     config = load_config("config/config.example.yaml")
 
     assert isinstance(config, SentinelConfig)
-    assert config.alerts.phone_number == "+48123456789"
+    assert config.alerts.system_phone_number == "+48000000000"
     assert config.classification.model == "claude-haiku-4-5-20251001"
     assert config.scheduler.interval_minutes == 15
     assert len(config.sources.rss) > 0
@@ -38,7 +38,6 @@ def test_missing_required_field(tmp_path):
         # monitoring section is missing
         "classification": {},
         "alerts": {
-            "phone_number": "+48123456789",
             "urgency_levels": {
                 "critical": {"min_score": 9, "action": "phone_call"},
             },
@@ -76,7 +75,7 @@ def test_env_var_substitution(monkeypatch, tmp_path):
         },
         "classification": {},
         "alerts": {
-            "phone_number": "${TEST_SENTINEL_VAR}",
+            "system_phone_number": "${TEST_SENTINEL_VAR}",
             "urgency_levels": {
                 "critical": {"min_score": 9, "action": "phone_call"},
             },
@@ -93,7 +92,7 @@ def test_env_var_substitution(monkeypatch, tmp_path):
         yaml.dump(config_dict, f)
 
     config = load_config(str(config_path))
-    assert config.alerts.phone_number == "+48999888777"
+    assert config.alerts.system_phone_number == "+48999888777"
 
 
 def test_missing_env_var(tmp_path):
@@ -112,7 +111,7 @@ def test_missing_env_var(tmp_path):
         },
         "classification": {},
         "alerts": {
-            "phone_number": "${SENTINEL_NONEXISTENT}",
+            "system_phone_number": "${SENTINEL_NONEXISTENT}",
             "urgency_levels": {
                 "critical": {"min_score": 9, "action": "phone_call"},
             },
@@ -151,7 +150,6 @@ def test_invalid_url(tmp_path):
         },
         "classification": {},
         "alerts": {
-            "phone_number": "+48123456789",
             "urgency_levels": {
                 "critical": {"min_score": 9, "action": "phone_call"},
             },
@@ -200,7 +198,6 @@ def test_disabled_source_loadable(tmp_path):
         },
         "classification": {},
         "alerts": {
-            "phone_number": "+48123456789",
             "urgency_levels": {
                 "critical": {"min_score": 9, "action": "phone_call"},
             },

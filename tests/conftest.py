@@ -133,7 +133,7 @@ def sample_config_dict(pg_url):
             "corroboration_window_minutes": 60,
         },
         "alerts": {
-            "phone_number": "+48123456789",
+            "system_phone_number": "+48000000000",
             "language": "pl",
             "urgency_levels": {
                 "critical": {
@@ -192,7 +192,6 @@ def sample_config_yaml(sample_config_dict, tmp_path):
 @pytest.fixture
 def config(sample_config_yaml):
     """Load and return a SentinelConfig from the sample YAML."""
-    os.environ.setdefault("ALERT_PHONE_NUMBER", "+48123456789")
     os.environ.setdefault("TELEGRAM_API_ID", "12345")
     os.environ.setdefault("TELEGRAM_API_HASH", "abc123def456")
     return load_config(sample_config_yaml)

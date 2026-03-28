@@ -430,9 +430,12 @@ class SentinelPipeline:
             )
 
     def _send_system_sms(self, message: str) -> None:
-        """Send a system health SMS to the configured phone number."""
+        """Send a system health SMS to the configured system phone number."""
         try:
-            phone = self.config.alerts.phone_number
+            phone = self.config.alerts.system_phone_number
+            if not phone:
+                self.logger.warning("No system_phone_number configured, cannot send system SMS")
+                return
             self.twilio_client.send_sms(phone, message, event_id="system")
         except Exception as e:
             self.logger.error("Failed to send system SMS: %s", e)

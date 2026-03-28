@@ -478,7 +478,9 @@ classification:
 # ALERTS -- Notification settings
 # -----------------------------------------------------------------------------
 alerts:
-  phone_number: "${ALERT_PHONE_NUMBER}"
+  # System phone number for operational health alerts (not user-facing alerts).
+  # User-facing alerts use per-user phone numbers from the users table.
+  system_phone_number: "${SYSTEM_PHONE_NUMBER}"
   language: pl
 
   urgency_levels:
