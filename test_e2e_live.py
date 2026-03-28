@@ -86,7 +86,7 @@ def main():
     step(1, "Load config + environment variables")
     config = load_config("config/config.yaml")
     print(f"  Config loaded: scheduler interval={config.scheduler.interval_minutes}min")
-    print(f"  Alert phone: {config.alerts.phone_number}")
+    print(f"  Alert phone: {config.alerts.system_phone_number}")
     print(f"  Dry run: {config.testing.dry_run}")
     # Force dry_run OFF for this test
     config.testing.dry_run = False

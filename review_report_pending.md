@@ -1,311 +1,397 @@
-# Phase 2 Review: Multi-Tenant Schema and Tier System
+# Phase 3 Review: Per-User Alert Routing
 
 **Reviewer:** Blind code review agent (Opus 4.6)
 **Date:** 2026-03-28
 **Branch:** `code-surgeon/multi-tenant-evolution`
-**Scope:** Phase 2 requirements 2.1-2.19 from CHANGE-SPEC.md
-
----
 
 ## Spec Compliance Summary
 
 | Req | Status | Notes |
 |-----|--------|-------|
-| 2.1 | PASS | `tiers` table has all specified columns: `id TEXT PRIMARY KEY`, `name TEXT NOT NULL UNIQUE`, `available_channels JSONB NOT NULL`, `max_countries INTEGER` (nullable), `preference_mode TEXT NOT NULL CHECK(...)`, `preset_rules JSONB`, `is_active BOOLEAN NOT NULL DEFAULT TRUE`, `created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`. CHECK constraint on preference_mode matches spec exactly. |
-| 2.2 | PASS | `users` table has all specified columns with correct types, FK to tiers(id), defaults for language ('pl'), is_active (TRUE), created_at (NOW()), updated_at (NOW()). |
-| 2.3 | PASS | `user_countries` table has `id TEXT PRIMARY KEY`, `user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE`, `country_code TEXT NOT NULL`, and `UNIQUE(user_id, country_code)`. |
-| 2.4 | PASS | `user_alert_rules` table has all specified columns, ON DELETE CASCADE on user_id FK, `CHECK(min_urgency <= max_urgency)`. Default values for corroboration_required (1) and priority (0) match spec. |
-| 2.5 | PASS | `confirmation_codes` table has all specified columns and FKs. Index `idx_confirmation_codes_lookup` on `(user_id, event_id, code)` exists. |
-| 2.6 | PASS | `alert_records` table has `user_id TEXT REFERENCES users(id)` (nullable for legacy rows). |
-| 2.7 | PASS | `AlertRecord` dataclass has `user_id: str | None = None`. `to_dict()` includes `user_id`. `from_dict()` uses `d.get("user_id")` defaulting to None. Backward compat preserved. |
-| 2.8 | PASS | All 7 methods implemented: `insert_tier`, `get_tier_by_id`, `get_all_tiers`, `insert_user`, `get_user_by_id`, `get_active_users`, `get_users_by_country`. |
-| 2.9 | PASS | All 3 methods implemented: `insert_user_alert_rule`, `get_user_alert_rules` (ordered by priority DESC), `delete_user_alert_rules`. |
-| 2.10 | PASS | All 3 methods implemented: `insert_user_country`, `get_user_countries` (ordered by country_code), `delete_user_countries`. |
-| 2.11 | PASS | All 3 methods implemented: `insert_confirmation_code`, `get_active_confirmation_code` (most recent unused via `ORDER BY created_at DESC LIMIT 1` with `used_at IS NULL`), `mark_confirmation_code_used` (sets `used_at = NOW()`). |
-| 2.12 | PASS | `Tier` dataclass has all required fields with correct types. `to_dict()` and `from_dict()` both present. `from_dict()` handles JSON string -> list/dict deserialization for available_channels and preset_rules. |
-| 2.13 | PASS | `User` dataclass has all required fields with correct types. `to_dict()` and `from_dict()` both present. |
-| 2.14 | PASS | `UserAlertRule` dataclass has all required fields with correct types. `to_dict()` and `from_dict()` both present. |
-| 2.15 | PASS | `ConfirmationCode` dataclass has all required fields with correct types. `to_dict()` and `from_dict()` both present. `used_at: datetime | None = None`. |
-| 2.16 | PASS | Tier system is fully data-driven. `preference_mode` and `preset_rules` stored in DB as schema columns. No code-level branching on tier names in the DB layer. Adding a new tier requires only a DB insert. |
-| 2.17 | PASS | `seed_tiers.py` defines Standard (preset, max_countries=1, preset_rules with 4 urgency ranges) and Premium (customizable, max_countries=None, preset_rules=None). Channel lists match spec exactly. |
-| 2.18 | PASS | Script accepts `--database-url` with `DATABASE_URL` env var fallback. Uses `INSERT ... ON CONFLICT (name) DO NOTHING` for idempotency. Error exits with code 1 if no URL provided. |
-| 2.19 | PASS | `test_multi_tenant.py` covers: tier insert/retrieve (TestTiers, 6 tests), user insert/retrieve (TestUsers, 4 tests), user country association (TestUserCountries, 5 tests), user alert rules CRUD (TestUserAlertRules, 5 tests), confirmation code lifecycle (TestConfirmationCodes, 6 tests), AlertRecord user_id field (TestAlertRecordUserIdField, 7 tests), schema structure (TestMultiTenantSchema, 4 tests). |
-
----
+| 3.1 | PASS | `process_event` queries users via `get_users_by_country()` per affected country, deduplicates by `seen_user_ids`, iterates each with `_process_event_for_user`. |
+| 3.2 | PASS | `_determine_action` resolves tier, dispatches to `_resolve_channel_from_preset` or `_resolve_channel_from_user_rules` based on `preference_mode`. |
+| 3.3 | PASS | `_fallback_channel` walks `CHANNEL_SEVERITY` from the resolved channel downward, returning the first channel in `available_channels` or `log_only`. |
+| 3.4 | PASS | `_execute_phone_call`, `_execute_sms`, `_execute_whatsapp` all accept `User`, use `user.phone_number`, set `record.user_id = user.id`. |
+| 3.5 | PASS | `_send_confirmation_whatsapp` creates `ConfirmationCode` model, stores via `db.insert_confirmation_code()`. No `self._confirmation_code` anywhere. |
+| 3.6 | PASS | `_check_whatsapp_confirmation` calls `db.get_active_confirmation_code(user.id, event.id)` and `db.mark_confirmation_code_used(code.id)` on match. |
+| 3.7 | PASS | `_is_in_cooldown` filters `alert_records` by `user_id`, checks most recent acknowledged record's `sent_at` against cooldown window. Does not use `event.acknowledged_at`. |
+| 3.8 | PASS | `_is_acknowledged` operates on user-filtered alert list. `_get_user_alert_records` filters by both `event_id` and `user_id`. |
+| 3.9 | PASS (core) / ISSUE (periphery) | `AlertsConfig.phone_number` removed, replaced by `system_phone_number`. `state_machine.py` has zero references. **Stale references remain in `test_e2e_live.py:89` and `deploy/scripts/check-health.sh:30`** (see F-04, F-05). |
+| 3.10 | PASS | `AlertDispatcher.dispatch()` signature unchanged. Multi-user iteration inside `state_machine.process_event()`. |
+| 3.11 | PASS | `_format_call_message`, `_format_sms_message`, `_format_update_sms` accept optional `language` kwarg, default `"pl"`. |
+| 3.12 | PASS | `check_pending_calls` resolves user via `db.get_user_by_id(record.user_id)`, passes user to `_handle_call_result`. |
+| 3.13 | PASS | Tests cover: multi-user dispatch, per-user cooldown independence, preset routing, customizable routing, channel fallback, DB persistence of confirmation codes, single-user-ack-does-not-block. |
 
 ## Findings
 
-### Finding 1: Missing `UserCountry` dataclass listed in deliverables
-- **File**: sentinel/models.py (entire file)
-- **Severity**: Low
-- **Category**: spec-compliance
-- **Description**: The CHANGE-SPEC Phase 2 deliverables section states: "new dataclasses: `User`, `Tier`, `UserCountry`, `UserAlertRule`, `ConfirmationCode`". No `UserCountry` dataclass exists in models.py. The `user_countries` table is managed through direct method signatures: `insert_user_country(user_id, country_code)`, `get_user_countries(user_id) -> list[str]`, `delete_user_countries(user_id)`. This is a pragmatic choice -- a dataclass for a 3-column junction table would be over-engineering -- but the CHANGE-SPEC deliverables list does not match the implementation.
-- **Recommendation**: Update the CHANGE-SPEC deliverables list to remove `UserCountry` and note that user_countries is managed via direct method parameters. Alternatively, add a trivial `UserCountry` dataclass if consistency with the spec matters more than pragmatism.
+### CRITICAL
 
-### Finding 2: `insert_tier()` has no duplicate-name handling
-- **File**: sentinel/database.py:449-461
-- **Severity**: Medium
-- **Category**: quality
-- **Description**: `insert_tier()` uses plain `INSERT INTO tiers` without `ON CONFLICT` handling. The `tiers` table has `name TEXT NOT NULL UNIQUE`. If called with a duplicate tier name, this will raise `psycopg.errors.UniqueViolation` without any application-level handling. Compare with `seed_tiers.py` which correctly uses `INSERT ... ON CONFLICT (name) DO NOTHING`. This asymmetry means the Database CRUD method is less robust than the standalone script.
-- **Recommendation**: Add `ON CONFLICT (name) DO NOTHING` to `insert_tier()`, consistent with the defensive pattern used in `insert_article()` and `seed_tiers.py`. Alternatively, return a boolean to indicate whether the insert succeeded.
+*None.*
 
-### Finding 3: `insert_user_country()` has no duplicate handling for UNIQUE constraint
-- **File**: sentinel/database.py:540-550
-- **Severity**: Medium
-- **Category**: quality
-- **Description**: `insert_user_country()` uses plain INSERT. The table has `UNIQUE(user_id, country_code)`. Calling it twice with the same (user_id, country_code) pair will raise `UniqueViolation`. This makes the method non-idempotent, unlike `insert_article()` which handles duplicates gracefully.
-- **Recommendation**: Add `ON CONFLICT (user_id, country_code) DO NOTHING` to make this operation idempotent.
+### HIGH
 
-### Finding 4: Flaky test -- `test_most_recent_active_code_returned` relies on timestamp ordering that may not be deterministic
-- **File**: tests/test_multi_tenant.py:335-356
-- **Severity**: Medium
-- **Category**: testing
-- **Description**: Both `code1` and `code2` are `ConfirmationCode` instances created with `created_at=datetime.now(timezone.utc)` (the dataclass default factory). The `insert_confirmation_code()` method calls `code.to_dict()` which serializes the Python-side `created_at` to ISO format and passes it to the INSERT, overriding the DB `DEFAULT NOW()`. If both objects are instantiated within the same microsecond (which is common on fast CPUs), they will have identical `created_at` values. The query `ORDER BY created_at DESC LIMIT 1` would then have no deterministic tiebreaker, and the test assertion `active.code == "CODE2"` could intermittently fail.
-- **Recommendation**: Explicitly set `created_at` on `code1` to be earlier than `code2`. For example: `code1 = ConfirmationCode(..., created_at=datetime(2026, 1, 1, tzinfo=timezone.utc))` and let `code2` use the default (now). This guarantees deterministic ordering.
+**F-01: Event-level `alert_status` / `acknowledged_at` is a shared global that creates cross-user interference.**
+Files: `sentinel/alerts/state_machine.py` lines 538-542, 673, 684, 502, 737-739
+Severity: HIGH (Correctness / Multi-tenant semantics)
 
-### Finding 5: Unused `import json` in seed_tiers.py
-- **File**: scripts/seed_tiers.py:15
-- **Severity**: Low
-- **Category**: quality
-- **Description**: `import json` is present at line 15 but never referenced in the file. The script uses `psycopg.types.json.Jsonb()` for JSON handling.
-- **Recommendation**: Remove the unused import.
+`_acknowledge_event` calls `db.update_event(event.id, alert_status="acknowledged", acknowledged_at=...)` which sets a single shared field on the `events` table. Similarly, `_execute_sms` sets `alert_status="sms_sent"`, `_execute_whatsapp` sets `alert_status="whatsapp_sent"`, and `_execute_phone_call` sets `alert_status="call_placed"`.
 
-### Finding 6: No automated test for `seed_tiers.py`
-- **File**: tests/ (missing)
-- **Severity**: Medium
-- **Category**: testing
-- **Description**: There is no test exercising the `seed_tiers()` function or the script's CLI entry point. The gate criteria state "Tier seed script runs idempotently and creates Standard + Premium tiers." The implementation uses `ON CONFLICT (name) DO NOTHING` which looks correct, but idempotency is not verified by any automated test. Additionally, the correctness of the tier data (channel lists, preset_rules, preference_mode) is not validated against the spec.
-- **Recommendation**: Add a test that: (a) calls `seed_tiers(pg_url)`, (b) verifies 2 tiers exist with correct names and data, (c) calls `seed_tiers(pg_url)` again, (d) verifies still exactly 2 tiers (idempotency).
+In a multi-user scenario where User A gets SMS and User B gets a phone call for the same event, User A's execution sets `alert_status="sms_sent"`, then User B's execution overwrites it with `alert_status="call_placed"`. If User A acknowledges, the event goes to `"acknowledged"` globally, which could affect User B's flow on the next cycle -- specifically, `check_pending_calls` -> `_handle_call_result` sets `alert_status="retry_pending"` but that was already overwritten.
 
-### Finding 7: No test for duplicate user_country insert behavior
-- **File**: tests/test_multi_tenant.py (missing)
-- **Severity**: Low
-- **Category**: testing
-- **Description**: No test verifies behavior when inserting the same (user_id, country_code) pair twice. The UNIQUE constraint on `user_countries` will cause a `UniqueViolation` exception, but this is not tested. Whether the exception or silent ignore is the intended behavior is undocumented.
-- **Recommendation**: Add a test that inserts the same country for the same user twice and asserts the expected outcome (crash or idempotent skip, depending on whether Finding 3's recommendation is adopted).
+This is partially mitigated because the per-user logic uses `alert_records` filtered by `user_id` (not the event-level field) for cooldown and acknowledgment checks. But the event-level `alert_status` is still read by `corroborator.py` and potentially by scheduler diagnostics. The spec says the event-level field "MAY be retained for backward compatibility" (3.7), but the current implementation actively writes to it from user-specific paths, creating a last-writer-wins race.
 
-### Finding 8: No test for duplicate tier name insert behavior
-- **File**: tests/test_multi_tenant.py (missing)
-- **Severity**: Low
-- **Category**: testing
-- **Description**: No test exercises inserting two tiers with the same `name`. The schema has `name TEXT NOT NULL UNIQUE` but the behavior on conflict is untested.
-- **Recommendation**: Add a test that attempts a duplicate tier insert and verifies the expected behavior.
+Recommendation: Either (a) stop updating event-level `alert_status` from per-user paths and only use it as a summary/aggregate, or (b) document that event-level `alert_status` reflects the most recent per-user action and is not authoritative for per-user state.
 
-### Finding 9: No test for CHECK constraint on `user_alert_rules`
-- **File**: tests/test_multi_tenant.py (missing)
-- **Severity**: Low
-- **Category**: testing
-- **Description**: The `user_alert_rules` table has `CHECK(min_urgency <= max_urgency)`. No test verifies that the database rejects a rule where `min_urgency > max_urgency`.
-- **Recommendation**: Add a test that attempts to insert a rule with `min_urgency=8, max_urgency=5` and asserts that a `CheckViolation` / `IntegrityError` is raised.
+---
 
-### Finding 10: No test for cascading deletes from user deletion
-- **File**: tests/test_multi_tenant.py (missing)
-- **Severity**: Medium
-- **Category**: testing
-- **Description**: `user_countries` and `user_alert_rules` both have `ON DELETE CASCADE` on `user_id`. No test verifies that deleting a user row cascades to remove associated countries and rules. This is especially important because there is an asymmetry: `confirmation_codes.user_id` and `alert_records.user_id` do NOT have `ON DELETE CASCADE`. This means deleting a user with confirmation codes or alert records will fail with an FK violation. This asymmetry is untested and undocumented.
-- **Recommendation**: Add tests that: (a) verify CASCADE works (delete user -> countries and rules are gone), (b) verify FK restriction works (delete user with confirmation codes -> FK violation raised). This documents the intentional design.
+**F-02: `corroboration_required` on `UserAlertRule` is stored but never enforced in routing.**
+File: `sentinel/alerts/state_machine.py` lines 381-396
+Severity: HIGH (Feature gap)
 
-### Finding 11: Inconsistent ON DELETE behavior across user-referencing tables
-- **File**: sentinel/database.py:159, 169, 190, 201
-- **Severity**: Medium
-- **Category**: schema design
-- **Description**: The four tables that reference `users(id)` have inconsistent delete behavior:
-  - `user_countries.user_id`: `ON DELETE CASCADE` (line 159)
-  - `user_alert_rules.user_id`: `ON DELETE CASCADE` (line 169)
-  - `alert_records.user_id`: No ON DELETE clause (line 190) -- defaults to `RESTRICT`
-  - `confirmation_codes.user_id`: No ON DELETE clause (line 201) -- defaults to `RESTRICT`
+`UserAlertRule` has a `corroboration_required` field (spec 2.4), and the `premium_user` test fixture sets it to 2 for the critical rule. However, `_resolve_channel_from_user_rules` only checks `min_urgency <= score <= max_urgency` and returns the channel immediately -- it never checks whether `event.source_count >= rule.corroboration_required`.
 
-  This means deleting a user cleans up their countries and rules but blocks on any existing alert records or confirmation codes. This may be intentional (preserve audit trail) but is undocumented and could surprise future developers.
-- **Recommendation**: Add a code comment explaining the intentional design choice. Consider using `ON DELETE SET NULL` for `alert_records.user_id` (which is already nullable) to preserve records while allowing user deletion. For `confirmation_codes`, RESTRICT may indeed be correct since deleting a user with pending codes could cause issues.
+The legacy `_determine_action_from_config` **does** enforce corroboration (line 373: `if source_count >= level.corroboration_required`). This means premium/customizable users bypass the corroboration requirement entirely. An event with urgency 10 but only 1 source would trigger a phone call for a premium user even if their rule says `corroboration_required=2`.
 
-### Finding 12: Seed script generates non-deterministic UUIDs at module import time
-- **File**: scripts/seed_tiers.py:24-48
-- **Severity**: Medium
-- **Category**: quality
-- **Description**: The `TIERS` list is defined at module level with `"id": str(uuid4())`. Every time the module is imported or the script is run, new UUIDs are generated. Because the INSERT uses `ON CONFLICT (name) DO NOTHING`, the first run's IDs persist and subsequent runs' IDs are silently discarded. This has a practical consequence: the CHANGE-SPEC Phase 4 (req 4.3) says the migration script "MUST run `scripts/seed_tiers.py` logic (or import it) to ensure tiers exist before migrating data." If the migration script imports `seed_tiers` and tries to reference `TIERS[0]["id"]` to get the Standard tier's ID, it will get a freshly-generated UUID that does not match the one actually stored in the database.
-- **Recommendation**: Either (a) use deterministic UUIDs via `uuid5(NAMESPACE_DNS, "standard")` so IDs are stable across runs, or (b) have `seed_tiers()` query the database after insert and return the actual tier IDs, or (c) move UUID generation inside the function rather than at module level.
+Recommendation: Add corroboration checking to `_resolve_channel_from_user_rules`, e.g. `if event.source_count < rule.corroboration_required: continue` to fall through to the next lower-priority rule, or fall back to a less aggressive channel.
 
-### Finding 13: `conftest.py` fixtures have implicit ordering dependency risk
-- **File**: tests/conftest.py:294-329
-- **Severity**: Low
-- **Category**: testing
-- **Description**: The `sample_user` fixture inserts `sample_tier` into the DB. The `sample_user_alert_rule` fixture inserts `sample_user`. The `sample_confirmation_code` fixture inserts both `sample_user` and `sample_event`. If any test uses `sample_user` alongside `sample_tier` (both passed directly as test params), the tier would be inserted twice (once by the `sample_user` fixture, once by whatever uses `sample_tier`), causing a `UniqueViolation`. Currently this does not happen in any test, but the design is fragile.
-- **Recommendation**: Consider restructuring fixtures to use a dedicated "seeded tier" fixture that both `sample_user` and any direct tier consumers depend on, preventing double insertion.
+---
 
-### Finding 14: `get_users_by_country` may return duplicates if a user monitors the same country via multiple rows
-- **File**: sentinel/database.py:523-534
-- **Severity**: Low
-- **Category**: quality
-- **Description**: The query JOINs `users` with `user_countries`. If the `UNIQUE(user_id, country_code)` constraint were ever removed or bypassed, a user with duplicate country rows would appear multiple times in the result. With the current constraint in place, this cannot happen. Defensive coding would add `DISTINCT` to the SELECT.
-- **Recommendation**: The UNIQUE constraint makes this a non-issue. Optionally add `SELECT DISTINCT u.*` for defense-in-depth, but not required.
+### MEDIUM
 
-### Finding 15: `get_all_tiers()` returns all tiers including inactive ones
-- **File**: sentinel/database.py:476-481
-- **Severity**: Low
-- **Category**: quality
-- **Description**: `get_all_tiers()` returns all tiers regardless of `is_active` status. This contrasts with `get_active_users()` which filters by `is_active = TRUE`. The spec (2.8) says `get_all_tiers() -> list[Tier]` without specifying active-only, so this is technically compliant, but the naming asymmetry with `get_active_users()` may cause confusion.
-- **Recommendation**: No change needed if intentional. Consider documenting that this returns all tiers (including inactive) in the docstring, or add a `get_active_tiers()` variant.
+**F-03: Dead code block behind `if False:` in `_handle_call_result`.**
+File: `sentinel/alerts/state_machine.py` lines 696-714
+Severity: MEDIUM (Code quality)
 
-### Finding 16: Column names in dynamic INSERT SQL are derived from `to_dict()` keys -- safe but pattern requires awareness
-- **File**: sentinel/database.py:449-460, 487-498, 577-588, 616-627
-- **Severity**: Low
-- **Category**: security
-- **Description**: All new insert methods (`insert_tier`, `insert_user`, `insert_user_alert_rule`, `insert_confirmation_code`) use `data = obj.to_dict(); columns = ", ".join(data.keys())` to construct SQL dynamically. Column names come from hardcoded `to_dict()` return dictionaries, not from user input. Values are properly parameterized via `%s`. This is the same pattern used by all Phase 1 insert methods and is safe as long as `to_dict()` keys remain hardcoded.
-- **Recommendation**: No action needed. This is a pre-existing, consistent pattern. Noted for awareness.
+The entire "call was answered" branch is gated by `if False:`, making it unreachable dead code. The docstring still says "If the call was answered (duration > threshold), mark as acknowledged" which is misleading. The comment explains the intent (`# Confirmation is now via WhatsApp only, not call duration`), but the dead code should be removed rather than left behind a `False` guard. The `elif` on line 715 always evaluates, so it's logically just an `if`.
+
+Recommendation: Delete the `if False:` block, convert `elif` to `if`, update the docstring.
+
+---
+
+**F-04: `test_e2e_live.py` still references `config.alerts.phone_number` (removed field).**
+File: `test_e2e_live.py` line 89
+Severity: MEDIUM (Broken code)
+
+This file was touched on this branch (database path -> url migration in Phase 1) but line 89 still reads `config.alerts.phone_number`. Since `AlertsConfig` no longer has a `phone_number` attribute, this will crash with `AttributeError` at runtime. Should be changed to `config.alerts.system_phone_number` or replaced with a user lookup.
+
+---
+
+**F-05: `deploy/scripts/check-health.sh` still references `config.alerts.phone_number`.**
+File: `deploy/scripts/check-health.sh` line 30
+Severity: MEDIUM (Broken deploy script)
+
+The Python one-liner `client.send_sms(config.alerts.phone_number, ...)` will fail at runtime for the same reason as F-04. Should use `config.alerts.system_phone_number`.
+
+---
+
+**F-06: `_get_user_alert_records` fetches ALL records for an event then filters in Python; called up to 3x per user per event.**
+Files: `sentinel/alerts/state_machine.py` lines 398-403, 232, 240, 446
+Severity: MEDIUM (Efficiency)
+
+```python
+def _get_user_alert_records(self, event_id, user_id):
+    all_records = self.db.get_alert_records(event_id)
+    return [r for r in all_records if r.user_id == user_id]
+```
+
+This fetches every alert record for the event across all users and filters in Python. It is called at line 240 (main flow), line 411 (inside `_is_in_cooldown`), and potentially line 446 (inside `_execute_phone_call` default). That is 3 DB round-trips returning all users' records, only to filter down to one user each time.
+
+Recommendation: (a) Add a `WHERE user_id = %s` filter to the SQL query (new method or optional parameter). (b) Fetch once at the top of `_process_event_for_user` and pass to all sub-methods.
+
+---
+
+### LOW
+
+**F-07: `_fallback_channel` treats `log_only` as always-available regardless of `available_channels`.**
+File: `sentinel/alerts/state_machine.py` lines 163-179
+Severity: LOW (Design subtlety, works correctly)
+
+If the loop reaches `log_only` in `CHANNEL_SEVERITY`, it returns `"log_only"` immediately without checking `available_channels`. This is sensible (logging should always work) but is an implicit assumption. Consider adding a brief comment.
+
+---
+
+**F-08: No test for customizable tier user with zero rules.**
+File: `tests/test_state_machine.py`
+Severity: LOW (Test coverage gap)
+
+No test for a Premium (customizable) user with no `user_alert_rules` rows. Code returns `log_only`, which is likely correct, but worth an explicit test.
+
+---
+
+**F-09: No test for invalid/missing tier (`get_tier_by_id` returns None).**
+File: `tests/test_state_machine.py`
+Severity: LOW (Test coverage gap)
+
+Lines 309-316 of `state_machine.py` handle tier lookup failure with a warning and `"log_only"` return. No test exercises this branch.
+
+---
+
+**F-10: No test for unknown `preference_mode`.**
+File: `tests/test_state_machine.py`
+Severity: LOW (Test coverage gap)
+
+Lines 333-338 handle an unknown `preference_mode` by returning `"log_only"`. No test covers this defensive branch.
+
+---
+
+**F-11: `_acknowledge_event` side-effects `event.last_updated_at` via `update_event`.**
+File: `sentinel/alerts/state_machine.py` line 538, `sentinel/database.py` line 293
+Severity: LOW (Subtle side effect)
+
+`update_event` always sets `last_updated_at = NOW()`. When `_acknowledge_event` runs for User A, it changes `last_updated_at` in the DB, which could affect the `event.last_updated_at > self._last_alert_time(existing_alerts)` comparison at line 243 for User B if they share the same in-memory event object. Mitigated because the event is not re-read from DB mid-loop, but fragile.
+
+---
+
+**F-12: Format message functions accept `language` parameter but ignore it.**
+File: `sentinel/alerts/state_machine.py` lines 62-118
+Severity: LOW (Expected per spec 3.11)
+
+Polish-only for now, `language` parameter reserved for future i18n. Spec-compliant but should be tracked as a known TODO.
+
+---
+
+**F-13: Standard tier in test fixtures uses `available_channels: ["sms", "whatsapp"]` which differs from spec 2.17's `["phone_call", "sms", "whatsapp"]`.**
+File: `tests/test_state_machine.py` lines 83-98
+Severity: LOW (Intentional test design)
+
+The test fixture deliberately restricts the Standard tier's available channels to test the fallback mechanism. This is correct for test purposes but creates a discrepancy with the spec-defined Standard tier. Not a bug, just worth noting that production seed data (from `scripts/seed_tiers.py`) has different values than these test fixtures.
 
 ---
 
 ## Statistics
-- Files reviewed: 5
-- Findings: 16 (Critical: 0, High: 0, Medium: 6, Low: 10)
+
+| Metric | Count |
+|--------|-------|
+| Files reviewed | 9 |
+| Total findings | 13 |
+| Critical | 0 |
+| High | 2 |
+| Medium | 4 |
+| Low | 7 |
+| Spec requirements checked | 13 (3.1-3.13) |
+| Spec requirements fully passing | 12/13 |
+| Spec requirements passing with peripheral issues | 1/13 (3.9) |
+| Tests in test_state_machine.py | 25 |
+| Tests in test_dispatcher.py | 4 |
+| Multi-user scenarios tested | 5 (tests #1, #5, #6, #19, #20) |
+| Per-user cooldown tests | 2 (tests #5, #8) |
+| Channel fallback tests | 4 (unit tests + integration test #4) |
+| Edge case tests present | 3 (no users for country, pending call blocks, low urgency log_only) |
+| Edge case tests missing | 3 (no rules, no tier, unknown preference_mode) |
 
 ---
 
-## Resolver Decisions
+## Resolution
 
 **Resolver:** Opus 4.6 (1M context)
 **Date:** 2026-03-28
-**Method:** Verified each finding against actual code at cited locations, cross-referenced CHANGE-SPEC.md requirements (Phases 2-4), and applied canonical blocking definition.
 
-### Finding 1: Missing `UserCountry` dataclass listed in deliverables
-- **Decision**: accept
-- **Final Severity**: Low
-- **Executor Action**: note
-- **Evidence**: `sentinel/models.py` contains `Tier`, `User`, `UserAlertRule`, `ConfirmationCode` dataclasses but no `UserCountry`. CHANGE-SPEC Phase 2 deliverables (line 122) lists "new dataclasses: `User`, `Tier`, `UserCountry`, `UserAlertRule`, `ConfirmationCode`". The `user_countries` table is handled via `insert_user_country(user_id, country_code)` returning/accepting primitives.
-- **Rationale**: Confirmed: the spec lists `UserCountry` but none exists. The reviewer correctly notes this is pragmatic for a 3-column junction table. A trivial spec update suffices. Low severity is correct -- this is a documentation/spec mismatch, not a code defect.
+### F-01: Event-level `alert_status` shared global — cross-user interference
 
-### Finding 2: `insert_tier()` has no duplicate-name handling
-- **Decision**: accept
-- **Final Severity**: Medium
-- **Executor Action**: fix
-- **Evidence**: `sentinel/database.py:449-461` -- `insert_tier()` uses plain `INSERT INTO tiers ({columns}) VALUES ({placeholders})` with no `ON CONFLICT` clause. The `tiers` table has `name TEXT NOT NULL UNIQUE` (line 127 of DDL). Meanwhile, `seed_tiers.py:60` uses `ON CONFLICT (name) DO NOTHING` and `insert_article()` (line 221-223) uses `ON CONFLICT (url_hash) DO NOTHING RETURNING id`. The CRUD method is less defensive than both the seed script and the established pattern.
-- **Rationale**: This is a real inconsistency. `insert_tier()` will raise an unhandled `UniqueViolation` on duplicate names. The fix is trivial -- add `ON CONFLICT (name) DO NOTHING`. Medium is correct.
+**Decision:** ACCEPT
+**Action:** note (document, do not fix in Phase 3)
+**Final severity:** HIGH
 
-### Finding 3: `insert_user_country()` has no duplicate handling for UNIQUE constraint
-- **Decision**: accept
-- **Final Severity**: Medium
-- **Executor Action**: fix
-- **Evidence**: `sentinel/database.py:540-550` -- plain `INSERT INTO user_countries (id, user_id, country_code) VALUES (%s, %s, %s)` with no `ON CONFLICT` clause. The table has `UNIQUE(user_id, country_code)` (DDL line 161). Calling this twice with the same pair raises `UniqueViolation`.
-- **Rationale**: This method is called during user setup and could easily be called idempotently (e.g., re-running a setup script). The `insert_article` pattern establishes `ON CONFLICT DO NOTHING` as the project standard. Medium is correct.
+**Verification:** Confirmed. Lines 502, 531, 540, 673, 684, 737-738 all call `db.update_event(event.id, alert_status=...)` from per-user code paths. In a multi-user scenario, these writes are indeed last-writer-wins on a shared field.
 
-### Finding 4: Flaky test -- `test_most_recent_active_code_returned` relies on timestamp ordering
-- **Decision**: accept
-- **Final Severity**: Medium
-- **Executor Action**: fix
-- **Evidence**: `tests/test_multi_tenant.py:340-356` -- `code1` and `code2` are both created with default `created_at=datetime.now(timezone.utc)` (from `ConfirmationCode` dataclass default factory, `models.py:393`). The `to_dict()` method serializes `created_at` as ISO string which is passed to INSERT, so the DB `DEFAULT NOW()` is not used. If both instantiated in the same microsecond (very plausible), `ORDER BY created_at DESC LIMIT 1` has no deterministic tiebreaker. The test asserts `active.code == "CODE2"` on line 356.
-- **Rationale**: This is a real flakiness risk. On fast machines or under load, microsecond-identical timestamps are common. The fix is simple: set `code1.created_at` to a known earlier time. Medium is correct for a test that could intermittently fail in CI.
+**Analysis:** The reviewer is correct that this is a real semantic problem. However, I checked all consumers of `alert_status`:
 
-### Finding 5: Unused `import json` in seed_tiers.py
-- **Decision**: accept
-- **Final Severity**: Low
-- **Executor Action**: fix
-- **Evidence**: `scripts/seed_tiers.py:14` -- `import json` is present. Searched the file: `json` is never referenced. The script uses `psycopg.types.json.Jsonb()` for JSON serialization.
-- **Rationale**: Dead import. Trivial fix, Low severity correct.
+1. **Corroborator** (`corroborator.py:246`): Writes `alert_status` during `_update_event` based on urgency and source count. This runs *before* the alert dispatch, so the state machine's per-user overwrites happen *after* the corroborator is done for that cycle. On the *next* cycle, the corroborator calls `_determine_alert_status()` and *overwrites* whatever the state machine set. So there is no behavioral breakage here -- the corroborator always recalculates.
+2. **Scheduler** (`scheduler.py:251`): Filters `e.alert_status != "pending"` to find alertable events. The corroborator sets this field before dispatch, so it works correctly.
+3. **State machine internal reads:** The state machine does NOT read `event.alert_status` for any per-user routing decision. All per-user state comes from `alert_records` filtered by `user_id`. The `alert_status` field is write-only from the state machine's perspective.
 
-### Finding 6: No automated test for `seed_tiers.py`
-- **Decision**: accept
-- **Final Severity**: Medium
-- **Executor Action**: fix
-- **Evidence**: No test file exercises `seed_tiers()`. Gate criteria state: "Tier seed script runs idempotently and creates Standard + Premium tiers." The seed script's `ON CONFLICT (name) DO NOTHING` idempotency and the correctness of tier data (channel lists matching spec 2.17) are not validated by any test.
-- **Rationale**: Gate criteria explicitly requires verifying idempotent seed behavior. This is untested. Medium is correct. A test should call `seed_tiers()` twice and verify 2 tiers with correct data.
+**Conclusion:** The last-writer-wins race on `alert_status` is cosmetically ugly but does not cause incorrect behavior in the current code because: (a) the corroborator overwrites it every cycle, (b) no consumer depends on it being accurate per-user, and (c) per-user logic reads from `alert_records`. The recommendation to document it as "reflects most recent per-user action, not authoritative" is sound. This should be addressed in Phase 4 cleanup or a future refactor, but it does NOT block Phase 3.
 
-### Finding 7: No test for duplicate user_country insert behavior
-- **Decision**: accept
-- **Final Severity**: Low
-- **Executor Action**: note
-- **Evidence**: No test in `test_multi_tenant.py` inserts the same `(user_id, country_code)` pair twice. The behavior depends on whether Finding 3's fix is applied: with `ON CONFLICT DO NOTHING` it would be idempotent; without it, it raises `UniqueViolation`.
-- **Rationale**: Once Finding 3 is fixed (adding `ON CONFLICT DO NOTHING`), a test verifying idempotency would be nice but is not blocking. Low severity is correct -- the primary fix is in Finding 3, and adding a test is optional.
-
-### Finding 8: No test for duplicate tier name insert behavior
-- **Decision**: accept
-- **Final Severity**: Low
-- **Executor Action**: note
-- **Evidence**: No test exercises inserting two tiers with the same name. Same pattern as Finding 7 -- depends on Finding 2's fix.
-- **Rationale**: Once Finding 2 is fixed, the behavior is defined. A test would be nice but is not blocking at Low severity.
-
-### Finding 9: No test for CHECK constraint on `user_alert_rules`
-- **Decision**: accept
-- **Final Severity**: Low
-- **Executor Action**: note
-- **Evidence**: `user_alert_rules` DDL (line 175) has `CHECK(min_urgency <= max_urgency)`. No test in `test_multi_tenant.py` attempts to violate this constraint.
-- **Rationale**: The CHECK constraint is a DB-level safety net. Testing it validates the DDL but is not a functional gap -- the constraint exists and PostgreSQL enforces it. Low severity is correct.
-
-### Finding 10: No test for cascading deletes from user deletion
-- **Decision**: accept
-- **Final Severity**: Medium
-- **Executor Action**: fix
-- **Evidence**: DDL confirmed: `user_countries.user_id` has `ON DELETE CASCADE` (line 159), `user_alert_rules.user_id` has `ON DELETE CASCADE` (line 169), `alert_records.user_id` has no ON DELETE clause (line 190, defaults to NO ACTION/RESTRICT), `confirmation_codes.user_id` has no ON DELETE clause (line 201, defaults to NO ACTION/RESTRICT). No test verifies this behavior. The asymmetry means deleting a user with alert_records or confirmation_codes will fail with FK violation, which is untested and undocumented.
-- **Rationale**: This is a design behavior that future code (Phase 3 alert routing, Phase 4 migration) will depend on. The CASCADE vs RESTRICT asymmetry is intentional (preserve audit trail) but must be documented by tests. Medium is correct.
-
-### Finding 11: Inconsistent ON DELETE behavior across user-referencing tables
-- **Decision**: accept
-- **Final Severity**: Medium
-- **Executor Action**: note
-- **Evidence**: Same DDL evidence as Finding 10. `user_countries` and `user_alert_rules` cascade; `alert_records` and `confirmation_codes` restrict (default NO ACTION).
-- **Rationale**: The spec does not mandate specific ON DELETE behavior for `confirmation_codes` or `alert_records`. The asymmetry is defensible: countries and rules are user config (delete with user), while alert_records and confirmation_codes are audit/operational data (preserve). However, the intent should be documented in a code comment. Reclassifying action to "note" rather than "fix" because the schema design is sound -- only a comment is needed, and Finding 10 covers the test gap. The comment can be added alongside the Finding 10 test fix. Medium is correct but action is note (a code comment, not a schema change).
-
-### Finding 12: Seed script generates non-deterministic UUIDs at module import time
-- **Decision**: accept
-- **Final Severity**: Medium
-- **Executor Action**: fix
-- **Evidence**: `scripts/seed_tiers.py:24-48` -- `TIERS` list at module level with `"id": str(uuid4())`. New UUIDs generated on every import/run. `ON CONFLICT (name) DO NOTHING` means first run's IDs persist, subsequent IDs discarded. CHANGE-SPEC Phase 4 req 4.3: "The migration script MUST run `scripts/seed_tiers.py` logic (or import it) to ensure tiers exist before migrating data." Phase 4 req 4.4: "It MUST assign this user to the Premium tier." If the migration script imports `seed_tiers` and tries to use `TIERS[1]["id"]` to reference the Premium tier, it gets a UUID that does not match the DB.
-- **Rationale**: The reviewer's Phase 4 concern is valid. Req 4.4 requires assigning a user to the Premium tier, which means the migration script needs the actual tier ID from the DB. If someone naively does `from seed_tiers import TIERS; premium_id = TIERS[1]["id"]`, they get a wrong ID. The fix options are all reasonable: (a) deterministic UUIDs via `uuid5`, (b) have `seed_tiers()` return actual DB tier IDs, or (c) generate UUIDs inside the function. Option (b) is most robust since it works regardless of import order. Medium is correct.
-
-### Finding 13: `conftest.py` fixtures have implicit ordering dependency risk
-- **Decision**: accept
-- **Final Severity**: Low
-- **Executor Action**: note
-- **Evidence**: `tests/conftest.py:294-329` -- `sample_user` fixture inserts `sample_tier` into DB (line 297). If a test requested both `sample_user` and `sample_tier` as parameters, `sample_tier` would be created once by pytest (it's function-scoped), then `sample_user` would insert it, and if any other code path also tried to insert it, that would fail. However, pytest's fixture deduplication means `sample_tier` is resolved once per test function and passed to `sample_user`, so double-insertion would only happen if a test explicitly called `db.insert_tier(sample_tier)` after `sample_user` already did.
-- **Rationale**: This is a design fragility rather than an active bug. Currently no test triggers it. The reviewer correctly notes it could bite someone later. Low severity is correct -- no fix needed now.
-
-### Finding 14: `get_users_by_country` may return duplicates
-- **Decision**: reject
-- **Final Severity**: Low (n/a)
-- **Executor Action**: n/a
-- **Evidence**: `sentinel/database.py:523-534` -- the query JOINs `users` with `user_countries`. The `UNIQUE(user_id, country_code)` constraint (DDL line 161) makes duplicates impossible. The reviewer acknowledges this: "With the current constraint in place, this cannot happen."
-- **Rationale**: The reviewer themselves admits this is a non-issue given the constraint. Adding DISTINCT for a hypothetical future constraint removal is speculative defense-in-depth that adds query overhead for no current benefit. Reject.
-
-### Finding 15: `get_all_tiers()` returns all tiers including inactive ones
-- **Decision**: reject
-- **Final Severity**: Low (n/a)
-- **Executor Action**: n/a
-- **Evidence**: `sentinel/database.py:476-481` -- `SELECT * FROM tiers ORDER BY name`. CHANGE-SPEC req 2.8 says `get_all_tiers() -> list[Tier]` -- no active-only filter specified. The method name says "all" and returns all. The asymmetry with `get_active_users()` is because users have a different access pattern (active filtering is the common case for users in alert routing).
-- **Rationale**: The method does exactly what its name and the spec say. The naming asymmetry is intentional -- `get_all_tiers()` is an admin/listing method, while `get_active_users()` is an operational method. No change needed.
-
-### Finding 16: Column names in dynamic INSERT SQL derived from `to_dict()` keys
-- **Decision**: accept
-- **Final Severity**: Low
-- **Executor Action**: note
-- **Evidence**: All insert methods (`insert_tier`, `insert_user`, `insert_user_alert_rule`, `insert_confirmation_code`) use `data = obj.to_dict(); columns = ", ".join(data.keys())`. Keys come from hardcoded `to_dict()` return dicts in models.py, not from user input. Values are parameterized via `%s`.
-- **Rationale**: The reviewer explicitly says "safe" and "no action needed." This is an awareness note about a pre-existing pattern. Accepted as-is.
+**Blocking:** NO (action=note, not fix)
 
 ---
 
-## Resolution Summary
+### F-02: `corroboration_required` on `UserAlertRule` stored but not enforced
 
-### Blocking findings: 6
+**Decision:** ACCEPT, RECLASSIFY to LOW
+**Action:** note
+**Final severity:** LOW
 
-Findings that block (decision=accept, action=fix, severity=Medium+):
+**Verification:** Confirmed. `_resolve_channel_from_user_rules` (lines 381-396) does not check `rule.corroboration_required`. The legacy `_determine_action_from_config` (line 373) does enforce it.
 
-1. **Finding 2** (Medium/fix): `insert_tier()` needs `ON CONFLICT (name) DO NOTHING`
-2. **Finding 3** (Medium/fix): `insert_user_country()` needs `ON CONFLICT (user_id, country_code) DO NOTHING`
-3. **Finding 4** (Medium/fix): Flaky test needs deterministic `created_at` timestamps
-4. **Finding 6** (Medium/fix): Add automated test for `seed_tiers.py` idempotency
-5. **Finding 10** (Medium/fix): Add tests for CASCADE and RESTRICT delete behaviors
-6. **Finding 12** (Medium/fix): Seed script UUIDs must be deterministic or returned from DB
+**Analysis:** The reviewer's concern is technically valid -- but the spec does not require enforcement here. Checking CHANGE-SPEC.md:
 
-### Non-blocking accepted findings: 8
+- **Spec 2.4** defines the `user_alert_rules` table schema including `corroboration_required INTEGER NOT NULL DEFAULT 1`. It specifies the column MUST exist. It says nothing about enforcement during channel resolution.
+- **Spec 2.14** says the `UserAlertRule` dataclass MUST have the `corroboration_required` field. Again, storage only.
+- **Spec 3.2** says: "If `tier.preference_mode == 'customizable'`, it MUST look up the action from the user's `user_alert_rules` (sorted by priority descending, first matching rule wins based on urgency range)." The spec explicitly says resolution is by urgency range only -- no mention of corroboration enforcement.
 
-- Finding 1 (Low/note): Update spec to remove `UserCountry` from deliverables list
-- Finding 5 (Low/fix): Remove unused `import json` from seed_tiers.py
-- Finding 7 (Low/note): Test for duplicate user_country insert (optional after Finding 3 fix)
-- Finding 8 (Low/note): Test for duplicate tier name insert (optional after Finding 2 fix)
-- Finding 9 (Low/note): Test for CHECK constraint violation (optional)
-- Finding 11 (Medium/note): Add code comment documenting CASCADE vs RESTRICT intent
-- Finding 13 (Low/note): Fixture ordering fragility (no active bug)
-- Finding 16 (Low/note): Dynamic SQL from `to_dict()` keys (awareness only)
+The `corroboration_required` field is clearly a stored field for future use (consistent with the spec's general pattern of storing `language` for future i18n). The system-level corroboration check already happens in the corroborator *before* the state machine runs -- events that don't meet corroboration thresholds don't reach the alerting pipeline with an alertable status at all.
 
-### Rejected findings: 2
+Additionally, the global corroboration threshold (`config.classification.corroboration_required`) was recently reduced to 1 (commit 5cacd04), meaning any event with at least 1 source passes corroboration. The per-rule field is dormant by design.
 
-- Finding 14: `get_users_by_country` duplicates -- impossible given UNIQUE constraint
-- Finding 15: `get_all_tiers()` returns inactive tiers -- matches spec and method name
+**Conclusion:** Not a feature gap. The field exists for future use as a stored preference. Downgraded to LOW.
+
+**Blocking:** NO
+
+---
+
+### F-03: Dead code block behind `if False:` in `_handle_call_result`
+
+**Decision:** ACCEPT
+**Action:** fix
+**Final severity:** MEDIUM
+
+**Verification:** Confirmed. Lines 696-714 are gated by `if False:` making them unreachable. The `elif` on line 715 always evaluates. The docstring on line 691 is misleading.
+
+**Analysis:** This is straightforward dead code cleanup. The `if False:` block should be removed, the `elif` should become `if`, and the docstring should be updated. Simple, low-risk fix.
+
+**Blocking:** YES
+
+---
+
+### F-04: `test_e2e_live.py` still references `config.alerts.phone_number`
+
+**Decision:** ACCEPT
+**Action:** fix
+**Final severity:** LOW (reclassified down from MEDIUM)
+
+**Verification:** Confirmed. Line 89 reads `config.alerts.phone_number`. `AlertsConfig` only has `system_phone_number` (config.py line 142). This will crash with `AttributeError`.
+
+**Analysis:** Per the task context: `test_e2e_live.py` is a manual live E2E test, not part of the automated suite. It references `config.alerts.phone_number` but that is expected to break -- it will need updating but is NOT blocking Phase 3. The fix is trivial (change to `config.alerts.system_phone_number`), but the severity should be LOW since this is a manual test file that will need broader updates for multi-tenant anyway (it does not set up users/tiers, does not call the multi-user code path, etc.).
+
+I will fix it since it is trivial, but it does not block.
+
+**Blocking:** NO (reclassified to LOW)
+
+---
+
+### F-05: `deploy/scripts/check-health.sh` still references `config.alerts.phone_number`
+
+**Decision:** ACCEPT
+**Action:** fix
+**Final severity:** MEDIUM
+
+**Verification:** Confirmed. Line 30 uses `config.alerts.phone_number`. This will fail at runtime on the production server.
+
+**Analysis:** Unlike F-04, this is an operational script that runs on a real cron schedule. When it fires on a health failure, the SMS alert will crash instead of sending the notification. This is a real production issue. The fix is trivial: change `config.alerts.phone_number` to `config.alerts.system_phone_number`.
+
+**Blocking:** YES
+
+---
+
+### F-06: `_get_user_alert_records` fetches all records then filters in Python; called multiple times
+
+**Decision:** ACCEPT
+**Action:** note
+**Final severity:** LOW (reclassified down from MEDIUM)
+
+**Verification:** Confirmed. The method is called at lines 240, 411, 447, and 545. Lines 240 and 447 are on different code paths (447 is inside `_execute_phone_call` only when `existing_alerts is None`, and line 240 passes the result to `_execute_phone_call`, so in the normal `_process_event_for_user` flow line 447 does not trigger). Lines 411 and 545 are in `_is_in_cooldown` and `_acknowledge_event` respectively, which run on different branches.
+
+In practice, for a typical event with a handful of users and a handful of alert records, this is negligible. The "up to 3x per user per event" claim is overstated -- in the main `_process_event_for_user` path, it is called once at line 240, and potentially once more at line 411 (cooldown check). The `_acknowledge_event` call at 545 only runs during the phone call loop (inside `_execute_phone_call`), where the existing_alerts were already fetched.
+
+This is a valid efficiency improvement to track, but it is not a correctness issue and the performance impact is negligible at the current scale (single-digit users, single-digit events per cycle). Reclassified to LOW -- a nice-to-have optimization for Phase 4 or a future performance pass.
+
+**Blocking:** NO
+
+---
+
+### F-07: `_fallback_channel` treats `log_only` as always-available
+
+**Decision:** ACCEPT
+**Action:** note
+**Final severity:** LOW
+
+**Verification:** Confirmed. Line 175-176: `if candidate == "log_only": return "log_only"` without checking `available_channels`. This is correct behavior -- logging should always be available as the ultimate fallback. Adding a comment is a good idea but not blocking.
+
+**Blocking:** NO
+
+---
+
+### F-08: No test for customizable tier user with zero rules
+
+**Decision:** ACCEPT
+**Action:** note
+**Final severity:** LOW
+
+**Verification:** Confirmed. No test exercises a Premium user with `preference_mode="customizable"` and zero `user_alert_rules` rows. The code at lines 389-396 would iterate over an empty list and return `"log_only"`, which is the correct behavior. Worth tracking for test coverage improvement, but the code path is trivially correct.
+
+**Blocking:** NO
+
+---
+
+### F-09: No test for invalid/missing tier
+
+**Decision:** ACCEPT
+**Action:** note
+**Final severity:** LOW
+
+**Verification:** Confirmed. Lines 309-316 handle tier lookup failure. Not tested but the defensive code is straightforward.
+
+**Blocking:** NO
+
+---
+
+### F-10: No test for unknown `preference_mode`
+
+**Decision:** ACCEPT
+**Action:** note
+**Final severity:** LOW
+
+**Verification:** Confirmed. Lines 333-338 handle unknown `preference_mode`. Not tested.
+
+**Blocking:** NO
+
+---
+
+### F-11: `_acknowledge_event` side-effects `event.last_updated_at`
+
+**Decision:** ACCEPT
+**Action:** note
+**Final severity:** LOW
+
+**Verification:** Confirmed. `update_event` always sets `last_updated_at = NOW()` (database.py line 293). The `_acknowledge_event` call at line 538 triggers this. However, as noted, the event is not re-read from DB mid-loop in `process_event` -- each user gets the same in-memory event object. The `last_updated_at` comparison at line 243 uses the original in-memory value, not the DB value. So there is no actual cross-user interference during a single cycle. On the *next* cycle, the corroborator re-reads the event from DB, and the `last_updated_at` update is harmless (it just reflects the most recent DB touch).
+
+**Blocking:** NO
+
+---
+
+### F-12: Format message functions accept `language` parameter but ignore it
+
+**Decision:** ACCEPT
+**Action:** note
+**Final severity:** LOW
+
+**Verification:** Confirmed. Polish-only per spec 3.11. The `language` parameter is reserved for future i18n.
+
+**Blocking:** NO
+
+---
+
+### F-13: Standard tier test fixture differs from spec 2.17
+
+**Decision:** ACCEPT
+**Action:** note
+**Final severity:** LOW
+
+**Verification:** Confirmed. Test fixture has `available_channels: ["sms", "whatsapp"]` (line 87) while spec 2.17 says `["phone_call", "sms", "whatsapp"]`. This is intentional test design to exercise the fallback mechanism. The seed script (`scripts/seed_tiers.py`) uses the spec-correct values for production.
+
+**Blocking:** NO
+
+---
+
+### Resolution Summary
+
+| Finding | Decision | Reclassified? | Final Severity | Action | Blocking? |
+|---------|----------|---------------|----------------|--------|-----------|
+| F-01 | Accept | No | HIGH | note | NO |
+| F-02 | Accept | YES: HIGH -> LOW | LOW | note | NO |
+| F-03 | Accept | No | MEDIUM | fix | YES |
+| F-04 | Accept | YES: MEDIUM -> LOW | LOW | fix | NO |
+| F-05 | Accept | No | MEDIUM | fix | YES |
+| F-06 | Accept | YES: MEDIUM -> LOW | LOW | note | NO |
+| F-07 | Accept | No | LOW | note | NO |
+| F-08 | Accept | No | LOW | note | NO |
+| F-09 | Accept | No | LOW | note | NO |
+| F-10 | Accept | No | LOW | note | NO |
+| F-11 | Accept | No | LOW | note | NO |
+| F-12 | Accept | No | LOW | note | NO |
+| F-13 | Accept | No | LOW | note | NO |
+
+**Blocking findings: 2** (F-03, F-05)
+**Non-blocking fixes (will apply anyway): 1** (F-04)
+**Notes for future tracking: 10** (F-01, F-02, F-06, F-07, F-08, F-09, F-10, F-11, F-12, F-13)

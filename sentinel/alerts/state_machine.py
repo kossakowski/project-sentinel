@@ -688,31 +688,12 @@ class AlertStateMachine:
     ) -> None:
         """Handle the result of a previously placed phone call.
 
-        If the call was answered (duration > threshold), mark as acknowledged.
-        Otherwise, retry or fall back to SMS.
+        Confirmation is via WhatsApp only (not call duration). If the call
+        reached a terminal state, mark for retry on next cycle.
         """
         call_status = status["status"]
         duration = status["duration"]
-        if False:  # Confirmation is now via WhatsApp only, not call duration
-            # Call was answered — acknowledged
-            self.db.update_event(
-                record.event_id,
-                alert_status="acknowledged",
-                acknowledged_at=datetime.now(timezone.utc).isoformat(),
-            )
-            # Update the alert record
-            self._update_alert_record(
-                record, status="acknowledged", duration_seconds=duration
-            )
-            self.logger.info(
-                "Event %s acknowledged via call (duration=%ds)",
-                record.event_id,
-                duration,
-            )
-            # Send follow-up SMS with details
-            if user is not None:
-                self._send_followup_sms(record.event_id, user)
-        elif call_status in ("completed", "busy", "no-answer", "canceled", "failed"):
+        if call_status in ("completed", "busy", "no-answer", "canceled", "failed"):
             # Call was not properly answered
             self._update_alert_record(
                 record, status=call_status, duration_seconds=duration

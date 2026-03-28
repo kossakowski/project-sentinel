@@ -27,7 +27,7 @@ from sentinel.alerts.twilio_client import TwilioClient
 from sentinel.config import load_config
 config = load_config('$CONFIG')
 client = TwilioClient(config)
-client.send_sms(config.alerts.phone_number, 'Project Sentinel: $MSG Sprawdź serwer.', 'health-check')
+client.send_sms(config.alerts.system_phone_number, 'Project Sentinel: $MSG Sprawdź serwer.', 'health-check')
 " 2>&1 || echo "Failed to send SMS alert"
 fi
 
