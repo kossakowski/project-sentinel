@@ -33,6 +33,7 @@ If SSH is completely inaccessible, use the **Hetzner Cloud web console**:
 ├── config/config.example.yaml   # Template config (repo version)
 ├── venv/                        # Python virtual environment
 ├── deploy/                      # Deployment scripts and configs
+├── scripts/                     # One-shot setup and migration scripts
 ├── tests/                       # Test suite
 └── requirements.txt
 
@@ -41,15 +42,14 @@ If SSH is completely inaccessible, use the **Hetzner Cloud web console**:
 └── sentinel.env                 # API keys and secrets (root:deploy 640)
 
 /var/lib/sentinel/               # State data (sentinel:sentinel 750)
-├── sentinel.db                  # SQLite database (articles, events, alerts)
 ├── sentinel_session.session     # Telegram auth session
 └── health.json                  # Updated each pipeline cycle
 
 /var/log/sentinel/               # Application logs (sentinel:sentinel 750)
 └── sentinel.log                 # Rotated daily, 14 days retention, 50MB max
 
-/home/deploy/backups/            # Daily SQLite backups (7 day retention)
-└── sentinel_YYYYMMDD.db
+/home/deploy/backups/            # Daily database backups (7 day retention)
+└── sentinel_YYYYMMDD.pgdump
 ```
 
 ## Service Management
@@ -77,20 +77,22 @@ sudo tail -100 /var/log/sentinel/sentinel.log
 # Health check
 sudo cat /var/lib/sentinel/health.json
 
-# Database queries
-sudo sqlite3 /var/lib/sentinel/sentinel.db "SELECT COUNT(*) FROM articles;"
-sudo sqlite3 /var/lib/sentinel/sentinel.db ".tables"
-sudo sqlite3 /var/lib/sentinel/sentinel.db "SELECT * FROM articles ORDER BY created_at DESC LIMIT 10;"
-sudo sqlite3 /var/lib/sentinel/sentinel.db "SELECT * FROM events ORDER BY created_at DESC LIMIT 10;"
+# Database queries (PostgreSQL)
+psql $DATABASE_URL -c "SELECT COUNT(*) FROM articles;"
+psql $DATABASE_URL -c "\dt"
+psql $DATABASE_URL -c "SELECT * FROM articles ORDER BY created_at DESC LIMIT 10;"
+psql $DATABASE_URL -c "SELECT * FROM events ORDER BY created_at DESC LIMIT 10;"
+psql $DATABASE_URL -c "SELECT * FROM users;"
+psql $DATABASE_URL -c "SELECT * FROM tiers;"
 ```
 
 ## Configuration
 
-The live config is at `/etc/sentinel/config.yaml`. It's a copy of `config/config.example.yaml` with these paths changed to absolute:
+The live config is at `/etc/sentinel/config.yaml`. It's a copy of `config/config.example.yaml` with these values changed:
 
 ```yaml
 database:
-  path: /var/lib/sentinel/sentinel.db     # was: data/sentinel.db
+  url: postgresql://sentinel:PASSWORD@localhost:5432/sentinel  # was: data/sentinel.db path
 
 logging:
   file: /var/log/sentinel/sentinel.log    # was: logs/sentinel.log
@@ -117,11 +119,78 @@ Required variables:
 TWILIO_ACCOUNT_SID=...
 TWILIO_AUTH_TOKEN=...
 TWILIO_PHONE_NUMBER=...
-ALERT_PHONE_NUMBER=...
+SYSTEM_PHONE_NUMBER=...
+DATABASE_URL=postgresql://sentinel:PASSWORD@localhost:5432/sentinel
 ANTHROPIC_API_KEY=...
 TELEGRAM_API_ID=...
 TELEGRAM_API_HASH=...
 ```
+
+> `ALERT_PHONE_NUMBER` is no longer a top-level config variable. Alert destinations are now stored per-user in the `users` table. `ALERT_PHONE_NUMBER` is only used by `scripts/migrate_sqlite_to_pg.py` to set the phone number of the primary user during migration.
+
+## Database Setup (PostgreSQL)
+
+The application uses PostgreSQL. On a fresh server:
+
+```bash
+# Install PostgreSQL
+sudo apt install -y postgresql
+
+# Create DB user and database
+sudo -u postgres psql -c "CREATE USER sentinel WITH PASSWORD 'your_password';"
+sudo -u postgres psql -c "CREATE DATABASE sentinel OWNER sentinel;"
+
+# Verify connection
+psql postgresql://sentinel:your_password@localhost:5432/sentinel -c "SELECT 1;"
+```
+
+The application creates all tables automatically on first run (via `Database._create_tables()` in `sentinel/database.py`). There is no separate schema migration tool.
+
+### Seeding Tiers (required before first run)
+
+```bash
+cd /home/deploy/sentinel
+DATABASE_URL=postgresql://sentinel:PASSWORD@localhost:5432/sentinel \
+  venv/bin/python scripts/seed_tiers.py
+```
+
+This seeds the `tiers` table with Standard and Premium tier definitions. Idempotent — safe to run again.
+
+### Creating the Initial User
+
+```bash
+DATABASE_URL=postgresql://sentinel:PASSWORD@localhost:5432/sentinel \
+  venv/bin/python scripts/create_initial_user.py \
+    --name "Your Name" \
+    --phone "+48XXXXXXXXX" \
+    --tier Standard \
+    --countries PL,LT,LV,EE
+```
+
+### Migrating from SQLite (existing installations only)
+
+If upgrading from the SQLite version, run the one-shot migration script **before** starting the new version:
+
+```bash
+# Set env vars for both databases
+export DATABASE_URL=postgresql://sentinel:PASSWORD@localhost:5432/sentinel
+export ALERT_PHONE_NUMBER=+48XXXXXXXXX   # phone number for the primary user
+export ALERT_USER_NAME="Your Name"       # display name for the primary user
+
+cd /home/deploy/sentinel
+venv/bin/python scripts/migrate_sqlite_to_pg.py \
+  --sqlite-path /path/to/old/sentinel.db \
+  --pg-url "$DATABASE_URL"
+```
+
+The script is idempotent (uses `INSERT ... ON CONFLICT DO NOTHING`). It:
+1. Creates all PostgreSQL tables
+2. Copies articles, classifications, events, and alert_records
+3. Seeds tiers
+4. Creates the primary user from env vars
+5. Backfills `alert_records.user_id` to point at that user
+
+After confirming the migration succeeded, the old SQLite file can be removed.
 
 ## Deploying Updates
 
@@ -167,7 +236,7 @@ Run as the `deploy` user. View with: `ssh -p 2222 deploy@178.104.76.254 'crontab
 | Schedule | Script | Purpose |
 |----------|--------|---------|
 | `*/30 * * * *` | `/home/deploy/check-health.sh` | Checks health.json freshness, sends SMS if stale |
-| `0 3 * * *` | `/home/deploy/backup-db.sh` | SQLite backup to /home/deploy/backups/, 7-day retention |
+| `0 3 * * *` | `/home/deploy/backup-db.sh` | PostgreSQL dump to /home/deploy/backups/, 7-day retention |
 
 ## Security Stack
 
@@ -264,7 +333,7 @@ rm /etc/ssh/sshd_config.d/99-sentinel-hardening.conf && systemctl restart ssh
 ```bash
 df -h /
 sudo journalctl --vacuum-size=100M
-sudo find /home/deploy/backups -name "*.db" -mtime +3 -delete
+sudo find /home/deploy/backups -name "*.pgdump" -mtime +3 -delete
 ```
 
 ## Known Issues

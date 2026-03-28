@@ -29,7 +29,15 @@ Real-time monitoring bot that scans media sources (PL/EN/UA/RU) for military att
 - Custom config: `./run.sh --config path/to/config.yaml`
 - Log level: `./run.sh --log-level DEBUG` (DEBUG, INFO, WARNING, ERROR)
 - Health check: `./run.sh --health` (prints `data/health.json`)
-- Tests: `.venv/bin/pytest tests/ -v`
+- Tests: `.venv/bin/pytest tests/ -v` (**requires Docker** — tests use testcontainers-python to spin up a real PostgreSQL instance)
+
+### Database Scripts
+- Seed tiers: `python scripts/seed_tiers.py` (idempotent; reads `DATABASE_URL` or accepts `--database-url`)
+- Create initial user: `python scripts/create_initial_user.py --name "Name" --phone "+48..." --tier Standard --countries PL,LT,LV,EE`
+- Migrate from SQLite: `python scripts/migrate_sqlite_to_pg.py` (one-shot; copies SQLite data to PostgreSQL, seeds tiers, creates primary user from env vars)
+
+### PostgreSQL Requirement
+The application uses PostgreSQL (psycopg3 + connection pool). A running PostgreSQL instance is required locally and in production. Set `DATABASE_URL` in your `.env` (e.g. `postgresql://sentinel:sentinel@localhost:5432/sentinel`). There is no longer a local SQLite file (`data/sentinel.db` is gone).
 
 ## Known Issue: Project Rename History
 This project was renamed twice: `twilio-playground` → `sentinel` → `project-sentinel`. This left stale references baked into:
@@ -54,4 +62,4 @@ This project was renamed twice: `twilio-playground` → `sentinel` → `project-
 - **No quiet hours.** This is a critical alert system -- call at any hour.
 - **Don't spam.** Call once per event, then switch to SMS/WhatsApp for updates.
 - **Corroboration required.** Phone calls require 2+ independent sources confirming the event.
-- Config format: YAML. Database: SQLite. Scheduler: APScheduler (dual-lane: fast lane every 3 min for Telegram + priority-1 RSS + Google News, slow lane every 15 min for all sources including GDELT).
+- Config format: YAML. Database: PostgreSQL. Scheduler: APScheduler (dual-lane: fast lane every 3 min for Telegram + priority-1 RSS + Google News, slow lane every 15 min for all sources including GDELT).
