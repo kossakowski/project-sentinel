@@ -446,8 +446,8 @@ class Database:
     # Tier methods
     # ------------------------------------------------------------------
 
-    def insert_tier(self, tier: Tier) -> None:
-        """Insert a tier."""
+    def insert_tier(self, tier: Tier) -> bool:
+        """Insert a tier. Returns False if tier name already exists (duplicate), True if inserted."""
         data = tier.to_dict()
         columns = ", ".join(data.keys())
         placeholders = ", ".join("%s" for _ in data)
@@ -455,10 +455,18 @@ class Database:
         with self.pool.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"INSERT INTO tiers ({columns}) VALUES ({placeholders})",
+                    f"INSERT INTO tiers ({columns}) VALUES ({placeholders}) "
+                    "ON CONFLICT (name) DO NOTHING RETURNING id",
                     _adapt_values(list(data.values())),
                 )
+                result = cur.fetchone()
+
+        if result is None:
+            self.logger.debug("Duplicate tier skipped: %s", tier.name)
+            return False
+
         self.logger.debug("Tier inserted: %s", tier.name)
+        return True
 
     def get_tier_by_id(self, tier_id: str) -> Tier | None:
         """Return the Tier with the given ID, or None if not found."""
@@ -538,13 +546,14 @@ class Database:
     # ------------------------------------------------------------------
 
     def insert_user_country(self, user_id: str, country_code: str) -> None:
-        """Associate a country with a user."""
+        """Associate a country with a user (idempotent)."""
         row_id = str(uuid4())
         with self.pool.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "INSERT INTO user_countries (id, user_id, country_code) "
-                    "VALUES (%s, %s, %s)",
+                    "VALUES (%s, %s, %s) "
+                    "ON CONFLICT (user_id, country_code) DO NOTHING",
                     (row_id, user_id, country_code),
                 )
         self.logger.debug("User country added: user=%s country=%s", user_id, country_code)

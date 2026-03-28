@@ -14,16 +14,20 @@ import argparse
 import json
 import os
 import sys
-from uuid import uuid4
+import uuid
 
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 
+# Deterministic UUIDs based on tier names so every import/call produces the same IDs.
+STANDARD_TIER_ID = str(uuid.uuid5(uuid.NAMESPACE_DNS, "sentinel-tier-standard"))
+PREMIUM_TIER_ID = str(uuid.uuid5(uuid.NAMESPACE_DNS, "sentinel-tier-premium"))
+
 TIERS = [
     {
-        "id": str(uuid4()),
+        "id": STANDARD_TIER_ID,
         "name": "Standard",
         "available_channels": ["phone_call", "sms", "whatsapp"],
         "max_countries": 1,
@@ -37,7 +41,7 @@ TIERS = [
         "is_active": True,
     },
     {
-        "id": str(uuid4()),
+        "id": PREMIUM_TIER_ID,
         "name": "Premium",
         "available_channels": ["phone_call", "sms", "whatsapp"],
         "max_countries": None,

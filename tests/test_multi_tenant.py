@@ -1,10 +1,14 @@
 """Tests for multi-tenant schema: tiers, users, user countries, alert rules, confirmation codes."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+
+import psycopg
+import pytest
 
 from sentinel.models import (
     AlertRecord,
     ConfirmationCode,
+    Event,
     Tier,
     User,
     UserAlertRule,
@@ -342,6 +346,8 @@ class TestConfirmationCodes:
             event_id=sample_event.id,
             code="CODE1",
         )
+        # Ensure code1 has an earlier created_at so ORDER BY is deterministic
+        code1.created_at = datetime.now(timezone.utc) - timedelta(minutes=5)
         code2 = ConfirmationCode(
             user_id=sample_user.id,
             event_id=sample_event.id,
@@ -564,3 +570,194 @@ class TestMultiTenantSchema:
                 )
                 row = cur.fetchone()
                 assert row is not None, "idx_confirmation_codes_lookup index not found"
+
+
+# ---------------------------------------------------------------------------
+# Seed tiers idempotency test
+# ---------------------------------------------------------------------------
+
+
+class TestSeedTiersIdempotency:
+    def test_seed_tiers_idempotent(self, db, pg_url):
+        """Running seed_tiers twice produces exactly 2 tiers with correct properties."""
+        from scripts.seed_tiers import TIERS, seed_tiers
+
+        # First run
+        seed_tiers(pg_url)
+        tiers = db.get_all_tiers()
+        assert len(tiers) == 2
+
+        # Second run -- should not duplicate
+        seed_tiers(pg_url)
+        tiers = db.get_all_tiers()
+        assert len(tiers) == 2
+
+        # Verify tier properties
+        tier_map = {t.name: t for t in tiers}
+
+        standard = tier_map["Standard"]
+        assert standard.available_channels == ["phone_call", "sms", "whatsapp"]
+        assert standard.max_countries == 1
+        assert standard.preference_mode == "preset"
+        assert standard.preset_rules == {
+            "9-10": "phone_call",
+            "7-8": "sms",
+            "5-6": "whatsapp",
+            "1-4": "log_only",
+        }
+
+        premium = tier_map["Premium"]
+        assert premium.available_channels == ["phone_call", "sms", "whatsapp"]
+        assert premium.max_countries is None
+        assert premium.preference_mode == "customizable"
+        assert premium.preset_rules is None
+
+    def test_seed_tiers_deterministic_ids(self):
+        """Importing seed_tiers multiple times produces the same tier IDs."""
+        from scripts.seed_tiers import PREMIUM_TIER_ID, STANDARD_TIER_ID, TIERS
+
+        assert TIERS[0]["id"] == STANDARD_TIER_ID
+        assert TIERS[1]["id"] == PREMIUM_TIER_ID
+
+        # Verify deterministic: re-derive and compare
+        import uuid
+
+        expected_standard = str(uuid.uuid5(uuid.NAMESPACE_DNS, "sentinel-tier-standard"))
+        expected_premium = str(uuid.uuid5(uuid.NAMESPACE_DNS, "sentinel-tier-premium"))
+        assert STANDARD_TIER_ID == expected_standard
+        assert PREMIUM_TIER_ID == expected_premium
+
+
+# ---------------------------------------------------------------------------
+# CASCADE / RESTRICT behavior tests
+# ---------------------------------------------------------------------------
+
+
+class TestCascadeRestrictBehavior:
+    def test_delete_user_cascades_countries_and_rules(self, db, sample_tier):
+        """Deleting a user cascades to user_countries and user_alert_rules."""
+        db.insert_tier(sample_tier)
+        user = User(name="Cascade User", phone_number="+48111", tier_id=sample_tier.id)
+        db.insert_user(user)
+
+        # Add countries and rules
+        db.insert_user_country(user.id, "PL")
+        db.insert_user_country(user.id, "LT")
+        rule = UserAlertRule(
+            user_id=user.id,
+            min_urgency=7,
+            max_urgency=10,
+            channel="phone_call",
+            priority=10,
+        )
+        db.insert_user_alert_rule(rule)
+
+        # Verify they exist
+        assert len(db.get_user_countries(user.id)) == 2
+        assert len(db.get_user_alert_rules(user.id)) == 1
+
+        # Delete the user
+        with db.pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM users WHERE id = %s", (user.id,))
+
+        # Countries and rules should be gone (CASCADE)
+        assert db.get_user_countries(user.id) == []
+        assert db.get_user_alert_rules(user.id) == []
+
+    def test_delete_user_blocked_by_confirmation_code(self, db, sample_tier):
+        """Deleting a user that has confirmation_codes is blocked (RESTRICT / FK violation)."""
+        db.insert_tier(sample_tier)
+        user = User(name="Restrict User", phone_number="+48222", tier_id=sample_tier.id)
+        db.insert_user(user)
+
+        # Need an event for the confirmation code
+        from sentinel.models import Article
+
+        article = Article(
+            source_name="TestSource",
+            source_url="https://example.com/restrict-test",
+            source_type="rss",
+            title="Test article for restrict",
+            summary="Summary",
+            language="en",
+            published_at=datetime.now(timezone.utc),
+            fetched_at=datetime.now(timezone.utc),
+        )
+        db.insert_article(article)
+        event = Event(
+            event_type="test",
+            urgency_score=5,
+            affected_countries=["PL"],
+            aggressor="RU",
+            summary_pl="Test",
+            first_seen_at=datetime.now(timezone.utc),
+            last_updated_at=datetime.now(timezone.utc),
+            source_count=1,
+            article_ids=[article.id],
+        )
+        db.insert_event(event)
+
+        code = ConfirmationCode(
+            user_id=user.id,
+            event_id=event.id,
+            code="BLOCK123",
+        )
+        db.insert_confirmation_code(code)
+
+        # Attempting to delete the user should fail due to FK on confirmation_codes
+        with pytest.raises(psycopg.errors.ForeignKeyViolation):
+            with db.pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("DELETE FROM users WHERE id = %s", (user.id,))
+
+    def test_delete_user_blocked_by_alert_record(self, db, sample_tier):
+        """Deleting a user that has alert_records is blocked (RESTRICT / FK violation)."""
+        db.insert_tier(sample_tier)
+        user = User(name="Alert Restrict User", phone_number="+48333", tier_id=sample_tier.id)
+        db.insert_user(user)
+
+        # Need an event for the alert record
+        from sentinel.models import Article
+
+        article = Article(
+            source_name="TestSource",
+            source_url="https://example.com/alert-restrict-test",
+            source_type="rss",
+            title="Test article for alert restrict",
+            summary="Summary",
+            language="en",
+            published_at=datetime.now(timezone.utc),
+            fetched_at=datetime.now(timezone.utc),
+        )
+        db.insert_article(article)
+        event = Event(
+            event_type="test",
+            urgency_score=5,
+            affected_countries=["PL"],
+            aggressor="RU",
+            summary_pl="Test",
+            first_seen_at=datetime.now(timezone.utc),
+            last_updated_at=datetime.now(timezone.utc),
+            source_count=1,
+            article_ids=[article.id],
+        )
+        db.insert_event(event)
+
+        record = AlertRecord(
+            event_id=event.id,
+            alert_type="sms",
+            twilio_sid="SM123",
+            status="delivered",
+            attempt_number=1,
+            sent_at=datetime.now(timezone.utc),
+            message_body="Test",
+            user_id=user.id,
+        )
+        db.insert_alert_record(record)
+
+        # Attempting to delete the user should fail due to FK on alert_records
+        with pytest.raises(psycopg.errors.ForeignKeyViolation):
+            with db.pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("DELETE FROM users WHERE id = %s", (user.id,))
