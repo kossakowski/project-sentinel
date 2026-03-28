@@ -99,9 +99,10 @@ def state_machine(db, mock_twilio, config):
 # 1. test_new_critical_event_triggers_call
 # --------------------------------------------------------------------------
 @patch("sentinel.alerts.state_machine.time.sleep")
-def test_new_critical_event_triggers_call(_sleep, state_machine, mock_twilio):
+def test_new_critical_event_triggers_call(_sleep, state_machine, db, mock_twilio):
     """Urgency 10 + 2 sources -> phone call (retries, WhatsApp confirmation)."""
     event = _make_event(urgency_score=10, source_count=2)
+    db.insert_event(event)
     state_machine.process_event(event)
 
     # 5 call attempts (no WhatsApp reply in mock)
@@ -113,9 +114,10 @@ def test_new_critical_event_triggers_call(_sleep, state_machine, mock_twilio):
 # --------------------------------------------------------------------------
 # 2. test_single_source_critical_triggers_sms
 # --------------------------------------------------------------------------
-def test_single_source_critical_triggers_sms(state_machine, mock_twilio):
+def test_single_source_critical_triggers_sms(state_machine, db, mock_twilio):
     """Urgency 10 + 1 source -> SMS only (wait for corroboration)."""
     event = _make_event(urgency_score=10, source_count=1)
+    db.insert_event(event)
     state_machine.process_event(event)
 
     mock_twilio.send_sms.assert_called_once()
@@ -125,9 +127,10 @@ def test_single_source_critical_triggers_sms(state_machine, mock_twilio):
 # --------------------------------------------------------------------------
 # 3. test_high_urgency_triggers_sms
 # --------------------------------------------------------------------------
-def test_high_urgency_triggers_sms(state_machine, mock_twilio):
+def test_high_urgency_triggers_sms(state_machine, db, mock_twilio):
     """Urgency 8 -> SMS."""
     event = _make_event(urgency_score=8, source_count=1)
+    db.insert_event(event)
     state_machine.process_event(event)
 
     mock_twilio.send_sms.assert_called_once()
@@ -137,7 +140,7 @@ def test_high_urgency_triggers_sms(state_machine, mock_twilio):
 # --------------------------------------------------------------------------
 # 4. test_medium_urgency_triggers_whatsapp
 # --------------------------------------------------------------------------
-def test_medium_urgency_triggers_whatsapp(state_machine, mock_twilio, config):
+def test_medium_urgency_triggers_whatsapp(state_machine, db, mock_twilio, config):
     """Urgency 6 -> WhatsApp."""
     # Ensure the config has the 'medium' urgency level
     # The sample_config_dict in conftest only has critical (9+) and high (7+)
@@ -149,6 +152,7 @@ def test_medium_urgency_triggers_whatsapp(state_machine, mock_twilio, config):
     )
 
     event = _make_event(urgency_score=6, source_count=1)
+    db.insert_event(event)
     state_machine.process_event(event)
 
     mock_twilio.send_whatsapp.assert_called_once()
@@ -290,7 +294,7 @@ def test_cooldown_prevents_recall(state_machine, mock_twilio):
 # 11. test_cooldown_expired_allows_call
 # --------------------------------------------------------------------------
 @patch("sentinel.alerts.state_machine.time.sleep")
-def test_cooldown_expired_allows_call(_sleep, state_machine, mock_twilio, config):
+def test_cooldown_expired_allows_call(_sleep, state_machine, db, mock_twilio, config):
     """Acknowledged event after cooldown -> can call again."""
     cooldown_hours = config.alerts.acknowledgment.cooldown_hours
     event = _make_event(
@@ -299,6 +303,7 @@ def test_cooldown_expired_allows_call(_sleep, state_machine, mock_twilio, config
         acknowledged_at=datetime.now(timezone.utc)
         - timedelta(hours=cooldown_hours + 1),
     )
+    db.insert_event(event)
 
     state_machine.process_event(event)
 
@@ -310,7 +315,7 @@ def test_cooldown_expired_allows_call(_sleep, state_machine, mock_twilio, config
 # 12. test_new_event_bypasses_cooldown
 # --------------------------------------------------------------------------
 @patch("sentinel.alerts.state_machine.time.sleep")
-def test_new_event_bypasses_cooldown(_sleep, state_machine, mock_twilio):
+def test_new_event_bypasses_cooldown(_sleep, state_machine, db, mock_twilio):
     """Different event during cooldown -> calls normally."""
     # Event 1: acknowledged, in cooldown
     event1 = _make_event(
@@ -318,6 +323,7 @@ def test_new_event_bypasses_cooldown(_sleep, state_machine, mock_twilio):
         source_count=2,
         acknowledged_at=datetime.now(timezone.utc) - timedelta(hours=1),
     )
+    db.insert_event(event1)
     state_machine.process_event(event1)
     mock_twilio.make_alert_call.assert_not_called()
 
@@ -327,6 +333,7 @@ def test_new_event_bypasses_cooldown(_sleep, state_machine, mock_twilio):
         source_count=2,
         event_type="invasion",
     )
+    db.insert_event(event2)
     state_machine.process_event(event2)
     assert mock_twilio.make_alert_call.call_count >= 1
 
@@ -337,6 +344,7 @@ def test_new_event_bypasses_cooldown(_sleep, state_machine, mock_twilio):
 def test_acknowledged_event_gets_sms_update(state_machine, db, mock_twilio):
     """Event updated after acknowledgment -> SMS update sent."""
     event = _make_event(urgency_score=10, source_count=2)
+    db.insert_event(event)
 
     # Create an acknowledged alert record with a sent_at in the past
     past_time = datetime.now(timezone.utc) - timedelta(hours=1)
@@ -365,6 +373,7 @@ def test_acknowledged_event_gets_sms_update(state_machine, db, mock_twilio):
 def test_duplicate_alert_prevented(_sleep, state_machine, db, mock_twilio):
     """Same event processed twice in same cycle -> second call respects retry interval."""
     event = _make_event(urgency_score=10, source_count=2)
+    db.insert_event(event)
 
     # First call — triggers the full retry loop (5 attempts + SMS)
     state_machine.process_event(event)
@@ -399,6 +408,7 @@ def test_corroboration_upgrade_triggers_call(_sleep, state_machine, db, mock_twi
         article_ids=[article_id_1],
         alert_status="pending",
     )
+    db.insert_event(event)
     state_machine.process_event(event)
     mock_twilio.send_sms.assert_called_once()
     mock_twilio.make_alert_call.assert_not_called()

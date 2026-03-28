@@ -154,23 +154,15 @@ class Corroborator:
           a Telegram post verbatim)
         """
         # Retrieve the article for this classification
-        article_row = self.db.conn.execute(
-            "SELECT * FROM articles WHERE id = ?", (result.article_id,)
-        ).fetchone()
-        if article_row is None:
+        new_article = self.db.get_article_by_id(result.article_id)
+        if new_article is None:
             return True
-
-        new_article = Article.from_row(article_row)
 
         # Check against all existing articles in the event
         for existing_article_id in event.article_ids:
-            existing_row = self.db.conn.execute(
-                "SELECT * FROM articles WHERE id = ?", (existing_article_id,)
-            ).fetchone()
-            if existing_row is None:
+            existing_article = self.db.get_article_by_id(existing_article_id)
+            if existing_article is None:
                 continue
-
-            existing_article = Article.from_row(existing_row)
 
             # Same domain -> not independent (regardless of source_type)
             new_domain = self._extract_domain(new_article.source_url)

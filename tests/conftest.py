@@ -8,9 +8,65 @@ from sentinel.database import Database
 from sentinel.models import AlertRecord, Article, ClassificationResult, Event
 from datetime import datetime, timezone
 
+from testcontainers.postgres import PostgresContainer
+
+
+# ---------------------------------------------------------------------------
+# Session-scoped PostgreSQL container
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="session")
+def pg_container():
+    """Spin up a PostgreSQL container for the test session."""
+    with PostgresContainer("postgres:16-alpine") as pg:
+        yield pg
+
+
+@pytest.fixture(scope="session")
+def pg_url(pg_container):
+    """Return the connection URL for the session-scoped PostgreSQL container.
+
+    testcontainers returns a SQLAlchemy-style URL like
+    ``postgresql+psycopg2://user:pass@host:port/db``.  psycopg3 expects a
+    plain ``postgresql://`` scheme, so we strip the driver suffix.
+    """
+    raw_url = pg_container.get_connection_url()
+    # Strip any "+driver" suffix from the scheme (e.g. "postgresql+psycopg2" -> "postgresql")
+    if "+psycopg2" in raw_url:
+        raw_url = raw_url.replace("postgresql+psycopg2", "postgresql")
+    elif "+psycopg" in raw_url:
+        raw_url = raw_url.replace("postgresql+psycopg", "postgresql")
+    return raw_url
+
+
+@pytest.fixture(scope="session")
+def _db_tables(pg_url):
+    """Create tables once per session."""
+    database = Database(pg_url)
+    yield database
+    database.close()
+
+
+# ---------------------------------------------------------------------------
+# Function-scoped fixtures
+# ---------------------------------------------------------------------------
 
 @pytest.fixture
-def sample_config_dict():
+def db(pg_url, _db_tables):
+    """Create a function-scoped Database, truncating all tables between tests."""
+    database = Database(pg_url)
+    # Truncate all tables before each test
+    with database.pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "TRUNCATE TABLE alert_records, classifications, events, articles CASCADE"
+            )
+    yield database
+    database.close()
+
+
+@pytest.fixture
+def sample_config_dict(pg_url):
     """Minimal valid config dictionary for testing."""
     return {
         "monitoring": {
@@ -98,7 +154,7 @@ def sample_config_dict():
             "jitter_seconds": 30,
         },
         "database": {
-            "path": "data/sentinel.db",
+            "url": pg_url,
             "article_retention_days": 30,
             "event_retention_days": 90,
         },
@@ -135,15 +191,6 @@ def config(sample_config_yaml):
 
 
 @pytest.fixture
-def db(tmp_path):
-    """Create a temporary database."""
-    db_path = str(tmp_path / "test.db")
-    database = Database(db_path)
-    yield database
-    database.close()
-
-
-@pytest.fixture
 def sample_article():
     """Create a sample Article for testing."""
     return Article(
@@ -171,7 +218,7 @@ def sample_classification(sample_article):
         aggressor="RU",
         is_new_event=True,
         confidence=0.85,
-        summary_pl="Rosja rozpoczęła operację wojskową w pobliżu polskiej granicy.",
+        summary_pl="Rosja rozpoczela operacje wojskowa w poblizu polskiej granicy.",
         classified_at=datetime.now(timezone.utc),
         model_used="claude-haiku-4-5-20251001",
         input_tokens=287,
@@ -187,7 +234,7 @@ def sample_event(sample_article):
         urgency_score=7,
         affected_countries=["PL"],
         aggressor="RU",
-        summary_pl="Rosja rozpoczęła operację wojskową w pobliżu polskiej granicy.",
+        summary_pl="Rosja rozpoczela operacje wojskowa w poblizu polskiej granicy.",
         first_seen_at=datetime.now(timezone.utc),
         last_updated_at=datetime.now(timezone.utc),
         source_count=1,

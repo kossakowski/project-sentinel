@@ -29,7 +29,7 @@ def test_invalid_config_exits():
     assert "Error" in result.stderr or "error" in result.stderr.lower()
 
 
-def test_dry_run_flag(tmp_path):
+def test_dry_run_flag(tmp_path, pg_url):
     """Test that --dry-run is recognized and reported."""
     import yaml
 
@@ -55,7 +55,7 @@ def test_dry_run_flag(tmp_path):
             "acknowledgment": {},
         },
         "scheduler": {},
-        "database": {"path": str(tmp_path / "dry_run_test.db")},
+        "database": {"url": pg_url},
         "logging": {"file": str(tmp_path / "dry_run_test.log")},
         "testing": {},
         "processing": {"dedup": {}},
@@ -79,7 +79,7 @@ def test_dry_run_flag(tmp_path):
     assert "dry" in combined.lower() or "Dry" in combined
 
 
-def test_custom_config_path(tmp_path):
+def test_custom_config_path(tmp_path, pg_url):
     """Test that --config accepts a custom path and loads it."""
     import yaml
 
@@ -105,7 +105,7 @@ def test_custom_config_path(tmp_path):
             "acknowledgment": {},
         },
         "scheduler": {},
-        "database": {"path": str(tmp_path / "custom_test.db")},
+        "database": {"url": pg_url},
         "logging": {"file": str(tmp_path / "custom_test.log")},
         "testing": {},
         "processing": {"dedup": {}},

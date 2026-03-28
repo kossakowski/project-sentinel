@@ -61,11 +61,10 @@ def _make_classification(article_id: str, urgency: int = 8) -> ClassificationRes
 
 @pytest.fixture
 def pipeline_config(sample_config_dict, tmp_path):
-    """Create a SentinelConfig with temp DB path for integration tests."""
+    """Create a SentinelConfig with temp DB URL for integration tests."""
     import yaml
 
-    # Use temp DB and health paths
-    sample_config_dict["database"]["path"] = str(tmp_path / "test.db")
+    # Use temp log path (DB URL already set by conftest)
     sample_config_dict["logging"]["file"] = str(tmp_path / "test.log")
     sample_config_dict["testing"]["dry_run"] = False
 
@@ -464,8 +463,6 @@ async def test_once_mode(pipeline_config):
 @pytest.mark.asyncio
 async def test_health_status_updated(pipeline_config, tmp_path):
     """health.json updated after each cycle."""
-    # Override DB path to use tmp_path so health.json goes there too
-    pipeline_config.database.path = str(tmp_path / "test.db")
 
     with (
         patch.object(SentinelPipeline, "_init_fetchers") as mock_init_fetchers,
@@ -492,7 +489,7 @@ async def test_health_status_updated(pipeline_config, tmp_path):
         await scheduler._run_with_error_handling()
 
         # Check health.json was written
-        health_path = str(tmp_path / "health.json")
+        health_path = os.path.join("data", "health.json")
         assert os.path.exists(health_path)
 
         with open(health_path, "r") as f:

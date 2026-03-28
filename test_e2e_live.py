@@ -93,8 +93,8 @@ def main():
 
     # ── Step 2: Database ──
     step(2, "Initialize database")
-    db = Database(config.database.path)
-    print(f"  Database: {config.database.path}")
+    db = Database(config.database.url)
+    print(f"  Database: {config.database.url}")
     print(f"  Tables ready")
 
     # ── Step 3: Create test articles ──

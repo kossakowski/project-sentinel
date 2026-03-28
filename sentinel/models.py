@@ -1,7 +1,6 @@
 import hashlib
 import json
 import re
-import sqlite3
 import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -25,9 +24,11 @@ def _dt_to_iso(dt: datetime | None) -> str | None:
     return dt.isoformat()
 
 
-def _iso_to_dt(s: str | None) -> datetime | None:
+def _iso_to_dt(s: str | datetime | None) -> datetime | None:
     if s is None:
         return None
+    if isinstance(s, datetime):
+        return s
     return datetime.fromisoformat(s)
 
 
@@ -75,7 +76,7 @@ class Article:
             "language": self.language,
             "published_at": _dt_to_iso(self.published_at),
             "fetched_at": _dt_to_iso(self.fetched_at),
-            "raw_metadata": json.dumps(self.raw_metadata, ensure_ascii=False),
+            "raw_metadata": self.raw_metadata,
             "url_hash": self.url_hash,
             "title_normalized": self.title_normalized,
         }
@@ -101,7 +102,7 @@ class Article:
         return article
 
     @classmethod
-    def from_row(cls, row: sqlite3.Row) -> "Article":
+    def from_row(cls, row: dict) -> "Article":
         return cls.from_dict(dict(row))
 
 
@@ -126,12 +127,12 @@ class ClassificationResult:
         return {
             "id": self.id,
             "article_id": self.article_id,
-            "is_military_event": int(self.is_military_event),
+            "is_military_event": bool(self.is_military_event),
             "event_type": self.event_type,
             "urgency_score": self.urgency_score,
-            "affected_countries": list_to_json(self.affected_countries),
+            "affected_countries": self.affected_countries or [],
             "aggressor": self.aggressor,
-            "is_new_event": int(self.is_new_event),
+            "is_new_event": bool(self.is_new_event),
             "confidence": self.confidence,
             "summary_pl": self.summary_pl,
             "classified_at": _dt_to_iso(self.classified_at),
@@ -160,7 +161,7 @@ class ClassificationResult:
         )
 
     @classmethod
-    def from_row(cls, row: sqlite3.Row) -> "ClassificationResult":
+    def from_row(cls, row: dict) -> "ClassificationResult":
         return cls.from_dict(dict(row))
 
 
@@ -184,13 +185,13 @@ class Event:
             "id": self.id,
             "event_type": self.event_type,
             "urgency_score": self.urgency_score,
-            "affected_countries": list_to_json(self.affected_countries),
+            "affected_countries": self.affected_countries or [],
             "aggressor": self.aggressor,
             "summary_pl": self.summary_pl,
             "first_seen_at": _dt_to_iso(self.first_seen_at),
             "last_updated_at": _dt_to_iso(self.last_updated_at),
             "source_count": self.source_count,
-            "article_ids": list_to_json(self.article_ids),
+            "article_ids": self.article_ids or [],
             "alert_status": self.alert_status,
             "acknowledged_at": _dt_to_iso(self.acknowledged_at),
         }
@@ -213,7 +214,7 @@ class Event:
         )
 
     @classmethod
-    def from_row(cls, row: sqlite3.Row) -> "Event":
+    def from_row(cls, row: dict) -> "Event":
         return cls.from_dict(dict(row))
 
 
@@ -257,5 +258,5 @@ class AlertRecord:
         )
 
     @classmethod
-    def from_row(cls, row: sqlite3.Row) -> "AlertRecord":
+    def from_row(cls, row: dict) -> "AlertRecord":
         return cls.from_dict(dict(row))

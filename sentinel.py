@@ -79,9 +79,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def print_health(config) -> None:
     """Read and print health.json."""
-    health_path = os.path.join(
-        os.path.dirname(config.database.path) or "data", "health.json"
-    )
+    health_path = os.path.join("data", "health.json")
     if not os.path.exists(health_path):
         print("No health data found. Has the pipeline run yet?")
         return
@@ -129,10 +127,7 @@ async def run_diagnostic(config) -> None:
         print_cycle_result(result)
 
         if pipeline.diagnostic_data is not None:
-            output_path = os.path.join(
-                os.path.dirname(config.database.path) or "data",
-                "diagnostic.html",
-            )
+            output_path = os.path.join("data", "diagnostic.html")
             abs_path = generate_html(pipeline.diagnostic_data, output_path)
             print(f"Diagnostic report: {abs_path}")
         else:
@@ -219,7 +214,7 @@ def main() -> None:
         gdelt_status,
         telegram_status,
     )
-    logger.info("Database: %s", config.database.path)
+    logger.info("Database: %s", config.database.url)
     logger.info("Dry run: %s", config.testing.dry_run)
 
     # Test alert mode — fires a real Twilio alert
@@ -380,7 +375,7 @@ def _run_test_alert(alert_type: str, config, logger) -> None:
     # Force dry_run OFF — the whole point is to fire a real alert
     config.testing.dry_run = False
 
-    db = Database(config.database.path)
+    db = Database(config.database.url)
     twilio_client = TwilioClient(config)
     state_machine = AlertStateMachine(db, twilio_client, config)
 

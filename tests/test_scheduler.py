@@ -26,7 +26,6 @@ from sentinel.scheduler import (
 @pytest.fixture
 def scheduler_config(sample_config_dict, tmp_path):
     """Create a SentinelConfig for scheduler tests with short interval."""
-    sample_config_dict["database"]["path"] = str(tmp_path / "test.db")
     sample_config_dict["logging"]["file"] = str(tmp_path / "test.log")
     # Use very short interval for testing
     sample_config_dict["scheduler"]["interval_minutes"] = 1
@@ -108,7 +107,6 @@ async def test_scheduler_fires_at_interval(mock_pipeline, scheduler_config):
 @pytest.mark.asyncio
 async def test_scheduler_jitter_applied(sample_config_dict, tmp_path):
     """Execution time varies within jitter window."""
-    sample_config_dict["database"]["path"] = str(tmp_path / "test.db")
     sample_config_dict["logging"]["file"] = str(tmp_path / "test.log")
     sample_config_dict["scheduler"]["interval_minutes"] = 15
     sample_config_dict["scheduler"]["jitter_seconds"] = 30
@@ -178,7 +176,6 @@ async def test_max_instances_enforced(mock_pipeline, scheduler_config):
 @pytest.mark.asyncio
 async def test_scheduler_continues_after_error(mock_pipeline, scheduler_config, tmp_path):
     """Pipeline error doesn't stop scheduler."""
-    scheduler_config.database.path = str(tmp_path / "test.db")
     mock_pipeline.run_cycle = AsyncMock(side_effect=RuntimeError("Pipeline exploded"))
 
     scheduler = SentinelScheduler(mock_pipeline, scheduler_config)
@@ -190,7 +187,7 @@ async def test_scheduler_continues_after_error(mock_pipeline, scheduler_config, 
     assert mock_pipeline.stats.consecutive_failures == 1
 
     # Health file should be written with is_healthy=False
-    health_path = str(tmp_path / "health.json")
+    health_path = os.path.join("data", "health.json")
     assert os.path.exists(health_path)
 
     with open(health_path, "r") as f:

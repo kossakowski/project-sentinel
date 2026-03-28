@@ -13,6 +13,7 @@ def test_load_valid_config(monkeypatch):
     monkeypatch.setenv("ALERT_PHONE_NUMBER", "+48123456789")
     monkeypatch.setenv("TELEGRAM_API_ID", "12345")
     monkeypatch.setenv("TELEGRAM_API_HASH", "abc123")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://sentinel:sentinel@localhost:5432/sentinel")
 
     config = load_config("config/config.example.yaml")
 
@@ -175,7 +176,7 @@ def test_defaults_applied(sample_config_yaml):
     config = load_config(sample_config_yaml)
     assert config.scheduler.interval_minutes == 15
     assert config.scheduler.jitter_seconds == 30
-    assert config.database.path == "data/sentinel.db"
+    assert config.database.url.startswith("postgresql://")
     assert config.database.article_retention_days == 30
     assert config.classification.model == "claude-haiku-4-5-20251001"
 

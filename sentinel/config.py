@@ -165,7 +165,7 @@ class SchedulerConfig(BaseModel):
 
 
 class DatabaseConfig(BaseModel):
-    path: str = "data/sentinel.db"
+    url: str = "postgresql://sentinel:sentinel@localhost:5432/sentinel"
     article_retention_days: int = 30
     event_retention_days: int = 90
 

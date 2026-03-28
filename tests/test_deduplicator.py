@@ -101,22 +101,20 @@ class TestDeduplicator:
         """Article outside lookback window is not compared for fuzzy match."""
         dedup = Deduplicator(db, config)
         # Insert an article with old fetched_at -- it won't appear in get_recent_titles
-        # because SQLite's datetime('now', '-60 minutes') filters it out.
+        # because PostgreSQL's NOW() - INTERVAL filters it out.
         # We simulate this by inserting directly with an old timestamp.
         old_article = _make_article(
             source_url="https://example.com/article/old",
             title="Russia launches military operation near Polish border",
         )
-        # Insert with manually set old fetched_at in the DB
-        data = old_article.to_dict()
-        old_time = "2020-01-01T00:00:00+00:00"
-        data["fetched_at"] = old_time
-        columns = ", ".join(data.keys())
-        placeholders = ", ".join("?" for _ in data)
-        db.conn.execute(
-            f"INSERT INTO articles ({columns}) VALUES ({placeholders})",
-            list(data.values()),
-        )
+        # Insert the article normally, then update fetched_at to an old timestamp
+        db.insert_article(old_article)
+        with db.pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE articles SET fetched_at = %s WHERE id = %s",
+                    ("2020-01-01T00:00:00+00:00", old_article.id),
+                )
 
         # New article with similar title should NOT be flagged as duplicate
         new_article = _make_article(

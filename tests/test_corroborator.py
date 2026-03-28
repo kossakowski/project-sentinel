@@ -466,8 +466,11 @@ class TestCorroborator:
         assert len(events) == 0
 
         # The classification should still be in the database
-        row = db.conn.execute(
-            "SELECT * FROM classifications WHERE id = ?", (classification.id,)
-        ).fetchone()
+        with db.pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT * FROM classifications WHERE id = %s", (classification.id,)
+                )
+                row = cur.fetchone()
         assert row is not None
         assert row["urgency_score"] == 2

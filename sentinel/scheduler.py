@@ -143,7 +143,7 @@ class SentinelPipeline:
 
     def __init__(self, config: SentinelConfig) -> None:
         self.config = config
-        self.db = Database(config.database.path)
+        self.db = Database(config.database.url)
         self.fetchers: list[BaseFetcher] = self._init_fetchers()
         self.normalizer = Normalizer()
         self.deduplicator = Deduplicator(self.db, config)
@@ -526,12 +526,8 @@ class SentinelScheduler:
         """Write health status to data/health.json."""
         stats = self.pipeline.stats
 
-        # Compute DB file size
-        db_path = self.config.database.path
-        try:
-            db_size = os.path.getsize(db_path) if os.path.exists(db_path) else 0
-        except OSError:
-            db_size = 0
+        # DB size not applicable for PostgreSQL (no local file)
+        db_size = 0
 
         # Build per-fetcher health status
         fetcher_status = {}
@@ -552,9 +548,7 @@ class SentinelScheduler:
             fetcher_status=fetcher_status,
         )
 
-        health_path = os.path.join(
-            os.path.dirname(self.config.database.path) or "data", "health.json"
-        )
+        health_path = os.path.join("data", "health.json")
         os.makedirs(os.path.dirname(health_path) or ".", exist_ok=True)
 
         try:

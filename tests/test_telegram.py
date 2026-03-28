@@ -84,7 +84,7 @@ def _make_telegram_config(enabled: bool = False) -> dict:
             },
         },
         "scheduler": {"interval_minutes": 15, "jitter_seconds": 30},
-        "database": {"path": "data/sentinel.db", "article_retention_days": 30, "event_retention_days": 90},
+        "database": {"url": "postgresql://sentinel:sentinel@localhost:5432/sentinel", "article_retention_days": 30, "event_retention_days": 90},
         "logging": {"level": "INFO", "file": "logs/sentinel.log", "max_size_mb": 50, "backup_count": 5},
         "testing": {"dry_run": False, "test_mode": False, "test_headlines_file": "tests/fixtures/test_headlines.yaml"},
     }
