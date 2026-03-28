@@ -307,3 +307,20 @@ Migrate Project Sentinel from a single-user SQLite system to a multi-tenant Post
 - The migrated user exists in `users` table with correct tier, countries, and alert rules.
 - `create_initial_user.py` rejects country count exceeding tier max.
 - Both scripts work with a local PostgreSQL instance (no server access needed).
+
+### Reconciliation
+
+| Req | Status | Notes |
+|-----|--------|-------|
+| 4.1 | IMPLEMENTED | --sqlite-path and --pg-url args with correct defaults |
+| 4.2 | IMPLEMENTED | All 4 tables migrated with ISO→TIMESTAMPTZ, int→bool, JSON text→JSONB |
+| 4.3 | IMPLEMENTED | Imports and runs seed_tiers logic before data migration |
+| 4.4 | IMPLEMENTED | Primary user from ALERT_PHONE_NUMBER/ALERT_USER_NAME, Premium tier, user_countries from config |
+| 4.5 | IMPLEMENTED | alert_records.user_id backfilled to primary user |
+| 4.6 | IMPLEMENTED | Row count validation with ==, three-state reporting (OK/EXTRA/MISMATCH) |
+| 4.7 | IMPLEMENTED | INSERT ... ON CONFLICT DO NOTHING throughout |
+| 4.8 | IMPLEMENTED | Missing SQLite file: error message, exit(1) |
+| 4.9 | IMPLEMENTED | create_initial_user.py with all args, tier/country validation, default alert rules for customizable tiers |
+| 4.10 | IMPLEMENTED | Both scripts runnable locally, no server access |
+
+**All 10 requirements IMPLEMENTED. All gate criteria met. 246 tests passing.**
