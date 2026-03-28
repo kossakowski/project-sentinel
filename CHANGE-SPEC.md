@@ -173,6 +173,32 @@ Migrate Project Sentinel from a single-user SQLite system to a multi-tenant Post
 - `get_users_by_country` returns only active users whose `user_countries` includes the given country code.
 - Confirmation code lifecycle works: insert, retrieve active, mark used, retrieve returns None after used.
 
+### Reconciliation
+
+| Req | Status | Notes |
+|-----|--------|-------|
+| 2.1 | IMPLEMENTED | tiers table with all columns, constraints, is_active, NULL max_countries |
+| 2.2 | IMPLEMENTED | users table with all columns and FK to tiers |
+| 2.3 | IMPLEMENTED | user_countries with UNIQUE(user_id, country_code), ON DELETE CASCADE |
+| 2.4 | IMPLEMENTED | user_alert_rules with CHECK(min_urgency <= max_urgency), priority, ON DELETE CASCADE |
+| 2.5 | IMPLEMENTED | confirmation_codes with index on (user_id, event_id, code) |
+| 2.6 | IMPLEMENTED | alert_records gained user_id TEXT REFERENCES users(id), nullable |
+| 2.7 | IMPLEMENTED | AlertRecord.user_id: str | None = None, backward compatible |
+| 2.8 | IMPLEMENTED | All tier/user CRUD methods present. insert_tier returns bool (ON CONFLICT) |
+| 2.9 | IMPLEMENTED | insert/get/delete user_alert_rules |
+| 2.10 | IMPLEMENTED | insert/get/delete user_countries. insert is idempotent (ON CONFLICT) |
+| 2.11 | IMPLEMENTED | insert/get_active/mark_used confirmation_codes |
+| 2.12 | IMPLEMENTED | Tier dataclass with all fields including is_active |
+| 2.13 | IMPLEMENTED | User dataclass with all fields |
+| 2.14 | IMPLEMENTED | UserAlertRule dataclass with all fields |
+| 2.15 | IMPLEMENTED | ConfirmationCode dataclass with all fields |
+| 2.16 | IMPLEMENTED | Tier system fully data-driven via preference_mode + preset_rules/user_alert_rules |
+| 2.17 | IMPLEMENTED | Seed script with Standard and Premium tiers matching spec exactly |
+| 2.18 | IMPLEMENTED | --database-url arg + DATABASE_URL env var, idempotent ON CONFLICT |
+| 2.19 | IMPLEMENTED | 42 new tests covering all CRUD, lifecycle, CASCADE/RESTRICT, seed idempotency |
+
+**All 19 requirements IMPLEMENTED. All gate criteria met. 206 tests passing (164 prior + 42 new).**
+
 ## Phase 3: Per-User Alert Routing
 
 ### Deliverables
