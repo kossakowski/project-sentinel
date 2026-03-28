@@ -1,26 +1,71 @@
-# Phase 3 Review: Per-User Alert Routing
+# Review Report: Phase 4 -- Migration Script and Seed Data
 
-**Reviewer:** Blind code review agent (Opus 4.6)
-**Date:** 2026-03-28
 **Branch:** `code-surgeon/multi-tenant-evolution`
+**Reviewer:** Blind code reviewer (Opus 4.6, no prior implementation context)
+**Date:** 2026-03-28
 
-## Spec Compliance Summary
+## Files Reviewed
 
-| Req | Status | Notes |
-|-----|--------|-------|
-| 3.1 | PASS | `process_event` queries users via `get_users_by_country()` per affected country, deduplicates by `seen_user_ids`, iterates each with `_process_event_for_user`. |
-| 3.2 | PASS | `_determine_action` resolves tier, dispatches to `_resolve_channel_from_preset` or `_resolve_channel_from_user_rules` based on `preference_mode`. |
-| 3.3 | PASS | `_fallback_channel` walks `CHANNEL_SEVERITY` from the resolved channel downward, returning the first channel in `available_channels` or `log_only`. |
-| 3.4 | PASS | `_execute_phone_call`, `_execute_sms`, `_execute_whatsapp` all accept `User`, use `user.phone_number`, set `record.user_id = user.id`. |
-| 3.5 | PASS | `_send_confirmation_whatsapp` creates `ConfirmationCode` model, stores via `db.insert_confirmation_code()`. No `self._confirmation_code` anywhere. |
-| 3.6 | PASS | `_check_whatsapp_confirmation` calls `db.get_active_confirmation_code(user.id, event.id)` and `db.mark_confirmation_code_used(code.id)` on match. |
-| 3.7 | PASS | `_is_in_cooldown` filters `alert_records` by `user_id`, checks most recent acknowledged record's `sent_at` against cooldown window. Does not use `event.acknowledged_at`. |
-| 3.8 | PASS | `_is_acknowledged` operates on user-filtered alert list. `_get_user_alert_records` filters by both `event_id` and `user_id`. |
-| 3.9 | PASS (core) / ISSUE (periphery) | `AlertsConfig.phone_number` removed, replaced by `system_phone_number`. `state_machine.py` has zero references. **Stale references remain in `test_e2e_live.py:89` and `deploy/scripts/check-health.sh:30`** (see F-04, F-05). |
-| 3.10 | PASS | `AlertDispatcher.dispatch()` signature unchanged. Multi-user iteration inside `state_machine.process_event()`. |
-| 3.11 | PASS | `_format_call_message`, `_format_sms_message`, `_format_update_sms` accept optional `language` kwarg, default `"pl"`. |
-| 3.12 | PASS | `check_pending_calls` resolves user via `db.get_user_by_id(record.user_id)`, passes user to `_handle_call_result`. |
-| 3.13 | PASS | Tests cover: multi-user dispatch, per-user cooldown independence, preset routing, customizable routing, channel fallback, DB persistence of confirmation codes, single-user-ack-does-not-block. |
+| File | Lines | Role |
+|------|-------|------|
+| `scripts/migrate_sqlite_to_pg.py` | 463 | One-shot SQLite to PostgreSQL migration |
+| `scripts/create_initial_user.py` | 178 | User creation helper |
+| `tests/test_migration.py` | 645 | Tests for both scripts |
+| `scripts/seed_tiers.py` | 96 | Tier seeding (Phase 2, used by migration) |
+
+---
+
+## Spec Compliance (4.1--4.10)
+
+### 4.1 CLI Arguments -- PASS
+
+`--sqlite-path` defaults to `data/sentinel.db`. `--pg-url` defaults to `DATABASE_URL` env var. A `--config-path` argument is also present, which is not required by spec but is a reasonable addition. No issues.
+
+### 4.2 Type Conversions for 4 Tables -- PASS
+
+All 4 tables (articles, classifications, events, alert_records) are migrated. Conversion helpers exist for:
+- ISO date strings to `TIMESTAMPTZ` via `_convert_iso_to_datetime`
+- Integer booleans to native `bool` via `_convert_int_bool`
+- JSON text to `JSONB` via `_convert_json_text`
+
+Column mapping tuples are explicitly defined per table. All date, boolean, and JSON columns have the correct converter assigned.
+
+### 4.3 Tier Seeding Before Data Migration -- PASS
+
+`migrate()` calls `seed_tiers(pg_url)` as Step 1 before any data migration. Tier existence is a prerequisite for user creation (FK constraint), which is a prerequisite for `alert_records.user_id` backfill. Ordering is correct.
+
+### 4.4 Primary User Creation -- PASS
+
+User created from `ALERT_PHONE_NUMBER` and `ALERT_USER_NAME` (defaulting to "Primary User") env vars. Assigned to `PREMIUM_TIER_ID`. `user_countries` populated from `_load_target_countries()` which reads `config.yaml`. Default alert rules for customizable tier are also created.
+
+### 4.5 alert_records.user_id Backfill -- PASS
+
+Step 4 runs `UPDATE alert_records SET user_id = %s WHERE user_id IS NULL`. All existing records get the primary user's ID.
+
+### 4.6 Row Count Validation and Summary -- PASS (with finding)
+
+Row counts are read from both SQLite and PostgreSQL and printed in a summary table. See F-01 for a minor validation logic concern.
+
+### 4.7 Idempotency -- PASS
+
+All INSERT statements use `ON CONFLICT ... DO NOTHING`. User creation checks for existing phone number first. User countries use `ON CONFLICT (user_id, country_code) DO NOTHING`. Alert rules check for existence before inserting. Re-running the migration does not create duplicates.
+
+### 4.8 Missing SQLite File -- PASS
+
+`migrate()` checks `os.path.exists(sqlite_path)` and calls `sys.exit(1)` with a stderr error message.
+
+### 4.9 create_initial_user.py Validation -- PASS
+
+- `--name`, `--phone`, `--tier` (by name), `--countries` (comma-separated), `--pg-url` are all present.
+- Tier existence is validated (queries tiers table by name).
+- Country count validated against `tier.max_countries` (with NULL = unlimited handled correctly).
+- Customizable tier triggers default `user_alert_rules` creation; preset tier does not.
+
+### 4.10 Locally Runnable -- PASS
+
+Both scripts accept `--pg-url` to point at any PostgreSQL instance. Neither requires SSH access or server-specific paths.
+
+---
 
 ## Findings
 
@@ -30,131 +75,174 @@
 
 ### HIGH
 
-**F-01: Event-level `alert_status` / `acknowledged_at` is a shared global that creates cross-user interference.**
-Files: `sentinel/alerts/state_machine.py` lines 538-542, 673, 684, 502, 737-739
-Severity: HIGH (Correctness / Multi-tenant semantics)
-
-`_acknowledge_event` calls `db.update_event(event.id, alert_status="acknowledged", acknowledged_at=...)` which sets a single shared field on the `events` table. Similarly, `_execute_sms` sets `alert_status="sms_sent"`, `_execute_whatsapp` sets `alert_status="whatsapp_sent"`, and `_execute_phone_call` sets `alert_status="call_placed"`.
-
-In a multi-user scenario where User A gets SMS and User B gets a phone call for the same event, User A's execution sets `alert_status="sms_sent"`, then User B's execution overwrites it with `alert_status="call_placed"`. If User A acknowledges, the event goes to `"acknowledged"` globally, which could affect User B's flow on the next cycle -- specifically, `check_pending_calls` -> `_handle_call_result` sets `alert_status="retry_pending"` but that was already overwritten.
-
-This is partially mitigated because the per-user logic uses `alert_records` filtered by `user_id` (not the event-level field) for cooldown and acknowledgment checks. But the event-level `alert_status` is still read by `corroborator.py` and potentially by scheduler diagnostics. The spec says the event-level field "MAY be retained for backward compatibility" (3.7), but the current implementation actively writes to it from user-specific paths, creating a last-writer-wins race.
-
-Recommendation: Either (a) stop updating event-level `alert_status` from per-user paths and only use it as a summary/aggregate, or (b) document that event-level `alert_status` reflects the most recent per-user action and is not authoritative for per-user state.
-
----
-
-**F-02: `corroboration_required` on `UserAlertRule` is stored but never enforced in routing.**
-File: `sentinel/alerts/state_machine.py` lines 381-396
-Severity: HIGH (Feature gap)
-
-`UserAlertRule` has a `corroboration_required` field (spec 2.4), and the `premium_user` test fixture sets it to 2 for the critical rule. However, `_resolve_channel_from_user_rules` only checks `min_urgency <= score <= max_urgency` and returns the channel immediately -- it never checks whether `event.source_count >= rule.corroboration_required`.
-
-The legacy `_determine_action_from_config` **does** enforce corroboration (line 373: `if source_count >= level.corroboration_required`). This means premium/customizable users bypass the corroboration requirement entirely. An event with urgency 10 but only 1 source would trigger a phone call for a premium user even if their rule says `corroboration_required=2`.
-
-Recommendation: Add corroboration checking to `_resolve_channel_from_user_rules`, e.g. `if event.source_count < rule.corroboration_required: continue` to fall through to the next lower-priority rule, or fall back to a less aggressive channel.
-
----
+*None.*
 
 ### MEDIUM
 
-**F-03: Dead code block behind `if False:` in `_handle_call_result`.**
-File: `sentinel/alerts/state_machine.py` lines 696-714
-Severity: MEDIUM (Code quality)
+**F-01: Row count validation uses `>=` instead of `==`, silently passing when PG has extra rows.**
+File: `scripts/migrate_sqlite_to_pg.py` line 413
+Severity: MEDIUM (Validation correctness)
 
-The entire "call was answered" branch is gated by `if False:`, making it unreachable dead code. The docstring still says "If the call was answered (duration > threshold), mark as acknowledged" which is misleading. The comment explains the intent (`# Confirmation is now via WhatsApp only, not call duration`), but the dead code should be removed rather than left behind a `False` guard. The `elif` on line 715 always evaluates, so it's logically just an `if`.
-
-Recommendation: Delete the `if False:` block, convert `elif` to `if`, update the docstring.
-
----
-
-**F-04: `test_e2e_live.py` still references `config.alerts.phone_number` (removed field).**
-File: `test_e2e_live.py` line 89
-Severity: MEDIUM (Broken code)
-
-This file was touched on this branch (database path -> url migration in Phase 1) but line 89 still reads `config.alerts.phone_number`. Since `AlertsConfig` no longer has a `phone_number` attribute, this will crash with `AttributeError` at runtime. Should be changed to `config.alerts.system_phone_number` or replaced with a user lookup.
-
----
-
-**F-05: `deploy/scripts/check-health.sh` still references `config.alerts.phone_number`.**
-File: `deploy/scripts/check-health.sh` line 30
-Severity: MEDIUM (Broken deploy script)
-
-The Python one-liner `client.send_sms(config.alerts.phone_number, ...)` will fail at runtime for the same reason as F-04. Should use `config.alerts.system_phone_number`.
-
----
-
-**F-06: `_get_user_alert_records` fetches ALL records for an event then filters in Python; called up to 3x per user per event.**
-Files: `sentinel/alerts/state_machine.py` lines 398-403, 232, 240, 446
-Severity: MEDIUM (Efficiency)
-
+The validation check is:
 ```python
-def _get_user_alert_records(self, event_id, user_id):
-    all_records = self.db.get_alert_records(event_id)
-    return [r for r in all_records if r.user_id == user_id]
+match = "OK" if dst >= src else "MISMATCH"
 ```
 
-This fetches every alert record for the event across all users and filters in Python. It is called at line 240 (main flow), line 411 (inside `_is_in_cooldown`), and potentially line 446 (inside `_execute_phone_call` default). That is 3 DB round-trips returning all users' records, only to filter down to one user each time.
+This means if PostgreSQL already had stale rows from a prior partial run against different source data, the count could be higher than source without triggering a warning. For the idempotent case (re-running same data), `dst == src` holds. But if PG had leftover rows from a different SQLite file, `dst > src` would silently pass. The migration summary would show `OK` despite data integrity being questionable.
 
-Recommendation: (a) Add a `WHERE user_id = %s` filter to the SQL query (new method or optional parameter). (b) Fetch once at the top of `_process_event_for_user` and pass to all sub-methods.
+Recommendation: Use `dst == src` for "OK", and add a separate `dst > src` status like "EXTRA" with a note.
+
+---
+
+**F-02: Table and column names are interpolated via f-strings in SQL statements.**
+File: `scripts/migrate_sqlite_to_pg.py` lines 239, 248-250
+Severity: MEDIUM (Security pattern)
+
+```python
+sqlite_cursor = sqlite_conn.execute(f"SELECT {', '.join(col_names)} FROM {table_name}")
+insert_sql = (
+    f"INSERT INTO {table_name} ({col_list}) VALUES ({placeholders}) "
+    f"ON CONFLICT ({conflict_column}) DO NOTHING"
+)
+```
+
+All table/column names come from hardcoded module-level constants (`ARTICLES_COLUMNS`, etc.), not from user input. There is **no exploitable SQL injection vector** in practice. However, the pattern is inherently fragile -- if someone later refactored to accept table metadata from external sources, injection would be trivial. Safe in current form, noting for awareness and defense-in-depth.
+
+Recommendation: Use `psycopg.sql.Identifier` and `psycopg.sql.SQL` for column/table names, or add a comment documenting that these values are trusted constants.
+
+---
+
+**F-03: No end-to-end test for NULL date fields surviving migration.**
+File: `tests/test_migration.py`
+Severity: MEDIUM (Test gap)
+
+The SQLite sample data in `_populate_sqlite` inserts `acknowledged_at = None` for events and `duration_seconds = None`, `twilio_sid = None` for alert_records. However, no test explicitly asserts that these NULL values survive migration to PostgreSQL as NULL. The unit test `test_convert_iso_to_datetime_none` confirms the converter returns `None`, but the full pipeline path (NULL in SQLite row -> converter skipped because value is None at line 258 -> NULL inserted into PG) is not explicitly verified in assertions.
+
+The converter skip logic at line 258 is:
+```python
+if converter is not None and value is not None:
+    converted.append(converter(value))
+else:
+    converted.append(value)
+```
+
+This correctly passes `None` through without conversion. But a test asserting e.g. `assert row["acknowledged_at"] is None` in the PostgreSQL output would strengthen confidence.
+
+Recommendation: Add an assertion in `test_migrate_type_conversions` that checks a known-NULL field (e.g. `events.acknowledged_at`) is `None` in PG.
 
 ---
 
 ### LOW
 
-**F-07: `_fallback_channel` treats `log_only` as always-available regardless of `available_channels`.**
-File: `sentinel/alerts/state_machine.py` lines 163-179
-Severity: LOW (Design subtlety, works correctly)
+**F-04: `_convert_json_text` swallows malformed JSON silently.**
+File: `scripts/migrate_sqlite_to_pg.py` lines 123-126
+Severity: LOW (Data integrity)
 
-If the loop reaches `log_only` in `CHANNEL_SEVERITY`, it returns `"log_only"` immediately without checking `available_channels`. This is sensible (logging should always work) but is an implicit assumption. Consider adding a brief comment.
+```python
+except (json.JSONDecodeError, TypeError):
+    return Jsonb(value)
+```
 
----
+If a JSON text field contains malformed JSON, the raw string is wrapped in `Jsonb()` rather than raising an error. This means `"not valid json {{"` would be stored as a JSONB string value `"not valid json {{"`. Technically valid JSONB (a scalar string), but it silently converts what should be a dict/list into a string, losing structural information.
 
-**F-08: No test for customizable tier user with zero rules.**
-File: `tests/test_state_machine.py`
-Severity: LOW (Test coverage gap)
-
-No test for a Premium (customizable) user with no `user_alert_rules` rows. Code returns `log_only`, which is likely correct, but worth an explicit test.
-
----
-
-**F-09: No test for invalid/missing tier (`get_tier_by_id` returns None).**
-File: `tests/test_state_machine.py`
-Severity: LOW (Test coverage gap)
-
-Lines 309-316 of `state_machine.py` handle tier lookup failure with a warning and `"log_only"` return. No test exercises this branch.
+Recommendation: Log a warning when this fallback triggers.
 
 ---
 
-**F-10: No test for unknown `preference_mode`.**
-File: `tests/test_state_machine.py`
-Severity: LOW (Test coverage gap)
+**F-05: `_convert_int_bool` does not handle non-integer input.**
+File: `scripts/migrate_sqlite_to_pg.py` lines 111-115
+Severity: LOW (Robustness)
 
-Lines 333-338 handle an unknown `preference_mode` by returning `"log_only"`. No test covers this defensive branch.
+```python
+def _convert_int_bool(value: int | None) -> bool | None:
+    if value is None:
+        return None
+    return bool(int(value))
+```
 
----
-
-**F-11: `_acknowledge_event` side-effects `event.last_updated_at` via `update_event`.**
-File: `sentinel/alerts/state_machine.py` line 538, `sentinel/database.py` line 293
-Severity: LOW (Subtle side effect)
-
-`update_event` always sets `last_updated_at = NOW()`. When `_acknowledge_event` runs for User A, it changes `last_updated_at` in the DB, which could affect the `event.last_updated_at > self._last_alert_time(existing_alerts)` comparison at line 243 for User B if they share the same in-memory event object. Mitigated because the event is not re-read from DB mid-loop, but fragile.
-
----
-
-**F-12: Format message functions accept `language` parameter but ignore it.**
-File: `sentinel/alerts/state_machine.py` lines 62-118
-Severity: LOW (Expected per spec 3.11)
-
-Polish-only for now, `language` parameter reserved for future i18n. Spec-compliant but should be tracked as a known TODO.
+If the SQLite database somehow contains a non-integer truthy value (e.g., a string like `"yes"`), `int(value)` raises `ValueError`. Very unlikely given the schema, but defensive code would add a try/except.
 
 ---
 
-**F-13: Standard tier in test fixtures uses `available_channels: ["sms", "whatsapp"]` which differs from spec 2.17's `["phone_call", "sms", "whatsapp"]`.**
-File: `tests/test_state_machine.py` lines 83-98
-Severity: LOW (Intentional test design)
+**F-06: Config path fallback warning goes to stdout, not stderr.**
+File: `scripts/migrate_sqlite_to_pg.py` line 148
+Severity: LOW (Conventions)
 
-The test fixture deliberately restricts the Standard tier's available channels to test the fallback mechanism. This is correct for test purposes but creates a discrepancy with the spec-defined Standard tier. Not a bug, just worth noting that production seed data (from `scripts/seed_tiers.py`) has different values than these test fixtures.
+`print(f"  WARNING: Could not find {config_path}. Using default countries: PL, LT, LV, EE")` goes to stdout. Warnings should go to stderr to keep stdout clean for machine-parseable output.
+
+---
+
+**F-07: `sys.exit()` inside library functions makes them harder to compose.**
+Files: `scripts/migrate_sqlite_to_pg.py` line 275, `scripts/create_initial_user.py` lines 64, 78
+Severity: LOW (API design)
+
+Both `migrate()` and `create_user()` call `sys.exit(1)` on validation errors. This makes the functions untestable without catching `SystemExit`. The tests do handle this with `pytest.raises(SystemExit)`, which works, but these functions would be cleaner if they raised proper exceptions (e.g. `FileNotFoundError`, `ValueError`) and let the CLI `main()` handle the exit.
+
+---
+
+**F-08: `create_initial_user.py` is not idempotent -- running twice creates duplicate users.**
+File: `scripts/create_initial_user.py` lines 84-88
+Severity: LOW (Design note)
+
+Unlike the migration script (where 4.7 requires idempotency), `create_user()` always inserts a new user. Running the script twice with the same phone number creates two separate user records with different IDs. This is by design (it is a user creation helper, not a migration tool), and the spec does not require idempotency for this script. However, accidental double-runs in a deployment workflow could create orphan users.
+
+Recommendation: Consider adding a `--dry-run` flag or a confirmation prompt, or adding `ON CONFLICT (phone_number)` if a unique constraint were added.
+
+---
+
+**F-09: No test for malformed JSON in SQLite source.**
+File: `tests/test_migration.py`
+Severity: LOW (Test gap)
+
+`_convert_json_text` has a fallback for malformed JSON (F-04), but no test exercises this path end-to-end. A SQLite row with `raw_metadata = "not valid json {{"` would be worth testing to confirm the migration does not crash.
+
+---
+
+**F-10: No test for empty-string phone number.**
+File: `tests/test_migration.py`
+Severity: LOW (Test gap)
+
+The migration script warns when `ALERT_PHONE_NUMBER` is unset but still creates a user with `phone=""`. No test verifies this edge case. Depending on downstream logic, an empty phone number could cause issues when Twilio attempts to send alerts.
+
+---
+
+**F-11: Non-deterministic `uuid.uuid4()` for `user_countries.id` on re-runs.**
+File: `scripts/migrate_sqlite_to_pg.py` line 327
+Severity: LOW (Info)
+
+Each re-run generates new `uuid.uuid4()` values for user_countries rows, but `ON CONFLICT (user_id, country_code) DO NOTHING` prevents duplicates. The conflict is on the composite unique key, not the PK, so the random `id` value is discarded on conflict. Functionally correct but wasteful.
+
+---
+
+## Test Quality Assessment
+
+### Coverage Matrix
+
+| Spec Requirement | Test(s) | Adequate? |
+|-----------------|---------|-----------|
+| 4.2 All tables migrated, types converted | `test_migrate_copies_all_rows`, `test_migrate_type_conversions` | Yes |
+| 4.3 Tiers seeded | `test_migrate_seeds_tiers` | Yes |
+| 4.4 Primary user created | `test_migrate_creates_primary_user`, `test_migrate_creates_default_alert_rules` | Yes |
+| 4.5 user_id backfilled | `test_migrate_backfills_user_id` | Yes |
+| 4.6 Row count validation | `test_migrate_copies_all_rows` (asserts counts) | Partial (see F-03) |
+| 4.7 Idempotency | `test_migrate_idempotent` | Yes |
+| 4.8 Missing SQLite | `test_migrate_missing_sqlite_file` | Yes |
+| 4.9 create_initial_user validations | 6 tests in `TestCreateInitialUser` | Yes |
+| 4.10 Locally runnable | Implicitly tested (all tests use local PG) | Yes |
+
+### Strengths
+
+- Tests use **real SQLite** (created via `_create_sqlite_db`) and **real PostgreSQL** (testcontainers). No mocking of database layers.
+- Idempotency test runs `migrate()` twice and asserts counts do not double.
+- `create_initial_user` tests cover: Premium user creation, Standard user (no custom rules), tier not found, country limit exceeded, unlimited countries, and default rules matching config.
+- The `pg_url_for_migration` fixture correctly truncates all tables before each test, ensuring test isolation.
+
+### Gaps
+
+- No test for NULL date/JSON/boolean values surviving the full migration pipeline (F-03).
+- No test for malformed JSON input (F-09).
+- No test for empty or missing `ALERT_PHONE_NUMBER` (F-10).
+- No negative test for `create_user` being called twice with the same phone (F-08, not a spec requirement but useful).
 
 ---
 
@@ -162,236 +250,235 @@ The test fixture deliberately restricts the Standard tier's available channels t
 
 | Metric | Count |
 |--------|-------|
-| Files reviewed | 9 |
-| Total findings | 13 |
+| Files reviewed | 4 |
+| Total findings | 11 |
 | Critical | 0 |
-| High | 2 |
-| Medium | 4 |
-| Low | 7 |
-| Spec requirements checked | 13 (3.1-3.13) |
-| Spec requirements fully passing | 12/13 |
-| Spec requirements passing with peripheral issues | 1/13 (3.9) |
-| Tests in test_state_machine.py | 25 |
-| Tests in test_dispatcher.py | 4 |
-| Multi-user scenarios tested | 5 (tests #1, #5, #6, #19, #20) |
-| Per-user cooldown tests | 2 (tests #5, #8) |
-| Channel fallback tests | 4 (unit tests + integration test #4) |
-| Edge case tests present | 3 (no users for country, pending call blocks, low urgency log_only) |
-| Edge case tests missing | 3 (no rules, no tier, unknown preference_mode) |
+| High | 0 |
+| Medium | 3 |
+| Low | 8 |
+| Spec requirements checked | 10 (4.1-4.10) |
+| Spec requirements fully passing | 10/10 |
+| Tests in test_migration.py | 14 (9 migration + 6 create_user - 1 shared) |
+| Migration test scenarios | 8 (copy all, type conversions, idempotent, missing SQLite, user creation, backfill, tier seeding, empty SQLite) |
+| create_initial_user test scenarios | 6 (premium, standard, tier not found, country limit, unlimited countries, rules match config) |
 
 ---
 
-## Resolution
+## Verdict
 
-**Resolver:** Opus 4.6 (1M context)
+**PASS.** All 10 spec requirements (4.1-4.10) are met. The migration script correctly orders operations (tiers -> user -> data -> backfill -> validate), handles idempotency via ON CONFLICT clauses, and performs type conversions for all relevant column types. Tests run against real databases with good coverage of the core scenarios. No critical or high-severity findings. The three medium findings (row count validation using `>=`, f-string SQL interpolation, missing NULL migration test) are all low-risk and non-blocking. The eight low findings are informational improvements.
+
+---
+
+## Resolution (Adjudicated by Resolver)
+
+**Resolver:** Claude Opus 4.6 (1M context)
 **Date:** 2026-03-28
 
-### F-01: Event-level `alert_status` shared global — cross-user interference
+### Methodology
 
-**Decision:** ACCEPT
-**Action:** note (document, do not fix in Phase 3)
-**Final severity:** HIGH
+Each finding was verified by reading the cited code at the exact line numbers, confirming the reviewer's description is accurate, then deciding: accept/reject/reclassify. For accepted findings, an action of `fix` (code change required) or `note` (acknowledged, no code change) was assigned.
 
-**Verification:** Confirmed. Lines 502, 531, 540, 673, 684, 737-738 all call `db.update_event(event.id, alert_status=...)` from per-user code paths. In a multi-user scenario, these writes are indeed last-writer-wins on a shared field.
+### Canonical Blocking Rule
 
-**Analysis:** The reviewer is correct that this is a real semantic problem. However, I checked all consumers of `alert_status`:
-
-1. **Corroborator** (`corroborator.py:246`): Writes `alert_status` during `_update_event` based on urgency and source count. This runs *before* the alert dispatch, so the state machine's per-user overwrites happen *after* the corroborator is done for that cycle. On the *next* cycle, the corroborator calls `_determine_alert_status()` and *overwrites* whatever the state machine set. So there is no behavioral breakage here -- the corroborator always recalculates.
-2. **Scheduler** (`scheduler.py:251`): Filters `e.alert_status != "pending"` to find alertable events. The corroborator sets this field before dispatch, so it works correctly.
-3. **State machine internal reads:** The state machine does NOT read `event.alert_status` for any per-user routing decision. All per-user state comes from `alert_records` filtered by `user_id`. The `alert_status` field is write-only from the state machine's perspective.
-
-**Conclusion:** The last-writer-wins race on `alert_status` is cosmetically ugly but does not cause incorrect behavior in the current code because: (a) the corroborator overwrites it every cycle, (b) no consumer depends on it being accurate per-user, and (c) per-user logic reads from `alert_records`. The recommendation to document it as "reflects most recent per-user action, not authoritative" is sound. This should be addressed in Phase 4 cleanup or a future refactor, but it does NOT block Phase 3.
-
-**Blocking:** NO (action=note, not fix)
+A finding blocks if ALL of: decision = accept or reclassify, action = fix, final_severity = Critical/High/Medium.
 
 ---
 
-### F-02: `corroboration_required` on `UserAlertRule` stored but not enforced
+### F-01: Row count validation uses `>=` instead of `==`
 
-**Decision:** ACCEPT, RECLASSIFY to LOW
-**Action:** note
-**Final severity:** LOW
+| Field | Value |
+|-------|-------|
+| Decision | **Accept** |
+| Action | **Fix** |
+| Final severity | **Medium** |
+| Blocks | **Yes** |
 
-**Verification:** Confirmed. `_resolve_channel_from_user_rules` (lines 381-396) does not check `rule.corroboration_required`. The legacy `_determine_action_from_config` (line 373) does enforce it.
+**Verification:** Line 413 confirmed: `match = "OK" if dst >= src else "MISMATCH"`. Lines 414-415 set `all_match = False` only when `dst < src`.
 
-**Analysis:** The reviewer's concern is technically valid -- but the spec does not require enforcement here. Checking CHANGE-SPEC.md:
+**Rationale:** The reviewer's concern is valid in principle but the orchestrator's hint is also worth considering: this is a one-shot migration script, and in the idempotent case (ON CONFLICT DO NOTHING), `dst == src` holds. The scenario where `dst > src` matters -- migrating from a *different* SQLite file against a pre-populated PG -- is unlikely but not impossible (e.g., running against a staging PG that already had test data). More importantly, the fix is trivial and makes the validation strictly correct. A three-state output (OK / EXTRA / MISMATCH) gives the operator better information at zero cost.
 
-- **Spec 2.4** defines the `user_alert_rules` table schema including `corroboration_required INTEGER NOT NULL DEFAULT 1`. It specifies the column MUST exist. It says nothing about enforcement during channel resolution.
-- **Spec 2.14** says the `UserAlertRule` dataclass MUST have the `corroboration_required` field. Again, storage only.
-- **Spec 3.2** says: "If `tier.preference_mode == 'customizable'`, it MUST look up the action from the user's `user_alert_rules` (sorted by priority descending, first matching rule wins based on urgency range)." The spec explicitly says resolution is by urgency range only -- no mention of corroboration enforcement.
-
-The `corroboration_required` field is clearly a stored field for future use (consistent with the spec's general pattern of storing `language` for future i18n). The system-level corroboration check already happens in the corroborator *before* the state machine runs -- events that don't meet corroboration thresholds don't reach the alerting pipeline with an alertable status at all.
-
-Additionally, the global corroboration threshold (`config.classification.corroboration_required`) was recently reduced to 1 (commit 5cacd04), meaning any event with at least 1 source passes corroboration. The per-rule field is dormant by design.
-
-**Conclusion:** Not a feature gap. The field exists for future use as a stored preference. Downgraded to LOW.
-
-**Blocking:** NO
+**Fix:** Change the validation to use `==` for "OK", `>` for "EXTRA", `<` for "MISMATCH". Also update the test assertion at lines 309-316 to use `==` instead of `>=`.
 
 ---
 
-### F-03: Dead code block behind `if False:` in `_handle_call_result`
+### F-02: Table and column names interpolated via f-strings in SQL
 
-**Decision:** ACCEPT
-**Action:** fix
-**Final severity:** MEDIUM
+| Field | Value |
+|-------|-------|
+| Decision | **Accept** |
+| Action | **Note** |
+| Final severity | **Low** (reclassified down from Medium) |
+| Blocks | **No** |
 
-**Verification:** Confirmed. Lines 696-714 are gated by `if False:` making them unreachable. The `elif` on line 715 always evaluates. The docstring on line 691 is misleading.
+**Verification:** Lines 239, 248-250 confirmed. The table names come from string literals at lines 365-370 (`"articles"`, `"classifications"`, `"events"`, `"alert_records"`). Column names come from hardcoded module-level constants at lines 159-217. No user input reaches these values at any point in the call chain.
 
-**Analysis:** This is straightforward dead code cleanup. The `if False:` block should be removed, the `elif` should become `if`, and the docstring should be updated. Simple, low-risk fix.
-
-**Blocking:** YES
-
----
-
-### F-04: `test_e2e_live.py` still references `config.alerts.phone_number`
-
-**Decision:** ACCEPT
-**Action:** fix
-**Final severity:** LOW (reclassified down from MEDIUM)
-
-**Verification:** Confirmed. Line 89 reads `config.alerts.phone_number`. `AlertsConfig` only has `system_phone_number` (config.py line 142). This will crash with `AttributeError`.
-
-**Analysis:** Per the task context: `test_e2e_live.py` is a manual live E2E test, not part of the automated suite. It references `config.alerts.phone_number` but that is expected to break -- it will need updating but is NOT blocking Phase 3. The fix is trivial (change to `config.alerts.system_phone_number`), but the severity should be LOW since this is a manual test file that will need broader updates for multi-tenant anyway (it does not set up users/tiers, does not call the multi-user code path, etc.).
-
-I will fix it since it is trivial, but it does not block.
-
-**Blocking:** NO (reclassified to LOW)
+**Rationale for reclassification:** The reviewer explicitly acknowledged "no exploitable SQL injection vector" and "safe in current form." The finding is purely about defense-in-depth and future-proofing. For a one-shot migration script that will be run once and archived, the likelihood of someone refactoring it to accept external table names is near zero. This is a style preference, not a correctness or safety issue. Using `psycopg.sql.Identifier` would be marginally better practice, but the cost-benefit does not justify blocking. Reclassified to Low.
 
 ---
 
-### F-05: `deploy/scripts/check-health.sh` still references `config.alerts.phone_number`
+### F-03: No end-to-end test for NULL date fields surviving migration
 
-**Decision:** ACCEPT
-**Action:** fix
-**Final severity:** MEDIUM
+| Field | Value |
+|-------|-------|
+| Decision | **Accept** |
+| Action | **Fix** |
+| Final severity | **Medium** |
+| Blocks | **Yes** |
 
-**Verification:** Confirmed. Line 30 uses `config.alerts.phone_number`. This will fail at runtime on the production server.
+**Verification:** The test data at line 169 inserts `acknowledged_at = None` for events, and lines 185-186 insert `duration_seconds = None`, `twilio_sid = None` for alert_records. The converter skip logic at line 258 (`if converter is not None and value is not None`) correctly passes None through. However, no test assertion checks that these NULLs survive in PostgreSQL. The `test_migrate_type_conversions` test at lines 319-354 checks types of non-NULL columns only.
 
-**Analysis:** Unlike F-04, this is an operational script that runs on a real cron schedule. When it fires on a health failure, the SMS alert will crash instead of sending the notification. This is a real production issue. The fix is trivial: change `config.alerts.phone_number` to `config.alerts.system_phone_number`.
+**Rationale:** The code is correct (verified by reading line 258), but the test gap is real. NULL handling in type conversion is a classic source of bugs, and the entire purpose of this migration is type fidelity. Adding a single assertion like `assert row["acknowledged_at"] is None` to the existing `test_migrate_type_conversions` test is trivial and provides meaningful regression protection for the most important invariant of the migration script.
 
-**Blocking:** YES
-
----
-
-### F-06: `_get_user_alert_records` fetches all records then filters in Python; called multiple times
-
-**Decision:** ACCEPT
-**Action:** note
-**Final severity:** LOW (reclassified down from MEDIUM)
-
-**Verification:** Confirmed. The method is called at lines 240, 411, 447, and 545. Lines 240 and 447 are on different code paths (447 is inside `_execute_phone_call` only when `existing_alerts is None`, and line 240 passes the result to `_execute_phone_call`, so in the normal `_process_event_for_user` flow line 447 does not trigger). Lines 411 and 545 are in `_is_in_cooldown` and `_acknowledge_event` respectively, which run on different branches.
-
-In practice, for a typical event with a handful of users and a handful of alert records, this is negligible. The "up to 3x per user per event" claim is overstated -- in the main `_process_event_for_user` path, it is called once at line 240, and potentially once more at line 411 (cooldown check). The `_acknowledge_event` call at 545 only runs during the phone call loop (inside `_execute_phone_call`), where the existing_alerts were already fetched.
-
-This is a valid efficiency improvement to track, but it is not a correctness issue and the performance impact is negligible at the current scale (single-digit users, single-digit events per cycle). Reclassified to LOW -- a nice-to-have optimization for Phase 4 or a future performance pass.
-
-**Blocking:** NO
+**Fix:** Add NULL-field assertions to `test_migrate_type_conversions` for `events.acknowledged_at`, `alert_records.duration_seconds`, and `alert_records.twilio_sid`.
 
 ---
 
-### F-07: `_fallback_channel` treats `log_only` as always-available
+### F-04: `_convert_json_text` swallows malformed JSON silently
 
-**Decision:** ACCEPT
-**Action:** note
-**Final severity:** LOW
+| Field | Value |
+|-------|-------|
+| Decision | **Accept** |
+| Action | **Note** |
+| Final severity | **Low** |
+| Blocks | **No** |
 
-**Verification:** Confirmed. Line 175-176: `if candidate == "log_only": return "log_only"` without checking `available_channels`. This is correct behavior -- logging should always be available as the ultimate fallback. Adding a comment is a good idea but not blocking.
+**Verification:** Lines 122-126 confirmed. Malformed JSON is caught and wrapped as `Jsonb(value)` (a JSONB string scalar).
 
-**Blocking:** NO
-
----
-
-### F-08: No test for customizable tier user with zero rules
-
-**Decision:** ACCEPT
-**Action:** note
-**Final severity:** LOW
-
-**Verification:** Confirmed. No test exercises a Premium user with `preference_mode="customizable"` and zero `user_alert_rules` rows. The code at lines 389-396 would iterate over an empty list and return `"log_only"`, which is the correct behavior. Worth tracking for test coverage improvement, but the code path is trivially correct.
-
-**Blocking:** NO
+**Rationale:** This is a defensive fallback in a one-shot migration. The SQLite data was written by the application itself, so malformed JSON is extremely unlikely. Even if it occurred, storing the raw string as a JSONB scalar is better than crashing the migration. A log warning would be nice but is not worth blocking. Accepted as note.
 
 ---
 
-### F-09: No test for invalid/missing tier
+### F-05: `_convert_int_bool` does not handle non-integer input
 
-**Decision:** ACCEPT
-**Action:** note
-**Final severity:** LOW
+| Field | Value |
+|-------|-------|
+| Decision | **Accept** |
+| Action | **Note** |
+| Final severity | **Low** |
+| Blocks | **No** |
 
-**Verification:** Confirmed. Lines 309-316 handle tier lookup failure. Not tested but the defensive code is straightforward.
+**Verification:** Lines 111-115 confirmed. `bool(int(value))` would raise `ValueError` on non-integer strings.
 
-**Blocking:** NO
-
----
-
-### F-10: No test for unknown `preference_mode`
-
-**Decision:** ACCEPT
-**Action:** note
-**Final severity:** LOW
-
-**Verification:** Confirmed. Lines 333-338 handle unknown `preference_mode`. Not tested.
-
-**Blocking:** NO
+**Rationale:** The SQLite schema defines `is_military_event INTEGER NOT NULL` and `is_new_event INTEGER NOT NULL`. The application has been writing integer booleans (0/1) since its creation. The probability of a non-integer value in these columns is effectively zero. Adding a try/except would be purely cosmetic for a one-shot script.
 
 ---
 
-### F-11: `_acknowledge_event` side-effects `event.last_updated_at`
+### F-06: Config path fallback warning goes to stdout, not stderr
 
-**Decision:** ACCEPT
-**Action:** note
-**Final severity:** LOW
+| Field | Value |
+|-------|-------|
+| Decision | **Accept** |
+| Action | **Fix** |
+| Final severity | **Low** |
+| Blocks | **No** |
 
-**Verification:** Confirmed. `update_event` always sets `last_updated_at = NOW()` (database.py line 293). The `_acknowledge_event` call at line 538 triggers this. However, as noted, the event is not re-read from DB mid-loop in `process_event` -- each user gets the same in-memory event object. The `last_updated_at` comparison at line 243 uses the original in-memory value, not the DB value. So there is no actual cross-user interference during a single cycle. On the *next* cycle, the corroborator re-reads the event from DB, and the `last_updated_at` update is harmless (it just reflects the most recent DB touch).
+**Verification:** Line 148 confirmed: `print(f"  WARNING: ...")` without `file=sys.stderr`.
 
-**Blocking:** NO
-
----
-
-### F-12: Format message functions accept `language` parameter but ignore it
-
-**Decision:** ACCEPT
-**Action:** note
-**Final severity:** LOW
-
-**Verification:** Confirmed. Polish-only per spec 3.11. The `language` parameter is reserved for future i18n.
-
-**Blocking:** NO
+**Rationale:** Trivial fix (add `file=sys.stderr`). While it does not block, it should be fixed alongside the other changes since we are already touching this file. Action is fix but severity is Low, so it does not block.
 
 ---
 
-### F-13: Standard tier test fixture differs from spec 2.17
+### F-07: `sys.exit()` inside library functions
 
-**Decision:** ACCEPT
-**Action:** note
-**Final severity:** LOW
+| Field | Value |
+|-------|-------|
+| Decision | **Accept** |
+| Action | **Note** |
+| Final severity | **Low** |
+| Blocks | **No** |
 
-**Verification:** Confirmed. Test fixture has `available_channels: ["sms", "whatsapp"]` (line 87) while spec 2.17 says `["phone_call", "sms", "whatsapp"]`. This is intentional test design to exercise the fallback mechanism. The seed script (`scripts/seed_tiers.py`) uses the spec-correct values for production.
+**Verification:** Line 275 (`sys.exit(1)` in `migrate()`), line 65 and 78 in `create_initial_user.py` confirmed.
 
-**Blocking:** NO
+**Rationale:** The reviewer is correct that this is not ideal API design. However, these are CLI scripts, not library modules. The functions are called from `main()` which is the CLI entry point. The tests handle `SystemExit` via `pytest.raises(SystemExit)`, which works correctly. Refactoring to use exceptions would be cleaner but is a design preference for scripts that will be run once. Not worth changing.
+
+---
+
+### F-08: `create_initial_user.py` is not idempotent
+
+| Field | Value |
+|-------|-------|
+| Decision | **Accept** |
+| Action | **Note** |
+| Final severity | **Low** |
+| Blocks | **No** |
+
+**Verification:** Lines 84-88 confirmed. `create_user()` always inserts a new user with `uuid.uuid4()`. No `ON CONFLICT` or existence check on phone number.
+
+**Rationale:** The reviewer correctly noted that the spec does not require idempotency for this script (only for the migration script per 4.7). The `create_initial_user.py` script is a standalone user creation helper, not a migration tool. Running it twice is an operator error, not a design flaw. The script's purpose is clear from its name and documentation. Accepted as a design note.
+
+---
+
+### F-09: No test for malformed JSON in SQLite source
+
+| Field | Value |
+|-------|-------|
+| Decision | **Accept** |
+| Action | **Note** |
+| Final severity | **Low** |
+| Blocks | **No** |
+
+**Verification:** Confirmed -- no test exercises the `except (json.JSONDecodeError, TypeError)` path in `_convert_json_text`.
+
+**Rationale:** The fallback behavior is documented in F-04 and is acceptable. A unit test for the converter function would be nice but is not essential since the fallback is unlikely to be triggered with real data. The existing unit tests in `TestTypeConversions` cover the valid cases. Not worth blocking.
+
+---
+
+### F-10: No test for empty-string phone number
+
+| Field | Value |
+|-------|-------|
+| Decision | **Accept** |
+| Action | **Note** |
+| Final severity | **Low** |
+| Blocks | **No** |
+
+**Verification:** Lines 287-292 confirmed. When `ALERT_PHONE_NUMBER` is unset, `phone = ""` and a warning is printed but migration continues.
+
+**Rationale:** This is a warning path for development/testing scenarios where the env var is not set. In production, `ALERT_PHONE_NUMBER` will always be set (it is the core phone number for the alert system). Testing this edge case would verify the warning message but has no practical impact. Not worth blocking.
+
+---
+
+### F-11: Non-deterministic `uuid.uuid4()` for `user_countries.id` on re-runs
+
+| Field | Value |
+|-------|-------|
+| Decision | **Accept** |
+| Action | **Note** |
+| Final severity | **Low** |
+| Blocks | **No** |
+
+**Verification:** Lines 324-329 confirmed. `uuid.uuid4()` generates a new random ID each call, but `ON CONFLICT (user_id, country_code) DO NOTHING` prevents duplicates on the composite unique key.
+
+**Rationale:** Functionally correct. The random ID is discarded on conflict. Using `uuid.uuid5` with a deterministic seed would be marginally cleaner but has zero impact on correctness. Pure informational finding.
 
 ---
 
 ### Resolution Summary
 
-| Finding | Decision | Reclassified? | Final Severity | Action | Blocking? |
-|---------|----------|---------------|----------------|--------|-----------|
-| F-01 | Accept | No | HIGH | note | NO |
-| F-02 | Accept | YES: HIGH -> LOW | LOW | note | NO |
-| F-03 | Accept | No | MEDIUM | fix | YES |
-| F-04 | Accept | YES: MEDIUM -> LOW | LOW | fix | NO |
-| F-05 | Accept | No | MEDIUM | fix | YES |
-| F-06 | Accept | YES: MEDIUM -> LOW | LOW | note | NO |
-| F-07 | Accept | No | LOW | note | NO |
-| F-08 | Accept | No | LOW | note | NO |
-| F-09 | Accept | No | LOW | note | NO |
-| F-10 | Accept | No | LOW | note | NO |
-| F-11 | Accept | No | LOW | note | NO |
-| F-12 | Accept | No | LOW | note | NO |
-| F-13 | Accept | No | LOW | note | NO |
+| Finding | Reviewer Severity | Final Severity | Decision | Action | Blocks? |
+|---------|-------------------|----------------|----------|--------|---------|
+| F-01 | Medium | **Medium** | Accept | **Fix** | **Yes** |
+| F-02 | Medium | **Low** | Accept (reclassified) | Note | No |
+| F-03 | Medium | **Medium** | Accept | **Fix** | **Yes** |
+| F-04 | Low | Low | Accept | Note | No |
+| F-05 | Low | Low | Accept | Note | No |
+| F-06 | Low | Low | Accept | **Fix** | No |
+| F-07 | Low | Low | Accept | Note | No |
+| F-08 | Low | Low | Accept | Note | No |
+| F-09 | Low | Low | Accept | Note | No |
+| F-10 | Low | Low | Accept | Note | No |
+| F-11 | Low | Low | Accept | Note | No |
 
-**Blocking findings: 2** (F-03, F-05)
-**Non-blocking fixes (will apply anyway): 1** (F-04)
-**Notes for future tracking: 10** (F-01, F-02, F-06, F-07, F-08, F-09, F-10, F-11, F-12, F-13)
+### Blocking Findings (Must Fix Before Merge)
+
+1. **F-01:** Change row count validation from `>=` to `==` with a third "EXTRA" status for `dst > src`. Update corresponding test assertions.
+2. **F-03:** Add NULL-survival assertions to `test_migrate_type_conversions` for `events.acknowledged_at`, `alert_records.duration_seconds`, and `alert_records.twilio_sid`.
+
+### Non-Blocking Fixes (Should Fix, Low Priority)
+
+3. **F-06:** Change warning `print()` to `print(..., file=sys.stderr)` at line 148.
+
+### Final Verdict
+
+**CONDITIONAL PASS.** Two Medium findings (F-01, F-03) block. Both are straightforward fixes: one is a comparison operator change + a new status label, the other is adding 3 assertions to an existing test. No architectural or design changes are needed. Once these two fixes are applied, the phase is ready to merge.

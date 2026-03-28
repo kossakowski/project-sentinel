@@ -307,13 +307,13 @@ class TestMigration:
         report = migrate(db_path, pg_url_for_migration, config_path)
 
         assert report["articles"]["source"] == 3
-        assert report["articles"]["destination"] >= 3
+        assert report["articles"]["destination"] == 3
         assert report["classifications"]["source"] == 3
-        assert report["classifications"]["destination"] >= 3
+        assert report["classifications"]["destination"] == 3
         assert report["events"]["source"] == 1
-        assert report["events"]["destination"] >= 1
+        assert report["events"]["destination"] == 1
         assert report["alert_records"]["source"] == 2
-        assert report["alert_records"]["destination"] >= 2
+        assert report["alert_records"]["destination"] == 2
 
     @patch.dict(os.environ, {"ALERT_PHONE_NUMBER": "+48111222333", "ALERT_USER_NAME": "Test Migrator"})
     def test_migrate_type_conversions(self, sqlite_db, pg_url_for_migration, tmp_path):
@@ -346,11 +346,17 @@ class TestMigration:
                 assert isinstance(row["is_new_event"], bool)
                 assert isinstance(row["affected_countries"], list)
 
-                # Check events: JSONB columns
-                cur.execute("SELECT affected_countries, article_ids FROM events LIMIT 1")
+                # Check events: JSONB columns and NULL date field
+                cur.execute("SELECT affected_countries, article_ids, acknowledged_at FROM events LIMIT 1")
                 row = cur.fetchone()
                 assert isinstance(row["affected_countries"], list)
                 assert isinstance(row["article_ids"], list)
+                assert row["acknowledged_at"] is None  # NULL dates survive migration
+
+                # Check alert_records: NULL integer survives migration
+                cur.execute("SELECT duration_seconds FROM alert_records LIMIT 1")
+                row = cur.fetchone()
+                assert row["duration_seconds"] is None  # NULL integers survive migration
 
     @patch.dict(os.environ, {"ALERT_PHONE_NUMBER": "+48111222333"})
     def test_migrate_idempotent(self, sqlite_db, pg_url_for_migration, tmp_path):

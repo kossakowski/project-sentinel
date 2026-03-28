@@ -145,7 +145,7 @@ def _load_target_countries(config_path: str = "config/config.yaml") -> list[str]
             return [c["code"] for c in countries]
 
     # Fallback: return the known defaults
-    print(f"  WARNING: Could not find {config_path}. Using default countries: PL, LT, LV, EE")
+    print(f"  WARNING: Could not find {config_path}. Using default countries: PL, LT, LV, EE", file=sys.stderr)
     return ["PL", "LT", "LV", "EE"]
 
 
@@ -406,16 +406,21 @@ def migrate(sqlite_path: str, pg_url: str, config_path: str = "config/config.yam
     print("=" * 60)
     print("MIGRATION SUMMARY")
     print("=" * 60)
-    all_match = True
+    all_ok = True
     for table_name in ["articles", "classifications", "events", "alert_records"]:
         src = report[table_name]["source"]
         dst = report[table_name]["destination"]
-        match = "OK" if dst >= src else "MISMATCH"
-        if dst < src:
-            all_match = False
-        print(f"  {table_name:20s}  SQLite: {src:6d}  PostgreSQL: {dst:6d}  [{match}]")
+        if dst == src:
+            status = "OK"
+        elif dst > src:
+            status = "EXTRA"
+            all_ok = False
+        else:
+            status = "MISMATCH"
+            all_ok = False
+        print(f"  {table_name:20s}  SQLite: {src:6d}  PostgreSQL: {dst:6d}  [{status}]")
     print("=" * 60)
-    if all_match:
+    if all_ok:
         print("All row counts match. Migration successful.")
     else:
         print("WARNING: Some row counts do not match. Check for errors above.")
