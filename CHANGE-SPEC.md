@@ -90,6 +90,30 @@ Migrate Project Sentinel from a single-user SQLite system to a multi-tenant Post
 - `database.py` has no `import sqlite3`.
 - `psycopg`, `psycopg_pool`, and `testcontainers` are in `requirements.txt`.
 
+### Reconciliation
+
+| Req | Status | Notes |
+|-----|--------|-------|
+| 1.1 | IMPLEMENTED | `Database.__init__` accepts `url`, creates `ConnectionPool(min_size=1, max_size=5)` with `dict_row` |
+| 1.2 | IMPLEMENTED | DDL uses TIMESTAMPTZ, BOOLEAN, JSONB. Column types verified by `test_column_types` |
+| 1.3 | IMPLEMENTED | All queries use `%s` placeholders, `make_interval()` for date arithmetic |
+| 1.4 | IMPLEMENTED | `INSERT ... ON CONFLICT (url_hash) DO NOTHING RETURNING id` |
+| 1.5 | IMPLEMENTED | All methods use `with self.pool.connection() as conn:` |
+| 1.6 | IMPLEMENTED | `close()` calls `self.pool.close()` |
+| 1.7 | IMPLEMENTED | `cleanup_old_records` uses `NOW() - make_interval(days => %s)` |
+| 1.8 | IMPLEMENTED | `from_row()` accepts dict, delegates to `from_dict()`. No `import sqlite3` |
+| 1.9 | IMPLEMENTED | `to_dict()` returns native `bool` for boolean fields |
+| 1.10 | IMPLEMENTED | `DatabaseConfig.url` with default `postgresql://sentinel:sentinel@localhost:5432/sentinel` |
+| 1.11 | IMPLEMENTED | `config.example.yaml` has `url: ${DATABASE_URL}` with format comment |
+| 1.12 | IMPLEMENTED | Session-scoped container, session-scoped DB, function-scoped TRUNCATE |
+| 1.13 | IMPLEMENTED | `sample_config_dict` uses `database.url` |
+| 1.14 | IMPLEMENTED | No SQLite syntax in tests. Uses `information_schema.tables` |
+| 1.15 | IMPLEMENTED | `psycopg[binary]>=3.1`, `psycopg_pool>=3.1`, `testcontainers[postgres]>=4.0` in requirements.txt |
+| 1.16 | IMPLEMENTED | `get_recent_titles` uses `NOW() - make_interval(mins => %s)` |
+| 1.17 | IMPLEMENTED | `get_active_events` uses `NOW() - make_interval(hours => %s)` |
+
+**All 17 requirements IMPLEMENTED. All gate criteria met. 164 tests passing (163 adapted + 1 new).**
+
 ## Phase 2: Multi-Tenant Schema and Tier System
 
 ### Deliverables
