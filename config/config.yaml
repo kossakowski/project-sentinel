@@ -418,7 +418,7 @@ alerts:
       corroboration_required: 1
     medium:
       min_score: 5
-      action: whatsapp
+      action: sms
       corroboration_required: 1
     low:
       min_score: 1

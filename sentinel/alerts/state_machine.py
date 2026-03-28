@@ -187,7 +187,8 @@ class AlertStateMachine:
         elif action == "sms":
             self._execute_sms(event)
         elif action == "whatsapp":
-            self._execute_whatsapp(event)
+            # WhatsApp disabled — route to SMS instead
+            self._execute_sms(event)
         # action == "log_only" -> do nothing beyond the log above
 
     def check_pending_calls(self) -> None:
@@ -289,13 +290,13 @@ class AlertStateMachine:
         total_attempts = len(call_records)
         call_placed_at = datetime.now(timezone.utc)
 
-        # Send WhatsApp confirmation request — this is the ONLY confirmation mechanism
-        self._send_confirmation_whatsapp(event)
+        # Send SMS confirmation code — this is the ONLY confirmation mechanism
+        self._send_confirmation_sms(event)
 
         # Call loop — calls are alarms only, not confirmation
         for attempt in range(1, max_per_round + 1):
             # Check WhatsApp reply before each call
-            if self._check_whatsapp_confirmation(call_placed_at):
+            if self._check_sms_confirmation(call_placed_at):
                 self._acknowledge_event(event, total_attempts)
                 return
 
@@ -318,11 +319,11 @@ class AlertStateMachine:
             self.db.insert_alert_record(record)
             self.db.update_event(event.id, alert_status="call_placed")
 
-            # Wait for call to finish, polling WhatsApp in the meantime
-            self._wait_for_call_and_check_whatsapp(record, call_placed_at)
+            # Wait for call to finish, polling SMS in the meantime
+            self._wait_for_call_and_check_sms(record, call_placed_at)
 
             # Check WhatsApp after call ends
-            if self._check_whatsapp_confirmation(call_placed_at):
+            if self._check_sms_confirmation(call_placed_at):
                 self._acknowledge_event(event, total_attempts)
                 return
 
@@ -330,14 +331,14 @@ class AlertStateMachine:
             if attempt < max_per_round:
                 time.sleep(10)
 
-        # Round exhausted — check WhatsApp one more time
-        if self._check_whatsapp_confirmation(call_placed_at):
+        # Round exhausted — check SMS one more time
+        if self._check_sms_confirmation(call_placed_at):
             self._acknowledge_event(event, total_attempts)
             return
 
         # Still not confirmed — mark for retry on next cycle
         self.logger.warning(
-            "Event %s: %d calls this round, no WhatsApp confirmation, retry in %d min",
+            "Event %s: %d calls this round, no SMS confirmation, retry in %d min",
             event.id[:8],
             max_per_round,
             self.config.alerts.acknowledgment.retry_interval_minutes,
@@ -352,14 +353,14 @@ class AlertStateMachine:
             acknowledged_at=datetime.now(timezone.utc).isoformat(),
         )
         self.logger.info(
-            "Event %s: confirmed via WhatsApp after %d call attempts",
+            "Event %s: confirmed via SMS after %d call attempts",
             event.id[:8],
             total_attempts,
         )
         self._send_followup_sms(event.id)
 
-    def _send_confirmation_whatsapp(self, event: Event) -> None:
-        """Send a WhatsApp with a random 6-digit confirmation code."""
+    def _send_confirmation_sms(self, event: Event) -> None:
+        """Send an SMS with a random 6-digit confirmation code."""
         phone_number = self.config.alerts.phone_number
         event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
 
@@ -367,32 +368,34 @@ class AlertStateMachine:
         self._confirmation_code = f"{random.randint(100000, 999999)}"
 
         message = (
-            f"🚨 PROJECT SENTINEL: {event_type_pl}\n\n"
+            f"PROJECT SENTINEL: {event_type_pl}\n\n"
             f"{event.summary_pl}\n\n"
-            f"⚠️ Odpowiedz kodem aby potwierdzić odbiór alertu:\n\n"
-            f"👉 {self._confirmation_code}\n\n"
-            f"Telefon będzie dzwonił dopóki nie potwierdzisz."
+            f"Odpowiedz kodem aby potwierdzic odbior alertu: {self._confirmation_code}\n\n"
+            f"Telefon bedzie dzwonil dopoki nie potwierdzisz."
         )
-        record = self.twilio.send_whatsapp(phone_number, message, event.id)
+        record = self.twilio.send_sms(phone_number, message, event.id)
         if record is not None:
+            self._confirmation_sms_sid = record.twilio_sid
             self.db.insert_alert_record(record)
             self.logger.info(
-                "WhatsApp confirmation request sent for event %s (code=%s)",
+                "SMS confirmation request sent for event %s (code=%s, SID=%s)",
                 event.id[:8],
                 self._confirmation_code,
+                record.twilio_sid,
             )
 
-    def _check_whatsapp_confirmation(self, since: datetime) -> bool:
-        """Check if the user replied with the correct 6-digit code on WhatsApp."""
+    def _check_sms_confirmation(self, since: datetime) -> bool:
+        """Check if the user replied with the correct 6-digit code via SMS."""
         phone_number = self.config.alerts.phone_number
         code = getattr(self, "_confirmation_code", None)
         if not code:
             return False
 
         try:
+            # Check inbound SMS from the user's phone to our Twilio number
             messages = self.twilio.client.messages.list(
-                to=self.twilio.twilio_whatsapp,
-                from_=f"whatsapp:{phone_number}",
+                to=self.twilio.twilio_phone,
+                from_=phone_number,
                 date_sent_after=since,
                 limit=10,
             )
@@ -400,19 +403,42 @@ class AlertStateMachine:
                 body = msg.body.strip() if msg.body else ""
                 if code in body:
                     self.logger.info(
-                        "WhatsApp confirmation received (code=%s) from %s",
+                        "SMS confirmation received (code=%s) from %s",
                         code,
                         phone_number,
                     )
                     return True
         except Exception as exc:
-            self.logger.warning("Failed to check WhatsApp confirmations: %s", exc)
+            self.logger.warning("Failed to check SMS confirmations: %s", exc)
         return False
 
-    def _wait_for_call_and_check_whatsapp(
-        self, record: AlertRecord, whatsapp_since: datetime
+    def _check_confirmation_sms_delivered(self) -> bool | None:
+        """Check if the confirmation SMS was delivered.
+
+        Returns True if delivered, False if failed/undelivered, None if still pending.
+        """
+        sid = getattr(self, "_confirmation_sms_sid", None)
+        if not sid:
+            return None
+        try:
+            msg = self.twilio.client.messages(sid).fetch()
+            if msg.status == "delivered":
+                return True
+            if msg.status in ("failed", "undelivered"):
+                self.logger.warning(
+                    "Confirmation SMS %s status: %s (error=%s)",
+                    sid, msg.status, msg.error_code,
+                )
+                return False
+            return None  # still queued/sending/sent
+        except Exception as exc:
+            self.logger.warning("Failed to check SMS delivery status: %s", exc)
+            return None
+
+    def _wait_for_call_and_check_sms(
+        self, record: AlertRecord, sms_since: datetime
     ) -> None:
-        """Wait for a call to finish, checking WhatsApp confirmation in the meantime."""
+        """Wait for a call to finish, checking SMS confirmation in the meantime."""
         max_wait = 90
         poll_interval = 5
         waited = 0
@@ -421,8 +447,8 @@ class AlertStateMachine:
             time.sleep(poll_interval)
             waited += poll_interval
 
-            # Check WhatsApp while call is in progress
-            if self._check_whatsapp_confirmation(whatsapp_since):
+            # Check SMS while call is in progress
+            if self._check_sms_confirmation(sms_since):
                 return
 
             # Check if call is done
@@ -528,21 +554,6 @@ class AlertStateMachine:
         record = self.twilio.send_sms(phone_number, message, event_id)
         if record is not None:
             self.db.insert_alert_record(record)
-
-        # Also send WhatsApp with clickable article links
-        self._send_article_links_whatsapp(event)
-
-    def _send_article_links_whatsapp(self, event: Event) -> None:
-        """Send a WhatsApp message with links to the source articles."""
-        phone_number = self.config.alerts.phone_number
-        message = _format_article_links_message(event, self.db)
-
-        record = self.twilio.send_whatsapp(phone_number, message, event.id)
-        if record is not None:
-            self.db.insert_alert_record(record)
-            self.logger.info(
-                "Article links WhatsApp sent for event %s", event.id[:8]
-            )
 
     def _send_update_sms(self, event: Event) -> None:
         """Send an SMS update for an event that was already acknowledged."""

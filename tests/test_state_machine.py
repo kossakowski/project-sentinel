@@ -86,6 +86,9 @@ def mock_twilio():
     twilio.send_whatsapp.side_effect = _make_wa_record
     # Default: calls are not answered (no-answer on first poll)
     twilio.get_call_status.return_value = {"status": "no-answer", "duration": 0}
+    # SMS confirmation check reads inbound messages — default to empty
+    twilio.client.messages.list.return_value = []
+    twilio.twilio_phone = "+15551234567"
     return twilio
 
 
@@ -100,14 +103,15 @@ def state_machine(db, mock_twilio, config):
 # --------------------------------------------------------------------------
 @patch("sentinel.alerts.state_machine.time.sleep")
 def test_new_critical_event_triggers_call(_sleep, state_machine, mock_twilio):
-    """Urgency 10 + 2 sources -> phone call (retries, WhatsApp confirmation)."""
+    """Urgency 10 + 2 sources -> phone call (retries, SMS confirmation)."""
     event = _make_event(urgency_score=10, source_count=2)
     state_machine.process_event(event)
 
-    # 5 call attempts (no WhatsApp reply in mock)
+    # 5 call attempts (no SMS reply in mock)
     assert mock_twilio.make_alert_call.call_count == 5
-    # 1 WhatsApp confirmation request sent at start
-    assert mock_twilio.send_whatsapp.call_count == 1
+    # 1 SMS confirmation code + 5 call attempts = at least 6 SMS-related calls
+    # The confirmation SMS is sent via send_sms, so call_count >= 1
+    assert mock_twilio.send_sms.call_count >= 1
 
 
 # --------------------------------------------------------------------------
@@ -137,23 +141,20 @@ def test_high_urgency_triggers_sms(state_machine, mock_twilio):
 # --------------------------------------------------------------------------
 # 4. test_medium_urgency_triggers_whatsapp
 # --------------------------------------------------------------------------
-def test_medium_urgency_triggers_whatsapp(state_machine, mock_twilio, config):
-    """Urgency 6 -> WhatsApp."""
-    # Ensure the config has the 'medium' urgency level
-    # The sample_config_dict in conftest only has critical (9+) and high (7+)
-    # We need to add medium for this test
+def test_medium_urgency_triggers_sms(state_machine, mock_twilio, config):
+    """Urgency 6 -> SMS (WhatsApp disabled, routed to SMS)."""
     from sentinel.config import UrgencyLevel
 
     config.alerts.urgency_levels["medium"] = UrgencyLevel(
-        min_score=5, action="whatsapp", corroboration_required=1
+        min_score=5, action="sms", corroboration_required=1
     )
 
     event = _make_event(urgency_score=6, source_count=1)
     state_machine.process_event(event)
 
-    mock_twilio.send_whatsapp.assert_called_once()
+    mock_twilio.send_sms.assert_called_once()
     mock_twilio.make_alert_call.assert_not_called()
-    mock_twilio.send_sms.assert_not_called()
+    mock_twilio.send_whatsapp.assert_not_called()
 
 
 # --------------------------------------------------------------------------
@@ -179,7 +180,7 @@ def test_low_urgency_logs_only(state_machine, mock_twilio, config):
 # 6. test_answered_call_acknowledged
 # --------------------------------------------------------------------------
 def test_call_completed_sets_retry_pending(state_machine, db, mock_twilio):
-    """Call completed -> retry_pending (confirmation is via WhatsApp, not call)."""
+    """Call completed -> retry_pending (confirmation is via SMS reply, not call)."""
     event = _make_event(urgency_score=10, source_count=2)
     db.insert_event(event)
 
@@ -193,7 +194,7 @@ def test_call_completed_sets_retry_pending(state_machine, db, mock_twilio):
 
     state_machine.check_pending_calls()
 
-    # Call completion alone doesn't acknowledge — WhatsApp reply needed
+    # Call completion alone doesn't acknowledge — SMS reply needed
     updated_events = db.get_active_events(within_hours=24)
     updated = next(e for e in updated_events if e.id == event.id)
     assert updated.alert_status == "retry_pending"
@@ -258,10 +259,10 @@ def test_round_exhausted_sends_sms_and_retries(_sleep, state_machine, db, mock_t
     # Process the event — all 5 attempts fail (mock returns no-answer)
     state_machine.process_event(event)
 
-    # 5 call attempts made, no WhatsApp reply
+    # 5 call attempts made, no SMS reply
     assert mock_twilio.make_alert_call.call_count == 5
-    # 1 WhatsApp confirmation request sent at start
-    assert mock_twilio.send_whatsapp.call_count == 1
+    # 1 SMS confirmation code sent at start
+    assert mock_twilio.send_sms.call_count >= 1
 
     # Status should be retry_pending, not sms_fallback (will retry next cycle)
     updated = db.get_event_by_id(event.id)

@@ -51,7 +51,7 @@ class TwilioClient:
             f"</Say>"
             f'<Pause length="1"/>'
             f'<Say language="pl-PL" voice="Polly.Ewa">'
-            f"Potwierdź odbiór alertu. Otwórz WhatsApp i odpisz kodem, który otrzymałeś."
+            f"Potwierdź odbiór alertu. Odpisz na SMS kodem, który otrzymałeś."
             f"</Say>"
             f"</Response>"
         )
