@@ -102,7 +102,7 @@ Migrate Project Sentinel from a single-user SQLite system to a multi-tenant Post
 
 ### Requirements
 
-**2.1** The `tiers` table MUST have columns: `id TEXT PRIMARY KEY`, `name TEXT NOT NULL UNIQUE`, `available_channels JSONB NOT NULL` (list of allowed alert types, e.g. `["sms", "whatsapp", "phone_call"]`), `max_countries INTEGER NOT NULL`, `preference_mode TEXT NOT NULL CHECK (preference_mode IN ('preset', 'customizable'))`, `preset_rules JSONB` (urgency-to-channel mapping for preset mode, NULL for customizable), `created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`.
+**2.1** The `tiers` table MUST have columns: `id TEXT PRIMARY KEY`, `name TEXT NOT NULL UNIQUE`, `available_channels JSONB NOT NULL` (list of allowed alert types, e.g. `["sms", "whatsapp", "phone_call"]`), `max_countries INTEGER` (NULL = unlimited), `preference_mode TEXT NOT NULL CHECK (preference_mode IN ('preset', 'customizable'))`, `preset_rules JSONB` (urgency-to-channel mapping for preset mode, NULL for customizable), `is_active BOOLEAN NOT NULL DEFAULT TRUE`, `created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`.
 
 **2.2** The `users` table MUST have columns: `id TEXT PRIMARY KEY`, `name TEXT NOT NULL`, `phone_number TEXT NOT NULL`, `language TEXT NOT NULL DEFAULT 'pl'`, `tier_id TEXT NOT NULL REFERENCES tiers(id)`, `is_active BOOLEAN NOT NULL DEFAULT TRUE`, `created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`, `updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`.
 
@@ -124,7 +124,7 @@ Migrate Project Sentinel from a single-user SQLite system to a multi-tenant Post
 
 **2.11** `Database` MUST provide these methods for confirmation codes: `insert_confirmation_code(code) -> None`, `get_active_confirmation_code(user_id, event_id) -> ConfirmationCode | None` (most recent unused code), `mark_confirmation_code_used(code_id) -> None`.
 
-**2.12** The `Tier` dataclass MUST have fields: `id`, `name`, `available_channels` (list[str]), `max_countries` (int), `preference_mode` (str), `preset_rules` (dict | None), `created_at` (datetime). It MUST have `to_dict()` and `from_dict()` methods.
+**2.12** The `Tier` dataclass MUST have fields: `id`, `name`, `available_channels` (list[str]), `max_countries` (int | None, None = unlimited), `preference_mode` (str), `preset_rules` (dict | None), `is_active` (bool), `created_at` (datetime). It MUST have `to_dict()` and `from_dict()` methods.
 
 **2.13** The `User` dataclass MUST have fields: `id`, `name`, `phone_number`, `language`, `tier_id`, `is_active` (bool), `created_at`, `updated_at`. It MUST have `to_dict()` and `from_dict()` methods.
 
@@ -134,7 +134,7 @@ Migrate Project Sentinel from a single-user SQLite system to a multi-tenant Post
 
 **2.16** The tier system MUST be fully data-driven. The `preference_mode` field determines behavior: `'preset'` means the tier's `preset_rules` dict maps urgency ranges to channels (the user cannot customize); `'customizable'` means the user's own `user_alert_rules` rows determine routing. Adding a new tier MUST require zero code changes — only a database insert.
 
-**2.17** `scripts/seed_tiers.py` MUST insert two tiers. **Standard**: `available_channels=["sms", "whatsapp"]`, `max_countries=2`, `preference_mode="preset"`, `preset_rules={"7-8": "sms", "9-10": "sms", "5-6": "whatsapp", "1-4": "log_only"}`. **Premium**: `available_channels=["sms", "whatsapp", "phone_call"]`, `max_countries=10`, `preference_mode="customizable"`, `preset_rules=None`.
+**2.17** `scripts/seed_tiers.py` MUST insert two tiers. **Standard**: `available_channels=["phone_call", "sms", "whatsapp"]`, `max_countries=1`, `preference_mode="preset"`, `preset_rules={"9-10": "phone_call", "7-8": "sms", "5-6": "whatsapp", "1-4": "log_only"}`. **Premium**: `available_channels=["phone_call", "sms", "whatsapp"]`, `max_countries=NULL` (unlimited), `preference_mode="customizable"`, `preset_rules=None`.
 
 **2.18** `scripts/seed_tiers.py` MUST accept a `--database-url` argument (or read `DATABASE_URL` env var) for the PostgreSQL connection string. It MUST be idempotent — running it twice MUST NOT fail or create duplicates (use `INSERT ... ON CONFLICT (name) DO NOTHING`).
 
