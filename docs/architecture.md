@@ -354,3 +354,430 @@ project-sentinel/
 └── logs/                        # Created at runtime
     └── sentinel.log
 ```
+
+## 9. Detailed Pipeline Reference
+
+A complete stage-by-stage reference showing every decision point, data transformation, and what resources each component receives.
+
+```
+╔══════════════════════════════════════════════════════════════════════════════════════╗
+║                         PROJECT SENTINEL — FULL PIPELINE                            ║
+║                         From raw internet → phone call at 3 AM                      ║
+╚══════════════════════════════════════════════════════════════════════════════════════╝
+
+
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│  SCHEDULER (APScheduler)                                                             │
+│                                                                                      │
+│  FAST LANE ─── every 3 min (+jitter) ──→ Telegram, RSS priority-1, Google News      │
+│  SLOW LANE ─── every 15 min (+jitter) ─→ ALL sources (+ GDELT + lower-priority RSS) │
+│                                                                                      │
+│  Both lanes run the same 7-stage pipeline below.                                     │
+│  max_instances=1, coalesce=True — prevents overlapping runs.                         │
+└──────────────────────────────────────────┬──────────────────────────────────────────┘
+                                           │
+                                           ▼
+
+═══════════════════════════════════════════════════════════════════════════════════════
+ STAGE 1: FETCH                                              ~1000 articles/cycle
+═══════════════════════════════════════════════════════════════════════════════════════
+
+ ┌───────────────┐  ┌───────────────┐  ┌───────────────┐  ┌───────────────────┐
+ │  RSS Feeds    │  │  Google News  │  │    GDELT      │  │    Telegram       │
+ │  19 sources   │  │  16 queries   │  │  DOC 2.0 API  │  │  4 channels       │
+ │  (feedparser) │  │  (RSS URLs)   │  │  (REST JSON)  │  │  (Telethon)       │
+ └───────┬───────┘  └───────┬───────┘  └───────┬───────┘  └─────────┬─────────┘
+         │                  │                   │                     │
+         │  title           │  title            │  title              │  first 200ch
+         │  summary         │  summary          │  ⚠ NO summary      │  first 500ch
+         │  link            │  link             │  url                │  t.me/ch/id
+         │  published_at    │  published_at     │  seendate           │  message.date
+         │  language (cfg)  │  language (cfg)   │  language (auto)    │  language (cfg)
+         │  tags            │                   │  full GDELT JSON    │  views/forwards
+         │                  │                   │                     │
+         └─────────┬────────┴─────────┬─────────┴───────────┬────────┘
+                   │                  │                      │
+                   ▼                  ▼                      ▼
+
+       ┌──────────────────────────────────────────────────────────────┐
+       │  Article object created for each:                            │
+       │                                                              │
+       │  id .................. UUID (auto-generated)                 │
+       │  source_name ......... "BBC World", "GoogleNews:Rosja atak" │
+       │  source_type ......... rss | google_news | gdelt | telegram │
+       │  source_url .......... full URL to original article         │
+       │  title ............... headline text                        │
+       │  summary ............. description/snippet (may be empty)   │
+       │  language ............ en | pl | uk | ru                    │
+       │  published_at ........ datetime (from source)               │
+       │  fetched_at .......... now() (when we grabbed it)           │
+       │  url_hash ............ SHA256(source_url)                   │
+       │  title_normalized .... NFKD + lowercase + strip non-alnum   │
+       │  raw_metadata ........ fetcher-specific extras (dict)       │
+       │                                                              │
+       │  ⚠ No article body content is ever fetched or stored.       │
+       │    The summary is whatever the source provides (RSS          │
+       │    <description>, Telegram message text, etc.)               │
+       └──────────────────────────────┬───────────────────────────────┘
+                                      │
+                                      ▼
+
+═══════════════════════════════════════════════════════════════════════════════════════
+ STAGE 2: NORMALIZE                                        same count, cleaner data
+═══════════════════════════════════════════════════════════════════════════════════════
+
+ What happens to each article:
+
+ title/summary ....... HTML entities decoded → tags stripped → whitespace collapsed
+                       title capped at 500 chars, summary at 1000 chars
+
+ source_url .......... domain lowercased → www. stripped → tracking params removed
+                       (utm_*, fbclid, gclid) → fragment (#) stripped
+
+ published_at ........ timezone-aware enforced → future timestamps capped to now()
+                       None → fallback to fetched_at
+
+ language ............ full names mapped to ISO codes:
+                       "english" → "en", "polish" → "pl", "ukrainian" → "uk"
+
+                                      │
+                                      ▼
+
+═══════════════════════════════════════════════════════════════════════════════════════
+ STAGE 3: DEDUPLICATE                                      drops ~50-70% of articles
+═══════════════════════════════════════════════════════════════════════════════════════
+
+ Three checks, in order:
+
+ ① EXACT URL HASH ──→ SHA256(url) already exists in DB?
+    YES → skip ("URL already seen")
+
+ ② FUZZY TITLE MATCH ──→ rapidfuzz.fuzz.ratio() against DB titles from last 60 min
+    Same source + ≥85% similar  → skip ("same-source republication")
+    Cross source + ≥95% similar → skip ("syndicated content")
+
+ ③ BATCH-INTERNAL ──→ same url_hash already in this batch?
+    YES → skip ("batch-internal duplicate")
+
+ ✅ Unique articles → inserted into DB (articles table)
+
+                                      │
+                                      ▼
+
+═══════════════════════════════════════════════════════════════════════════════════════
+ STAGE 4: KEYWORD FILTER                      drops ~85% — THIS IS THE MAIN GATE
+═══════════════════════════════════════════════════════════════════════════════════════
+
+ ┌────────────────────────────────────────────────────────────────────────────────┐
+ │  INPUT: article.title + " " + article.summary  (concatenated, lowercased)     │
+ │                                                                                │
+ │  Matching strategy depends on language:                                        │
+ │  • Slavic (PL, UK, RU): substring match — "dron" matches "drony", "dronem"   │
+ │  • English & others:    \bword\b regex — "drone" matches "drone" only         │
+ │                                                                                │
+ │  Keywords configured per language in config.yaml at three levels:              │
+ │  • CRITICAL: unconditional pass (overrides excludes)                          │
+ │  • HIGH: pass unless an EXCLUDE keyword also matches                          │
+ │  • EXCLUDE: blocks HIGH matches (but cannot block CRITICAL)                   │
+ └────────────────────────────────────────────────────────────────────────────────┘
+
+ Decision tree for each article:
+
+             ┌──────────────────────┐
+             │ Source has            │
+             │ keyword_bypass=true?  │──── YES ──→ ✅ PASS (level: "bypass")
+             └──────────┬───────────┘              Defence24, Defence24 EN,
+                        │ NO                       all 4 Telegram channels
+                        ▼
+             ┌──────────────────────┐
+             │ Any CRITICAL keyword │
+             │ matched in title     │──── YES ──→ ✅ PASS (level: "critical")
+             │ or summary?          │              Excludes IGNORED
+             └──────────┬───────────┘
+                        │ NO
+                        ▼
+             ┌──────────────────────┐
+             │ Any EXCLUDE keyword  │
+             │ matched?             │──── YES ──→ ❌ FILTERED OUT (silent drop)
+             └──────────┬───────────┘              "exercise", "film", etc.
+                        │ NO
+                        ▼
+             ┌──────────────────────┐
+             │ Any HIGH keyword     │
+             │ matched?             │──── YES ──→ ✅ PASS (level: "high")
+             └──────────┬───────────┘
+                        │ NO
+                        ▼
+                   ❌ FILTERED OUT
+                   (never seen by classifier)
+
+ Output annotation on passing articles:
+
+   article.raw_metadata["keyword_match"] = {
+       "level": "critical" | "high" | "bypass",
+       "matched_keywords": ["drone", "airspace violation", ...],
+       "language_matched": "en"
+   }
+
+ ⚠ Articles filtered out HERE are stored in the DB (articles table) but have
+   NO entry in the classifications table. They are never evaluated by the LLM.
+   This is the daily audit's primary target for missed threats.
+
+                                      │
+                                      ▼
+
+═══════════════════════════════════════════════════════════════════════════════════════
+ STAGE 5: CLASSIFY (Claude Haiku 4.5)                      ~10-30 articles/cycle
+═══════════════════════════════════════════════════════════════════════════════════════
+
+ ┌────────────────────────────────────────────────────────────────────────────────┐
+ │  WHAT HAIKU RECEIVES (per article — one API call each):                       │
+ │                                                                                │
+ │  System prompt (~350 tokens, constant):                                       │
+ │    "You are a military intelligence analyst monitoring media for               │
+ │     signs of military attacks or invasions targeting Poland,                   │
+ │     Lithuania, Latvia, or Estonia..."                                          │
+ │    + rules: what IS vs ISN'T an attack                                        │
+ │    + instruction: do NOT infer countries from source name                     │
+ │    + urgency 9-10 ONLY for direct attacks on PL/LT/LV/EE                    │
+ │    + urgency scale with examples                                              │
+ │                                                                                │
+ │  User message — ONLY these 6 fields from the article:                         │
+ │  ┌────────────────────────────────────────────────────────────────────────┐   │
+ │  │  Source: GoogleNews:drone incursion Poland (google_news)              │   │
+ │  │  Language: en                                                         │   │
+ │  │  Published: 2026-03-29T15:22:45+00:00                                │   │
+ │  │  Title: Russian drone violates Polish airspace                       │   │
+ │  │  Summary: A military drone entered Polish airspace over the eastern  │   │
+ │  │           border region near Lublin early Sunday morning...          │   │
+ │  └────────────────────────────────────────────────────────────────────────┘   │
+ │                                                                                │
+ │  ⚠ NOT sent to Haiku:                                                         │
+ │    source_url, fetched_at, raw_metadata, id, url_hash,                        │
+ │    title_normalized, keyword_match results, article body content               │
+ │                                                                                │
+ │  API parameters:                                                               │
+ │    model ......... claude-haiku-4-5-20251001                                  │
+ │    max_tokens .... 512                                                         │
+ │    temperature ... 0.0 (deterministic)                                         │
+ │                                                                                │
+ │  Avg input: ~1,000 tokens | Avg output: ~148 tokens                           │
+ │  Cost: ~$0.14/day (~$4.20/month) at ~100 articles/day                         │
+ └────────────────────────────────────────────────────────────────────────────────┘
+
+ ┌────────────────────────────────────────────────────────────────────────────────┐
+ │  WHAT HAIKU RETURNS (strict JSON, no markdown):                               │
+ │                                                                                │
+ │  {                                                                             │
+ │    "is_military_event": true/false,                                           │
+ │    "event_type": "drone_attack",          ← from fixed enum:                 │
+ │                                              invasion, airstrike,             │
+ │                                              missile_strike, border_crossing, │
+ │                                              airspace_violation, naval_block, │
+ │                                              cyber_attack, troop_movement,    │
+ │                                              artillery_shelling, drone_attack,│
+ │                                              other, none                      │
+ │    "urgency_score": 7,                    ← clamped to 1-10                  │
+ │    "affected_countries": ["PL"],          ← only explicitly mentioned        │
+ │    "aggressor": "RU",                     ← RU | BY | unknown | none        │
+ │    "is_new_event": true,                  ← vs. follow-up coverage           │
+ │    "confidence": 0.85,                    ← clamped to 0.0-1.0              │
+ │    "summary_pl": "Rosyjski dron naruszył  ← Polish, 1-2 sentences           │
+ │                   polską przestrzeń..."      for phone alert TTS             │
+ │  }                                                                             │
+ │                                                                                │
+ │  Urgency scale:                                                                │
+ │    1-2: Routine military news, no threat                                      │
+ │    3-4: Minor incident, low concern                                           │
+ │    5-6: Notable (airspace violation, border provocation, troop movement)      │
+ │    7-8: Serious (shots fired, large airspace violation, cyberattack)          │
+ │    9-10: Active attack/invasion on PL/LT/LV/EE territory (ONLY)             │
+ └────────────────────────────────────────────────────────────────────────────────┘
+
+ Stored in DB: classifications table
+   (all Haiku fields + classified_at, model_used, input_tokens, output_tokens)
+
+ Error handling: 1 retry with 5s delay on API error, then skip article.
+ Token tracking: daily input/output totals logged with estimated cost.
+
+                                      │
+                                      ▼
+
+═══════════════════════════════════════════════════════════════════════════════════════
+ STAGE 6: CORROBORATE                                      groups into events
+═══════════════════════════════════════════════════════════════════════════════════════
+
+ ENTRY GATE: only classifications with is_military_event=true AND urgency >= 5
+             (lower urgency: stored in DB for auditing, but no event created)
+
+ For each qualifying classification, try to match to an existing event:
+
+ ┌────────────────────────────────────────────────────────────────────────────────┐
+ │  ALL FOUR CRITERIA must pass to match:                                        │
+ │                                                                                │
+ │  ① Event type compatible?                                                     │
+ │     e.g. missile_strike <-> airstrike = YES (compatible types defined in map) │
+ │          cyber_attack <-> naval_blockade = NO                                 │
+ │                                                                                │
+ │  ② Shared affected country?                                                  │
+ │     set(new.countries) ∩ set(event.countries) must not be empty               │
+ │                                                                                │
+ │  ③ Within time window?                                                        │
+ │     |classified_at - event.first_seen_at| <= 60 min (configurable)            │
+ │                                                                                │
+ │  ④ Summary similarity >= 55%?                                                 │
+ │     rapidfuzz.fuzz.token_sort_ratio(new.summary_pl, event.summary_pl)         │
+ └────────────────────────────────────────────────────────────────────────────────┘
+
+ Match found → UPDATE existing event:
+   • Append article_id to event.article_ids
+   • Check source independence:
+     - Same domain (URL)?       → NOT independent (source_count unchanged)
+     - Title similarity >= 90%? → syndication, NOT independent
+     - Otherwise                → source_count += 1
+   • urgency_score = max(existing, new)
+   • Merge affected_countries (union)
+
+ No match → CREATE new event (source_count = 1)
+
+ Alert status determination:
+
+    urgency >= 9  AND  sources >= 2  ──→  phone_call
+    urgency >= 9  AND  sources < 2   ──→  sms  (waiting for corroboration)
+    urgency 7-8   (any sources)      ──→  sms
+    urgency 5-6   (any sources)      ──→  sms
+    urgency < 5                      ──→  log_only
+
+                                      │
+                                      ▼
+
+═══════════════════════════════════════════════════════════════════════════════════════
+ STAGE 7: ALERT                                            phone / SMS / log
+═══════════════════════════════════════════════════════════════════════════════════════
+
+ ┌────────────────────────────────────────────────────────────────────────────────┐
+ │  PRE-FLIGHT CHECKS (per event):                                               │
+ │                                                                                │
+ │  • Already acknowledged + within 6h cooldown? → skip entirely                 │
+ │  • Acknowledged but has new sources?          → send UPDATE SMS only          │
+ │  • Phone call currently in progress?          → skip (prevent duplicates)     │
+ └────────────────────────────────────────────────────────────────────────────────┘
+
+ ┌────────────────────────────────────────────────────────────────────────────────┐
+ │                                                                                │
+ │  SMS FLOW                                                                      │
+ │  ─────────                                                                     │
+ │  Formatted message sent via Twilio:                                            │
+ │                                                                                │
+ │    PROJECT SENTINEL: Atak dronow                                              │
+ │    Pilnosc: 8/10                                                               │
+ │    Kraje: PL                                                                   │
+ │    Agresor: RU                                                                 │
+ │                                                                                │
+ │    Rosyjski dron naruszyl polska przestrzen powietrzna...                     │
+ │                                                                                │
+ │    Zrodla (2):                                                                 │
+ │    - Defence24: Rosyjski dron nad Polska                                      │
+ │      https://defence24.pl/...                                                  │
+ │    - RMF24: Dron naruszyl przestrzen powietrzna RP                            │
+ │      https://rmf24.pl/...                                                      │
+ │                                                                                │
+ │    Wykryto: 2026-03-30 15:22 UTC                                              │
+ │                                                                                │
+ │  → Recorded in alert_records table → Done                                      │
+ │                                                                                │
+ └────────────────────────────────────────────────────────────────────────────────┘
+
+ ┌────────────────────────────────────────────────────────────────────────────────┐
+ │                                                                                │
+ │  PHONE CALL FLOW (urgency 9-10 + 2+ independent sources)                     │
+ │  ───────────────                                                               │
+ │                                                                                │
+ │  Step 1: Send SMS with 6-digit confirmation code                              │
+ │                                                                                │
+ │    PROJECT SENTINEL: Uderzenie rakietowe                                      │
+ │                                                                                │
+ │    Rakiety uderzyly w terytorium Polski...                                    │
+ │                                                                                │
+ │    Odpowiedz kodem aby potwierdzic odbior alertu: 356222                     │
+ │    Telefon bedzie dzwonil dopoki nie potwierdzisz.                            │
+ │                                                                                │
+ │  Step 2: Call retry loop (up to 3 attempts per round)                         │
+ │                                                                                │
+ │    ┌──────────┐      ┌───────────────┐      ┌──────────────────┐             │
+ │    │ Check    │ NO   │ Place call    │      │ Wait up to 90s   │             │
+ │    │ SMS      │─────→│ via Twilio    │─────→│ Poll SMS every   │             │
+ │    │ reply?   │      │ (TTS Polish)  │      │ 5s for code      │             │
+ │    └────┬─────┘      └───────────────┘      └───────┬──────────┘             │
+ │         │ YES                                        │                        │
+ │         ▼                                            ▼                        │
+ │    ACKNOWLEDGED                            Code received?                     │
+ │    • event.acknowledged_at = now()           YES → ACKNOWLEDGED               │
+ │    • send confirmation SMS                   NO  → wait 10s → next attempt   │
+ │    • stop calling                                  (up to 3 attempts)         │
+ │                                                                                │
+ │  After 3 failed attempts in this round:                                       │
+ │    → event.alert_status = "retry_pending"                                     │
+ │    → retry after 5 min interval on next pipeline cycle                        │
+ │    → NEVER gives up until SMS confirmation code received                      │
+ │                                                                                │
+ │  Call message (spoken twice in Polish via Polly.Ewa TTS):                     │
+ │    "Uwaga! Alert systemu Project Sentinel.                                    │
+ │     Uderzenie rakietowe wykryte. {summary_pl}.                                │
+ │     Zrodla potwierdzajace: 2. Pilnosc: 10 na 10.                             │
+ │     Powtarzam. [message repeated]                                             │
+ │     Potwierdz odbior alertu. Odpisz na SMS kodem, ktory otrzymales."         │
+ │                                                                                │
+ └────────────────────────────────────────────────────────────────────────────────┘
+
+                                      │
+                                      ▼
+
+═══════════════════════════════════════════════════════════════════════════════════════
+ POST-CYCLE                                                cleanup + health
+═══════════════════════════════════════════════════════════════════════════════════════
+
+ • Check pending calls from previous cycles (poll Twilio for status)
+ • Cleanup: delete articles older than 30 days, events older than 90 days
+ • Write data/health.json:
+     is_healthy, last_cycle_at, last_cycle_duration_seconds,
+     consecutive_failures, fetcher_status (per-fetcher health)
+ • Log daily summary at day rollover
+
+
+═══════════════════════════════════════════════════════════════════════════════════════
+ DATA REDUCTION FUNNEL (typical numbers from production)
+═══════════════════════════════════════════════════════════════════════════════════════
+
+ ~1000 articles fetched
+   │
+   ├── DEDUP ────────→ ~300-500 unique          (50-70% dropped)
+   │
+   ├── KEYWORDS ─────→ ~10-30 relevant          (85-95% dropped)  ← MAIN GATE
+   │
+   ├── CLASSIFY ─────→ ~5-15 military=true      (50-70% not military)
+   │
+   ├── CORROBORATE ──→ ~1-5 events              (grouped, urgency >= 5)
+   │
+   └── ALERT ────────→ 0-2 SMS, rare phone call
+
+
+═══════════════════════════════════════════════════════════════════════════════════════
+ KEY INSIGHT
+═══════════════════════════════════════════════════════════════════════════════════════
+
+ Haiku only sees 6 fields: source_name, source_type, language, published_at,
+ title, summary. It never sees the URL, keyword match results, article body,
+ or any other data.
+
+ The keyword filter is the brutal gatekeeper — 85%+ of articles never reach
+ Haiku at all. This is why keyword gaps are the most dangerous failure mode:
+ a missing keyword means a relevant article is silently dropped before the
+ AI ever evaluates it.
+
+ The article body content is never fetched or stored by any stage. The
+ "summary" field is whatever snippet the source provides — an RSS
+ <description> tag, the first 500 chars of a Telegram message, or nothing
+ at all (GDELT provides no summary). ~47% of classified articles have
+ summaries under 150 characters.
+```
