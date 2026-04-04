@@ -428,7 +428,7 @@ sources:
       priority: 1
     api_id: ${TELEGRAM_API_ID}
     api_hash: ${TELEGRAM_API_HASH}
-    session_name: sentinel_session
+    session_name: /var/lib/sentinel/sentinel_session
 processing:
   dedup:
     same_source_title_threshold: 85
@@ -503,12 +503,12 @@ scheduler:
   interval_minutes: 15
   jitter_seconds: 30
 database:
-  path: data/sentinel.db
+  path: /var/lib/sentinel/sentinel.db
   article_retention_days: 30
   event_retention_days: 90
 logging:
   level: INFO
-  file: logs/sentinel.log
+  file: /var/log/sentinel/sentinel.log
   max_size_mb: 50
   backup_count: 5
 testing:
