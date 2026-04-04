@@ -4,9 +4,9 @@ description: >-
   Deploy Project Sentinel to production. Runs pre-flight checks (uncommitted changes,
   failing tests, unmerged branch), merges current branch to master, tags the deploy commit,
   pushes master and tag to remote, creates a full server backup (code, config, database,
-  Telegram session), deploys code via rsync, rebuilds the venv if needed, restarts the
-  service, and verifies everything is running. Only invoke when the user explicitly calls
-  /deploy. Do NOT auto-trigger.
+  Telegram session), pulls the tagged commit from GitHub on the server, rebuilds the venv
+  if needed, restarts the service, and verifies everything is running. Only invoke when
+  the user explicitly calls /deploy. Do NOT auto-trigger.
 ---
 
 # /deploy — Project Sentinel Production Deployment
@@ -26,7 +26,7 @@ You are deploying Project Sentinel to its production Hetzner VPS. Invoking /depl
 <server_file_layout>
 | Path | Contents | Owner | Notes |
 |------|----------|-------|-------|
-| `/home/deploy/sentinel/` | Application code | deploy:deploy | Deployed via rsync |
+| `/home/deploy/sentinel/` | Application code (git clone) | deploy:deploy | Deployed via git pull from GitHub |
 | `/home/deploy/sentinel/venv/` | Python venv (server-side) | deploy:deploy | Rebuilt on server after deploy |
 | `/etc/sentinel/config.yaml` | Live config | root:sentinel 640 | Needs sudo to read |
 | `/etc/sentinel/sentinel.env` | API keys and secrets | root:deploy 640 | NEVER touch — not backed up, not deployed |
@@ -35,6 +35,23 @@ You are deploying Project Sentinel to its production Hetzner VPS. Invoking /depl
 | `/var/lib/sentinel/health.json` | Health status | sentinel:sentinel | Updated every pipeline cycle |
 | `/home/deploy/backups/` | Backup storage | deploy:deploy | Deploy backups stored here |
 </server_file_layout>
+
+---
+
+## Prerequisites (One-Time Setup)
+
+The server must have a git clone of the repository at `/home/deploy/sentinel/` with a GitHub deploy key configured for SSH access. See `docs/migration-git-deploy.md` for the full step-by-step migration guide. In short:
+
+1. On the server, generate a deploy key: `ssh-keygen -t ed25519 -f ~/.ssh/github_deploy -N ""`
+2. Add the public key (`~/.ssh/github_deploy.pub`) as a **Deploy Key** in GitHub repo settings (read-only is sufficient)
+3. Configure SSH on the server (`~/.ssh/config`):
+   ```
+   Host github.com
+     IdentityFile ~/.ssh/github_deploy
+     IdentitiesOnly yes
+   ```
+4. Switch remote to SSH: `git remote set-url origin git@github.com:kossakowski/project-sentinel.git`
+5. Verify: `cd /home/deploy/sentinel && git fetch --tags origin`
 
 ---
 
@@ -129,9 +146,9 @@ mkdir -p "$BACKUP_DIR"
 
 echo "Creating backup at $BACKUP_DIR ..."
 
-# 1. Application code (full archive of current server state)
+# 1. Application code (full archive of current server state, excluding .git)
 echo "  Backing up code..."
-tar -czf "$BACKUP_DIR/code.tar.gz" -C /home/deploy sentinel/
+tar -czf "$BACKUP_DIR/code.tar.gz" --exclude='.git' -C /home/deploy sentinel/
 
 # 2. Live config (requires sudo — root:sentinel 640)
 echo "  Backing up config..."
@@ -160,31 +177,17 @@ On success, report the backup location and its contents.
 
 ### Step 6: Deploy Code
 
-**6a. Sync code via rsync** (transfers only changed files, excludes build artifacts and local state):
+**6a. Pull code from GitHub** (server fetches the exact tagged commit directly from the remote):
 
 ```bash
-rsync -avz --delete \
-  --exclude '.git' \
-  --exclude '.venv' \
-  --exclude 'venv' \
-  --exclude '__pycache__' \
-  --exclude '*.pyc' \
-  --exclude '.coverage' \
-  --exclude '.pytest_cache' \
-  --exclude '.code-refiner-state' \
-  --exclude '.claude' \
-  --exclude 'data' \
-  --exclude '.env' \
-  --exclude 'sentinel_session.session' \
-  --exclude 'logs' \
-  -e 'ssh -p 2222' \
-  /home/kossa/code/project-sentinel/ \
-  deploy@178.104.76.254:/home/deploy/sentinel/
+ssh -p 2222 deploy@178.104.76.254 "cd /home/deploy/sentinel && git fetch --tags origin && git checkout $DEPLOY_TAG"
 ```
 
-The `--delete` flag removes files on the server that no longer exist locally (excluding the patterns above, which are preserved on the server). This ensures the server code exactly mirrors the `master` branch.
+This puts the server on the exact tagged commit (detached HEAD — expected for production). Tracked files are updated to match the tag; untracked server files (`venv/`, `data/`, `logs/`, etc.) are preserved because they're in `.gitignore`.
 
-If rsync fails → **STOP.** Report the error.
+If `git fetch` fails → **STOP:** "Failed to fetch from GitHub on the server. Check the deploy key and network access."
+
+If `git checkout` fails (e.g., uncommitted changes on the server) → **STOP:** "Server working tree has local modifications. Investigate before deploying." Show the error output. Do NOT run `git checkout --force` — local server edits may be intentional emergency patches.
 
 **6b. Rebuild Python dependencies:**
 
@@ -246,7 +249,7 @@ After all steps succeed, output this summary:
 - Pushed to remote: master + {tag}
 - Backup location: /home/deploy/backups/deploy-{timestamp}/
 - Backup contents: code.tar.gz, config.yaml, sentinel.db, sentinel_session.session
-- rsync: {N} files transferred, {size} total
+- Git checkout: {DEPLOY_TAG} on server
 - pip install: {success/no changes}
 - Service status: active (running)
 - Health: {health.json contents or "awaiting first cycle"}
