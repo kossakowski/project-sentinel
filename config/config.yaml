@@ -38,6 +38,10 @@ monitoring:
       - carpet bombing
       - total war
       - war declared
+      - nuclear drill
+      - nuclear drills
+      - mutual defence clause
+      - mutual defense clause
       high:
       - military buildup
       - troops massing
@@ -69,6 +73,20 @@ monitoring:
       - Iskander
       - Kinzhal
       - Kalibr
+      - sabotage
+      - arson
+      - hybrid war
+      - hybrid warfare
+      - preparing for war
+      - war buildup
+      - war build-up
+      - nuclear forces
+      - espionage
+      - GRU
+      - undersea cable
+      - submarine cable
+      - border tunnel
+      - Article 42.7
     pl:
       critical:
       - atak militarny
@@ -111,6 +129,15 @@ monitoring:
       - Iskander
       - Kindżał
       - Kalibr
+      - sabotaż
+      - dywersja
+      - podpalenie
+      - wojna hybrydowa
+      - przygotowania do wojny
+      - siły nuklearne
+      - szpiegostwo
+      - GRU
+      - kabel podmorski
     uk:
       critical:
       - військовий напад
@@ -137,6 +164,11 @@ monitoring:
       - Іскандер
       - Кинджал
       - Калібр
+      - саботаж
+      - диверсія
+      - гібридна війна
+      - шпигунство
+      - ГРУ
     ru:
       critical:
       - военная операция
@@ -163,6 +195,11 @@ monitoring:
       - Искандер
       - Кинжал
       - Калибр
+      - саботаж
+      - диверсия
+      - гибридная война
+      - шпионаж
+      - ГРУ
   exclude_keywords:
     en:
     - exercise

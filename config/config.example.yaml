@@ -54,6 +54,10 @@ monitoring:
         - "carpet bombing"
         - "total war"
         - "war declared"
+        - "nuclear drill"
+        - "nuclear drills"
+        - "mutual defence clause"
+        - "mutual defense clause"
       high:
         - "military buildup"
         - "troops massing"
@@ -91,10 +95,23 @@ monitoring:
         - "scrambled"
         - "scrambles"
         - "sabotage"
+        - "arson"
         - "GPS jamming"
         - "cyberattack"
         - "cyberattacks"
         - "Baltic states"
+        - "hybrid war"
+        - "hybrid warfare"
+        - "preparing for war"
+        - "war buildup"
+        - "war build-up"
+        - "nuclear forces"
+        - "espionage"
+        - "GRU"
+        - "undersea cable"
+        - "submarine cable"
+        - "border tunnel"
+        - "Article 42.7"
 
     pl:
       critical:
@@ -146,7 +163,14 @@ monitoring:
         - "bezzałogowc"
         - "rakiet"
         - "sabotaż"
+        - "dywersja"
+        - "podpalenie"
         - "wojna hybrydowa"
+        - "przygotowania do wojny"
+        - "siły nuklearne"
+        - "szpiegostwo"
+        - "GRU"
+        - "kabel podmorski"
 
     uk:
       critical:
@@ -177,6 +201,11 @@ monitoring:
         - "безпілотник"
         - "крилат"
         - "пуски ракет"
+        - "саботаж"
+        - "диверсія"
+        - "гібридна війна"
+        - "шпигунство"
+        - "ГРУ"
 
     ru:
       critical:
@@ -204,6 +233,11 @@ monitoring:
         - "Искандер"
         - "Кинжал"
         - "Калибр"
+        - "саботаж"
+        - "диверсия"
+        - "гибридная война"
+        - "шпионаж"
+        - "ГРУ"
 
   # Articles matching these keywords (without critical match) are filtered out
   exclude_keywords:
