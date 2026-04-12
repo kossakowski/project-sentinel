@@ -42,6 +42,15 @@ monitoring:
       - nuclear drills
       - mutual defence clause
       - mutual defense clause
+      - open fire
+      - threatens Baltic
+      - warns Baltic states
+      - Russian occupation
+      - withdraw from NATO
+      - leave NATO
+      - assassination plot
+      - deep strikes
+      - Suwałki Gap
       high:
       - military buildup
       - troops massing
@@ -87,6 +96,19 @@ monitoring:
       - submarine cable
       - border tunnel
       - Article 42.7
+      - UAV
+      - unmanned aerial vehicle
+      - shadow fleet
+      - combat readiness
+      - emergency stockpile
+      - Russian aggression
+      - destabilization
+      - Russian submarines
+      - eastern flank
+      - Kaliningrad
+      - test NATO
+      - Il-20
+      - spy plane
     pl:
       critical:
       - atak militarny
@@ -106,6 +128,12 @@ monitoring:
       - ostrzał
       - wypowiedzenie wojny
       - agresja zbrojna
+      - przesmyk suwalski
+      - wyjście z NATO
+      - wyjście USA z NATO
+      - rosyjska okupacja
+      - zamach
+      - zabójstwa polityczne
       high:
       - koncentracja wojsk
       - naruszenie przestrzeni powietrznej
@@ -138,6 +166,23 @@ monitoring:
       - szpiegostwo
       - GRU
       - kabel podmorski
+      - przechwyciły
+      - przechwycenie
+      - poderwała myśliwce
+      - Il-20
+      - bez transpondera
+      - flota cieni
+      - destabilizacja
+      - okręty podwodne
+      - gotowość bojowa
+      - Kłajpeda
+      - Narwa
+      - Dyneburg
+      - podejrzane manewry
+      - przenieść wojska
+      - rosyjskie bazy
+      - Kaliningrad
+      - wschodnia flanka
     uk:
       critical:
       - військовий напад
