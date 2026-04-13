@@ -1,5 +1,8 @@
 # Phase 4: Classification Engine
 
+> STATUS: COMPLETE — implemented in production
+> KEY FILES: `sentinel/classification/classifier.py`, `sentinel/classification/corroborator.py`
+
 ## Objective
 Use Claude Haiku 4.5 to classify pre-filtered articles, score urgency, and detect when multiple sources report the same event (corroboration).
 

@@ -5,6 +5,7 @@ Real-time monitoring bot that scans media sources (PL/EN/UA/RU) for military att
 
 ## Documentation
 - [Architecture](docs/architecture.md) -- system design, data flow, components
+- [Pipeline Reference](docs/pipeline.md) -- step-by-step data flow from source collection to phone alert
 - [Implementation Phases](docs/phases.md) -- 7-phase build plan with test gates
 - Phase specs: [1-Infrastructure](docs/phase-1-infrastructure.md) | [2-Fetchers](docs/phase-2-fetchers.md) | [3-Processing](docs/phase-3-processing.md) | [4-Classification](docs/phase-4-classification.md) | [5-Alerts](docs/phase-5-alerts.md) | [6-Scheduler](docs/phase-6-scheduler.md) | [7-Deployment](docs/phase-7-deployment.md)
 - [Configuration Reference](docs/config-reference.md) -- every configurable parameter
@@ -19,7 +20,7 @@ Real-time monitoring bot that scans media sources (PL/EN/UA/RU) for military att
 - Run: `./run.sh` (auto-activates venv, forwards all args to `sentinel.py`)
 - Run once: `./run.sh --once` (single pipeline cycle, then exit)
 - Dry run: `./run.sh --dry-run`
-- Continuous dry run: `./run.sh --dry-run` (default mode, dual-lane: fast every 3 min, slow every 15 min)
+- Continuous dry run: `./run.sh --dry-run` (dual-lane scheduler, no Twilio calls; fast every 3 min, slow every 15 min)
 - Test single headline: `./run.sh --test-headline "headline text here"`
 - Test headlines file: `./run.sh --test-file tests/fixtures/test_headlines.yaml`
 - Test alert: `./run.sh --test-alert` (fire real phone call via Twilio with fake event)
@@ -53,5 +54,5 @@ This project was renamed twice: `twilio-playground` → `sentinel` → `project-
 - **Use Claude Haiku 4.5** (`claude-haiku-4-5-20251001`) for classification -- cost-efficient.
 - **No quiet hours.** This is a critical alert system -- call at any hour.
 - **Don't spam.** Call once per event, then switch to SMS/WhatsApp for updates.
-- **Corroboration required.** Phone calls require 2+ independent sources confirming the event.
+- **Corroboration required.** Phone calls require independent source corroboration (configured via `classification.corroboration_required`; live value is `1`).
 - Config format: YAML. Database: SQLite. Scheduler: APScheduler (dual-lane: fast lane every 3 min for Telegram + priority-1 RSS + Google News, slow lane every 15 min for all sources including GDELT).

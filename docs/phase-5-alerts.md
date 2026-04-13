@@ -1,5 +1,8 @@
 # Phase 5: Alert System
 
+> STATUS: COMPLETE — implemented in production
+> KEY FILES: `sentinel/alerts/twilio_client.py`, `sentinel/alerts/state_machine.py`, `sentinel/alerts/dispatcher.py`
+
 ## Objective
 Dispatch alerts via Twilio (phone call, SMS, WhatsApp) based on event urgency, manage call state and retries, prevent alert spam, and ensure the user is notified exactly once per event (with follow-up updates via text).
 
@@ -12,23 +15,24 @@ Wraps the Twilio SDK for outbound calls, SMS, and WhatsApp.
 #### Phone Call
 
 ```python
-def make_alert_call(self, phone_number: str, message_pl: str, event_id: str,
-                    confirmation_code: str) -> AlertRecord:
+def make_alert_call(self, phone_number: str, message_pl: str, event_id: str) -> AlertRecord:
     """Place an outbound call with Polish TTS message.
 
-    The call instructs the user to check WhatsApp and reply with the
-    6-digit confirmation code to acknowledge receipt.
+    The call instructs the operator to reply to the SMS they already
+    received with the 6-digit confirmation code to acknowledge receipt.
     """
     twiml = (
         f'<Response>'
         f'<Say language="pl-PL" voice="Polly.Ewa">'
-        f'Uwaga! Alert systemu Project Sentinel. {message_pl}. '
-        f'Sprawdź WhatsApp i odpowiedz kodem: {confirmation_code}.'
+        f'Uwaga! Alert systemu Project Sentinel. {message_pl}.'
         f'</Say>'
         f'<Pause length="2"/>'
         f'<Say language="pl-PL" voice="Polly.Ewa">'
-        f'Powtarzam. {message_pl}. '
-        f'Sprawdź WhatsApp i odpowiedz kodem: {confirmation_code}.'
+        f'Powtarzam. {message_pl}.'
+        f'</Say>'
+        f'<Pause length="1"/>'
+        f'<Say language="pl-PL" voice="Polly.Ewa">'
+        f'Potwierdź odbiór alertu. Odpisz na SMS kodem, który otrzymałeś.'
         f'</Say>'
         f'</Response>'
     )
@@ -56,9 +60,9 @@ def make_alert_call(self, phone_number: str, message_pl: str, event_id: str,
 The phone call speaks in Polish using Amazon Polly's `Ewa` voice (native Polish):
 1. "Uwaga! Alert systemu Project Sentinel." (Attention! Project Sentinel system alert.)
 2. The actual alert message (from `summary_pl`)
-3. Instructs the user to check WhatsApp and reply with the 6-digit confirmation code
-4. 2-second pause
-5. Repeats the alert message and confirmation code (in case user just woke up)
+3. 2-second pause
+4. Repeats the alert message (in case user just woke up)
+5. Instructs the operator to reply to the SMS they already received with the 6-digit confirmation code
 
 #### SMS
 
@@ -129,41 +133,44 @@ def send_whatsapp(self, phone_number: str, message: str, event_id: str) -> Alert
     )
 ```
 
-#### WhatsApp Confirmation Code
+#### SMS Confirmation Code
 
-Before the call loop starts, the system sends a WhatsApp message with a random 6-digit confirmation code. The user must reply with this code on WhatsApp to acknowledge receipt.
+Before the call loop starts, the system sends an SMS with a random 6-digit confirmation code. The operator must reply to that SMS with the code to acknowledge receipt.
 
 ```python
-def send_confirmation_code(self, phone_number: str, code: str, event_id: str) -> AlertRecord:
-    """Send a WhatsApp message with a 6-digit confirmation code."""
+def _send_confirmation_sms(self, event: Event) -> None:
+    """Send an SMS with a 6-digit confirmation code before the call loop."""
+    self._confirmation_code = str(random.randint(100000, 999999))
     message = (
         f"🚨 PROJECT SENTINEL ALERT 🚨\n"
         f"Otrzymasz połączenie alarmowe.\n"
-        f"Aby potwierdzić odbiór, odpowiedz kodem: {code}"
+        f"Aby potwierdzić odbiór, odpisz na tę wiadomość kodem: {self._confirmation_code}"
     )
-    return self.send_whatsapp(phone_number, message, event_id)
+    self.twilio.send_sms(self.config.alerts.phone_number, message, event.id)
 
-def check_confirmation(self, phone_number: str, code: str) -> bool:
-    """Poll incoming WhatsApp messages to check if the user replied with the code."""
-    messages = self.client.messages.list(
-        from_=f"whatsapp:{phone_number}",
-        to=self.twilio_whatsapp,
+def _check_sms_confirmation(self, since: datetime) -> bool:
+    """Poll incoming SMS messages to check if the operator replied with the code."""
+    messages = self.twilio.client.messages.list(
+        from_=self.config.alerts.phone_number,
+        to=self.twilio.twilio_phone,
         limit=10,
     )
     for msg in messages:
-        if code in msg.body.strip():
+        if self._confirmation_code in msg.body:
             return True
     return False
 ```
 
+The confirmation code is stored in-memory (`self._confirmation_code`) on the `AlertStateMachine` instance. It is not persisted to the database — if the process restarts mid-call-loop, the code is lost.
+
 #### Call Loop
 
-The full call sequence with WhatsApp code confirmation:
+The full call sequence with SMS code confirmation:
 
-1. Generate a random 6-digit code
-2. Send WhatsApp message with the code
+1. Generate a random 6-digit code and store in `self._confirmation_code`
+2. Send SMS with the code ("Odpisz na tę wiadomość kodem: {code}")
 3. Place call (up to **5** attempts, 10 seconds between calls)
-4. After each call attempt, poll WhatsApp for the code reply
+4. After each call attempt, poll inbound SMS for the code reply
 5. If code confirmed → acknowledge event
 6. If all 5 calls exhausted without confirmation → mark `retry_pending`
 7. Next pipeline cycle retries after `retry_interval_minutes` (default 5)
@@ -181,7 +188,7 @@ Tracks the lifecycle of each alert to prevent spam and manage retries.
                     └────────────┬──────────────┘
                                  │
                     ┌────────────▼──────────────┐
-                    │   SEND WHATSAPP CODE      │
+                    │    SEND SMS WITH CODE     │
                     │  (random 6-digit code)     │
                     └────────────┬──────────────┘
                                  │
@@ -192,8 +199,8 @@ Tracks the lifecycle of each alert to prevent spam and manage retries.
                     └────────────┬──────────────┘
                                  │
                     ┌────────────▼──────────────┐
-                    │  CHECK WHATSAPP REPLY     │
-                    │  (poll for code after      │
+                    │    CHECK SMS REPLY        │
+                    │  (poll inbound SMS after   │
                     │   each call attempt)       │
                     └──────┬─────────────┬──────┘
                            │             │
@@ -204,11 +211,11 @@ Tracks the lifecycle of each alert to prevent spam and manage retries.
                      │                    │
           ┌──────────▼────────┐  ┌───────▼──────────────┐
           │  ACKNOWLEDGED     │  │  RETRY CALL          │
-          │  Send confirm SMS │  │  (next attempt)      │
-          │  Send WhatsApp    │  └──┬──────────────┬────┘
-          │  with source links│     │              │
-          │  Set cooldown     │  ┌──▼────┐   ┌────▼────────┐
-          └───────────────────┘  │ CALL  │   │ ALL 5 CALLS │
+          │  Send follow-up   │  │  (next attempt)      │
+          │  SMS with details │  └──┬──────────────┬────┘
+          │  Set cooldown     │     │              │
+          └───────────────────┘  ┌──▼────┐   ┌────▼────────┐
+                                 │ CALL  │   │ ALL 5 CALLS │
                                  │ AGAIN │   │ EXHAUSTED   │
                                  └───────┘   └────┬────────┘
                                                    │
@@ -257,23 +264,20 @@ class AlertStateMachine:
         # action == "log_only" → do nothing
 
     def check_pending_calls(self) -> None:
-        """Check WhatsApp for confirmation code replies on pending calls.
+        """Check for SMS confirmation code replies on pending calls.
         Called on each scheduler cycle."""
         pending_calls = self.db.get_pending_call_records()
         for record in pending_calls:
-            confirmed = self.twilio.check_confirmation(
-                record.phone_number, record.confirmation_code
-            )
-            self._handle_call_result(record, confirmed)
+            self._handle_call_result(record, self._check_sms_confirmation(since=record.sent_at))
 ```
 
 #### Post-Acknowledgment Behavior
 
-After event is acknowledged (user replies with 6-digit code on WhatsApp):
-1. Send confirmation SMS with event details
-2. Send WhatsApp message with article source links
-3. Start cooldown (default: 6 hours)
-4. If new sources arrive during cooldown → SMS update only
+After event is acknowledged (operator replies to SMS with 6-digit code):
+1. Event is marked with `acknowledged_at` timestamp
+2. A follow-up SMS with full event details and source list is sent
+3. Cooldown starts (default: 6 hours)
+4. If new sources arrive during cooldown → brief SMS update only
 5. A completely NEW event (different event_type or different country) bypasses cooldown
 
 #### Preventing Alert Spam
@@ -283,7 +287,7 @@ Multiple safeguards:
 2. **Cooldown period** -- no re-call for same event for N hours
 3. **Max retries** -- max 5 call attempts per call loop, then `retry_pending` until next cycle
 4. **Acknowledged flag** -- once acknowledged, only SMS updates
-5. **Source count threshold** -- phone calls require 2+ independent sources
+5. **Source count threshold** -- phone calls require corroboration (see `classification.corroboration_required` in config; live value is `1`)
 
 ### 5.3 Alert Dispatcher (`sentinel/alerts/dispatcher.py`)
 
@@ -322,7 +326,7 @@ class AlertDispatcher:
 | 9-10 | 2+ independent | Phone call → SMS follow-up |
 | 9-10 | 1 only | SMS (wait for corroboration before calling) |
 | 7-8 | 1+ | SMS |
-| 5-6 | 1+ | WhatsApp |
+| 5-6 | 1+ | WhatsApp (routed to SMS in code) |
 | 1-4 | any | Log only |
 
 Note: If a single-source urgency-10 event gets corroborated later (within `corroboration_window_minutes`), the system upgrades to a phone call at that point.
@@ -382,23 +386,23 @@ Pilność: {urgency_score}/10
 ### test_twilio_client.py
 1. `test_make_call_returns_record` -- call creates AlertRecord with correct fields
 2. `test_call_twiml_polish` -- TwiML contains Polish language tag and Polly.Ewa voice
-3. `test_call_message_repeated` -- TwiML contains message and confirmation code twice (for waking user)
+3. `test_call_message_repeated` -- TwiML contains message twice with SMS reply instruction (for waking user)
 4. `test_send_sms_returns_record` -- SMS creates AlertRecord
 5. `test_sms_truncation` -- message > 1600 chars truncated
 6. `test_send_whatsapp_returns_record` -- WhatsApp creates AlertRecord
-7. `test_send_confirmation_code` -- sends WhatsApp message with 6-digit code
-8. `test_check_confirmation_found` -- detects correct code in WhatsApp reply
-9. `test_check_confirmation_not_found` -- returns False when no matching reply
+7. `test_send_confirmation_sms` -- sends SMS with 6-digit confirmation code before call loop
+8. `test_check_sms_confirmation_found` -- detects correct code in inbound SMS reply
+9. `test_check_sms_confirmation_not_found` -- returns False when no matching SMS reply
 10. `test_twilio_error_handled` -- TwilioRestException logged, not raised
 
 ### test_state_machine.py
-1. `test_new_critical_event_triggers_call` -- urgency 10 + 2 sources → phone call
-2. `test_single_source_critical_triggers_sms` -- urgency 10 + 1 source → SMS only
+1. `test_new_critical_event_triggers_call` -- urgency 10 + corroboration met → phone call
+2. `test_single_source_critical_triggers_sms` -- urgency 10, corroboration not met → SMS only
 3. `test_high_urgency_triggers_sms` -- urgency 8 → SMS
-4. `test_medium_urgency_triggers_whatsapp` -- urgency 6 → WhatsApp
+4. `test_medium_urgency_triggers_sms` -- urgency 6 → SMS (WhatsApp action routed to SMS)
 5. `test_low_urgency_logs_only` -- urgency 3 → no alert sent
-6. `test_whatsapp_code_confirmed_acknowledged` -- user replies with correct code → acknowledged
-7. `test_whatsapp_code_not_confirmed_retry` -- no code reply after call → retry next attempt
+6. `test_sms_code_confirmed_acknowledged` -- operator replies to SMS with correct code → acknowledged
+7. `test_sms_code_not_confirmed_retry` -- no SMS reply after call → retry next attempt
 8. `test_no_answer_retry` -- call no-answer → retry after interval
 9. `test_max_retries_retry_pending` -- 5 failed calls → retry_pending, retried next cycle
 10. `test_cooldown_prevents_recall` -- acknowledged event within cooldown → no call

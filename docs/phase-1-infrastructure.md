@@ -1,5 +1,8 @@
 # Phase 1: Infrastructure
 
+> STATUS: COMPLETE — implemented in production
+> KEY FILES: `sentinel/config.py`, `sentinel/database.py`, `sentinel/models.py`, `sentinel.py`, `config/config.example.yaml`
+
 ## Objective
 Set up the project skeleton: config loading with validation, SQLite database with schema, data models, logging, and the CLI entry point.
 

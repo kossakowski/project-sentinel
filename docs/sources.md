@@ -1,206 +1,96 @@
 # Media Sources Reference
 
-Comprehensive list of all data sources Project Sentinel can monitor, organized by type and priority. Based on analysis of the September 2025 Russian drone incursion into Poland and general military intelligence monitoring best practices.
-
-## Source Speed Tiers
-
-Based on the September 9-10, 2025 drone incursion case study:
-
-| Tier | Speed | Sources |
-|---|---|---|
-| **1** | Seconds to minutes | Ukrainian military Telegram (@kpszsu), NEXTA Live, RBC-Ukraine |
-| **2** | 2-30 minutes | Ukrainian media (Ukrainska Pravda), Polish official X (@DowOperSZ), RMF24, Onet |
-| **3** | 30-60 minutes | PAP, TVN24, Reuters, AP, defense outlets (Defence24) |
-| **4** | 1-3 hours | GDELT, BBC, Al Jazeera, France 24, international outlets |
-| **5** | 3+ hours | Government citizen alerts (RCB), TV special editions |
-
-Project Sentinel targets **Tiers 1-3** for fast detection, with **Tiers 4-5** for corroboration.
+Derived from `config/config.yaml`. Do not add sources not present in config — this doc tracks config state, not aspirations.
 
 ---
 
-## Polish Media
+## RSS Sources
 
-### Wire Service
+Fast lane (every 3 min): priority 1 only. Slow lane (every 15 min): all priorities.
 
-| Source | URL | RSS Feed | Language | Priority | Notes |
+| Name | URL | Lang | Priority | keyword_bypass | Notes |
 |---|---|---|---|---|---|
-| **PAP** (Polish Press Agency) | pap.pl | `pap.pl/rss.xml` | PL | 1 | National wire service. First with official Polish govt statements. |
-
-### 24-Hour News
-
-| Source | URL | RSS Feed | Language | Priority | Notes |
-|---|---|---|---|---|---|
-| **TVN24** | tvn24.pl | `tvn24.pl/najnowsze.xml` | PL | 1 | Leading 24h news channel (Warner Bros. Discovery) |
-| **RMF24** | rmf24.pl | `rmf24.pl/feed` | PL | 1 | Online portal of Poland's most popular radio station |
-| **Polsat News** | polsatnews.pl | `polsatnews.pl/rss/wszystkie.xml` | PL | 2 | Major 24h TV news |
-| **TVP Info** | tvp.info | -- | PL | 3 | Public broadcaster (no reliable RSS) |
-
-### Defense Specialist
-
-| Source | URL | RSS Feed | Language | Priority | Notes |
-|---|---|---|---|---|---|
-| **Defence24** | defence24.pl | `defence24.pl/_rss` | PL | 1 | Poland's leading defense portal |
-| **Defence24 EN** | defence24.com | `defence24.com/_rss` | EN | 2 | English edition |
-
-### Major Portals / Newspapers
-
-| Source | URL | RSS Feed | Language | Priority | Notes |
-|---|---|---|---|---|---|
-| **Rzeczpospolita** | rp.pl | `rp.pl/rss_main` | PL | 2 | Major daily, strong on security |
-| **Gazeta Wyborcza** | wyborcza.pl | `rss.gazeta.pl/pub/rss/najnowsze_wyborcza.xml` | PL | 2 | Major daily |
-| **Onet** | onet.pl | `wiadomosci.onet.pl/rss` | PL | 3 | Major portal |
+| PAP | `https://www.pap.pl/rss.xml` | pl | 1 | — | **DISABLED.** Blocked by Incapsula/Imperva WAF. Covered via Google News `site:pap.pl` query. |
+| TVN24 | `https://tvn24.pl/najnowsze.xml` | pl | 1 | — | Intermittent 403 errors in production. |
+| RMF24 | `https://www.rmf24.pl/feed` | pl | 1 | — | |
+| Defence24 | `https://defence24.pl/_rss` | pl | 1 | **true** | Poland's leading defense portal. |
+| Ukrainska Pravda EN | `https://www.pravda.com.ua/eng/rss/view_news/` | en | 1 | — | |
+| Ukrainska Pravda UA | `https://www.pravda.com.ua/rss/view_news/` | uk | 1 | — | |
+| Kyiv Independent | `https://kyivindependent.com/feed/rss/` | en | 1 | — | |
+| Defence24 EN | `https://defence24.com/_rss` | en | 2 | **true** | English edition of Defence24. |
+| Polsat News | `https://www.polsatnews.pl/rss/wszystkie.xml` | pl | 2 | — | |
+| Rzeczpospolita | `https://www.rp.pl/rss_main` | pl | 2 | — | |
+| Gazeta Wyborcza | `https://rss.gazeta.pl/pub/rss/najnowsze_wyborcza.xml` | pl | 2 | — | |
+| Onet Wiadomości | `https://wiadomosci.onet.pl/.feed` | pl | 2 | — | |
+| ERR Estonia | `https://news.err.ee/rss` | en | 2 | — | Estonian public broadcaster. |
+| LRT Lithuania | `https://www.lrt.lt/en/news-in-english?rss` | en | 2 | — | Lithuanian public broadcaster. |
+| LSM Latvia | `https://eng.lsm.lv/rss/` | en | 2 | — | Latvian public broadcaster. |
+| Interfax-Ukraine EN | `https://en.interfax.com.ua/news/last.rss` | en | 2 | — | |
+| BBC World | `https://feeds.bbci.co.uk/news/world/rss.xml` | en | 3 | — | |
+| Al Jazeera | `https://www.aljazeera.com/xml/rss/all.xml` | en | 3 | — | |
+| France 24 Europe | `https://www.france24.com/en/europe/rss` | en | 3 | — | |
+| TASS | `https://tass.com/rss/v2.xml` | en | 3 | — | Russian state agency. Monitored for adversary narrative signals, not factual reporting. |
 
 ---
 
-## Baltic Media
+## Telegram Channels
 
-| Source | URL | RSS Feed | Language | Priority | Country | Notes |
-|---|---|---|---|---|---|---|
-| **ERR News** | news.err.ee | `news.err.ee/rss` | EN | 2 | Estonia | Estonian public broadcaster |
-| **LRT** | lrt.lt/en | `lrt.lt/en/news-in-english?rss` | EN | 2 | Lithuania | Lithuanian public broadcaster |
-| **LSM** | eng.lsm.lv | `eng.lsm.lv/rss/` | EN | 2 | Latvia | Latvian public broadcaster |
-| **Delfi** | en.delfi.lt | -- | EN | 3 | LT/LV/EE | Largest commercial Baltic portal |
-| **BNS** | bns.lt | -- (paid only) | EN | 1 | LT/LV/EE | Baltic wire service (subscription required) |
+Polled on fast lane (every 3 min). Config key: `sources.telegram.channels`. All four channels have `keyword_bypass: true`.
 
----
-
-## International Wire Services
-
-| Source | URL | RSS/API | Language | Priority | Notes |
-|---|---|---|---|---|---|
-| **Reuters** | reuters.com | No free RSS/API | EN | 1 | Fastest international wire. Monitor via Google News or X. |
-| **AP** | apnews.com | Developer API (key required) | EN | 1 | Major global wire service |
-| **AFP** | afp.com | No free RSS/API | EN/FR | 2 | Strong European bureau network |
-
----
-
-## International News
-
-| Source | URL | RSS Feed | Language | Priority | Notes |
-|---|---|---|---|---|---|
-| **BBC World** | bbc.com/news/world | `feeds.bbci.co.uk/news/world/rss.xml` | EN | 3 | Comprehensive global coverage |
-| **Al Jazeera** | aljazeera.com | `aljazeera.com/xml/rss/all.xml` | EN | 3 | Strong conflict coverage |
-| **CNN** | cnn.com | `rss.cnn.com/rss/edition_world.rss` | EN | 3 | Fast on major events |
-| **Sky News** | news.sky.com | `feeds.skynews.com/feeds/rss/world.xml` | EN | 3 | Fast on European events |
-
----
-
-## Russian Media (Counter-Indicator Monitoring)
-
-Monitored for adversary narrative signals, NOT for factual reporting.
-
-| Source | URL | RSS Feed | Language | Priority | Notes |
-|---|---|---|---|---|---|
-| **TASS** | tass.com | `tass.com/rss/v2.xml` | EN | 3 | Russian state news agency. Watch for "provocation" framing. |
-| **Interfax** | interfax.com | `interfax.ru/rss.asp` | RU | 3 | Semi-independent Russian wire. Sometimes faster than TASS. |
-
-**Why monitor Russian media:** Before the 2022 Ukraine invasion, Russian state media published justification narratives. A sudden TASS/RIA article framing Poland/Baltics as "provocateurs" or describing a "need to protect Russian speakers" is a potential leading indicator.
-
----
-
-## Automated Data Sources
-
-### GDELT (Global Database of Events, Language, and Tone)
-
-| Field | Value |
-|---|---|
-| URL | gdeltproject.org |
-| API | `api.gdeltproject.org/api/v2/doc/doc` |
-| Cost | Free |
-| Update frequency | Every 15 minutes |
-| Coverage | 100+ languages, global |
-| API key required | No |
-
-**Key features for Project Sentinel:**
-- Theme filtering: `ARMEDCONFLICT`, `WB_2462_POLITICAL_VIOLENCE_AND_WAR`
-- CAMEO event codes: 18 (Assault), 19 (Fight), 20 (Mass Violence)
-- Goldstein scale: -10 (max conflict) to +10 (max cooperation)
-- Translingual: search in English, matches across 65 languages
-
-### Google News RSS
-
-| Field | Value |
-|---|---|
-| URL | `news.google.com/rss/search?q=QUERY` |
-| Cost | Free |
-| Update frequency | Near real-time |
-| API key required | No |
-
-**URL format:**
-```
-https://news.google.com/rss/search?q={query}+when:1h&hl={lang}&gl={country}&ceid={country}:{lang}
-```
-
-Language/country codes: `en/US`, `pl/PL`, `uk/UA`, `ru/RU`
-
----
-
-## Social Media / OSINT
-
-### Telegram Channels
-
-| Channel | Username | Language | Priority | Notes |
+| Name | channel_id | Lang | Priority | keyword_bypass |
 |---|---|---|---|---|
-| Ukrainian Air Force | `@kpszsu` | UK | 1 | Fastest source for cross-border drone events (broke the Sep 2025 story 1h before anyone else) |
-| NEXTA Live | `@nexta_live` | EN/RU | 1 | Belarusian opposition media, very fast on military events |
-| Rybar | `@rybar_force` | RU | 2 | Russian mil-blogger, detailed maps, cited by Western analysts |
-| DeepState | (varies) | UK | 2 | Ukrainian front-line mapping |
-
-**Note:** Telegram channel usernames can change. Verify before configuring.
-
-### X/Twitter OSINT Accounts (for reference, not directly monitored)
-
-| Account | Focus |
-|---|---|
-| @sentdefender | Europe-focused conflict monitoring |
-| @OSINTtechnical | Military OSINT, equipment tracking |
-| @IntelCrab | Real-time conflict intelligence |
-| @RALee85 | Russian military analysis |
-| @GeoConfirmed | Geolocation verification |
-| @Bellingcat | Investigation-grade OSINT |
-
-**Note:** X/Twitter API is too expensive ($42K+/year for streaming) for this project. These accounts are listed for manual reference. Key OSINT accounts often post to Telegram simultaneously.
-
-### Official Military/Government X Accounts
-
-| Account | Entity |
-|---|---|
-| @Poland_MOD | Polish Ministry of National Defence (English) |
-| @MON_GOV_PL | Polish MOD (Polish) |
-| @dowopersz | Polish Military Operational Command |
-| @MoD_Estonia | Estonian Ministry of Defence |
-| @Lithuanian_MoD | Lithuanian Ministry of National Defence |
-| @AizsardzibasMin | Latvian Ministry of Defence |
-| @NATO | NATO |
+| Ukrainian Air Force | `@kpszsu` | uk | 1 | **true** |
+| General Staff of Ukraine | `@GeneralStaffZSU` | uk | 1 | **true** |
+| NEXTA Live | `@nexta_live` | ru | 1 | **true** |
+| DeepState UA | `@DeepStateUA` | uk | 2 | **true** |
 
 ---
 
-## Sources NOT Included (and Why)
+## Google News
 
-| Source | Reason |
-|---|---|
-| **Flightradar24 API** | $9/month, indirect signal (no direct conflict reporting), would require custom anomaly detection |
-| **MarineTraffic API** | Similar -- indirect signal, complex to interpret |
-| **ACLED** | Updated weekly, too slow for real-time alerting |
-| **Twitter/X API** | $42K+/year for streaming access, prohibitively expensive |
-| **Janes** | Enterprise subscription ($$$), not real-time breaking news |
-| **ICEWS** | Government/military access only |
-| **Reddit** | Optional; slow compared to other sources; adds noise |
+Polled on fast lane (every 3 min). Config key: `sources.google_news.queries`. All 16 queries use `when:1h` recency filter.
 
-These can be added later if needed. The current source set provides sufficient coverage at minimal cost.
+| Query | Lang | Lane |
+|---|---|---|
+| `military attack Poland` | en | fast |
+| `invasion Baltic states` | en | fast |
+| `Russia attack NATO` | en | fast |
+| `NATO Article 5` | en | fast |
+| `drone incursion Poland` | en | fast |
+| `airspace violation Poland` | en | fast |
+| `scrambled jets Poland` | en | fast |
+| `atak wojskowy Polska` | pl | fast |
+| `inwazja Polska` | pl | fast |
+| `Rosja atak` | pl | fast |
+| `rosyjskie drony Polska` | pl | fast |
+| `naruszenie przestrzeni powietrznej` | pl | fast |
+| `zamknięcie lotniska Polska` | pl | fast |
+| `site:pap.pl` | pl | fast |
+| `військовий напад Польща` | uk | fast |
+| `дрони Польща` | uk | fast |
 
 ---
 
-## Adding New Sources
+## GDELT
 
-To add a new RSS source:
-1. Find the RSS feed URL
-2. Add an entry to `config/config.yaml` under `sources.rss`
-3. Restart Project Sentinel
+Config key: `sources.gdelt`. Slow lane only (every 15 min).
 
-To add a new Telegram channel:
-1. Find the channel username
-2. Add to `config/config.yaml` under `sources.telegram.channels`
-3. Restart Project Sentinel
+- **API:** `https://api.gdeltproject.org/api/v2/doc/doc` — free, no API key required.
+- **Themes:** `ARMEDCONFLICT`, `WB_2462_POLITICAL_VIOLENCE_AND_WAR`, `CRISISLEX_C03_WELLBEING_HEALTH`, `TAX_FNCACT_MILITARY`.
+- **CAMEO event codes:** 18, 19, 190, 191, 192, 193, 194, 195, 20.
+- **Goldstein threshold:** −7.0 (only articles at or below this conflict score are processed). No article summaries — headlines and metadata only.
 
-No code changes needed -- all sources are config-driven.
+---
+
+## keyword_bypass Behavior
+
+By default, all articles must match at least one keyword from `monitoring.keywords` (EN/PL/UK/RU lists) before being sent to AI classification — a cost-control gate. Sources with `keyword_bypass: true` skip this filter entirely; every article goes straight to the classifier regardless of content. Applied to sources that are inherently defense-focused (Defence24 PL/EN) or are trusted military channels where any post may be operationally relevant (all four Telegram channels).
+
+---
+
+## Known Issues
+
+| Source | Issue | Workaround |
+|---|---|---|
+| PAP | Blocked by Incapsula/Imperva WAF since ~2026. All non-browser HTTP requests rejected. | `site:pap.pl` Google News query — indexes PAP articles without hitting the WAF. |
+| TVN24 | Intermittent 403 errors in production. | Monitor logs if coverage seems low. No automated fallback. |

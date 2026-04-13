@@ -1,5 +1,8 @@
 # Phase 6: Scheduler & Integration
 
+> STATUS: COMPLETE — implemented in production
+> KEY FILES: `sentinel/scheduler.py`, `sentinel.py`
+
 ## Objective
 Wire all components together into a single pipeline, run it on a dual-lane schedule (fast lane every 3 minutes, slow lane every 15 minutes) with APScheduler, handle errors gracefully so that a failure in one component doesn't crash the system, and provide health monitoring.
 
@@ -66,7 +69,7 @@ class SentinelPipeline:
 
         # Step 6: Corroborate (group into events)
         events = self.corroborator.process_classifications(classifications)
-        alertable_events = [e for e in events if e.alert_status == "pending"]
+        alertable_events = [e for e in events if e.alert_status != "pending"]
         self.logger.info(f"Events needing alerts: {len(alertable_events)}")
 
         # Step 7: Dispatch alerts

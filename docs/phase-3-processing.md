@@ -1,5 +1,8 @@
 # Phase 3: Processing Pipeline
 
+> STATUS: COMPLETE — implemented in production
+> KEY FILES: `sentinel/processing/normalizer.py`, `sentinel/processing/deduplicator.py`, `sentinel/processing/keyword_filter.py`
+
 ## Objective
 Normalize articles from all fetchers into a consistent format, deduplicate them (both exact and fuzzy), and apply keyword pre-filtering to reduce the volume sent to the LLM classifier.
 

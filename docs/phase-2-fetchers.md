@@ -1,5 +1,8 @@
 # Phase 2: Source Fetchers
 
+> STATUS: COMPLETE — implemented in production
+> KEY FILES: `sentinel/fetchers/base.py`, `sentinel/fetchers/rss.py`, `sentinel/fetchers/gdelt.py`, `sentinel/fetchers/google_news.py`, `sentinel/fetchers/telegram.py`
+
 ## Objective
 Implement fetchers for all configured media sources. Each fetcher produces a list of `Article` objects in a unified format. Fetchers must handle network errors, timeouts, malformed responses, and rate limiting gracefully.
 

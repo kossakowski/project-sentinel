@@ -1,5 +1,8 @@
 # Phase 7: Deployment
 
+> STATUS: COMPLETE — implemented in production
+> KEY FILES: `deploy/sentinel.service`, `deploy/logrotate.conf`, `/etc/sentinel/config.yaml` (server), `/etc/sentinel/sentinel.env` (server)
+
 ## Objective
 Deploy Project Sentinel to a Hetzner Cloud VPS, configure it as a systemd service with auto-restart, set up log rotation, and establish monitoring and backups.
 
