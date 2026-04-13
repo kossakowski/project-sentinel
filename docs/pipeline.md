@@ -6,7 +6,14 @@
 
 Project Sentinel processes incoming media in seven sequential stages. Each stage has a clear job: fetch raw content, clean it, deduplicate it, filter for relevance, classify it with AI, corroborate it across sources, and finally alert you. The sections below describe each stage in the order data flows through it.
 
-The system runs continuously on two overlapping schedules. The **fast lane** runs every 3 minutes and covers Telegram channels, Google News, and priority-1 RSS sources — the outlets most likely to carry breaking military news. The **slow lane** runs every 15 minutes and covers everything, including GDELT. Every slow-lane cycle is a superset of a fast-lane cycle.
+The system runs continuously on two overlapping schedules. The **fast lane** runs every 3 minutes and covers Telegram channels, Google News, and priority-1 RSS sources. The **slow lane** runs every 15 minutes and covers all sources including GDELT. Every slow-lane cycle is a superset of a fast-lane cycle.
+
+### Scheduler jitter
+
+| Lane | Jitter applied | Reference |
+|------|---------------|-----------|
+| Fast | `min(config.jitter_seconds, 10)` — capped at 10s regardless of config value | `sentinel/scheduler.py:464` |
+| Slow | Full `config.jitter_seconds` — no cap | `sentinel/scheduler.py` |
 
 ---
 
@@ -22,17 +29,17 @@ The fetcher handles the common failure modes cleanly: a 304 Not Modified respons
 
 ### Google News
 
-The system runs keyword searches against the Google News RSS API. There are 16 configured queries: 7 in English, 7 in Polish, and 2 in Ukrainian. Every query is scoped to the past hour only, so results stay fresh and do not overlap with prior cycles. Example queries include "military attack Poland", "atak wojskowy Polska", and "військовий напад Польща".
+The system runs keyword searches against the Google News RSS API. Live `config/config.yaml` defines 16 queries at `sources.google_news.queries` (7 EN, 7 PL, 2 UK). Note: `config/config.example.yaml` ships with 15 queries — the live count (16) is authoritative. Every query is scoped to the past hour. Example queries: "military attack Poland", "atak wojskowy Polska", "військовий напад Польща".
 
 PAP (the Polish Press Agency) blocks automated fetching via WAF, so it is not fetched as a direct RSS source. Instead, a dedicated `site:pap.pl` query in Google News captures PAP articles indirectly.
 
 ### GDELT
 
-GDELT (Global Database of Events, Language, and Tone) is a global news index that covers sources in any language. The system queries the GDELT DOC 2.0 API for articles published in the past 15 minutes, filtered to military-relevant topic codes: ARMEDCONFLICT, WB_2462_POLITICAL_VIOLENCE_AND_WAR, CRISISLEX_C03_WELLBEING_HEALTH, and TAX_FNCACT_MILITARY. Up to 250 articles are returned per call. GDELT does not provide article summaries, so only titles and URLs are available at this stage. Language detection is performed later in the pipeline. GDELT runs on the slow lane only.
+GDELT (Global Database of Events, Language, and Tone) is a global news index that covers sources in any language. The system queries the GDELT DOC 2.0 API for articles published in the past 15 minutes, filtered to military-relevant topic codes: ARMEDCONFLICT, WB_2462_POLITICAL_VIOLENCE_AND_WAR, CRISISLEX_C03_WELLBEING_HEALTH, and TAX_FNCACT_MILITARY. Up to 250 articles are returned per call. GDELT articles ship with `summary = ""` (`sentinel/fetchers/gdelt.py:178`); the keyword filter therefore scans title-only for GDELT. Language detection is performed later in the pipeline. GDELT runs on the slow lane only.
 
 ### Telegram
 
-The system connects to Telegram using the MTProto API via a full user account — not a bot — which allows it to read channels without being added as a member. It listens in real time to four channels: @kpszsu (Ukrainian Air Force), @GeneralStaffZSU (Ukrainian General Staff), @DeepStateUA, and @nexta_live (NEXTA Live). Messages accumulate in a memory buffer as they arrive. Each fast-lane cycle drains and clears that buffer, processing whatever has come in since the last cycle. All four Telegram channels are designated keyword bypass sources, meaning their content skips keyword filtering and goes directly to AI classification.
+The Telegram fetcher is push-based and uses the `telethon` library (MTProto, user-account auth — not a bot, not `pyrogram`). `start()` registers a `telethon.events.NewMessage` handler on the configured channels; messages accumulate in an in-memory buffer as they arrive. `fetch()` drains and clears that buffer each fast-lane cycle (`sentinel/fetchers/telegram.py:71-78`). Channels monitored: @kpszsu, @GeneralStaffZSU, @DeepStateUA, @nexta_live. All four are keyword-bypass sources — they skip Stage 4 and go straight to AI classification.
 
 ---
 
@@ -103,7 +110,7 @@ Urgency 9–10 is reserved exclusively for direct attacks on monitored territory
 
 **Polish summary.** One to two sentences summarizing the event in Polish. This text is used verbatim in the phone call and SMS alert.
 
-Additional rules the model applies: diplomatic tensions, opinion pieces, and "special military operation" framing by Russian state media are all handled explicitly — the last of these is treated as an attack, not a euphemism to be taken at face value. All classification results are stored in the database regardless of their outcome, so the full record is available for auditing.
+Additional rules the model applies: diplomatic tensions, opinion pieces, and "special military operation" framing by Russian state media are all handled explicitly — the last of these is treated as an attack. Classifier confidence is NOT threshold-gated: all results are returned and stored regardless of the confidence score (`sentinel/classifier.py`). Downstream gating is done on urgency + source_count only.
 
 ---
 
@@ -122,14 +129,16 @@ If no existing Event satisfies all four conditions, a new Event is created.
 
 A classification counts as a new independent source only if it comes from a different domain than sources already in the Event, and its title is less than 90% similar to any existing source title. This second check prevents wire service syndication from being mistaken for independent confirmation.
 
-The alert level assigned to an Event is determined by its current urgency and source count:
+The alert level assigned to an Event is determined by `alerts/state_machine.py:_determine_action`:
 
-| Condition | Alert level |
-|-----------|-------------|
-| Urgency ≥ 9 and at least 1 independent source | Phone call |
-| Urgency ≥ 7 | SMS |
-| Urgency ≥ 5 | WhatsApp (routed to SMS in practice) |
-| Below threshold | Pending — no alert yet |
+| Condition (evaluated in order) | Alert level | Reference |
+|--------------------------------|-------------|-----------|
+| `urgency >= 9 AND source_count >= 1` | Phone call | live `classification.corroboration_required = 1` |
+| `urgency >= 7` (no source_count check) | SMS | `state_machine.py:_determine_action` |
+| `urgency >= 5` | WhatsApp decided — but routed to `_execute_sms` in `process_event` (`state_machine.py:190`) | |
+| Below threshold | Pending — no alert | |
+
+Note: two parallel urgency decision paths exist (corroborator and state_machine) and can disagree. Live `corroboration_required` is `1`; any prior documentation citing `2` is stale.
 
 Events are stored in the database and are not static. As new articles arrive in later cycles, the urgency, source count, and alert level can all escalate.
 
@@ -145,13 +154,13 @@ A phone call is the highest alert level and requires both a very high urgency sc
 
 2. The Twilio call is placed. A Polish text-to-speech voice (Amazon Polly, voice: Ewa) speaks the alert text twice: the event type, the Polish summary, the number of confirming sources, and the urgency score out of 10. The call ends by instructing the operator to reply to the SMS with the confirmation code.
 
-3. The system polls for an SMS reply containing the 6-digit code every 5 seconds, for up to 90 seconds per call attempt.
+3. Per call attempt: poll for SMS reply containing the 6-digit code every 5 seconds, for up to 90 seconds (`alerts/state_machine.py:446`).
 
-4. If no confirmation is received, up to 5 call attempts are made in one round.
+4. Between attempts within a round: 10s sleep (`state_machine.py:331`).
 
-5. If still unconfirmed after 5 attempts, the system waits 5 minutes and begins another round.
+5. Attempts per round: `alerts.max_call_retries` from config — live value `5`, code default `3`.
 
-6. This cycle repeats indefinitely until the operator sends the correct code.
+6. After a full round fails: wait 5 minutes, begin next round. Repeats indefinitely until the operator replies with the correct code.
 
 7. Upon confirmation, the Event is marked acknowledged and a detailed follow-up SMS is sent with the full source list.
 
@@ -165,11 +174,13 @@ Once an operator confirms an alert, a 6-hour cooldown applies to that Event. No 
 
 ### System Health Alerts
 
-The system monitors its own health and alerts the operator if something goes wrong at the infrastructure level:
+| Trigger | Action | Reference |
+|---------|--------|-----------|
+| Fetcher `failures == 5` | WARNING log | `sentinel/scheduler.py` |
+| Fetcher `failures == 10` (exact equality — one-shot) | ERROR log + Polish SMS to operator | `scheduler.py:420` |
+| `consecutive_failures == 3` (exact equality — one-shot) | Polish SMS to operator | `scheduler.py:515` |
 
-- 5 consecutive fetcher failures generate a WARNING log entry.
-- 10 consecutive fetcher failures generate an ERROR log entry and send a Polish SMS to the operator.
-- 3 consecutive pipeline-level failures (not just fetcher failures, but full cycle crashes) send a Polish SMS to the operator.
+Both SMS triggers fire exactly once at the threshold; they do not re-fire on subsequent failures within the same streak.
 
 ---
 
@@ -183,3 +194,21 @@ All pipeline data is persisted in a SQLite database with four tables:
 - **alert_records** — every Twilio dispatch attempt, including call status and SMS delivery status, retained alongside Event records.
 
 After every pipeline cycle, the system writes a health snapshot to `data/health.json`. This file is readable with `./run.sh --health` and shows the last cycle's outcome, source counts, and any errors.
+
+---
+
+## Known Quirks
+
+| # | Quirk | Reference |
+|---|-------|-----------|
+| 1 | WhatsApp tier (urgency >=5) is decided as WhatsApp but routed to `_execute_sms` — no WhatsApp message is ever sent. | `alerts/state_machine.py:190` |
+| 2 | Fast-lane jitter is silently capped at `min(jitter_seconds, 10)`; slow lane uses full `jitter_seconds`. Setting `jitter_seconds: 60` will not take effect on the fast lane. | `sentinel/scheduler.py:464` |
+| 3 | Two parallel urgency decision paths exist (`Corroborator` and `StateMachine._determine_action`) and can disagree on alert tier for the same event. | `alerts/state_machine.py`, `sentinel/corroborator.py` |
+| 4 | GDELT articles have empty `summary` — keyword filter scans title-only for GDELT-sourced articles. | `sentinel/fetchers/gdelt.py:178` |
+| 5 | Google News returns wrapper URLs; these are never resolved to canonical target URLs. URL-based dedup therefore misses cross-query duplicates of the same underlying article. | Stage 3 dedup, Stage 1 Google News |
+| 6 | SMS tier (urgency >=7) does NOT require `source_count >= 1` — only the urgency check applies. Phone-call tier is the only tier with a corroboration gate. | `alerts/state_machine.py:_determine_action` |
+| 7 | Confirmation code is stored as an instance attribute on the state machine and is not reset between events. A new event can inherit the prior event's code if reset logic is skipped. | `alerts/state_machine.py` |
+| 8 | Classifier confidence is not threshold-gated — low-confidence classifications are treated identically to high-confidence ones downstream. | `sentinel/classifier.py` |
+| 9 | `config/config.example.yaml` has 15 Google News queries; live `config/config.yaml` has 16. The example is stale. | `sources.google_news.queries` |
+| 10 | Health SMS triggers (`failures == 10`, `consecutive_failures == 3`) fire on exact equality only — no re-fire on continued failure. | `sentinel/scheduler.py:420,515` |
+| 11 | Telegram fetcher uses `telethon` (not `pyrogram`) and is push-based — `fetch()` drains a buffer rather than polling. | `sentinel/fetchers/telegram.py:71-78` |

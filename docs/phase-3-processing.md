@@ -14,51 +14,33 @@ Converts raw fetcher output into clean, consistent `Article` objects ready for d
 
 #### Normalization Steps
 
-1. **Title cleaning**
-   - Strip leading/trailing whitespace
-   - Collapse multiple whitespace into single space
-   - Remove HTML entities (`&amp;` → `&`, `&#39;` → `'`, etc.)
-   - Strip any remaining HTML tags
-   - Truncate to 500 characters (with `...` suffix if truncated)
+Anchor: `sentinel/processing/normalizer.py`.
 
-2. **Summary cleaning**
-   - Same as title cleaning
-   - Truncate to 1000 characters
-   - If empty, use title as summary
+| Field | Rule | Limit | Fallback |
+|---|---|---|---|
+| `title` | Strip whitespace, collapse spaces, decode HTML entities, strip tags | 500 chars, `...` suffix on truncation | — |
+| `summary` | Same cleaning as title | 1000 chars, `...` suffix on truncation | Set to `title` if empty after cleaning (`normalizer.py:46-47`) |
+| `url` | Lowercase domain, strip `www.`, drop params (`utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term`, `fbclid`, `gclid`), strip trailing slash, drop fragment | — | — |
+| `published_at` | Ensure UTC; assume UTC if naive; cap future timestamps at `now` | — | `fetched_at` if None |
+| `language` | Full-name → ISO map | — | Passthrough for unknown values |
+| `url_hash` | SHA-256 hex digest of normalized URL | — | — |
+| `title_normalized` | Lowercase, NFKD strip accents, remove punctuation, collapse whitespace | — | — |
 
-3. **URL normalization**
-   - Strip tracking parameters (`utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term`, `fbclid`, `gclid`)
-   - Strip trailing slashes
-   - Lowercase the domain portion
-   - Remove `www.` prefix from domain
-   - This ensures the same article linked from different campaigns deduplicates correctly
+**Language map (full name → ISO):**
 
-4. **Timestamp normalization**
-   - Convert all timestamps to UTC `datetime` objects
-   - If no timezone info, assume UTC
-   - If timestamp is in the future (clock skew), cap at current UTC time
-   - If timestamp is missing, use `fetched_at`
+| Input | Output |
+|---|---|
+| English | en |
+| Polish | pl |
+| Ukrainian | uk |
+| Russian | ru |
+| German | de |
+| French | fr |
+| Lithuanian | lt |
+| Latvian | lv |
+| Estonian | et |
 
-5. **Language detection**
-   - If language is set by the fetcher config, trust it
-   - If language is unknown (e.g., GDELT maps "English" → "en"), map it
-   - Language mapping table:
-     ```
-     "English" → "en"
-     "Polish" → "pl"
-     "Ukrainian" → "uk"
-     "Russian" → "ru"
-     "German" → "de"
-     "French" → "fr"
-     "Lithuanian" → "lt"
-     "Latvian" → "lv"
-     "Estonian" → "et"
-     ```
-   - Languages not in the keyword lists ("de", "fr", etc.) are still stored but will pass through keyword filtering only if they match English keywords (many international articles about military events use English military terminology even in other languages)
-
-6. **Generate derived fields**
-   - `url_hash` = SHA-256 hex digest of the normalized URL
-   - `title_normalized` = lowercase, strip accents (unicodedata NFKD), remove punctuation, collapse whitespace
+Languages outside keyword config (`de`, `fr`, `lt`, `lv`, `et`) fall back to English keyword set at filter stage.
 
 #### Interface
 
@@ -81,11 +63,18 @@ Removes duplicate articles using two strategies:
 - If hash exists → duplicate, skip
 
 #### Strategy 2: Fuzzy Title Dedup
-- For articles that pass URL dedup, compare `title_normalized` against recent articles (last 60 minutes) using `rapidfuzz.fuzz.ratio`
-- If similarity > 85% AND same `source_type` is different (i.e., same story from different sources) → NOT a duplicate (we want cross-source corroboration)
-- If similarity > 85% AND same `source_name` → duplicate, skip (same source republished)
-- If similarity > 95% regardless of source → likely exact duplicate, skip
-- The thresholds (85%, 95%) must be configurable in config
+
+Compares `title_normalized` against recent articles within `processing.dedup.lookback_minutes` (default/live 60) using `rapidfuzz.fuzz.ratio`. Anchor: `sentinel/processing/deduplicator.py`.
+
+| Comparison | Threshold | Outcome |
+|---|---|---|
+| Same `source_name`, fuzz.ratio(title_normalized) | >= `processing.dedup.same_source_title_threshold` (default/live 85) | Duplicate (drop) |
+| Different source, fuzz.ratio(title_normalized) | >= `processing.dedup.cross_source_title_threshold` (default/live 95) | Duplicate (drop, syndication) |
+| Different source, between same and cross thresholds | — | Not duplicate (potential corroboration) |
+
+#### Side Effects
+- `deduplicate_batch` inserts non-duplicates into the DB mid-iteration so later items in the same batch dedup against them (`deduplicator.py:93`).
+- Internal `seen_hashes` set provides batch-internal dedup before DB lookup.
 
 #### Interface
 
@@ -115,27 +104,35 @@ processing:
 
 Filters articles to only those matching military/conflict keywords, while excluding known false positive patterns.
 
+Anchor: `sentinel/processing/keyword_filter.py`.
+
 #### Matching Algorithm
 
-1. **Determine article language** from `article.language`
-2. **Get keyword lists** for that language from `config.monitoring.keywords[language]`
-3. **Check critical keywords** -- if any critical keyword appears in title OR summary, mark as `keyword_match="critical"`
-4. **Check high keywords** -- if any high keyword appears, mark as `keyword_match="high"`
-5. **Check exclude keywords** -- if any exclude keyword appears AND no critical keyword matched, skip the article
-6. **Cross-language fallback** -- if article language is not in the keyword config (e.g., German article), check against English keywords
-7. **Return** only articles with a keyword match, annotated with match level
-
-#### Matching Rules
-- Case-insensitive matching
-- Match whole words only where possible (avoid "game" matching "gamer"), but be flexible with inflected languages (Polish, Ukrainian, Russian have many word forms)
-- For Slavic languages (PL, UK, RU), use substring matching (stems) because word endings change with grammatical case
-- For English, prefer word-boundary matching
+| Step | Behavior | Anchor |
+|---|---|---|
+| 1 | Search text = `f"{title} {summary}".lower()` | `keyword_filter.py:51` |
+| 2 | Resolve keyword set by `article.language`; unknown → fall back to `en` | `keyword_filter.py:46-48` |
+| 3 | Source with `keyword_bypass: true` skips filter entirely; annotated `level="bypass"` | `keyword_filter.py:103-111` |
+| 4 | Check `critical` keywords → `level="critical"` if any hit | — |
+| 5 | Else check `high` keywords → `level="high"` if any hit | — |
+| 6 | `exclude` keywords drop the article ONLY when no `critical` match | `keyword_filter.py:64-73` |
+| 7 | Slavic (`pl`, `uk`, `ru`): plain substring match (`kw_lower in text`) | `keyword_filter.py:188` |
+| 8 | English and all other langs: word-boundary regex `\b<kw>\b` via `re.search` | `keyword_filter.py:192` |
+| 9 | Multi-word phrases matched as whole phrase (no token splitting) | — |
 
 #### Keyword Match Annotation
-Add to `Article.raw_metadata`:
+
+Written to `article.raw_metadata["keyword_match"]`:
+
+| Key | Value |
+|---|---|
+| `level` | `"critical"`, `"high"`, or `"bypass"` |
+| `matched_keywords` | list[str] of all matched keywords |
+| `language_matched` | ISO code of the keyword set actually used (may differ from `article.language` on fallback) |
+
 ```python
 article.raw_metadata["keyword_match"] = {
-    "level": "critical",  # or "high"
+    "level": "critical",
     "matched_keywords": ["inwazja", "atak zbrojny"],
     "language_matched": "pl",
 }
@@ -255,3 +252,11 @@ Expected reduction at each stage:
 10. `test_match_annotation_added` -- matched keywords stored in raw_metadata
 11. `test_multiple_keywords_all_recorded` -- article matching 3 keywords has all 3 in annotation
 12. `test_russian_provocation_keyword` -- "провокация" (provocation) matches as high -- important counter-indicator
+
+## Known Quirks
+
+| Quirk | Impact |
+|---|---|
+| GDELT articles have empty `summary` | Keyword filter scans title only for GDELT items |
+| Same-source threshold (85) < cross-source threshold (95) | Same source repeating itself is caught more aggressively than cross-source syndication |
+| `deduplicate_batch` inserts non-duplicates into DB mid-batch | Order-sensitive within a single fetch cycle — later items dedup against earlier items of the same batch |

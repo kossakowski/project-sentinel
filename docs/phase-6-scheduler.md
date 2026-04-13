@@ -12,6 +12,24 @@ Wire all components together into a single pipeline, run it on a dual-lane sched
 
 The pipeline supports two modes: **fast lane** (Telegram + Google News + priority-1 RSS only) and **slow lane** (all sources including GDELT and lower-priority RSS).
 
+#### Fast-lane source routing
+
+Routing is driven by module-level frozensets in `sentinel/scheduler.py:374-376`:
+
+| Constant | Value | Meaning |
+|---|---|---|
+| `_FAST_LANE_FETCHERS` | `frozenset({"telegram", "google_news"})` | Always run in fast lane. |
+| `_SLOW_LANE_FETCHERS` | `frozenset({"gdelt"})` | Skipped in fast lane. |
+| RSS (fast lane) | `fetcher.fetch(max_priority=1)` | Priority-1 sources only. |
+
+#### Cycle entry point
+
+| Signature | Location |
+|---|---|
+| `SentinelPipeline.run_cycle(*, fast_only: bool = False, diagnostic: bool = False)` | `sentinel/scheduler.py` |
+
+`diagnostic=True` skips the dispatch step (`scheduler.py:202`).
+
 ```python
 class SentinelPipeline:
     """Orchestrates the full fetch → process → classify → alert pipeline."""
@@ -31,7 +49,7 @@ class SentinelPipeline:
         self.logger = logging.getLogger("sentinel.pipeline")
         self.stats = PipelineStats()
 
-    async def run_cycle(self, *, fast_only: bool = False) -> CycleResult:
+    async def run_cycle(self, *, fast_only: bool = False, diagnostic: bool = False) -> CycleResult:
         """Execute one pipeline cycle. Returns stats about the run.
 
         Args:
@@ -207,12 +225,26 @@ class SentinelScheduler:
         self.logger.info("Scheduler stopped")
 ```
 
+#### Scheduler implementation
+
+| Item | Value | Anchor |
+|---|---|---|
+| Scheduler class | `AsyncIOScheduler` | `scheduler.py:451` |
+| Trigger type | `IntervalTrigger` | `scheduler.py` |
+| Fast job ID | `sentinel_fast_lane` | — |
+| Slow job ID | `sentinel_slow_lane` | — |
+| `max_instances` | `1` (both jobs) | — |
+| `coalesce` | `True` (both jobs) | — |
+
 #### Jitter
-The `jitter` parameter adds a random offset (up to ±30 seconds by default) to each scheduled run. This avoids polling sources exactly on the quarter-hour when many other bots do the same.
+
+| Lane | Jitter applied | Anchor |
+|---|---|---|
+| Slow lane | `jitter_seconds` (live/default `30`) | config |
+| Fast lane | `min(jitter_seconds, 10)` — hard 10s cap regardless of config | `sentinel/scheduler.py:464` |
 
 #### Coalesce & Max Instances
-Both jobs use `max_instances=1, coalesce=True`:
-- `max_instances=1`: If a cycle takes longer than its interval, don't start another one concurrently.
+- `max_instances=1`: If a cycle takes longer than its interval, don't start another one concurrently. Backlog suppressed.
 - `coalesce=True`: If the system was suspended/sleeping and missed a run, only run once when it wakes up (not multiple make-up runs).
 
 ### 6.3 CLI Entry Point (`sentinel.py`)
@@ -326,20 +358,35 @@ class HealthStatus:
     fetcher_status: dict[str, bool]  # per-fetcher health
 ```
 
-Health status is written to `data/health.json` after each cycle. This allows external monitoring tools to check if Sentinel is running.
+Health status is written by `_update_health` (`scheduler.py:520`) after each cycle to the directory containing `database.path`.
 
-#### Self-Healing
+| Environment | health.json path |
+|---|---|
+| Live (prod) | `/var/lib/sentinel/health.json` |
+| Example config | `data/health.json` |
 
-If a fetcher fails 5 consecutive times:
-- Log a WARNING
-- Continue running other fetchers
-- After 10 consecutive failures:
-  - Log an ERROR
-  - Send an SMS to the user: "Project Sentinel: źródło {source_name} nie odpowiada od {N} cykli. System nadal monitoruje pozostałe źródła."
+#### Startup
 
-If the entire pipeline fails 3 consecutive times:
-- Send an SMS: "Project Sentinel: system napotkał krytyczny błąd. Sprawdź logi."
-- Continue attempting on next cycle
+`run_continuous` runs ONE immediate full cycle BEFORE the scheduler starts (`sentinel.py:163`).
+
+#### Daily summary
+
+Logged at UTC date rollover only if a previous day existed (`_maybe_log_daily_summary`).
+
+#### Self-Healing — exact semantics
+
+| Trigger | Action | Anchor |
+|---|---|---|
+| Fetcher consecutive failures `== 5` | Log WARNING | — |
+| Fetcher consecutive failures `== 10` (EXACT) | Log ERROR + send SMS (one-shot) | `scheduler.py:420` |
+| Fetcher consecutive failures `>= 11` | Log WARNING only; no further SMS | `scheduler.py:420` |
+| Pipeline `consecutive_failures == 3` (EXACT) | Send SMS (one-shot); no SMS on failures 4, 5, 6, … | `scheduler.py:515` |
+
+SMS content:
+- Fetcher: `"Project Sentinel: źródło {source_name} nie odpowiada od {N} cykli. System nadal monitoruje pozostałe źródła."`
+- Pipeline: `"Project Sentinel: system napotkał krytyczny błąd. Sprawdź logi."`
+
+Pipeline continues attempting on every subsequent cycle regardless.
 
 ### 6.5 Telegram Lifecycle Integration
 
@@ -372,6 +419,15 @@ Daily summary logged at midnight:
 ```
 2025-09-10 00:00:00 [INFO] sentinel.pipeline: === Daily summary: cycles=96, articles_processed=4032, events_detected=3, alerts_sent=1, api_cost=$0.04 ===
 ```
+
+## Known Quirks
+
+| Quirk | Impact |
+|---|---|
+| Fast-lane jitter silently capped at 10s | Setting `jitter_seconds > 10` affects slow lane only; fast lane ignores the excess. |
+| Pipeline-failure SMS is one-shot at EXACTLY 3 consecutive failures | No SMS on failures 4, 5, 6, …; operator will not be re-notified via SMS until counter resets. |
+| Fetcher-health SMS is one-shot at EXACTLY 10 consecutive failures | Failures 11+ log WARNING only; no further SMS per fetcher. |
+| `TelegramFetcher` is push-based | `fetch()` drains an in-memory buffer only; messages accumulate continuously between cycles — fetch cadence does not control ingestion rate. |
 
 ## Acceptance Tests
 

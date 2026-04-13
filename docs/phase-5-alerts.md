@@ -12,6 +12,16 @@ Dispatch alerts via Twilio (phone call, SMS, WhatsApp) based on event urgency, m
 
 Wraps the Twilio SDK for outbound calls, SMS, and WhatsApp.
 
+#### Method Reference
+
+| Method | Signature | File:Line |
+|---|---|---|
+| Phone call | `make_alert_call(phone_number, message_pl, event_id) -> AlertRecord` | `twilio_client.py` |
+| SMS | `send_sms(phone_number, message, event_id) -> AlertRecord` (truncates to 1600 chars) | `twilio_client.py` |
+| WhatsApp | `send_whatsapp(phone_number, message, event_id) -> AlertRecord` — **unreachable from `process_event`**; only `--test-alert whatsapp` reaches it | `twilio_client.py` |
+
+Explicit comment at `twilio_client.py:41` forbids `<Gather>` / DTMF — voicemail caused false-positive confirmations.
+
 #### Phone Call
 
 ```python
@@ -271,6 +281,28 @@ class AlertStateMachine:
             self._handle_call_result(record, self._check_sms_confirmation(since=record.sent_at))
 ```
 
+#### Acknowledgment Mechanism (`state_machine.py:362-413`)
+
+| Parameter | Value | Source |
+|---|---|---|
+| Confirmation code | `str(random.randint(100000, 999999))` | `state_machine.py:362-413` |
+| Poll interval | 5 s | `state_machine.py` |
+| Poll timeout per call attempt | 90 s | `state_machine.py:446` |
+| Between-call sleep (within round) | 10 s | `state_machine.py:331` |
+| Calls per round (`max_call_retries`) | live=5, default=3 | config |
+| Between-round wait (`retry_interval_minutes`) | default 5 | config |
+| Poll API | `twilio.client.messages.list(to=twilio_phone, from_=phone_number)`, match code substring | — |
+| Cooldown after `acknowledged_at` (`cooldown_hours`) | default/live 6 | config |
+
+Round flow: send confirmation SMS → `max_call_retries` calls with 5 s code-polling after each → if no match across round, event flagged `retry_pending` → wait `retry_interval_minutes` → next round.
+
+#### Cooldown Override
+
+| Situation | Behavior |
+|---|---|
+| Same event, new source within cooldown | SMS update only |
+| New higher-urgency or significantly different event within cooldown | Overrides cooldown, alerts normally |
+
 #### Post-Acknowledgment Behavior
 
 After event is acknowledged (operator replies to SMS with 6-digit code):
@@ -321,15 +353,26 @@ class AlertDispatcher:
 
 #### Alert Decision Matrix
 
-| Urgency | Sources | Action |
-|---------|---------|--------|
-| 9-10 | 2+ independent | Phone call → SMS follow-up |
-| 9-10 | 1 only | SMS (wait for corroboration before calling) |
-| 7-8 | 1+ | SMS |
-| 5-6 | 1+ | WhatsApp (routed to SMS in code) |
-| 1-4 | any | Log only |
+Decided in `AlertStateMachine._determine_action`. Rules:
 
-Note: If a single-source urgency-10 event gets corroborated later (within `corroboration_window_minutes`), the system upgrades to a phone call at that point.
+| Condition | Action | Source-count check |
+|---|---|---|
+| `urgency >= 9 AND source_count >= corroboration_required` | `phone_call` | Yes |
+| `urgency >= 9 AND source_count < corroboration_required` | `sms` | — |
+| `urgency >= 7` | `sms` | **None** — urgency alone triggers |
+| `urgency >= 5` | `whatsapp` → routed to `_execute_sms` at `state_machine.py:190` | — |
+| `urgency < 5` | `log_only` | — |
+
+Phone-call corroboration values:
+
+| Key | Pydantic default | Live production |
+|---|---|---|
+| `classification.corroboration_required` | 2 | 1 |
+| `alerts.urgency_levels.critical.corroboration_required` | 2 | 1 |
+
+With live config, a **single source at urgency 9** triggers a phone call.
+
+Note: If a single-source urgency-10 event gets corroborated later (within `corroboration_window_minutes`), the next pass upgrades to a phone call.
 
 ### 5.4 Alert Message Templates
 
@@ -435,7 +478,19 @@ python sentinel.py --test-alert whatsapp     # WhatsApp
 - `summary_pl`: `[TEST] To jest próba alertu systemu Project Sentinel. Nie ma zagrożenia.`
 - `alert_status`: matches the requested alert type
 
-This flag forces `dry_run=False` regardless of config. No Claude API costs — only Twilio charges for the actual call/message.
+This flag forces `dry_run=False` regardless of config (`sentinel.py:367`), calls `AlertStateMachine._execute_*` **directly** (private methods), and bypasses corroboration / `process_event` entirely. No Claude API costs — only Twilio charges for the actual call/message. `--test-alert whatsapp` is the only path that reaches `_execute_whatsapp` / `TwilioClient.send_whatsapp`.
+
+## Known Quirks
+
+| Quirk | Location | Impact |
+|---|---|---|
+| WhatsApp permanently disabled in `process_event` (action `whatsapp` routed to `_execute_sms`) | `state_machine.py:190` | `_execute_whatsapp` (line 478) and `send_whatsapp` unreachable in normal flow |
+| `if False:` block holds dead duration-based acknowledgment logic | `state_machine.py:501` | Never executes |
+| `_check_confirmation_sms_delivered` implemented but never called | `state_machine.py:415` | Dead code |
+| `_confirmation_code` is an instance attribute, not reset on event boundary | `state_machine.py` | Overlapping events risk stale-code match |
+| `call_duration_threshold_seconds` config key only read inside dead `if False:` block | `state_machine.py:499` | Config key fully unused |
+| Two urgency decision paths: Corroborator writes `event.alert_status`, StateMachine ignores it and re-decides | `state_machine.py` | Single source of truth is `_determine_action` |
+| Inline TwiML (no Twilio webhooks) | `twilio_client.py` | No public HTTP endpoint required for alerts |
 
 ## Dependencies
 No new dependencies (Twilio SDK already in requirements.txt).

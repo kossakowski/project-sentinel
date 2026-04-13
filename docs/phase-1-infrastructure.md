@@ -20,12 +20,13 @@ The config loader must:
 #### Pydantic Models
 
 ```python
-class RSSSource(BaseModel):
+class RSSSource(BaseModel):  # sentinel/config.py:17
     name: str
     url: HttpUrl
     language: str  # "pl", "en", "uk", "ru"
     enabled: bool = True
     priority: int = 2  # 1=highest, 3=lowest
+    keyword_bypass: bool = False  # skip keyword pre-filter — classify every article
 
 class GDELTConfig(BaseModel):
     enabled: bool = True
@@ -42,18 +43,24 @@ class GoogleNewsConfig(BaseModel):
     enabled: bool = True
     queries: list[GoogleNewsQuery]
 
-class TelegramChannel(BaseModel):
+class TelegramChannel(BaseModel):  # sentinel/config.py:44
     name: str
     channel_id: str
     language: str
     priority: int = 1
+    keyword_bypass: bool = False
 
-class TelegramConfig(BaseModel):
+class TelegramConfig(BaseModel):  # sentinel/config.py:52
     enabled: bool = True
-    api_id: int  # From ${TELEGRAM_API_ID}
-    api_hash: str  # From ${TELEGRAM_API_HASH}
+    api_id: int | None = None  # From ${TELEGRAM_API_ID}
+    api_hash: str | None = None  # From ${TELEGRAM_API_HASH}
     session_name: str = "sentinel"
-    channels: list[TelegramChannel]
+    channels: list[TelegramChannel] = []
+
+    @model_validator(mode="after")
+    def _require_credentials_when_enabled(self):
+        # Raises ValueError if enabled=True and api_id/api_hash missing
+        ...
 
 class SourcesConfig(BaseModel):
     rss: list[RSSSource]
@@ -65,11 +72,11 @@ class KeywordSet(BaseModel):
     critical: list[str] = []
     high: list[str] = []
 
-class MonitoringConfig(BaseModel):
+class MonitoringConfig(BaseModel):  # sentinel/config.py:85
     target_countries: list[dict]  # [{code, name, name_native}]
     aggressor_countries: list[dict]
     keywords: dict[str, KeywordSet]  # keyed by language code
-    exclude_keywords: dict[str, list[str]]
+    exclude_keywords: dict[str, list[str]] = {}  # default empty
 
 class UrgencyLevel(BaseModel):
     min_score: int
@@ -95,11 +102,12 @@ class ClassificationConfig(BaseModel):
     model: str = "claude-haiku-4-5-20251001"
     max_tokens: int = 512
     temperature: float = 0.0
-    corroboration_required: int = 2
+    corroboration_required: int = 2  # Pydantic default — live config and config.example.yaml override to 1
     corroboration_window_minutes: int = 60
 
-class SchedulerConfig(BaseModel):
-    interval_minutes: int = 15
+class SchedulerConfig(BaseModel):  # sentinel/config.py:161
+    interval_minutes: int = 15           # slow lane
+    fast_interval_minutes: int = 3       # fast lane (Telegram + priority-1 RSS + Google News)
     jitter_seconds: int = 30
 
 class DatabaseConfig(BaseModel):
@@ -231,6 +239,7 @@ Provide a `Database` class with methods:
 - `get_active_events(self, within_hours: int) -> list[Event]` -- events not yet expired
 - `insert_alert_record(self, record: AlertRecord)`
 - `get_alert_records(self, event_id: str) -> list[AlertRecord]`
+- `get_pending_call_records(self) -> list[AlertRecord]` -- alert records in retryable pending state
 - `cleanup_old_records(self, article_days: int, event_days: int)` -- retention policy
 
 All datetime values stored as ISO 8601 UTC strings. Use `datetime.utcnow().isoformat()`.
@@ -250,12 +259,13 @@ As defined in [architecture.md](architecture.md) section 4. Each model must have
 
 ### 1.4 Logging Setup
 
-Use Python's `logging` module with `RotatingFileHandler`:
+Use Python's `logging` module with `RotatingFileHandler` — `sentinel/logging_setup.py:9`:
 - Log to file (`logs/sentinel.log`) and stdout
 - Configurable level from config
 - Format: `%(asctime)s [%(levelname)s] %(name)s: %(message)s`
-- Each component gets its own named logger (`sentinel.fetcher.rss`, `sentinel.classifier`, etc.)
+- Root logger name: `"sentinel"`. Each component gets its own named logger (`sentinel.fetcher.rss`, `sentinel.classifier`, etc.)
 - Rotate at configurable max size, keep configurable backup count
+- `setup_logging()` is idempotent — skips setup if handlers already attached (`logging_setup.py:19`)
 
 ### 1.5 CLI Entry Point (`sentinel.py`)
 

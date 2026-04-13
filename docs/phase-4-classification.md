@@ -130,31 +130,67 @@ class Classifier:
         return results
 ```
 
-#### Handling LLM Response Failures
+#### Classifier Behavior (live)
 
-1. **JSON parse failure:** Log error, skip article. The system prompt asks for JSON-only but LLMs sometimes add explanation. Attempt to extract JSON from response using regex `\{.*\}` before giving up.
-2. **API error (rate limit, server error):** Log error, retry once after 5 seconds, then skip.
-3. **Unexpected field values:** Validate urgency_score is 1-10, confidence is 0.0-1.0. Clamp out-of-range values.
-4. **Empty response:** Log error, skip article.
+| Aspect | Value | Anchor |
+|---|---|---|
+| API calls | 1 per article; no batching | `classifier.py:138` |
+| `anthropic.APIError` retry | ONCE after 5s sleep, then skip | `classifier.py:182-193` |
+| `json.JSONDecodeError` retry | NONE — article skipped | `classifier.py:152-157` |
+| JSON recovery | regex `\{.*\}` with `re.DOTALL` if direct `json.loads` fails | `classifier.py:209-227` |
+| `urgency_score` clamp | clamped into 1–10 | `classifier.py` |
+| `confidence` clamp | clamped into [0.0, 1.0] | `classifier.py` |
+| Confidence gating | NONE — all results passed through regardless of confidence | — |
 
 #### Cost Tracking
 
-Log token usage for each classification call. Accumulate daily totals and log a summary at the end of each day:
+| Field | Value | Anchor |
+|---|---|---|
+| Accumulation | daily cumulative token counters | `classifier.py` |
+| Flush trigger | UTC date rollover | `classifier.py:246-248` |
+| Input price | `$0.80 / M tokens` (HARDCODED) | `classifier.py:246-248` |
+| Output price | `$4.00 / M tokens` (HARDCODED) | `classifier.py:246-248` |
+| Config override | NONE — prices are not configurable | — |
+
+Example log line:
 ```
 2025-09-10 [INFO] sentinel.classifier: Daily usage: 15,234 input tokens, 4,521 output tokens, estimated cost: $0.038
 ```
+
+#### Output Schema
+
+| Field | Type | Notes |
+|---|---|---|
+| `is_military_event` | bool | — |
+| `event_type` | enum | includes `none` sentinel for non-military results |
+| `urgency_score` | int 1–10 | clamped |
+| `affected_countries` | list[str] | ISO codes |
+| `aggressor` | enum | `RU` \| `BY` \| `unknown` \| `none` |
+| `is_new_event` | bool | — |
+| `confidence` | float [0.0, 1.0] | clamped; NOT thresholded |
+| `summary_pl` | str | Polish summary for alert |
 
 ### 4.2 Corroborator (`sentinel/classification/corroborator.py`)
 
 Groups classified articles into "events" -- the same real-world incident reported by multiple sources.
 
-#### Corroboration Logic
+#### Event Creation Floor
 
-Two articles describe the same event if:
-1. They were published within `corroboration_window_minutes` of each other (default: 60 min)
-2. They have the same `event_type` (or compatible types: `airstrike` and `missile_strike` are compatible; `invasion` and `troop_movement` are compatible)
-3. They share at least one `affected_country`
-4. Their `summary_pl` fields are semantically similar (fuzzy match on key nouns/entities)
+| Rule | Value | Anchor |
+|---|---|---|
+| `_MIN_EVENT_URGENCY` | `5` — articles below urgency 5 never create/update an event | `corroborator.py:28` |
+| `none` event_type | filtered out (sentinel for non-military results) | `corroborator.py` |
+
+#### Event Match Criteria
+
+All four must hold (`corroborator.py:87`):
+
+| # | Criterion | Anchor |
+|---|---|---|
+| 1 | `event_type` compatible via `EVENT_COMPATIBILITY` dict | `corroborator.py` |
+| 2 | `affected_countries` overlap (≥1 shared ISO code) | `corroborator.py:87` |
+| 3 | time diff ≤ `corroboration_window_minutes` | `corroborator.py:87` |
+| 4 | `fuzz.token_sort_ratio(summary_pl) >= 55` (`_SUMMARY_SIMILARITY_THRESHOLD`) | `corroborator.py:87` |
 
 #### Compatible Event Types
 ```python
@@ -185,14 +221,18 @@ EVENT_COMPATIBILITY = {
    - Create new event
    - Set source_count = 1
    - Set alert_status = "pending"
-5. Check if event meets corroboration threshold:
-   - If source_count >= config.classification.corroboration_required AND urgency >= 9:
-     → Mark event for phone call
-   - If source_count >= 1 AND urgency >= 7:
-     → Mark event for SMS
-   - If urgency >= 5:
-     → Mark event for WhatsApp
+5. Check if event meets alert threshold (see table below)
 ```
+
+#### Alert Thresholds (live)
+
+Anchors: `sentinel/classification/corroborator.py:_determine_alert_status`, `sentinel/alerts/state_machine.py:_determine_action`.
+
+| Action | Urgency | source_count | Notes |
+|---|---|---|---|
+| Phone call | `>= 9` | `>= config.classification.corroboration_required` | Pydantic default `2`; `config.example.yaml` AND live production both set `1` (live override) |
+| SMS | `>= 7` | NOT CHECKED | No `source_count` gate — single source suffices |
+| WhatsApp | `>= 5` | NOT CHECKED | Unreachable in production: `AlertStateMachine.process_event` routes `whatsapp` action into `_execute_sms` (`state_machine.py:190`) |
 
 #### Interface
 
@@ -225,10 +265,13 @@ Two articles from the same underlying source don't count as independent corrobor
 - PAP wire story picked up by Onet, Gazeta, WP = 1 source (PAP), not 4
 - Reuters story on BBC, CNN, Al Jazeera = 1 source (Reuters), not 4
 
-Heuristic for source independence:
-- Different `source_type` (rss vs gdelt vs telegram) → likely independent
-- Different media organizations (check domain: `reuters.com` ≠ `pap.pl` → independent)
-- Same story syndicated (title similarity > 90% across domains) → count as 1 source
+Independence check (`corroborator.py:145`):
+
+| Rule | Outcome |
+|---|---|
+| Same domain across two articles | NOT independent |
+| `fuzz.ratio(title_normalized) >= 90` across sources | NOT independent (syndication) |
+| Otherwise | Independent |
 
 This is imperfect but practical. The key is: 2 truly independent confirmations before a phone call.
 
@@ -254,6 +297,17 @@ When `--test-file` is used:
 - Print results in a table format
 - Optionally compare against expected scores in the YAML
 - Exit after printing
+
+## Known Quirks
+
+| # | Quirk |
+|---|---|
+| 1 | Two parallel urgency decision paths: `Corroborator._determine_alert_status` writes `event.alert_status` to DB; `AlertStateMachine._determine_action` ignores the stored value and re-decides from `config.alerts.urgency_levels`. They can disagree if `classification.*` and `alerts.urgency_levels` drift. |
+| 2 | Classifier prices are HARDCODED (`$0.80/M input`, `$4.00/M output`) — config does not control this. If Anthropic pricing changes, daily cost log diverges from reality. |
+| 3 | `confidence` is clamped to [0.0, 1.0] but NOT thresholded — low-confidence classifications still flow downstream to the corroborator and alerter. |
+| 4 | `event_type = "none"` is a sentinel for non-military results; the corroborator must filter it out before event creation. |
+| 5 | WhatsApp alert branch is unreachable in production: `AlertStateMachine.process_event` routes `whatsapp` → `_execute_sms` (`state_machine.py:190`). |
+| 6 | SMS threshold has NO `source_count` gate — a single source at urgency ≥ 7 triggers SMS. Only phone calls require corroboration. |
 
 ## Acceptance Tests
 

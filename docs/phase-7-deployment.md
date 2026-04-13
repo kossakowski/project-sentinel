@@ -1,86 +1,94 @@
 # Phase 7: Deployment
 
-> STATUS: COMPLETE — implemented in production
-> KEY FILES: `deploy/sentinel.service`, `deploy/logrotate.conf`, `/etc/sentinel/config.yaml` (server), `/etc/sentinel/sentinel.env` (server)
+> STATUS: COMPLETE — deployed to production.
+> SCOPE: one-time build and harden steps. Day-2 operations (deploy, logs, DB, troubleshooting) live in [`server-runbook.md`](server-runbook.md).
+> KEY FILES: `deploy/sentinel.service`, `/etc/sentinel/config.yaml` (server), `/etc/sentinel/sentinel.env` (server), `/etc/systemd/system/sentinel.service`.
 
 ## Objective
-Deploy Project Sentinel to a Hetzner Cloud VPS, configure it as a systemd service with auto-restart, set up log rotation, and establish monitoring and backups.
+
+Provision a Hetzner VPS, install Sentinel as a sandboxed systemd service running under a dedicated `sentinel` user, enable log rotation, health-check cron, and daily DB backup.
 
 ## Prerequisites
-- All phases 1-6 complete and tested locally
-- Hetzner Cloud account created
-- **[VPS Security Hardening](security/vps-hardening.md) completed** -- do this BEFORE deployment
-  - Admin user `deploy` created (SSH + sudo)
-  - Service user `sentinel` created (no login, no sudo)
-  - Hetzner Cloud Firewall configured
-  - Directories `/var/lib/sentinel`, `/var/log/sentinel`, `/etc/sentinel` created
-- Domain name (optional, not required)
-- Local `.env` file with all secrets configured and working
 
-## 7.1 VPS Setup
+| Requirement | Source |
+|---|---|
+| Phases 1–6 complete and tested locally | — |
+| VPS hardened: `deploy` admin user, `sentinel` service user, UFW, fail2ban, SSH port 2222 | [`security/vps-hardening.md`](security/vps-hardening.md) |
+| Directories `/var/lib/sentinel`, `/var/log/sentinel`, `/etc/sentinel` created with correct ownership | hardening doc |
+| Hetzner Cloud Firewall `sentinel-fw` attached (whitelisted home IP on 2222) | hardening doc |
+| GitHub deploy key generated at `/home/deploy/.ssh/github_deploy` (ed25519) | see 7.1 |
 
-### Enable Hetzner Automatic Backups
+## 7.1 VPS Spec
 
-In the Hetzner Cloud Console:
-1. Select your server → **Backups** tab
-2. Enable automatic backups (~€0.80/month for CX22)
+| Field | Value |
+|---|---|
+| Provider | Hetzner Cloud |
+| Location | Nuremberg (`nbg1`) |
+| Image | Ubuntu 24.04 LTS |
+| Type | CX23 (2 vCPU, 4 GB RAM) |
+| Backups | Hetzner automatic backups enabled (7-day retention) |
+| SSH | Port 2222, key-only, `deploy` user |
 
-This creates daily server snapshots with 7-day retention -- cheap insurance against host loss, accidental deletion, or botched updates.
+See [`server-runbook.md` §Server Facts](server-runbook.md#server-facts) for live IP and access details.
 
-### Order the VPS
+## 7.2 Clone Repo and Install
 
-1. Go to https://console.hetzner.cloud
-2. Create a new project (e.g., "sentinel")
-3. Create a new server:
-   - **Location:** Falkenstein (fsn1) or Nuremberg (nbg1) -- closest to Poland
-   - **Image:** Ubuntu 24.04
-   - **Type:** CX22 (2 vCPU, 4 GB RAM, 40 GB disk) -- €3.99/month
-   - **SSH Key:** Add your public SSH key (ed25519 recommended)
-   - **Firewall:** Attach `sentinel-fw` (created in hardening Step 0)
-   - **Backups:** Enable
-   - **Name:** `sentinel`
-4. Note the server IP address
+Production uses **git-pull from GitHub** via a read-only deploy key. No rsync.
 
-### Deploy the Application
+**One-time deploy key setup:**
 
 ```bash
-# SSH as admin user (port 2222, set during hardening)
 ssh -p 2222 deploy@<server-ip>
 
-# Install Python
-sudo apt install -y python3 python3-pip python3-venv git sqlite3
+# Generate deploy key
+ssh-keygen -t ed25519 -f ~/.ssh/github_deploy -N ""
 
-# Clone the repo
-git clone <your-repo-url> ~/sentinel
-cd ~/sentinel
+# Route github.com to this key
+cat >> ~/.ssh/config <<'EOF'
+Host github.com
+  IdentityFile ~/.ssh/github_deploy
+  IdentitiesOnly yes
+EOF
+chmod 600 ~/.ssh/config
 
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate
+# Register public key at github.com/kossakowski/project-sentinel/settings/keys
+cat ~/.ssh/github_deploy.pub
+# Paste as read-only deploy key.
 
-# Install dependencies
-pip install -r requirements.txt
+# Verify
+ssh -T git@github.com   # should greet kossakowski/project-sentinel
 ```
 
-### Set Up Secrets and Config
+Migration history from rsync → git-pull: [`migration-git-deploy.md`](migration-git-deploy.md).
+
+**Clone and install:**
 
 ```bash
-# --- Secrets: isolated from the repo, not readable by the service user directly ---
-# (systemd reads this as root via EnvironmentFile= before dropping to the sentinel user)
-sudo cp .env /etc/sentinel/sentinel.env
-sudo chown root:deploy /etc/sentinel/sentinel.env
-sudo chmod 640 /etc/sentinel/sentinel.env
+sudo apt install -y python3 python3-venv git sqlite3
 
-# --- Config: server-specific copy with absolute paths ---
-sudo cp config/config.example.yaml /etc/sentinel/config.yaml
-sudo chown deploy:deploy /etc/sentinel/config.yaml
-sudo chmod 644 /etc/sentinel/config.yaml
-
-# Edit the server config:
-nano /etc/sentinel/config.yaml
+git clone git@github.com:kossakowski/project-sentinel.git /home/deploy/sentinel
+cd /home/deploy/sentinel
+python3 -m venv venv
+venv/bin/pip install -r requirements.txt
 ```
 
-In `/etc/sentinel/config.yaml`, update these paths to use absolute locations:
+## 7.3 Config and Secrets
+
+| Path | Owner | Mode | Purpose |
+|---|---|---|---|
+| `/etc/sentinel/` | `root:sentinel` | `750` | Config directory |
+| `/etc/sentinel/config.yaml` | `root:sentinel` | `640` | Live config with absolute paths |
+| `/etc/sentinel/sentinel.env` | `root:deploy` | `640` | API keys; loaded by systemd as root before dropping privileges |
+
+```bash
+sudo install -d -o root -g sentinel -m 750 /etc/sentinel
+
+sudo install -o root -g deploy -m 640 .env /etc/sentinel/sentinel.env
+sudo install -o root -g sentinel -m 640 config/config.example.yaml /etc/sentinel/config.yaml
+sudo nano /etc/sentinel/config.yaml
+```
+
+**Required overrides** in `/etc/sentinel/config.yaml` (absolute paths — service user cannot write the repo tree):
 
 ```yaml
 database:
@@ -94,63 +102,50 @@ sources:
     session_name: /var/lib/sentinel/sentinel_session
 ```
 
-> **Why move secrets out of the repo?** The `.env` file contains API keys, auth tokens, and phone numbers. At `/etc/sentinel/sentinel.env` (root:deploy 0640): (1) it can't be accidentally committed to git, (2) `git pull` and `git clean` can't touch it, (3) the sentinel service user never reads the file directly -- systemd injects env vars into the process as root before dropping privileges.
+Why secrets live outside the repo: `git pull`/`git clean` cannot touch them; the `sentinel` user never reads the file (systemd injects env vars as root via `EnvironmentFile=` before `User=sentinel` takes effect).
 
-### Telegram First-Time Authentication
+## 7.4 Telegram First-Run Authentication
 
-The Telegram client needs phone verification on first run. Run this interactively, then lock down the session file:
+Telethon needs interactive phone verification once. Run as `deploy`, then hand the session file to `sentinel`:
 
 ```bash
-cd ~/sentinel
+cd /home/deploy/sentinel
 source venv/bin/activate
-
-# Load env vars for this interactive session
-set -a; source /etc/sentinel/sentinel.env; set +a
+set -a; source <(sudo cat /etc/sentinel/sentinel.env); set +a
 
 python -c "
-import os
+import os, asyncio
 from telethon import TelegramClient
-
-client = TelegramClient(
-    '/var/lib/sentinel/sentinel_session',
-    int(os.environ['TELEGRAM_API_ID']),
-    os.environ['TELEGRAM_API_HASH']
-)
-
+c = TelegramClient('/var/lib/sentinel/sentinel_session',
+    int(os.environ['TELEGRAM_API_ID']), os.environ['TELEGRAM_API_HASH'])
 async def main():
-    await client.start()
-    me = await client.get_me()
+    await c.start()
+    me = await c.get_me()
     print(f'Authenticated as: {me.first_name} ({me.phone})')
-    await client.disconnect()
-
-import asyncio
+    await c.disconnect()
 asyncio.run(main())
 "
-# Follow the prompts to enter your phone number and verification code
 
-# Lock down the session file -- it grants access to your Telegram account
 sudo chown sentinel:sentinel /var/lib/sentinel/sentinel_session.session
 sudo chmod 600 /var/lib/sentinel/sentinel_session.session
 ```
 
-### Test the Installation
+Re-auth procedure if the session expires: [`server-runbook.md` §Telegram session re-authentication](server-runbook.md#troubleshooting-decision-tree).
+
+## 7.5 Dry-Run Smoke Test
 
 ```bash
-# Run a manual dry-run test using the server config
-set -a; source /etc/sentinel/sentinel.env; set +a
-~/sentinel/venv/bin/python ~/sentinel/sentinel.py \
+set -a; source <(sudo cat /etc/sentinel/sentinel.env); set +a
+/home/deploy/sentinel/venv/bin/python /home/deploy/sentinel/sentinel.py \
   --config /etc/sentinel/config.yaml --once --dry-run
 ```
 
-## 7.2 systemd Service
+Expect a full pipeline cycle with no Twilio calls and `health.json` written under `/var/lib/sentinel/`.
 
-### Create Service File
+## 7.6 systemd Unit
 
-```bash
-sudo nano /etc/systemd/system/sentinel.service
-```
+File: `/etc/systemd/system/sentinel.service`.
 
-Contents:
 ```ini
 [Unit]
 Description=Project Sentinel Military Alert Monitor
@@ -168,29 +163,21 @@ RestartSec=30
 StartLimitBurst=5
 StartLimitIntervalSec=300
 
-# Environment -- loaded by PID 1 (root) before dropping to User=sentinel,
-# so the sentinel user never reads the file directly
 EnvironmentFile=/etc/sentinel/sentinel.env
 
-# --- Security sandbox ---
-# Prevent privilege escalation
+# Sandbox — verified; targets systemd-analyze security score < 4.0
 NoNewPrivileges=yes
-
-# Filesystem isolation
 ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=/var/lib/sentinel /var/log/sentinel
 PrivateTmp=yes
-
-# Device and kernel isolation
 PrivateDevices=yes
 ProtectKernelTunables=yes
+ProtectKernelModules=yes
 ProtectKernelLogs=yes
 ProtectControlGroups=yes
 ProtectClock=yes
 ProtectHostname=yes
-
-# Restrict capabilities and syscalls
 CapabilityBoundingSet=
 RestrictSUIDSGID=yes
 LockPersonality=yes
@@ -198,7 +185,6 @@ RestrictRealtime=yes
 SystemCallArchitectures=native
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 
-# Logging
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=sentinel
@@ -207,53 +193,28 @@ SyslogIdentifier=sentinel
 WantedBy=multi-user.target
 ```
 
-### Verify Sandbox Score
+| Directive | Effect |
+|---|---|
+| `User=sentinel` + `WorkingDirectory=/home/deploy/sentinel` | Code owned by `deploy`, read-only to `sentinel` |
+| `EnvironmentFile=/etc/sentinel/sentinel.env` | Loaded as PID 1 root before user drop |
+| `ProtectSystem=strict` + `ReadWritePaths=/var/lib/sentinel /var/log/sentinel` | Only DB dir and log dir are writable |
+| `ProtectHome=read-only` | `/home/deploy/sentinel` readable for code import, not writable |
+| `CapabilityBoundingSet=` (empty) | No capabilities at all |
+| `RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX` | No raw sockets, no netlink |
 
-```bash
-# Check how well the unit is sandboxed (lower exposure = better)
-sudo systemd-analyze security sentinel.service
-```
-
-Aim for an exposure score under 4.0. The directives above should get you there.
-
-### Enable and Start
+**Enable:**
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable sentinel
-sudo systemctl start sentinel
-
-# Check status
-sudo systemctl status sentinel
-
-# View logs
-sudo journalctl -u sentinel -f
+sudo systemctl enable --now sentinel
+sudo systemd-analyze security sentinel.service    # expect exposure < 4.0
 ```
 
-### Service Management
+Day-2 service management: [`server-runbook.md` §Service Management](server-runbook.md#service-management).
 
-```bash
-# Start/stop/restart
-sudo systemctl start sentinel
-sudo systemctl stop sentinel
-sudo systemctl restart sentinel
+## 7.7 Log Rotation
 
-# View recent logs
-sudo journalctl -u sentinel --since "1 hour ago"
-
-# Check if running
-sudo systemctl is-active sentinel
-```
-
-## 7.3 Log Rotation
-
-### Application Logs
-
-Python's `RotatingFileHandler` handles log rotation within the app (configured in `config.yaml`). Also configure system logrotate as a backup:
-
-```bash
-sudo nano /etc/logrotate.d/sentinel
-```
+**App logs** — `/etc/logrotate.d/sentinel`:
 
 ```
 /var/log/sentinel/*.log {
@@ -267,15 +228,8 @@ sudo nano /etc/logrotate.d/sentinel
 }
 ```
 
-### journald Logs
+**journald** — `/etc/systemd/journald.conf`:
 
-The systemd journal also captures stdout/stderr. Configure retention:
-
-```bash
-sudo nano /etc/systemd/journald.conf
-```
-
-Add/modify:
 ```
 SystemMaxUse=500M
 MaxRetentionSec=30day
@@ -285,22 +239,19 @@ MaxRetentionSec=30day
 sudo systemctl restart systemd-journald
 ```
 
-## 7.4 Monitoring
+## 7.8 Cron Jobs
 
-### Health Check Script
+Owner: `deploy`. View with `crontab -l`.
 
-Create a script that checks if Sentinel is healthy and sends an SMS alert if it's down:
+| Schedule | Script | Purpose |
+|---|---|---|
+| `*/30 * * * *` | `/home/deploy/check-health.sh` | SMS via Twilio if `/var/lib/sentinel/health.json` is missing or older than 30 min. Doubles as deadman switch. |
+| `0 3 * * *` | `/home/deploy/backup-db.sh` | SQLite `.backup` to `/home/deploy/backups/sentinel_YYYYMMDD.db`, 7-day retention. |
 
-```bash
-nano ~/check_health.sh
-```
+**`/home/deploy/check-health.sh`:**
 
 ```bash
 #!/bin/bash
-# Health check for Project Sentinel
-# Runs as deploy user via cron. Checks the health file written by the daemon,
-# and sends an SMS alert via Twilio if the service appears stuck or dead.
-
 HEALTH_FILE="/var/lib/sentinel/health.json"
 MAX_AGE_MINUTES=30
 ENV_FILE="/etc/sentinel/sentinel.env"
@@ -315,7 +266,6 @@ else
     exit 0
 fi
 
-# Load env vars and send SMS alert
 set -a; source "$ENV_FILE"; set +a
 $PYTHON -c "
 from sentinel.alerts.twilio_client import TwilioClient
@@ -326,170 +276,93 @@ client.send_sms(config.alerts.phone_number, 'Project Sentinel: $MSG Sprawdź ser
 "
 ```
 
-```bash
-chmod +x ~/check_health.sh
-```
-
-Add to deploy user's crontab:
-```bash
-crontab -e
-```
-```
-*/30 * * * * /home/deploy/check_health.sh 2>&1 | logger -t sentinel-health
-```
-
-### Disk Space Monitoring
-
-```bash
-# Add to crontab -- alert if disk > 80%
-0 */6 * * * df -h / | awk 'NR==2 {gsub(/%/,"",$5); if ($5 > 80) print "Disk usage: "$5"%"}' | while read msg; do echo "$msg" | mail -s "Sentinel: disk alert" your@email.com; done
-```
-
-## 7.5 Backup
-
-### Local Database Backup
-
-SQLite database is a single file. Back it up daily:
-
-```bash
-nano ~/backup.sh
-```
+**`/home/deploy/backup-db.sh`:**
 
 ```bash
 #!/bin/bash
-# Daily backup of Sentinel SQLite database
 BACKUP_DIR="/home/deploy/backups"
 DB_FILE="/var/lib/sentinel/sentinel.db"
 DATE=$(date +%Y%m%d)
-
 mkdir -p "$BACKUP_DIR"
-
-# Safe hot backup via SQLite .backup command
 sqlite3 "$DB_FILE" ".backup '$BACKUP_DIR/sentinel_$DATE.db'"
-
-# Keep only last 7 days
 find "$BACKUP_DIR" -name "sentinel_*.db" -mtime +7 -delete
 ```
 
 ```bash
-chmod +x ~/backup.sh
+chmod +x /home/deploy/check-health.sh /home/deploy/backup-db.sh
 crontab -e
-# Add:
-0 3 * * * /home/deploy/backup.sh 2>&1 | logger -t sentinel-backup
+# */30 * * * * /home/deploy/check-health.sh 2>&1 | logger -t sentinel-health
+# 0 3 * * *   /home/deploy/backup-db.sh   2>&1 | logger -t sentinel-backup
 ```
 
-### Off-Host Backup
+## 7.9 Off-Host Backup (Manual, Weekly)
 
-Local backups don't survive host loss. **Pull critical files to your local machine weekly.**
-
-On your **local machine**, create a script:
+Local backups don't survive host loss. Run from your workstation:
 
 ```bash
-#!/bin/bash
-# pull_sentinel_backup.sh -- run on your local machine
-# Pulls critical Sentinel files from the VPS for disaster recovery
+SERVER="deploy@<server-ip>"; SSH_PORT=2222
+LOCAL="$HOME/sentinel-backups/$(date +%Y%m%d)"
+mkdir -p "$LOCAL"
 
-SERVER="deploy@<server-ip>"
-SSH_PORT=2222
-LOCAL_DIR="$HOME/sentinel-backups/$(date +%Y%m%d)"
-
-mkdir -p "$LOCAL_DIR"
-
-# Database (latest local backup)
-scp -P $SSH_PORT "$SERVER:/home/deploy/backups/$(ssh -p $SSH_PORT $SERVER 'ls -t /home/deploy/backups/ | head -1')" "$LOCAL_DIR/"
-
-# Config and systemd unit (not secret, but needed for recovery)
-scp -P $SSH_PORT "$SERVER:/etc/sentinel/config.yaml" "$LOCAL_DIR/"
-scp -P $SSH_PORT "$SERVER:/etc/systemd/system/sentinel.service" "$LOCAL_DIR/"
-
-# Secrets (requires deploy user's sudo -- will prompt for password)
-ssh -p $SSH_PORT -t "$SERVER" "sudo cat /etc/sentinel/sentinel.env" > "$LOCAL_DIR/sentinel.env"
-ssh -p $SSH_PORT -t "$SERVER" "sudo cat /var/lib/sentinel/sentinel_session.session" > "$LOCAL_DIR/sentinel_session.session"
-
-chmod 600 "$LOCAL_DIR/sentinel.env" "$LOCAL_DIR/sentinel_session.session"
-
-# Keep only last 4 weekly backups
-find "$(dirname "$LOCAL_DIR")" -maxdepth 1 -type d -mtime +28 -exec rm -rf {} \;
-
-echo "Backup complete: $LOCAL_DIR"
+LATEST=$(ssh -p $SSH_PORT $SERVER 'ls -t /home/deploy/backups/ | head -1')
+scp -P $SSH_PORT "$SERVER:/home/deploy/backups/$LATEST" "$LOCAL/"
+scp -P $SSH_PORT "$SERVER:/etc/systemd/system/sentinel.service" "$LOCAL/"
+ssh -p $SSH_PORT -t "$SERVER" "sudo cat /etc/sentinel/config.yaml"    > "$LOCAL/config.yaml"
+ssh -p $SSH_PORT -t "$SERVER" "sudo cat /etc/sentinel/sentinel.env"    > "$LOCAL/sentinel.env"
+ssh -p $SSH_PORT -t "$SERVER" "sudo cat /var/lib/sentinel/sentinel_session.session" > "$LOCAL/sentinel_session.session"
+chmod 600 "$LOCAL/sentinel.env" "$LOCAL/sentinel_session.session"
 ```
 
-Add to your **local** crontab:
-```
-0 4 * * 0 /path/to/pull_sentinel_backup.sh 2>&1 | logger -t sentinel-offhost-backup
-```
+| Asset | Local daily | Off-host weekly | Hetzner auto |
+|---|---|---|---|
+| SQLite DB | Yes (7d) | Yes | Yes (7d) |
+| `sentinel.env` secrets | — | Yes | Yes |
+| `config.yaml` | — | Yes | Yes |
+| Telegram session | — | Yes | Yes |
+| systemd unit | — | Yes | Yes |
+| Code | in GitHub remote | in GitHub remote | Yes |
 
-> **Note:** The scp/ssh commands for secrets require `deploy`'s sudo password, so automatic cron requires either passwordless sudo for specific commands or SSH agent forwarding. For manual weekly pulls, just run the script by hand.
-
-### What's Backed Up Where
-
-| Asset | Local daily backup | Off-host weekly | Hetzner auto-backup |
-|-------|-------------------|----------------|-------------------|
-| SQLite DB | Yes (7-day retention) | Yes | Yes (7-day retention) |
-| `.env` secrets | -- | Yes | Yes |
-| `config.yaml` | -- | Yes | Yes |
-| Telegram session | -- | Yes | Yes |
-| systemd unit | -- | Yes | Yes |
-| Code (git repo) | -- | In git remote | Yes |
-
-### Automatic Updates
-
-For security updates only:
+## 7.10 Unattended Security Updates
 
 ```bash
 sudo apt install -y unattended-upgrades
 sudo dpkg-reconfigure --priority=low unattended-upgrades
 ```
 
-## 7.6 Updating the Application
-
-```bash
-ssh -p 2222 deploy@<server-ip>
-cd ~/sentinel
-
-# Pull latest code
-git pull origin main
-
-# Update dependencies if requirements.txt changed
-source venv/bin/activate
-pip install -r requirements.txt
-
-# If config.yaml schema changed, update the server copy:
-# nano /etc/sentinel/config.yaml
-
-# Restart service
-sudo systemctl restart sentinel
-
-# Verify it's running
-sudo systemctl status sentinel
-sudo journalctl -u sentinel --since "1 minute ago"
-```
-
-## 7.7 Rollback
-
-If an update breaks something:
-
-```bash
-# Check git log for last known good commit
-git log --oneline -10
-
-# Revert to previous commit
-git checkout <commit-hash>
-
-# Restart
-sudo systemctl restart sentinel
-```
+Security patches only — no feature upgrades.
 
 ## Acceptance Criteria
 
-1. `sudo systemctl status sentinel` shows "active (running)"
-2. `sudo journalctl -u sentinel` shows pipeline cycles executing
-3. `/var/lib/sentinel/health.json` is updated after each cycle
-4. Service auto-restarts after being killed (`sudo kill -9 $(pgrep -f sentinel.py)`)
-5. Service starts automatically after VPS reboot
-6. `--dry-run --once` produces expected output when run manually
-7. `sudo systemd-analyze security sentinel.service` scores under 4.0
-8. Log rotation keeps log files under configured max size
-9. Health check cron detects if service is stuck and sends SMS
-10. Database backup runs daily, off-host backup runs weekly
-11. Hetzner automatic backups are enabled
+| # | Check | Command |
+|---|---|---|
+| 1 | Service active | `sudo systemctl is-active sentinel` → `active` |
+| 2 | Cycles running | `sudo journalctl -u sentinel` shows `[PIPELINE]` heartbeats |
+| 3 | Health file fresh | `stat -c %Y /var/lib/sentinel/health.json` within 30 min |
+| 4 | Auto-restart | `sudo kill -9 $(pgrep -f sentinel.py)` → service respawns in ≤30 s |
+| 5 | Boot persistence | `sudo reboot` → service up after boot |
+| 6 | Dry-run OK | `--config /etc/sentinel/config.yaml --once --dry-run` prints full cycle |
+| 7 | Sandbox score | `sudo systemd-analyze security sentinel.service` < 4.0 |
+| 8 | Logrotate | `/var/log/sentinel/sentinel.log.1.gz` exists after day 2 |
+| 9 | Health cron | Stop service → within 30 min SMS arrives |
+| 10 | Daily DB backup | `ls /home/deploy/backups/sentinel_*.db` grows daily, capped at 7 |
+| 11 | Hetzner backups | Console → Backups tab shows daily snapshots |
+
+## KNOWN QUIRKS
+
+| Quirk | Impact |
+|---|---|
+| Four filesystem roots: code at `/home/deploy/sentinel/`, config at `/etc/sentinel/`, state at `/var/lib/sentinel/`, logs at `/var/log/sentinel/` | `sentinel` user has no shell — service-only; any manual test must run as `deploy` with `sudo cat` for secrets. |
+| SSH port 2222 + fail2ban (5 fails / 10 min → 1 h ban) | Wrong username (`root@`, `kossa@`) counts as a failure. Always `deploy@`. |
+| Config path is absolute on server (`/etc/sentinel/config.yaml`), relative in local dev (`config/config.yaml`) | `ExecStart` must pass `--config /etc/sentinel/config.yaml` explicitly. |
+| Health cron doubles as deadman switch | If cron itself dies, you lose the alert — verify with `systemctl status cron` monthly. |
+| Service user can only write `/var/lib/sentinel` and `/var/log/sentinel` (per `ReadWritePaths`) | Any new write path (new DB, new log) requires updating the unit and `daemon-reload`. |
+| Git-pull deploy requires the deploy key on `/home/deploy/.ssh/github_deploy` | If `ssh -T git@github.com` fails, re-register the public key in GitHub settings. |
+
+## Cross-References
+
+| Topic | Doc |
+|---|---|
+| Day-2 deploy, rollback, logs, DB queries, troubleshooting | [`server-runbook.md`](server-runbook.md) |
+| VPS hardening (must precede this phase) | [`security/vps-hardening.md`](security/vps-hardening.md) |
+| rsync → git-pull migration history | [`migration-git-deploy.md`](migration-git-deploy.md) |
+| Config parameter reference | [`config-reference.md`](config-reference.md) |

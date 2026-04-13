@@ -17,7 +17,7 @@
 | `sentinel/diagnostic.py` | `DiagnosticData`, `DiagnosticArticle` | Data containers for HTML diagnostic report |
 | `sentinel/logging_setup.py` | `setup_logging()` | Rotating file + stderr handler config |
 | `sentinel/fetchers/base.py` | `BaseFetcher` | Abstract base: `name: str`, `fetch() -> list[Article]` |
-| `sentinel/fetchers/rss.py` | `RSSFetcher` | feedparser over configured RSS sources; `fetch(max_priority=N)` |
+| `sentinel/fetchers/rss.py` | `RSSFetcher` | `feedparser` + `httpx`; conditional GET via in-memory `_etag_cache` / `_last_modified_cache` keyed by URL (sends `If-None-Match` / `If-Modified-Since`; 304 → `[]`). `rss.py:99-111`. `fetch(max_priority=N)` |
 | `sentinel/fetchers/gdelt.py` | `GDELTFetcher` | GDELT DOC 2.0 API; theme + CAMEO code + Goldstein filter |
 | `sentinel/fetchers/google_news.py` | `GoogleNewsFetcher` | Google News RSS per configured query |
 | `sentinel/fetchers/telegram.py` | `TelegramFetcher` | Telethon MTProto client; buffers messages; **requires `start()`/`stop()` lifecycle** |
@@ -28,8 +28,8 @@
 | `sentinel/classification/corroborator.py` | `Corroborator` | Groups classifications into `Event` objects; checks source count |
 | `sentinel/alerts/dispatcher.py` | `AlertDispatcher` | Sorts events by urgency; routes to `AlertStateMachine` or dry-run log |
 | `sentinel/alerts/state_machine.py` | `AlertStateMachine` | Urgency → action decision; call/SMS/WhatsApp execution; cooldown; call polling |
-| `sentinel/alerts/twilio_client.py` | `TwilioClient` | Twilio REST API wrapper: `make_call()`, `send_sms()`, `get_call_status()` |
-| `app.py` | — | **Legacy prototype — not used in production. Ignore.** |
+| `sentinel/alerts/twilio_client.py` | `TwilioClient` | Twilio REST API wrapper: `make_alert_call(phone, message_pl, event_id)` (`twilio_client.py:43`), `send_sms(phone, message, event_id)`, `send_whatsapp(...)` (defined but unreachable from `process_event`), `get_call_status(twilio_sid)` |
+| `app.py` | Flask app | **Legacy / disconnected.** Standalone Flask app; NOT imported by `sentinel.py` or `sentinel/`. Routes: `/api/sms`, `/api/call`, `/api/voice-message`, `/api/whatsapp`. Not part of the pipeline. |
 
 ---
 
@@ -87,7 +87,7 @@ Produced by: `Corroborator.process_classifications()`. Consumed by: `AlertDispat
 | `last_updated_at` | `datetime` | Latest article in group |
 | `source_count` | `int` | Count of independent sources |
 | `article_ids` | `list[str]` | All contributing article IDs |
-| `alert_status` | `str` | `pending` \| `phone_call` \| `sms` \| `whatsapp` \| `dry_run` \| `retry_pending` |
+| `alert_status` | `str` | Values actually written by code: `pending`, `call_placed`, `retry_pending`, `sms_sent`, `whatsapp_sent` (unreachable — see quirks), `acknowledged`, `dry_run`. `Corroborator._determine_alert_status` sets a provisional value (`phone_call`/`sms`/`whatsapp`/`pending`) but `AlertStateMachine` overwrites it with the values above. |
 | `acknowledged_at` | `datetime\|None` | Set when operator replies to SMS with correct 6-digit confirmation code |
 
 ### `AlertRecord`
@@ -98,7 +98,7 @@ Produced by: `AlertStateMachine`. Consumed by: `AlertStateMachine.check_pending_
 | `event_id` | `str` | FK → `Event.id` |
 | `alert_type` | `str` | `phone_call` \| `sms` \| `whatsapp` |
 | `twilio_sid` | `str` | Twilio call/message SID |
-| `status` | `str` | `initiated` \| `ringing` \| `completed` \| `acknowledged` \| `failed` |
+| `status` | `str` | Twilio API values: `initiated`, `ringing`, `in-progress`, `completed`, `busy`, `no-answer`, `failed`, `canceled`; plus internal `acknowledged`. `Database.get_pending_call_records()` (`database.py:221`) filters `status IN ('initiated', 'ringing')`. |
 | `attempt_number` | `int` | Retry counter |
 | `sent_at` | `datetime` | When Twilio API was called |
 | `message_body` | `str` | Full text of message/TTS script |
@@ -211,7 +211,7 @@ Post-alert state transitions (managed by `AlertStateMachine`, not corroborator):
 | `processing.dedup.cross_source_title_threshold` | `int` | `95` | rapidfuzz score for cross-source dedup |
 | `processing.dedup.lookback_minutes` | `int` | `60` | How far back DB title comparison looks |
 | `alerts.urgency_levels.<name>.corroboration_required` | `int` | `1` | Per-level override for corroboration gate on phone calls |
-| `alerts.acknowledgment.call_duration_threshold_seconds` | `int` | `15` | Min call duration to count as acknowledged |
+| `alerts.acknowledgment.call_duration_threshold_seconds` | `int` | `15` | **Dead** — read only inside an `if False:` block (`state_machine.py:499-501`); superseded by SMS-code confirmation. |
 | `alerts.acknowledgment.cooldown_hours` | `int` | `6` | No re-alerts within this window after acknowledgment |
 | `database.article_retention_days` | `int` | `30` | Articles older than this deleted each cycle |
 | `database.event_retention_days` | `int` | `90` | Events older than this deleted each cycle |
@@ -256,11 +256,22 @@ Config loading: `sentinel/config.py:load_config()`. Env vars substituted via `${
 
 ## 9. Known Quirks
 
-- **`app.py` is a legacy prototype.** Not imported, not used, not tested. Ignore it.
+- **WhatsApp action disabled.** `AlertStateMachine.process_event` routes `action == "whatsapp"` to `_execute_sms` (`state_machine.py:190`). `_execute_whatsapp` (`state_machine.py:478`) and `TwilioClient.send_whatsapp` are unreachable from the production flow; only `--test-alert whatsapp` reaches them.
+- **Two urgency decision paths can disagree.** `Corroborator._determine_alert_status` uses `config.classification.corroboration_required` and writes `event.alert_status`; `AlertStateMachine._determine_action` re-decides from `config.alerts.urgency_levels` and ignores the stored value.
+- **No DTMF in call TwiML.** Confirmation is via SMS 6-digit code reply, not `<Gather>`. `twilio_client.py:41`.
+- **Call-duration acknowledgment is dead code.** `_handle_call_result` has an `if False:` block at `state_machine.py:501` containing the entire duration-based logic; `alerts.acknowledgment.call_duration_threshold_seconds` is only read inside it.
+- **`_check_confirmation_sms_delivered`** (`state_machine.py:415`) is implemented but never invoked.
+- **Confirmation code stored as instance attribute, not reset between events.** `state_machine.py:368`, `state_machine.py:391` — stale-code risk if events overlap.
+- **GDELT articles have empty `summary` always** (`gdelt.py:178`); Stage 4 keyword filter effectively scans GDELT title only.
+- **Google News redirect URLs stored as-is**, not resolved to canonical. Same article surfaced by two queries dedupes only via fuzzy title match.
+- **`TelegramFetcher` channel matching falls back to first channel if id mismatches** (`telegram.py:100-108`).
+- **`BaseFetcher.is_enabled()` raises `NotImplementedError` but is NOT `@abstractmethod`.** Silent failure mode if a subclass forgets to override.
+- **`app.py` Flask app is legacy and disconnected from the pipeline.** Not imported, not used, not tested.
+- **Classifier daily token cost logged with hardcoded prices** `$0.80/M input, $4.00/M output` at UTC date rollover (`classifier.py:246-248`); not configurable.
+- **`config.testing.test_mode` field exists but is never read anywhere** (`config.py:181`).
 - **Production `corroboration_required=1`** (single source triggers call). Code default is `2`. Check live `config/config.yaml` before assuming corroboration behavior.
-- **`TelegramFetcher` lifecycle not in `BaseFetcher` contract.** `SentinelPipeline.startup()`/`shutdown()` use `hasattr(fetcher, "start")` duck-typing. If Telegram fails `start()`, it is logged and skipped — other fetchers are unaffected.
-- **`keyword_bypass` sources skip Stage 4 entirely.** High-trust sources (e.g. UA Air Force Telegram) are passed directly to the classifier without keyword pre-filtering. This means all their articles consume Haiku API quota.
-- **WhatsApp alert channel is disabled in code.** `AlertStateMachine.process_event()` routes `action == "whatsapp"` to `_execute_sms()`. Config urgency level `medium` still lists `whatsapp` as action; the code silently converts it.
-- **Fast-lane jitter is capped at 10 s** regardless of `jitter_seconds` config value. Slow-lane uses the full configured value.
-- **Fetcher health SMS fires exactly once at the 10th consecutive failure** per fetcher (`failures == 10` guard). It does not repeat.
-- **Pipeline failure SMS fires at exactly 3 consecutive cycle failures** (`consecutive_failures == 3` guard). `SentinelScheduler._check_pipeline_health()`.
+- **`TelegramFetcher` lifecycle not in `BaseFetcher` contract.** `SentinelPipeline.startup()`/`shutdown()` use `hasattr(fetcher, "start")` duck-typing. Telegram `start()` failure is logged and skipped; other fetchers unaffected.
+- **`keyword_bypass` sources skip Stage 4 entirely.** All their articles consume Haiku API quota.
+- **Fast-lane jitter capped at `min(jitter_seconds, 10)`** regardless of config (`scheduler.py:464`). Slow-lane uses full `jitter_seconds`.
+- **Fetcher health SMS fires exactly once at `failures == 10`** per fetcher (`scheduler.py:420`). Does not repeat.
+- **Pipeline failure SMS fires exactly once at `consecutive_failures == 3`** (`scheduler.py:515`), not `>=`.
