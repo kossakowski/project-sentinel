@@ -30,7 +30,8 @@ Emergency (SSH blocked): Hetzner Cloud web console → server → Console tab �
 /home/deploy/sentinel/               # App code (git clone of github:kossakowski/project-sentinel)
 ├── sentinel.py                      # Entry point
 ├── sentinel/                        # Python package
-├── venv/                            # Python virtual environment
+├── .venv/                           # Python virtual environment (live; use this)
+├── venv/                            # Legacy venv — stale, do not use
 ├── deploy/                          # Deploy scripts and systemd unit
 ├── tests/                           # Test suite
 └── requirements.txt
@@ -95,7 +96,7 @@ git checkout master          # or: git checkout <tag>
 git pull origin master       # if staying on master
 
 # 4. Install new deps (only if requirements.txt changed)
-venv/bin/pip install -r requirements.txt
+.venv/bin/pip install -r requirements.txt
 
 # 5. Restart and verify
 sudo systemctl restart sentinel
@@ -170,10 +171,10 @@ sudo sqlite3 /var/lib/sentinel/sentinel.db "SELECT COUNT(*) FROM articles;"
 sudo sqlite3 /var/lib/sentinel/sentinel.db "SELECT COUNT(*) FROM events;"
 
 # Recent articles
-sudo sqlite3 /var/lib/sentinel/sentinel.db "SELECT * FROM articles ORDER BY created_at DESC LIMIT 10;"
+sudo sqlite3 /var/lib/sentinel/sentinel.db "SELECT * FROM articles ORDER BY fetched_at DESC LIMIT 10;"
 
 # Recent events
-sudo sqlite3 /var/lib/sentinel/sentinel.db "SELECT * FROM events ORDER BY created_at DESC LIMIT 10;"
+sudo sqlite3 /var/lib/sentinel/sentinel.db "SELECT * FROM events ORDER BY first_seen_at DESC LIMIT 10;"
 
 # Schema
 sudo sqlite3 /var/lib/sentinel/sentinel.db ".tables"
@@ -204,11 +205,23 @@ View: `ssh -p 2222 deploy@178.104.76.254 'crontab -l'`
 
 ## Pipeline Schedule
 
-| Lane | Interval | Sources |
-|---|---|---|
-| Fast | every 3 min | Telegram channels, priority-1 RSS, Google News |
-| Slow | every 15 min | All sources including GDELT and lower-priority RSS |
-| Jitter | ±30 s | Applied to all runs to avoid predictable patterns |
+| Lane | Interval | Sources | Jitter |
+|---|---|---|---|
+| Fast | every 3 min | Telegram channels, priority-1 RSS, Google News | `min(jitter_seconds, 10)` — capped at 10 s |
+| Slow | every 15 min | All sources including GDELT and lower-priority RSS | `jitter_seconds` (default 30 s) |
+
+## Known Server Hazards
+
+Findings from the 2026-04-12 production audit. Remediation tracked in `TODO.md`.
+
+| # | Hazard | Location | Impact | Fix |
+|---|---|---|---|---|
+| 1 | **Detached HEAD** | `/home/deploy/sentinel/.git` | `git pull origin master` fails — repo is not on any branch | `cd /home/deploy/sentinel && git checkout master && git pull origin master` |
+| 2 | **Stale `.env` files with live credentials** | `/home/deploy/sentinel.bak-20260324/.env` and `/home/deploy/sentinel/project-sentinel/.env` (nested untracked clone) | Twilio + Anthropic + Telegram keys exposed in two extra files | Delete both files after confirming credentials are rotated or unchanged |
+| 3 | **Two Python venvs** | `/home/deploy/sentinel/venv/` (legacy) and `/home/deploy/sentinel/.venv/` (live) | The systemd service was hand-corrected to use `.venv/`; `deploy/configs/sentinel.service` in the repo still references `venv/` | Use `.venv/bin/python` for all operator commands; update `deploy/configs/sentinel.service` to reference `.venv/` |
+| 4 | **Live config behind repo by ~35 keywords** | `/etc/sentinel/config.yaml` | Commit `d96f4a4` added keywords that were never deployed — production detects fewer threats than the repo claims | Re-run `/deploy` to sync `/etc/sentinel/config.yaml` |
+| 5 | **Backup directory unbounded** | `/home/deploy/backups/` (792 MB at last audit) | Rolling DB backups auto-prune after 7 days; deploy snapshots (`deploy-YYYYMMDD-HHMMSS/`) created by `/deploy` do NOT auto-prune and accumulate | Add a retention rule (e.g. `find /home/deploy/backups -maxdepth 1 -name 'deploy-*' -mtime +30 -exec rm -rf {} +`) |
+| 6 | **TVN24 and LSM Latvia 403ing** | RSS fetcher logs | 558 of 655 log errors are TVN24 RSS; 93 are LSM Latvia RSS — both return consistent 403 Forbidden from server IPs | No alerting impact (priority-2 sources) but high log noise. Decide: replace URL, disable source in config, or accept and suppress |
 
 ## Troubleshooting Decision Tree
 
@@ -227,7 +240,7 @@ View: `ssh -p 2222 deploy@178.104.76.254 'crontab -l'`
 **Telegram session re-authentication:**
 ```bash
 ssh -p 2222 deploy@178.104.76.254
-cd /home/deploy/sentinel && source venv/bin/activate
+cd /home/deploy/sentinel && source .venv/bin/activate
 set -a && source <(sudo cat /etc/sentinel/sentinel.env) && set +a
 python -c "
 import os, asyncio

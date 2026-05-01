@@ -40,7 +40,7 @@ You are deploying Project Sentinel to its production Hetzner VPS. Invoking /depl
 
 ## Prerequisites (One-Time Setup)
 
-The server must have a git clone of the repository at `/home/deploy/sentinel/` with a GitHub deploy key configured for SSH access. See `docs/migration-git-deploy.md` for the full step-by-step migration guide. In short:
+The server must have a git clone of the repository at `/home/deploy/sentinel/` with a GitHub deploy key configured for SSH access. In short:
 
 1. On the server, generate a deploy key: `ssh-keygen -t ed25519 -f ~/.ssh/github_deploy -N ""`
 2. Add the public key (`~/.ssh/github_deploy.pub`) as a **Deploy Key** in GitHub repo settings (read-only is sufficient)

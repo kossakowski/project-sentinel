@@ -12,11 +12,7 @@
 - Consider a separate `target_country` field in classification to distinguish who is actually being attacked vs who is responding defensively.
 - The goal: when you glance at the WhatsApp message, you instantly know whether Poland itself is hit or whether it's a defensive response to an attack on a neighbor.
 
-## ~~2. Include clickable source links in SMS/WhatsApp messages~~ ✅ DONE
-
-Implemented 2026-03-24. `_build_sources_list()` now appends the article `source_url` below each source line. Google News URLs included as-is. Deployed to production.
-
-## 3. Smarter multi-tier classification to reduce false positives
+## 2. Smarter multi-tier classification to reduce false positives
 
 **Problem:** Haiku misclassifies headlines like "Poland scrambles jets in response to Russian strike on Ukraine" as a direct attack on Poland (urgency 9). Using Opus for all classifications would fix accuracy but is prohibitively expensive at 688+ articles per cycle.
 
@@ -54,3 +50,41 @@ Every classification step must be saved to the database — not just the final r
 - All three tiers use the API (`ANTHROPIC_API_KEY`), just different model IDs
 - The classification prompt improvement (tier 1) should be done first — it's free and addresses the root cause
 - Tiers 2-3 add cost but only for the small fraction of articles that score high
+
+---
+
+## Tracked Code Debt
+
+1. **WhatsApp action plumbed but routed to SMS.** `state_machine.py:190-191` overrides `whatsapp` action to `_execute_sms`. `_execute_whatsapp` (`state_machine.py:478`) and `TwilioClient.send_whatsapp` are unreachable from the production flow. 17 historical successful WhatsApp alerts in DB suggest the channel worked at some point. Decision needed: enable, remove entirely, or keep as a fallback.
+
+2. **Dead `_check_confirmation_sms_delivered`.** Defined at `state_machine.py:415`, never called. Either delete the method or wire it into the SMS-confirmation flow.
+
+3. **Unread `testing.test_mode` field.** `config.py:182` defines this field; nothing in the codebase reads it. Either delete or implement.
+
+4. **Synchronous Anthropic SDK call inside async pipeline.** `Classifier._call_api` (`classifier.py`) calls the synchronous Anthropic SDK from inside `async run_cycle`. Same issue with blocking `time.sleep()` in `_execute_phone_call` — blocks the asyncio event loop for up to ~500s per call round. Wrap with `asyncio.to_thread()` or switch to an async-native client.
+
+5. **Empty `tests/fixtures/`.** `config.testing.test_headlines_file` defaults to `tests/fixtures/test_headlines.yaml` but the file does not exist. Either create the fixture or fix the default.
+
+6. **Dead config: GDELT `cameo_codes` and `goldstein_threshold`.** Parsed by `GDELTConfig` in `config.py` but `GDELTFetcher.build_query()` only uses `themes` and `target_countries`. These fields do nothing.
+
+7. **Dead code in `state_machine.py:501-518`.** An `if False:` block containing the call-duration-based acknowledgment path. Replaced by SMS-code confirmation. Delete.
+
+---
+
+## Tracked Ops Debt
+
+1. **Delete `/home/deploy/sentinel.bak-20260324/.env` on production server** — contains live Twilio/Anthropic/Telegram credentials in a stale clone.
+
+2. **Delete `/home/deploy/sentinel/project-sentinel/` on production server** — nested untracked clone inside working tree, also contains live credentials. Causes permanent `git status` noise.
+
+3. **Re-attach server repo to `master`.** `/home/deploy/sentinel` is in detached HEAD state; would break `git pull origin master`. Fix: `cd /home/deploy/sentinel && git checkout master`.
+
+4. **Deploy current `config/config.yaml` to `/etc/sentinel/config.yaml`.** Live config is missing ~35 keywords that commit `d96f4a4` added.
+
+5. **Add deploy-snapshot pruning.** `/home/deploy/backups/` is at 792 MB and growing; deploy-snapshot directories are not auto-pruned (only DB backups are).
+
+6. **Decide TVN24 + LSM Latvia source health.** Both consistently 403 Forbidden — 558 + 93 errors in most recent log respectively. Replace, disable, or accept.
+
+7. **Update repo template `deploy/configs/sentinel.service`** to use `.venv/` (matches live) instead of legacy `venv/`.
+
+8. **Remove legacy `/home/deploy/sentinel/venv/` on server** — only `.venv/` is used by systemd.

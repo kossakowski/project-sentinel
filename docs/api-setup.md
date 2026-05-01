@@ -23,9 +23,8 @@ You need an Anthropic API account to use Claude Haiku for article classification
     ```
 
 ### Pricing (Claude Haiku 4.5)
-- Input: $1 per million tokens
-- Output: $5 per million tokens
-- Project Sentinel uses ~50-100 classifications/day = ~$1.50-2.50/month
+
+Pricing changes — see [Anthropic pricing](https://www.anthropic.com/pricing) for current Haiku 4.5 rates. Project Sentinel uses ~50-100 classifications/day; costs are minimal.
 
 ### Verify It Works
 
@@ -47,7 +46,7 @@ print(msg.content[0].text)
 
 ## 2. Twilio (Phone Calls, SMS, WhatsApp)
 
-You likely already have this set up (your existing `app.py` uses Twilio). For reference:
+If you want a sandbox to test Twilio interactively, you can build one separately — Project Sentinel itself does not include one.
 
 ### Steps
 
@@ -186,51 +185,11 @@ The Telegram session file (`sentinel_session.session`) is equivalent to being lo
 
 ## 4. GDELT API
 
-**No setup needed.** The GDELT DOC 2.0 API is free and requires no API key or registration.
-
-Endpoint: `https://api.gdeltproject.org/api/v2/doc/doc`
-
-### Verify It Works
-
-```bash
-curl -s "https://api.gdeltproject.org/api/v2/doc/doc?query=military+attack+Poland&mode=ArtList&maxrecords=5&format=json&TIMESPAN=24h" | python -m json.tool | head -30
-```
-
----
+**No setup needed.** The GDELT DOC 2.0 API is free and requires no API key or registration. Endpoint: `https://api.gdeltproject.org/api/v2/doc/doc`
 
 ## 5. Google News RSS
 
 **No setup needed.** Google News RSS feeds are public and free.
-
-### Verify It Works
-
-```bash
-curl -s "https://news.google.com/rss/search?q=military+Poland+when:1h&hl=en&gl=US&ceid=US:en" | head -50
-```
-
----
-
-## 6. Reddit API (Optional)
-
-If you want to add Reddit monitoring (r/worldnews, r/europe):
-
-### Steps
-
-1. Go to **https://www.reddit.com/prefs/apps**
-2. Click **Create App** (or **Create Another App**)
-3. Fill in:
-   - **Name:** Project Sentinel
-   - **Type:** Script
-   - **Redirect URI:** `http://localhost:8080` (required but unused)
-4. Note the **client ID** (under the app name) and **client secret**
-5. Add to `.env`:
-   ```
-   REDDIT_CLIENT_ID=your_client_id
-   REDDIT_CLIENT_SECRET=your_client_secret
-   REDDIT_USER_AGENT=sentinel:v1.0 (by /u/your_username)
-   ```
-
-Reddit monitoring is **optional** and disabled by default. Enable it by adding a Reddit source section to config.
 
 ---
 
@@ -252,9 +211,4 @@ ANTHROPIC_API_KEY=sk-ant-xxxxx
 # Telegram
 TELEGRAM_API_ID=12345678
 TELEGRAM_API_HASH=abcdef1234567890abcdef1234567890
-
-# Reddit (optional)
-# REDDIT_CLIENT_ID=
-# REDDIT_CLIENT_SECRET=
-# REDDIT_USER_AGENT=
 ```

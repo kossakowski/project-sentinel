@@ -42,7 +42,7 @@ Consumed by: `sentinel/fetchers/`
 | `priority` | int | `2` | 1=fast lane + highest corroboration weight; 2–3=slow lane only |
 | `keyword_bypass` | bool | `false` | Skip keyword filter; send all articles to AI classification |
 
-Live priority-1 feeds: TVN24, RMF24, Defence24 PL, Ukrainska Pravda EN, Kyiv Independent, Ukrainska Pravda UA.
+Live priority-1 feeds (enabled): TVN24, RMF24, Defence24 PL, Ukrainska Pravda UA.
 `keyword_bypass: true` on: Defence24 PL, Defence24 EN.
 PAP disabled (Incapsula WAF); routed via `google_news` `site:pap.pl` query.
 
@@ -235,7 +235,7 @@ Consumed by: `sentinel/scheduler.py`, `sentinel/alerts/`
 | YAML key | Type | Live value | Pydantic default | Description |
 |---|---|---|---|---|
 | `dry_run` | bool | `false` | `false` | Run full pipeline but suppress all Twilio calls/SMS; also set by `--dry-run` CLI flag |
-| `test_mode` | bool | `false` | `false` | Use fixture headlines instead of live sources |
+| `test_mode` | bool | `false` | `false` | Use fixture headlines instead of live sources — currently unread by the codebase — see TODO.md |
 | `test_headlines_file` | str | `tests/fixtures/test_headlines.yaml` | same | Path to test headlines YAML for `--test-file` |
 
 `dry_run` runs the complete classification pipeline — only the Twilio dispatch step is skipped. Safe for development and continuous testing.

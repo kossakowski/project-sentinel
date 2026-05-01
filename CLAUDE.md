@@ -7,7 +7,6 @@ Real-time monitoring bot that scans media sources (PL/EN/UA/RU) for military att
 - [Architecture](docs/architecture.md) -- system design, data flow, components
 - [Pipeline Reference](docs/pipeline.md) -- step-by-step data flow from source collection to phone alert
 - [Implementation Phases](docs/phases.md) -- 7-phase build plan with test gates
-- Phase specs: [1-Infrastructure](docs/phase-1-infrastructure.md) | [2-Fetchers](docs/phase-2-fetchers.md) | [3-Processing](docs/phase-3-processing.md) | [4-Classification](docs/phase-4-classification.md) | [5-Alerts](docs/phase-5-alerts.md) | [6-Scheduler](docs/phase-6-scheduler.md) | [7-Deployment](docs/phase-7-deployment.md)
 - [Configuration Reference](docs/config-reference.md) -- every configurable parameter
 - [Testing Strategy](docs/testing.md) -- dry run, fixtures, manual testing
 - [VPS Security Hardening](docs/security/vps-hardening.md) -- do this BEFORE deployment
@@ -33,12 +32,7 @@ Real-time monitoring bot that scans media sources (PL/EN/UA/RU) for military att
 - Tests: `.venv/bin/pytest tests/ -v`
 
 ## Known Issue: Project Rename History
-This project was renamed twice: `twilio-playground` → `sentinel` → `project-sentinel`. This left stale references baked into:
-- **Python venv**: packages/paths may resolve to old directory names (e.g. `/home/kossa/code/twilio-plaground/`)
-- **`__pycache__`**, `.pyc` files, egg-info, `.egg-link`, or `.pth` files referencing old paths
-- **pip editable installs** (`pip install -e .`) pointing at a now-nonexistent directory
-
-**If imports fail with paths to `twilio-plaground` or `sentinel`**: the fix is to recreate the venv from scratch (`rm -rf .venv && python -m venv .venv && pip install -r requirements.txt`) and clear all `__pycache__` dirs.
+This project was renamed twice (`twilio-playground` → `sentinel` → `project-sentinel`). If imports fail with paths to old names like `twilio-plaground` or `sentinel`, recreate the venv: `rm -rf .venv && python -m venv .venv && pip install -r requirements.txt` and clear `__pycache__` dirs.
 
 ## Production Server Policy
 - **SSH access:** `ssh -p 2222 deploy@178.104.76.254` — **always use `deploy@`**, never `root@` or `kossa@`. Wrong usernames trigger fail2ban bans.
@@ -53,6 +47,6 @@ This project was renamed twice: `twilio-playground` → `sentinel` → `project-
 - **Alerts are in Polish.** Source scanning covers PL, EN, UA, RU.
 - **Use Claude Haiku 4.5** (`claude-haiku-4-5-20251001`) for classification -- cost-efficient.
 - **No quiet hours.** This is a critical alert system -- call at any hour.
-- **Don't spam.** Call once per event, then switch to SMS/WhatsApp for updates.
+- **Don't spam.** Call once per event, then switch to SMS for updates. WhatsApp is plumbed but disabled in production (see `state_machine.py:190`).
 - **Corroboration required.** Phone calls require independent source corroboration (configured via `classification.corroboration_required`; live value is `1`).
 - Config format: YAML. Database: SQLite. Scheduler: APScheduler (dual-lane: fast lane every 3 min for Telegram + priority-1 RSS + Google News, slow lane every 15 min for all sources including GDELT).

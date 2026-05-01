@@ -194,21 +194,3 @@ All pipeline data is persisted in a SQLite database with four tables:
 - **alert_records** — every Twilio dispatch attempt, including call status and SMS delivery status, retained alongside Event records.
 
 After every pipeline cycle, the system writes a health snapshot to `data/health.json`. This file is readable with `./run.sh --health` and shows the last cycle's outcome, source counts, and any errors.
-
----
-
-## Known Quirks
-
-| # | Quirk | Reference |
-|---|-------|-----------|
-| 1 | WhatsApp tier (urgency >=5) is decided as WhatsApp but routed to `_execute_sms` — no WhatsApp message is ever sent. | `alerts/state_machine.py:190` |
-| 2 | Fast-lane jitter is silently capped at `min(jitter_seconds, 10)`; slow lane uses full `jitter_seconds`. Setting `jitter_seconds: 60` will not take effect on the fast lane. | `sentinel/scheduler.py:464` |
-| 3 | Two parallel urgency decision paths exist (`Corroborator` and `StateMachine._determine_action`) and can disagree on alert tier for the same event. | `alerts/state_machine.py`, `sentinel/corroborator.py` |
-| 4 | GDELT articles have empty `summary` — keyword filter scans title-only for GDELT-sourced articles. | `sentinel/fetchers/gdelt.py:178` |
-| 5 | Google News returns wrapper URLs; these are never resolved to canonical target URLs. URL-based dedup therefore misses cross-query duplicates of the same underlying article. | Stage 3 dedup, Stage 1 Google News |
-| 6 | SMS tier (urgency >=7) does NOT require `source_count >= 1` — only the urgency check applies. Phone-call tier is the only tier with a corroboration gate. | `alerts/state_machine.py:_determine_action` |
-| 7 | Confirmation code is stored as an instance attribute on the state machine and is not reset between events. A new event can inherit the prior event's code if reset logic is skipped. | `alerts/state_machine.py` |
-| 8 | Classifier confidence is not threshold-gated — low-confidence classifications are treated identically to high-confidence ones downstream. | `sentinel/classifier.py` |
-| 9 | `config/config.example.yaml` has 15 Google News queries; live `config/config.yaml` has 16. The example is stale. | `sources.google_news.queries` |
-| 10 | Health SMS triggers (`failures == 10`, `consecutive_failures == 3`) fire on exact equality only — no re-fire on continued failure. | `sentinel/scheduler.py:420,515` |
-| 11 | Telegram fetcher uses `telethon` (not `pyrogram`) and is push-based — `fetch()` drains a buffer rather than polling. | `sentinel/fetchers/telegram.py:71-78` |

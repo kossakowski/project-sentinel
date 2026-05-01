@@ -29,7 +29,6 @@
 | `sentinel/alerts/dispatcher.py` | `AlertDispatcher` | Sorts events by urgency; routes to `AlertStateMachine` or dry-run log |
 | `sentinel/alerts/state_machine.py` | `AlertStateMachine` | Urgency → action decision; call/SMS/WhatsApp execution; cooldown; call polling |
 | `sentinel/alerts/twilio_client.py` | `TwilioClient` | Twilio REST API wrapper: `make_alert_call(phone, message_pl, event_id)` (`twilio_client.py:43`), `send_sms(phone, message, event_id)`, `send_whatsapp(...)` (defined but unreachable from `process_event`), `get_call_status(twilio_sid)` |
-| `app.py` | Flask app | **Legacy / disconnected.** Standalone Flask app; NOT imported by `sentinel.py` or `sentinel/`. Routes: `/api/sms`, `/api/call`, `/api/voice-message`, `/api/whatsapp`. Not part of the pipeline. |
 
 ---
 
@@ -265,8 +264,7 @@ Config loading: `sentinel/config.py:load_config()`. Env vars substituted via `${
 - **GDELT articles have empty `summary` always** (`gdelt.py:178`); Stage 4 keyword filter effectively scans GDELT title only.
 - **Google News redirect URLs stored as-is**, not resolved to canonical. Same article surfaced by two queries dedupes only via fuzzy title match.
 - **`TelegramFetcher` channel matching falls back to first channel if id mismatches** (`telegram.py:100-108`).
-- **`BaseFetcher.is_enabled()` raises `NotImplementedError` but is NOT `@abstractmethod`.** Silent failure mode if a subclass forgets to override.
-- **`app.py` Flask app is legacy and disconnected from the pipeline.** Not imported, not used, not tested.
+- **`BaseFetcher.is_enabled()` raises `NotImplementedError` but is NOT `@abstractmethod`.** Silent failure mode if a subclass forgets to override. All four current subclasses do override it; the silent-failure risk only applies to future fetcher additions.
 - **Classifier daily token cost logged with hardcoded prices** `$0.80/M input, $4.00/M output` at UTC date rollover (`classifier.py:246-248`); not configurable.
 - **`config.testing.test_mode` field exists but is never read anywhere** (`config.py:181`).
 - **Production `corroboration_required=1`** (single source triggers call). Code default is `2`. Check live `config/config.yaml` before assuming corroboration behavior.
