@@ -8,6 +8,7 @@ The sample-DB builder is reused from `test_dashboard_db` so both test modules
 exercise the same fixture data.
 """
 
+import os
 import sqlite3
 
 import pytest
@@ -130,7 +131,7 @@ def test_api_articles_endpoint(client):
     # Top-level shape (req 1.4a).
     for key in ("articles", "total", "page", "page_size", "total_pages"):
         assert key in body
-    assert body["total"] == 8
+    assert body["total"] == 9
     assert body["page"] == 1
     assert body["page_size"] == 25
     assert body["total_pages"] == 1
@@ -164,7 +165,7 @@ def test_api_articles_unclassified_status(client):
     """[1.4b] An article with no classification has status 'unclassified'."""
     resp = client.get("/api/articles?pipeline_status=unclassified")
     body = resp.get_json()
-    assert body["total"] == 3
+    assert body["total"] == 4
     for article in body["articles"]:
         assert article["classification"] is None
         assert article["pipeline_status"] == "unclassified"
@@ -193,8 +194,8 @@ def test_api_articles_search(client):
     body = resp.get_json()
 
     ids = {a["id"] for a in body["articles"]}
-    assert ids == {"a1", "a2", "a4"}
-    assert body["total"] == 3
+    assert ids == {"a1", "a2", "a4", "a9"}
+    assert body["total"] == 4
     # Each result genuinely matches the query term.
     for article in body["articles"]:
         haystack = (
@@ -207,21 +208,23 @@ def test_api_articles_search_with_filters(client):
     """[1.4c] Acceptance test #20: search composes with filters and sort.
 
     ``?q=drone&pipeline_status=unclassified`` returns articles whose title or
-    summary matches "drone" AND that have no classification. With three drone
-    articles in the fixture (a1, a2, a4 -- all classified), this MUST return
-    zero results when filtered to unclassified -- proving the filter is
-    actually applied alongside search.
+    summary matches "drone" AND that have no classification. The fixture
+    includes a9 -- an unclassified Polish article whose summary mentions
+    "drone" -- so the unclassified-filtered search MUST return EXACTLY {a9}.
+    A broken filter that returned all drone matches would return
+    {a1, a2, a4, a9}; a broken search that returned all unclassified would
+    return {a5, a6, a8, a9}; this assertion pins both axes.
 
     An explicit ``sort`` parameter MUST override FTS rank ordering.
     """
-    # Search + pipeline_status filter -- the three drone articles are all
-    # classified, so the unclassified-filtered search returns nothing.
+    # Search + pipeline_status=unclassified -- a9 is the only unclassified
+    # drone-mentioning article. Tightens the previous vacuous "returns zero".
     resp = client.get("/api/articles?q=drone&pipeline_status=unclassified")
     body = resp.get_json()
-    assert body["total"] == 0
-    assert body["articles"] == []
+    assert body["total"] == 1
+    assert {a["id"] for a in body["articles"]} == {"a9"}
 
-    # Search + classified filter -- still finds all three.
+    # Search + classified filter -- the three classified drone articles.
     resp = client.get("/api/articles?q=drone&pipeline_status=classified")
     body = resp.get_json()
     assert body["total"] == 3
@@ -244,13 +247,13 @@ def test_api_articles_search_with_filters(client):
     body = resp.get_json()
     assert body["articles"][0]["id"] == "a1"
 
-    # Explicit sort overrides FTS rank: ascending published_at -> a4 first
-    # (oldest drone article in the fixture: 2026-05-20).
+    # Explicit sort overrides FTS rank: ascending published_at -> a9 first
+    # (oldest drone article in the fixture: 2026-05-15).
     resp = client.get(
         "/api/articles?q=drone&sort=published_at&order=asc"
     )
     body = resp.get_json()
-    assert body["articles"][0]["id"] == "a4"
+    assert body["articles"][0]["id"] == "a9"
 
     # Explicit sort by urgency descending under search -> a1 first (urgency 9).
     resp = client.get("/api/articles?q=drone&sort=urgency_score&order=desc")
@@ -541,7 +544,7 @@ def test_api_stats_endpoint(client):
     ):
         assert key in body, f"missing stats field: {key}"
 
-    assert body["total_articles"] == 8
+    assert body["total_articles"] == 9
     assert body["total_classified"] == 5
 
     # articles_per_day: 30 zero-filled day entries (req 1.6a).
@@ -554,7 +557,7 @@ def test_api_stats_endpoint(client):
     assert set(funnel.keys()) == {
         "collected", "classified", "events_created", "alerts_sent"
     }
-    assert funnel["collected"] == 8
+    assert funnel["collected"] == 9
     assert funnel["classified"] == 5
     assert funnel["events_created"] == 3
     assert funnel["alerts_sent"] == 2
@@ -588,7 +591,7 @@ def test_sync_result_shape(sentinel_db_path, fts_db_path, tmp_path, monkeypatch)
 
     assert result.success is True
     assert result.file_size > 0
-    assert result.article_count == 8
+    assert result.article_count == 9
     assert result.duration >= 0
     assert result.error is None
 
@@ -641,7 +644,7 @@ def test_fts_index_creation(sentinel_db_path, tmp_path):
             "SELECT article_id FROM articles_fts "
             "WHERE articles_fts MATCH 'drone' ORDER BY rank"
         ).fetchall()
-        assert len(hits) == 3
+        assert len(hits) == 4
     finally:
         conn.close()
 
@@ -650,7 +653,7 @@ def test_fts_index_creation(sentinel_db_path, tmp_path):
     try:
         assert db.fts_available is True
         result = db.search_articles("drone")
-        assert result["total"] == 3
+        assert result["total"] == 4
     finally:
         db.close()
 
@@ -687,10 +690,253 @@ def test_api_sync_endpoint(client, app, tmp_path, monkeypatch):
     assert "last_sync" in body
     assert body["last_sync"] is not None
     assert body["result"]["success"] is True
-    assert body["result"]["article_count"] == 8
+    assert body["result"]["article_count"] == 9
 
     # After the sync, status reflects the recorded result (req 1.7a).
     status_after = client.get("/api/sync/status")
     after = status_after.get_json()
     assert after["last_sync"] is not None
     assert after["result"]["success"] is True
+
+
+# ---------------------------------------------------------------------------
+# Tunnel mode API integration (req 1.1c)
+# ---------------------------------------------------------------------------
+
+
+def test_api_tunnel_scp_once_per_startup(sentinel_db_path, monkeypatch):
+    """[1.1c] Acceptance: tunnel mode SCPs once at app startup, not per-request.
+
+    Spec req 1.1c says ``--tunnel`` ``fetches a fresh copy of the production
+    database over SSH on each dashboard startup``. The dashboard must not
+    SCP on every request: a page load that hits multiple endpoints would
+    otherwise serialise multiple ~5-10s SCPs and become unusable.
+
+    This test monkeypatches `subprocess.run` to (a) count invocations and
+    (b) populate the temp path with a local sample DB. It then calls
+    `create_app(tunnel=True)`, issues several API requests, and asserts that
+    the SCP fired EXACTLY ONCE across the whole lifecycle.
+
+    Regression guard for the fix to finding #1 / the resolver decision to
+    cache the tunnel SCP at app-startup.
+    """
+    import shutil
+
+    from dashboard import db as db_module
+
+    scp_calls: list[list[str]] = []
+
+    class _FakeCompletedProcess:
+        returncode = 0
+        stderr = ""
+        args: list = []
+
+    def fake_run(argv, capture_output, text, timeout):  # noqa: ARG001
+        scp_calls.append(list(argv))
+        # Drop a real sample DB at the destination so the subsequent SQLite
+        # open + queries succeed.
+        shutil.copy(sentinel_db_path, argv[-1])
+        result = _FakeCompletedProcess()
+        result.args = list(argv)
+        return result
+
+    monkeypatch.setattr(db_module.subprocess, "run", fake_run)
+
+    # create_app with tunnel=True must perform the SCP itself, once.
+    flask_app = create_app(tunnel=True, dev_cors=False)
+    flask_app.config.update(TESTING=True)
+    client = flask_app.test_client()
+
+    # Exactly one SCP after the factory ran.
+    assert len(scp_calls) == 1, (
+        f"create_app(tunnel=True) should SCP exactly once at startup, "
+        f"got {len(scp_calls)} SCP call(s)"
+    )
+
+    # Make multiple GETs across different endpoints -- still only ONE SCP.
+    resp1 = client.get("/api/articles")
+    resp2 = client.get("/api/stats")
+    resp3 = client.get("/api/articles?page=2&page_size=25")
+    assert resp1.status_code == 200
+    assert resp2.status_code == 200
+    assert resp3.status_code == 200
+
+    assert len(scp_calls) == 1, (
+        f"Tunnel mode must reuse the startup-fetched DB across requests, "
+        f"got {len(scp_calls)} SCP call(s) after 3 GETs"
+    )
+
+    # The cached temp DB path is exposed on app.config so teardown is testable.
+    cached_path = flask_app.config.get("TUNNEL_TEMPFILE")
+    assert cached_path is not None
+    assert os.path.exists(cached_path)
+
+    # Cleanup callback removes the temp file (atexit would otherwise handle it).
+    cleanup = flask_app.config.get("TUNNEL_CLEANUP")
+    assert callable(cleanup)
+    cleanup()
+    assert not os.path.exists(cached_path)
+
+
+# ---------------------------------------------------------------------------
+# Classifier-input None summary coercion (req 1.5a, finding #5)
+# ---------------------------------------------------------------------------
+
+
+def test_api_article_detail_null_summary_renders_as_none_literal(client):
+    """[1.5a] An article with NULL summary in DB renders ``Summary: None``.
+
+    The production classifier's ``_build_user_prompt`` passes the article's
+    summary straight to ``str.format``, which coerces a None value to the
+    literal string ``"None"``. The dashboard reconstruction must do the same
+    so byte-for-byte parity holds even on the (rare) NULL-summary edge case.
+    Fixture row ``a8`` has ``summary IS NULL``.
+    """
+    resp = client.get("/api/articles/a8")
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["summary"] is None
+    # Reconstruction must contain the literal "Summary: None" line.
+    assert "Summary: None" in body["classifier_input"]
+
+
+# ---------------------------------------------------------------------------
+# CLI argument parsing + sync-before-serve (req 1.8, finding #11)
+# ---------------------------------------------------------------------------
+
+
+def test_cli_parse_args():
+    """[1.8] CLI argparse exposes every required flag with the right defaults.
+
+    Validates `dashboard.cli.build_parser()` so renames / removals of CLI
+    flags fail the test, even when the integration path isn't exercised.
+    """
+    from dashboard import cli as cli_module
+    from dashboard import config as dashboard_config
+
+    parser = cli_module.build_parser()
+
+    # No args: every flag falls to its declared default.
+    defaults = parser.parse_args([])
+    assert defaults.port == dashboard_config.DEFAULT_PORT
+    assert defaults.db == dashboard_config.DEFAULT_DB_PATH
+    assert defaults.tunnel is False
+    assert defaults.sync is False
+
+    # Explicit overrides parse as declared.
+    overridden = parser.parse_args(
+        ["--port", "5005", "--db", "/tmp/x.db", "--tunnel", "--sync"]
+    )
+    assert overridden.port == 5005
+    assert overridden.db == "/tmp/x.db"
+    assert overridden.tunnel is True
+    assert overridden.sync is True
+
+
+def test_cli_sync_then_serve(monkeypatch, tmp_path):
+    """[1.8] ``--sync`` runs `sync_db` BEFORE `app.run` starts the server.
+
+    Both `sync_db` and `app.run` are monkeypatched; the test asserts both
+    were called exactly once and that `sync_db` ran first.
+    """
+    from dashboard import cli as cli_module
+    from dashboard.sync import SyncResult
+
+    call_order: list[str] = []
+    sync_args: dict = {}
+
+    def fake_sync_db(db_path=None, fts_db_path=None):
+        call_order.append("sync")
+        sync_args["db_path"] = db_path
+        sync_args["fts_db_path"] = fts_db_path
+        return SyncResult(
+            success=True, file_size=1024, article_count=42, duration=0.1
+        )
+
+    class _FakeApp:
+        def __init__(self):
+            self.run_calls = []
+
+        def run(self, host=None, port=None, threaded=None):
+            call_order.append("run")
+            self.run_calls.append({"host": host, "port": port, "threaded": threaded})
+
+    fake_app = _FakeApp()
+
+    def fake_create_app(db_path=None, tunnel=False, fts_db_path=None):
+        call_order.append("create_app")
+        return fake_app
+
+    monkeypatch.setattr(cli_module, "sync_db", fake_sync_db)
+    monkeypatch.setattr(cli_module, "create_app", fake_create_app)
+
+    db_path = str(tmp_path / "sentinel.db")
+    rc = cli_module.main(["--sync", "--port", "9999", "--db", db_path])
+
+    assert rc == 0
+    # Both phases ran, and sync came strictly before run.
+    assert "sync" in call_order
+    assert "run" in call_order
+    assert call_order.index("sync") < call_order.index("run")
+    # Port flag wired through to app.run.
+    assert fake_app.run_calls == [
+        {"host": "127.0.0.1", "port": 9999, "threaded": True}
+    ]
+    # --db flag wired through to sync_db.
+    assert sync_args["db_path"] == db_path
+
+
+def test_cli_sync_failure_short_circuits(monkeypatch, tmp_path, capsys):
+    """[1.8] When --sync fails, main exits with code 1 and never calls app.run."""
+    from dashboard import cli as cli_module
+    from dashboard.sync import SyncResult
+
+    def fake_sync_db(db_path=None, fts_db_path=None):
+        return SyncResult(success=False, error="SCP failed: timeout")
+
+    create_app_called: list[bool] = []
+
+    def fake_create_app(db_path=None, tunnel=False, fts_db_path=None):
+        create_app_called.append(True)
+        raise AssertionError("create_app must not run when sync fails")
+
+    monkeypatch.setattr(cli_module, "sync_db", fake_sync_db)
+    monkeypatch.setattr(cli_module, "create_app", fake_create_app)
+
+    rc = cli_module.main(["--sync", "--db", str(tmp_path / "x.db")])
+    assert rc == 1
+    assert create_app_called == []
+
+
+def test_run_dashboard_sh_help_smoke(tmp_path):
+    """[1.8a] ``./dashboard/run-dashboard.sh --help`` exits 0 with usage text.
+
+    Skipped if the project venv isn't where the script expects it -- the
+    script tries to bootstrap one, which would touch the filesystem. The
+    happy path of this test just verifies the script forwards ``--help`` to
+    ``python -m dashboard`` cleanly.
+    """
+    import os
+    import subprocess
+
+    script = os.path.abspath("dashboard/run-dashboard.sh")
+    venv_python = os.path.abspath(".venv/bin/python")
+    if not os.path.exists(venv_python):
+        pytest.skip(f"venv python not found at {venv_python}")
+
+    result = subprocess.run(
+        [script, "--help"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        cwd=os.path.dirname(os.path.dirname(script)),
+    )
+    assert result.returncode == 0, (
+        f"stdout={result.stdout!r} stderr={result.stderr!r}"
+    )
+    # argparse's auto-generated --help mentions every declared flag.
+    combined = result.stdout + result.stderr
+    assert "--port" in combined
+    assert "--db" in combined
+    assert "--tunnel" in combined
+    assert "--sync" in combined

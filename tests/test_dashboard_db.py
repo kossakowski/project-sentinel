@@ -141,7 +141,7 @@ def _classification_row(
 def _build_sentinel_db(path: str) -> None:
     """Populate a local SQLite file at ``path`` with varied sample data.
 
-    Articles created (8 total):
+    Articles created (9 total):
       a1  TASS / rss / en       -- classified, urgency 9, in event ev1 (alert)
       a2  TVN24 / rss / pl      -- classified, urgency 7, in event ev1 (alert)
       a3  Onet / google_news /pl-- classified, urgency 3, no event
@@ -150,6 +150,8 @@ def _build_sentinel_db(path: str) -> None:
       a6  PAP / google_news /en -- UNCLASSIFIED
       a7  Defence24 / rss / pl  -- classified, urgency 2, no event
       a8  Reuters / rss / en    -- UNCLASSIFIED (no summary -> NULL)
+      a9  WP / rss / pl         -- UNCLASSIFIED, mentions "drone" in summary
+                                   (covers search + pipeline_status filter)
     """
     conn = sqlite3.connect(path)
     try:
@@ -208,6 +210,16 @@ def _build_sentinel_db(path: str) -> None:
                 "Sports roundup of the week", None, "en",
                 "2026-05-16T03:00:00+00:00", "2026-05-16T03:00:00+00:00",
                 "hash-a8", "sports roundup of the week", None,
+            ),
+            # a9 is UNCLASSIFIED but its summary mentions "drone" -- the
+            # search+pipeline_status filter test asserts that the filter is
+            # actually applied (not vacuously true because all drone articles
+            # happen to be classified).
+            _article_row(
+                "a9", source_name="WP", source_type="rss", language="pl",
+                title="Niejasna informacja z agencji",
+                summary="Plotka o drone gdzies w okolicy -- niepotwierdzone.",
+                published_at="2026-05-15T02:00:00+00:00",
             ),
         ]
         conn.executemany(
@@ -317,7 +329,7 @@ def db_with_fts(sentinel_db_path, fts_db_path):
 
 def test_db_get_articles_pagination(sentinel_db_path, fts_db_path):
     """[1.2b, 1.4] page=2, page_size=25 returns the correct slice + metadata."""
-    # 8 sample articles; with page_size=3, page 2 holds rows 4-6.
+    # 9 sample articles; with page_size=3, page 2 holds rows 4-6.
     db = DashboardDB(db_path=sentinel_db_path, fts_db_path=fts_db_path)
     try:
         page1 = db.get_articles(page=1, page_size=3,
@@ -325,10 +337,10 @@ def test_db_get_articles_pagination(sentinel_db_path, fts_db_path):
         page2 = db.get_articles(page=2, page_size=3,
                                 sort="published_at", order="desc")
 
-        assert page1["total"] == 8
+        assert page1["total"] == 9
         assert page1["page"] == 1
         assert page1["page_size"] == 3
-        assert page1["total_pages"] == 3  # ceil(8 / 3)
+        assert page1["total_pages"] == 3  # ceil(9 / 3)
         assert len(page1["articles"]) == 3
         assert len(page2["articles"]) == 3
 
@@ -359,9 +371,9 @@ def test_db_get_articles_filters(db_no_fts):
 
 def test_db_get_articles_filters_more(db_no_fts):
     """[1.2b] Additional filters: language, urgency range, event_type."""
-    # language filter
+    # language filter -- a2, a3, a5, a7, a9 are all Polish.
     pl = db_no_fts.get_articles(filters={"language": "pl"})
-    assert pl["total"] == 4
+    assert pl["total"] == 5
     assert all(a["language"] == "pl" for a in pl["articles"])
 
     # urgency_min / urgency_max (on the joined classification)
@@ -407,9 +419,9 @@ def test_db_get_articles_pipeline_status(db_no_fts):
         filters={"pipeline_status": "unclassified"}
     )
 
-    # a5, a6, a8 have no classification row.
-    assert result["total"] == 3
-    assert {a["id"] for a in result["articles"]} == {"a5", "a6", "a8"}
+    # a5, a6, a8, a9 have no classification row.
+    assert result["total"] == 4
+    assert {a["id"] for a in result["articles"]} == {"a5", "a6", "a8", "a9"}
     for article in result["articles"]:
         assert article["classification"] is None
         assert article["pipeline_status"] == "unclassified"
@@ -439,7 +451,8 @@ def test_db_has_alert_filter(db_no_fts):
 
     without_alert = db_no_fts.get_articles(filters={"has_alert": False})
     assert "a1" not in {a["id"] for a in without_alert["articles"]}
-    assert without_alert["total"] == 6
+    # a3, a4, a5, a6, a7, a8, a9 -- everything except a1 and a2.
+    assert without_alert["total"] == 7
 
 
 # ---------------------------------------------------------------------------
@@ -494,10 +507,10 @@ def test_db_search_fts5(db_with_fts):
     assert db_with_fts.fts_available is True
 
     result = db_with_fts.search_articles("drone")
-    # a1, a2, a4 all mention a drone in title or summary.
+    # a1, a2, a4, a9 all mention a drone in title or summary.
     ids = {a["id"] for a in result["articles"]}
-    assert ids == {"a1", "a2", "a4"}
-    assert result["total"] == 3
+    assert ids == {"a1", "a2", "a4", "a9"}
+    assert result["total"] == 4
     # Every returned article genuinely matches.
     for article in result["articles"]:
         haystack = (
@@ -513,17 +526,17 @@ def test_db_search_fts5_ranked(db_with_fts):
     "drone" in BOTH its title ("Russian drone strike near Polish border")
     and its summary ("A military drone crossed into Poland airspace.").
     a2's title is Polish ("Drony nad Polska" -- tokenized as "drony", not
-    "drone") and contains "drone" only in its summary; a4 has "drone" only
-    in its summary too. So under FTS5 BM25 rank ordering, a1 MUST come first
-    -- the assertion fails if results are returned in arbitrary or
-    date-based order.
+    "drone") and contains "drone" only in its summary; a4 and a9 have
+    "drone" only in their summary too. So under FTS5 BM25 rank ordering,
+    a1 MUST come first -- the assertion fails if results are returned in
+    arbitrary or date-based order.
     """
     result = db_with_fts.search_articles("drone")
     returned_ids = [a["id"] for a in result["articles"]]
     # a1 is the only article with the literal token in title AND summary,
     # so under genuine rank ordering it must come first.
     assert returned_ids[0] == "a1"
-    assert set(returned_ids) == {"a1", "a2", "a4"}
+    assert set(returned_ids) == {"a1", "a2", "a4", "a9"}
 
 
 def test_db_search_like_fallback(db_no_fts):
@@ -533,7 +546,7 @@ def test_db_search_like_fallback(db_no_fts):
     result = db_no_fts.search_articles("drone")
     ids = {a["id"] for a in result["articles"]}
     # LIKE matches on title OR summary, same set as FTS for this corpus.
-    assert ids == {"a1", "a2", "a4"}
+    assert ids == {"a1", "a2", "a4", "a9"}
     for article in result["articles"]:
         haystack = (
             article["title"] + " " + (article["summary"] or "")
@@ -582,14 +595,20 @@ def test_db_tunnel_mode(sentinel_db_path, monkeypatch):
     captured_argv: list[list[str]] = []
 
     class _FakeCompletedProcess:
+        # Real subprocess.run returns a CompletedProcess that carries the
+        # ``args`` list it was called with -- mirror that so any consumer that
+        # logs / inspects it keeps working (finding #15).
         returncode = 0
         stderr = ""
+        args: list = []
 
     def fake_run(argv, capture_output, text, timeout):  # noqa: ARG001
         captured_argv.append(list(argv))
         # argv[-1] is the destination path the scp would have written to.
         shutil.copy(sentinel_db_path, argv[-1])
-        return _FakeCompletedProcess()
+        result = _FakeCompletedProcess()
+        result.args = list(argv)
+        return result
 
     monkeypatch.setattr(db_module.subprocess, "run", fake_run)
 
@@ -633,10 +652,19 @@ def test_db_tunnel_mode(sentinel_db_path, monkeypatch):
         row_count = database.conn.execute(
             "SELECT COUNT(*) FROM articles"
         ).fetchone()[0]
-        assert row_count == 8
+        assert row_count == 9
 
         # FTS is unavailable in tunnel mode (no FTS DB file present).
         assert database.fts_available is False
+
+        # 2b. Spec req 1.1c says tunnel mode falls back to LIKE search. Verify
+        # the end-to-end path: a search through the tunnel-mode DB returns the
+        # expected drone matches via the LIKE branch of search_articles.
+        # Finding #12: prove the LIKE fallback wiring works in tunnel mode.
+        like_result = database.search_articles("drone")
+        assert {a["id"] for a in like_result["articles"]} == {
+            "a1", "a2", "a4", "a9",
+        }
     finally:
         database.close()
 
@@ -656,14 +684,18 @@ def test_db_tunnel_mode_scp_failure(monkeypatch):
     leaked_paths: list[str] = []
 
     class _FailingProcess:
+        # Mirror real subprocess.CompletedProcess: it has ``args`` too.
         returncode = 1
         stderr = "Permission denied (publickey)."
+        args: list = []
 
     def fake_run(argv, capture_output, text, timeout):  # noqa: ARG001
         # Record the temp path scp would have written to so we can verify
         # it was cleaned up.
         leaked_paths.append(argv[-1])
-        return _FailingProcess()
+        result = _FailingProcess()
+        result.args = list(argv)
+        return result
 
     monkeypatch.setattr(db_module.subprocess, "run", fake_run)
 
@@ -694,7 +726,7 @@ def test_db_get_stats(db_no_fts):
     ):
         assert key in stats, f"missing stats key: {key}"
 
-    assert stats["total_articles"] == 8
+    assert stats["total_articles"] == 9
     assert stats["total_classified"] == 5
     assert stats["total_events"] == 2
     assert stats["total_alerts"] == 2
@@ -727,7 +759,7 @@ def test_db_get_stats(db_no_fts):
     assert set(funnel.keys()) == {
         "collected", "classified", "events_created", "alerts_sent"
     }
-    assert funnel["collected"] == 8
+    assert funnel["collected"] == 9
     assert funnel["classified"] == 5
     # ev1 (a1,a2) + ev2 (a4) -> 3 distinct articles reached events.
     assert funnel["events_created"] == 3

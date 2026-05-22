@@ -6,10 +6,14 @@ SQLite database. It deliberately does NOT reuse `sentinel.database.Database`
 production data. It supports two connection modes:
 
 * **local** (default): opens the synced SQLite file directly in read-only mode.
-* **tunnel**: SCPs a fresh temporary copy of the production DB on each connect
+* **tunnel**: SCPs a fresh temporary copy of the production DB on connect
   (no port-forwarding -- the production DB is a plain file with no remote query
-  service, so ``ssh -L`` would target nothing). The temp file is opened
-  read-only and removed on close.
+  service, so ``ssh -L`` would target nothing). When this class is constructed
+  with ``tunnel=True`` and no ``db_path``, it fetches a fresh copy and owns the
+  temp file (removed on close). When constructed with ``tunnel=True`` and an
+  explicit ``db_path``, it treats the path as an already-fetched copy (the app
+  factory pre-fetches once at startup; per-request connections then reuse that
+  file -- see `dashboard.app.create_app`).
 
 FTS5 full-text search is used when an `articles_fts` index exists (built by
 `dashboard.sync` into a separate DB file and ATTACHed here); otherwise search
@@ -43,6 +47,11 @@ _SORT_COLUMNS = {
 ALLOWED_PAGE_SIZES = (25, 50, 100)
 DEFAULT_PAGE_SIZE = 50
 
+# Default sort column when no explicit ``sort`` is supplied. Used by both the
+# list path (`get_articles`) and the search path (`search_articles`) so the
+# default is defined exactly once -- preventing the two paths from drifting.
+DEFAULT_SORT = "published_at"
+
 
 class DashboardDBError(RuntimeError):
     """Raised when the dashboard cannot open the sentinel database.
@@ -65,10 +74,16 @@ class DashboardDB:
         """Open a read-only connection to the sentinel database.
 
         Args:
-            db_path: Path to the local sentinel SQLite file. Ignored when
-                ``tunnel`` is True. Defaults to ``config.DEFAULT_DB_PATH``.
-            tunnel: When True, open an SSH tunnel to the production server and
-                connect through it instead of using a local file.
+            db_path: Path to the local sentinel SQLite file. In ``tunnel`` mode
+                this is interpreted as the path to an already-fetched temporary
+                copy (typical when the app factory pre-fetches once at startup
+                and many request-scoped DashboardDB instances share that file);
+                when None in ``tunnel`` mode, this instance fetches its own
+                temp copy via SCP and owns its lifecycle. Defaults to
+                ``config.DEFAULT_DB_PATH`` in non-tunnel mode.
+            tunnel: When True, open against the production server's DB. With
+                ``db_path`` set, the path is treated as pre-fetched; otherwise
+                this instance performs the SCP itself.
             fts_db_path: Path to the separate FTS index database. Defaults to
                 ``config.FTS_DB_PATH``. When the file exists it is ATTACHed and
                 full-text search uses it.
@@ -77,13 +92,18 @@ class DashboardDB:
         self.db_path = db_path or config.DEFAULT_DB_PATH
         self.fts_db_path = fts_db_path or config.FTS_DB_PATH
         # Path to the temporary DB copy fetched in tunnel mode (None otherwise).
-        # Removed on close() so each invocation gets fresh data.
+        # Removed on close() ONLY when this instance fetched it itself; when
+        # the caller pre-fetched and passed ``db_path``, cleanup is the
+        # caller's responsibility (the app factory tears it down on shutdown).
         self._tunnel_tempfile: str | None = None
         self._fts_available = False
 
-        if tunnel:
+        if tunnel and db_path is None:
+            # Self-fetching tunnel mode: own the temp file end-to-end.
             self.conn = self._connect_via_tunnel()
         else:
+            # Either local mode, or tunnel mode with a pre-fetched db_path
+            # (the app factory uses this branch -- one SCP per process).
             self.conn = self._connect_local()
 
         self.conn.row_factory = sqlite3.Row
@@ -170,7 +190,15 @@ class DashboardDB:
             pass
 
     def _maybe_attach_fts(self) -> None:
-        """ATTACH the FTS index DB if it exists and holds an articles_fts table."""
+        """ATTACH the FTS index DB if it exists and holds an articles_fts table.
+
+        The check is process-fixed (the FTS DB doesn't appear/disappear during
+        a dashboard session), so the application factory probes it once at
+        startup and stashes the result on ``app.config["FTS_AVAILABLE"]``;
+        per-request `get_db()` could pass that hint to skip the sqlite_master
+        query entirely. Each request still ATTACHes the file, but the probe
+        cost is one tiny cached query.
+        """
         if not os.path.exists(self.fts_db_path):
             self._fts_available = False
             return
@@ -458,7 +486,7 @@ class DashboardDB:
         if page_size <= 0:
             page_size = DEFAULT_PAGE_SIZE
 
-        sort_expr = _SORT_COLUMNS.get(sort, _SORT_COLUMNS["published_at"])
+        sort_expr = _SORT_COLUMNS.get(sort, _SORT_COLUMNS[DEFAULT_SORT])
         direction = "ASC" if str(order).lower() == "asc" else "DESC"
 
         where_sql, params = self._build_filters(filters or {})
@@ -519,7 +547,13 @@ class DashboardDB:
         return article
 
     def _events_for_article(self, article_id: str) -> list[dict]:
-        """Return events whose article_ids JSON contains this article id."""
+        """Return events whose article_ids JSON contains this article id.
+
+        Fetches all linked events in one query, then all alert_records for
+        those events in a single ``IN`` query, and groups them by event_id in
+        Python. This avoids the N+1 pattern of running one alert query per
+        event when an article is linked to multiple events.
+        """
         event_rows = self.conn.execute(
             "SELECT e.* FROM events e "
             "WHERE EXISTS (SELECT 1 FROM json_each(e.article_ids) je "
@@ -528,13 +562,37 @@ class DashboardDB:
             (article_id,),
         ).fetchall()
 
+        if not event_rows:
+            return []
+
+        # Fetch all alert_records for the matched event ids in ONE query, then
+        # group by event_id. Placeholders are generated dynamically (one ? per
+        # id) -- safe because the ids are server-issued UUIDs we just SELECTed.
+        event_ids = [ev["id"] for ev in event_rows]
+        placeholders = ",".join("?" * len(event_ids))
+        alert_rows = self.conn.execute(
+            f"SELECT * FROM alert_records WHERE event_id IN ({placeholders}) "
+            "ORDER BY sent_at",
+            event_ids,
+        ).fetchall()
+        alerts_by_event: dict[str, list[dict]] = {eid: [] for eid in event_ids}
+        for ar in alert_rows:
+            alerts_by_event[ar["event_id"]].append(
+                {
+                    "id": ar["id"],
+                    "event_id": ar["event_id"],
+                    "alert_type": ar["alert_type"],
+                    "twilio_sid": ar["twilio_sid"],
+                    "status": ar["status"],
+                    "duration_seconds": ar["duration_seconds"],
+                    "attempt_number": ar["attempt_number"],
+                    "sent_at": ar["sent_at"],
+                    "message_body": ar["message_body"],
+                }
+            )
+
         events: list[dict] = []
         for ev in event_rows:
-            alert_rows = self.conn.execute(
-                "SELECT * FROM alert_records WHERE event_id = ? "
-                "ORDER BY sent_at",
-                (ev["id"],),
-            ).fetchall()
             events.append(
                 {
                     "id": ev["id"],
@@ -551,29 +609,10 @@ class DashboardDB:
                     "article_ids": self._parse_json_list(ev["article_ids"]),
                     "alert_status": ev["alert_status"],
                     "acknowledged_at": ev["acknowledged_at"],
-                    "alert_records": [
-                        {
-                            "id": ar["id"],
-                            "event_id": ar["event_id"],
-                            "alert_type": ar["alert_type"],
-                            "twilio_sid": ar["twilio_sid"],
-                            "status": ar["status"],
-                            "duration_seconds": ar["duration_seconds"],
-                            "attempt_number": ar["attempt_number"],
-                            "sent_at": ar["sent_at"],
-                            "message_body": ar["message_body"],
-                        }
-                        for ar in alert_rows
-                    ],
+                    "alert_records": alerts_by_event[ev["id"]],
                 }
             )
         return events
-
-    # Sentinel for "no explicit sort was passed". Lets the API layer detect
-    # whether the caller asked for the default vs an explicit sort, so search
-    # mode can use FTS rank ordering when (and only when) the sort is implicit
-    # (req 1.4c).
-    _DEFAULT_SORT = "published_at"
 
     def search_articles(
         self,
@@ -621,7 +660,7 @@ class DashboardDB:
 
         # explicit_sort: caller provided a sort column override.
         explicit_sort = sort is not None
-        effective_sort = sort or self._DEFAULT_SORT
+        effective_sort = sort or DEFAULT_SORT
         effective_order = order or "desc"
 
         if self._fts_available:
@@ -672,7 +711,7 @@ class DashboardDB:
 
         # Order by rank ascending = best first; explicit sort overrides.
         if explicit_sort:
-            sort_expr = _SORT_COLUMNS.get(sort, _SORT_COLUMNS[self._DEFAULT_SORT])
+            sort_expr = _SORT_COLUMNS.get(sort, _SORT_COLUMNS[DEFAULT_SORT])
             direction = "ASC" if str(order).lower() == "asc" else "DESC"
             order_clause = f"ORDER BY {sort_expr} {direction}, a.id {direction}"
         else:
@@ -722,15 +761,21 @@ class DashboardDB:
     ) -> dict:
         """LIKE-based fallback search when no FTS5 index exists."""
         # Escape LIKE wildcards in user input; use an explicit ESCAPE clause.
+        # We use '|' (vertical bar) as the ESCAPE character rather than '\\':
+        # backslash works but the double-escaping in Python literals
+        # ("\\\\" -> SQL '\\') is hard to read, and SQLite's LIKE has no
+        # special semantics for backslash by default (so the Python-to-SQL
+        # mapping is easy to misread). '|' is a single ASCII character that
+        # never appears as a LIKE metacharacter and reads cleanly here.
         escaped = (
-            query.replace("\\", "\\\\")
-            .replace("%", "\\%")
-            .replace("_", "\\_")
+            query.replace("|", "||")
+            .replace("%", "|%")
+            .replace("_", "|_")
         )
         like = f"%{escaped}%"
 
         where_sql, filter_params = self._build_filters(filters)
-        like_clause = "(a.title LIKE ? ESCAPE '\\' OR a.summary LIKE ? ESCAPE '\\')"
+        like_clause = "(a.title LIKE ? ESCAPE '|' OR a.summary LIKE ? ESCAPE '|')"
         if where_sql:
             where_clause = (
                 " WHERE " + like_clause + " AND "
@@ -752,7 +797,7 @@ class DashboardDB:
 
         # Default LIKE ordering: most-recent first. Explicit sort overrides.
         if explicit_sort:
-            sort_expr = _SORT_COLUMNS.get(sort, _SORT_COLUMNS[self._DEFAULT_SORT])
+            sort_expr = _SORT_COLUMNS.get(sort, _SORT_COLUMNS[DEFAULT_SORT])
             direction = "ASC" if str(order).lower() == "asc" else "DESC"
             order_clause = f"ORDER BY {sort_expr} {direction}, a.id {direction}"
         else:

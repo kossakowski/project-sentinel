@@ -71,8 +71,10 @@ def list_articles():
     }
 
     # Detect whether the caller explicitly asked for a sort. Under search this
-    # determines FTS rank vs explicit-sort ordering (req 1.4c).
-    explicit_sort = args.get("sort")
+    # determines FTS rank vs explicit-sort ordering (req 1.4c). An empty-string
+    # ``sort=`` is normalised to None here so it consistently means "use the
+    # default" -- search then uses FTS rank, list uses published_at desc.
+    explicit_sort = args.get("sort") or None
     sort = explicit_sort or "published_at"
     order = args.get("order", "desc")
 

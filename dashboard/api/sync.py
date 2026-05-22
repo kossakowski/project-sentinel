@@ -22,7 +22,14 @@ sync_bp = Blueprint("sync", __name__)
 
 
 def _state_path() -> str:
-    """Return the path of the JSON file recording the last sync."""
+    """Return the path of the JSON file recording the last sync.
+
+    Policy: the sync-state file follows ``--db``'s directory (matches the FTS
+    co-location rule in `cli.py._derive_fts_path`). Switching ``--db`` between
+    runs therefore isolates the last_sync record per DB -- a custom DB's sync
+    state lives next to that DB, not next to the default one. This is
+    intentional: each ``--db`` location is treated as its own data island.
+    """
     db_path = current_app.config.get("SENTINEL_DB_PATH") or config.DEFAULT_DB_PATH
     return os.path.join(os.path.dirname(os.path.abspath(db_path)), "sync_state.json")
 

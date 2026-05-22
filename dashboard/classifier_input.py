@@ -79,8 +79,13 @@ def build_classifier_input(article: dict) -> str:
     """
     published = article.get("published_at") or _UNKNOWN_PUBLISHED
     summary = article.get("summary")
+    # Match ``Classifier._build_user_prompt``'s str.format coercion of None:
+    # the classifier passes ``article.summary`` straight to ``.format()`` which
+    # renders a None value as the literal string ``"None"``. The DB schema
+    # allows NULL summaries even though production fetchers never write one,
+    # so reproducing the same coercion preserves byte-for-byte parity (req 1.5a).
     if summary is None:
-        summary = ""
+        summary = "None"
 
     block = (
         f"Source: {article.get('source_name', '')} "
