@@ -3,6 +3,8 @@
 ## Overview
 Real-time monitoring bot that scans media sources (PL/EN/UA/RU) for military attacks or invasions targeting Poland and the Baltic states, and alerts via Twilio phone call. **The application is running in production on a Hetzner VPS** — see [Server Runbook](docs/server-runbook.md) for access, operations, and troubleshooting.
 
+A separate read-only **Article Dashboard** subsystem lives under `dashboard/` (local-only Flask backend over the production SQLite DB, accessed via SCP sync or SSH-tunnel fresh-fetch). It is not part of the monitoring runtime — see [Dashboard Spec](SPEC.md).
+
 ## Documentation
 - [Architecture](docs/architecture.md) -- system design, data flow, components
 - [Pipeline Reference](docs/pipeline.md) -- step-by-step data flow from source collection to phone alert
@@ -13,6 +15,7 @@ Real-time monitoring bot that scans media sources (PL/EN/UA/RU) for military att
 - [API Setup Guide](docs/api-setup.md) -- Anthropic, Twilio, Telegram account setup
 - [Media Sources Reference](docs/sources.md) -- all monitored sources with URLs/RSS
 - [Server Runbook](docs/server-runbook.md) -- production server access, file layout, service management, deployment, troubleshooting. **Read this first for anything server-related.**
+- [Dashboard Spec](SPEC.md) -- source of truth for the `dashboard/` subsystem (Phase 1 backend complete; React frontend, analytics, and annotations spec'd but not yet implemented)
 
 ## Quick Reference
 - Config: `config/config.yaml` (see `config/config.example.yaml`)
@@ -30,6 +33,15 @@ Real-time monitoring bot that scans media sources (PL/EN/UA/RU) for military att
 - Log level: `./run.sh --log-level DEBUG` (DEBUG, INFO, WARNING, ERROR)
 - Health check: `./run.sh --health` (prints `data/health.json`)
 - Tests: `.venv/bin/pytest tests/ -v`
+
+## Dashboard (separate subsystem -- local only)
+Read-only Flask API + (planned) React frontend over the production SQLite DB. Runs on your local machine; never deployed. See [SPEC.md](SPEC.md) for the full reference.
+- Launch: `./dashboard/run-dashboard.sh` (auto-activates venv, forwards args to `python -m dashboard`)
+- Sync DB from production then start: `./dashboard/run-dashboard.sh --sync`
+- Tunnel mode (SCP-fresh-fetch at startup, LIKE-only search): `./dashboard/run-dashboard.sh --tunnel`
+- Custom port (default `5001`): `./dashboard/run-dashboard.sh --port 5005`
+- Custom DB path: `./dashboard/run-dashboard.sh --db path/to/sentinel.db`
+- Dashboard tests: `.venv/bin/pytest tests/test_dashboard_api.py tests/test_dashboard_db.py -v`
 
 ## Known Issue: Project Rename History
 This project was renamed twice (`twilio-playground` → `sentinel` → `project-sentinel`). If imports fail with paths to old names like `twilio-plaground` or `sentinel`, recreate the venv: `rm -rf .venv && python -m venv .venv && pip install -r requirements.txt` and clear `__pycache__` dirs.

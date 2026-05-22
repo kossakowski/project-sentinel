@@ -43,6 +43,9 @@ All commands use `./run.sh` (auto-activates `.venv`, forwards args to `sentinel.
 .venv/bin/pytest tests/test_classifier.py tests/test_corroborator.py -v                                         # Phase 4
 .venv/bin/pytest tests/test_twilio_client.py tests/test_state_machine.py tests/test_dispatcher.py -v           # Phase 5
 .venv/bin/pytest tests/test_scheduler.py tests/test_integration.py tests/test_cli.py -v                         # Phase 6
+
+# Dashboard subsystem (separate from monitoring runtime; see SPEC.md)
+.venv/bin/pytest tests/test_dashboard_api.py tests/test_dashboard_db.py -v
 ```
 
 pytest config in `pyproject.toml` (`[tool.pytest.ini_options]`): `testpaths = ["tests"]`, `asyncio_mode = "auto"`, marker `integration` for tests requiring network/API access.

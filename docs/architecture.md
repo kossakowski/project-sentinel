@@ -273,3 +273,27 @@ Config loading: `sentinel/config.py:load_config()`. Env vars substituted via `${
 - **Fast-lane jitter capped at `min(jitter_seconds, 10)`** regardless of config (`scheduler.py:464`). Slow-lane uses full `jitter_seconds`.
 - **Fetcher health SMS fires exactly once at `failures == 10`** per fetcher (`scheduler.py:420`). Does not repeat.
 - **Pipeline failure SMS fires exactly once at `consecutive_failures == 3`** (`scheduler.py:515`), not `>=`.
+
+---
+
+## 10. Dashboard Subsystem (`dashboard/`)
+
+Separate from the monitoring runtime described above. Read-only Flask backend over the production SQLite DB; runs locally only, never deployed. Full reference: [`SPEC.md`](../SPEC.md).
+
+| File | Responsibility |
+|---|---|
+| `dashboard/cli.py` | argparse entry point (`--port`, `--db`, `--tunnel`, `--sync`); invoked via `python -m dashboard` |
+| `dashboard/app.py` | Flask `create_app(db_path, fts_db_path, tunnel, dev_cors)`; registers `/api/*` blueprints; serves `dashboard/frontend/dist/` when built |
+| `dashboard/db.py` | `DashboardDB` read-only access layer (`?mode=ro` URI). Two modes: local file (persistent SCP'd copy) and tunnel (SCP-fresh-fetch at startup) |
+| `dashboard/sync.py` | `sync_db()` — SCPs production DB to `dashboard/data/sentinel.db`, builds FTS5 index in attached `sentinel_fts.db` |
+| `dashboard/classifier_input.py` | Reconstructs the exact prompt the production classifier sent to Claude Haiku (kept in lockstep via drift-guard test) |
+| `dashboard/api/articles.py` | `GET /api/articles` (list/filter/sort/search/paginate), `GET /api/articles/<id>` (detail + classifier input + events + alert_records) |
+| `dashboard/api/stats.py` | `GET /api/stats` — totals, per-day series, urgency/source/language/event-type distributions, pipeline funnel |
+| `dashboard/api/sync.py` | `POST /api/sync` (refused 409 in tunnel mode), `GET /api/sync/status` |
+| `dashboard/run-dashboard.sh` | Bash launcher mirroring `run.sh`; activates `.venv` then runs `python -m dashboard "$@"` |
+
+Tunnel mode does **not** use SSH port-forwarding (SQLite is a file, not a network service). It SCPs the live DB to a temp path at `create_app()`, opens it read-only, and removes it on exit. Tunnel mode forces LIKE-only search (no FTS) and refuses `POST /api/sync` (409).
+
+Data files (`dashboard/data/sentinel.db`, `dashboard/data/sentinel_fts.db`, planned `annotations.db`) are dashboard-owned and separate from production.
+
+Status: Phase 1 (backend) complete. Phases 2 (React frontend), 3 (analytics charts), and 4 (annotations) are spec'd but not implemented.
