@@ -96,10 +96,6 @@ def _fetch_tunnel_db_once(app: Flask) -> str:
     if cached_path is None:  # pragma: no cover -- bootstrap raises on SCP failure
         bootstrap.close()
         raise RuntimeError("Tunnel bootstrap did not produce a temp file path")
-    # Close just the SQLite connection; ownership of the file is already ours.
-    # Any close() error is surfaced rather than silently swallowed: a broken
-    # connection at this point indicates a real problem worth seeing.
-    bootstrap.conn.close()
 
     def _cleanup() -> None:
         try:
@@ -108,10 +104,20 @@ def _fetch_tunnel_db_once(app: Flask) -> str:
         except OSError:  # pragma: no cover -- best-effort teardown
             pass
 
+    # Register the cleanup BEFORE closing the bootstrap connection. If
+    # ``bootstrap.conn.close()`` raises (broken connection, OS-level error),
+    # the temp file at ``cached_path`` is already detached from the bootstrap
+    # instance -- registering atexit first guarantees the file is still
+    # reclaimed on process exit even when the close() raises.
     atexit.register(_cleanup)
     # Stash on app.config so tests / introspection can also clean up early.
     app.config["TUNNEL_TEMPFILE"] = cached_path
     app.config["TUNNEL_CLEANUP"] = _cleanup
+
+    # Close just the SQLite connection; ownership of the file is already ours.
+    # Any close() error is surfaced rather than silently swallowed: a broken
+    # connection at this point indicates a real problem worth seeing.
+    bootstrap.conn.close()
     return cached_path
 
 

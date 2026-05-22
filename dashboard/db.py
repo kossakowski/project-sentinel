@@ -24,12 +24,22 @@ index, so tunnel-mode search always uses the LIKE fallback.
 import contextlib
 import json
 import os
+import re
 import sqlite3
 import subprocess
 import tempfile
 from datetime import UTC, datetime, timedelta
 
 from dashboard import config
+
+# Bare ``YYYY-MM-DD`` (no time portion). When ``date_to`` matches this shape,
+# we normalise to end-of-day so the filter is inclusive of the whole day,
+# rather than lex-comparing against ``"2026-05-17"`` and excluding every
+# row whose ``published_at`` starts ``"2026-05-17T..."``.
+_BARE_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+# Latest ISO timestamp within a single day; appending this to a bare date
+# produces a lexicographically-correct upper bound for SQLite's TEXT column.
+_END_OF_DAY_SUFFIX = "T23:59:59.999999"
 
 # Whitelisted sort columns -> the SQL expression they map to. Whitelisting
 # prevents SQL injection via the `sort` parameter (column names cannot be
@@ -196,10 +206,13 @@ class DashboardDB:
         caller: after this call, ``close()`` will no longer delete the file,
         and the caller is responsible for removing it.
 
-        Returns the path (still on disk) or ``None`` if this instance was not
-        operating in self-fetching tunnel mode. Used by the app factory's
-        startup bootstrap to keep the SCP'd file alive for the lifetime of
-        the Flask app.
+        Returns the path (still on disk) or ``None`` when this instance does
+        not own a temp file -- i.e. local mode, pre-fetched tunnel mode (a
+        ``db_path`` was supplied), or a second call after ownership was
+        already detached. Calling it on non-tunnel instances or twice in a
+        row is safe (idempotent): the second call simply returns ``None``.
+        Used by the app factory's startup bootstrap to keep the SCP'd file
+        alive for the lifetime of the Flask app.
         """
         path = self._tunnel_tempfile
         self._tunnel_tempfile = None
@@ -373,8 +386,17 @@ class DashboardDB:
             params.append(filters["date_from"])
 
         if filters.get("date_to"):
+            # Bare ``YYYY-MM-DD`` upper bounds expand to end-of-day so the
+            # whole day is included. ``published_at`` is a full ISO-8601
+            # string like ``"2026-05-17T04:00:00..."``, so lex-comparing
+            # against ``"2026-05-17"`` would EXCLUDE the entire day (every
+            # row sorts strictly greater than the bare-date prefix). A
+            # value that already carries a time portion is passed through.
+            date_to = filters["date_to"]
+            if _BARE_DATE_RE.match(date_to):
+                date_to = date_to + _END_OF_DAY_SUFFIX
             clauses.append("a.published_at <= ?")
-            params.append(filters["date_to"])
+            params.append(date_to)
 
         pipeline_status = filters.get("pipeline_status")
         if pipeline_status and pipeline_status != "all":
@@ -515,7 +537,7 @@ class DashboardDB:
             [*params, page_size, offset],
         ).fetchall()
 
-        total_pages = (total + page_size - 1) // page_size if page_size else 0
+        total_pages = (total + page_size - 1) // page_size
         return {
             "articles": [self._article_from_row(r) for r in rows],
             "total": total,
@@ -739,7 +761,7 @@ class DashboardDB:
             [match_query, *filter_params, page_size, offset],
         ).fetchall()
 
-        total_pages = (total + page_size - 1) // page_size if page_size else 0
+        total_pages = (total + page_size - 1) // page_size
         return {
             "articles": [self._article_from_row(r) for r in rows],
             "total": total,
@@ -812,7 +834,7 @@ class DashboardDB:
             [like, like, *filter_params, page_size, offset],
         ).fetchall()
 
-        total_pages = (total + page_size - 1) // page_size if page_size else 0
+        total_pages = (total + page_size - 1) // page_size
         return {
             "articles": [self._article_from_row(r) for r in rows],
             "total": total,

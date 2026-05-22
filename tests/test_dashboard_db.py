@@ -425,6 +425,32 @@ def test_db_get_articles_filters_more(db_no_fts):
     assert drone["articles"][0]["id"] == "a1"
 
 
+def test_db_bare_date_to_inclusive_of_day(db_no_fts):
+    """[1.2b, finding #4] A bare ``YYYY-MM-DD`` upper bound is inclusive of the whole day.
+
+    ``published_at`` is stored as a full ISO-8601 string. A naive
+    lex-comparison against a bare date ``"2026-05-17"`` excludes the entire
+    day (every row sorts strictly greater than the bare prefix). The DB
+    layer normalises a bare ``date_to`` to end-of-day so the filter
+    behaves as users intuitively expect:
+
+        date_to=2026-05-17  -> "<= 2026-05-17T23:59:59.999999"
+
+    Fixture row a7 was published at ``2026-05-17T04:00:00+00:00`` -- this
+    test fails if the bare-date upper bound silently excludes it.
+    """
+    # a7 (2026-05-17), a8 (2026-05-16), a9 (2026-05-15) -- everything on
+    # or before 2026-05-17 inclusive.
+    result = db_no_fts.get_articles(filters={"date_to": "2026-05-17"})
+    assert {a["id"] for a in result["articles"]} == {"a7", "a8", "a9"}, result["total"]
+
+    # A value that already carries a time portion is passed through unchanged:
+    # 04:00:00 is BEFORE 03:00:01, so a7 at 04:00:00+00:00 is excluded.
+    # Actually a7 is 04:00 and the cap is 03:00 -- so a7 is excluded.
+    explicit = db_no_fts.get_articles(filters={"date_to": "2026-05-17T03:00:00"})
+    assert {a["id"] for a in explicit["articles"]} == {"a8", "a9"}, explicit["total"]
+
+
 def test_db_get_articles_sort(db_no_fts):
     """[1.2b] Sorting by urgency_score desc returns the highest score first."""
     result = db_no_fts.get_articles(

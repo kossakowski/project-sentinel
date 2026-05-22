@@ -994,22 +994,22 @@ def test_run_dashboard_sh_help_smoke():
             {"a1", "a2", "a3"},
             lambda a: a["published_at"] >= "2026-05-21",
         ),
-        # date_to -- only articles published on/before 2026-05-17. The
-        # ``published_at`` column is a full ISO-8601 string ("2026-05-17T..."),
-        # so lex-comparison ``<= "2026-05-17"`` matches only rows whose
-        # published_at string starts strictly before that bare-date prefix --
-        # which excludes a7 ("2026-05-17T04:00:00..." > "2026-05-17"). Use
-        # the full ISO upper bound to get every row published on 2026-05-17.
+        # date_to -- only articles published on/before 2026-05-17. A bare
+        # ``YYYY-MM-DD`` upper bound now expands to end-of-day at the DB
+        # layer (finding #4), so this matches every row published on
+        # 2026-05-17 (a7 at 04:00:00, plus a8 + a9 from earlier days).
         (
-            {"date_to": "2026-05-17T23:59:59"},
+            {"date_to": "2026-05-17"},
             {"a7", "a8", "a9"},
-            lambda a: a["published_at"] <= "2026-05-17T23:59:59",
+            lambda a: a["published_at"][:10] <= "2026-05-17",
         ),
-        # date_from + date_to bracket -- a4 (2026-05-20), a5 (2026-05-19).
+        # date_from + date_to bracket with bare dates -- a4 (2026-05-20),
+        # a5 (2026-05-19). The bare date_to upper bound is inclusive of
+        # the whole day.
         (
-            {"date_from": "2026-05-19", "date_to": "2026-05-20T23:59:59"},
+            {"date_from": "2026-05-19", "date_to": "2026-05-20"},
             {"a4", "a5"},
-            lambda a: "2026-05-19" <= a["published_at"] <= "2026-05-20T23:59:59",
+            lambda a: "2026-05-19" <= a["published_at"][:10] <= "2026-05-20",
         ),
     ],
     ids=[
@@ -1041,6 +1041,26 @@ def test_api_articles_filter_each(client, params, expected_ids, assertion):
     # Every returned row really satisfies the filter (not just the count).
     for article in body["articles"]:
         assert assertion(article), (params, article)
+
+
+def test_api_articles_filter_default_order(client):
+    """[1.4, finding #10] One ordered-list spot check on the default sort.
+
+    The set-equality assertions in `test_api_articles_filter_each` do not
+    pin the order, so a regression that changed the default sort (e.g.
+    silently sorted ascending, or used a different column) would still pass
+    above. Picking one representative case (``language=pl``) and asserting
+    the EXACT id ORDER under the default ``published_at desc`` locks the
+    default sort at the API layer.
+    """
+    resp = client.get("/api/articles?language=pl")
+    assert resp.status_code == 200
+    body = resp.get_json()
+    ids = [a["id"] for a in body["articles"]]
+    # Polish fixture rows ordered by published_at DESC:
+    #   a2 2026-05-22T09  > a3 2026-05-21T08  > a5 2026-05-19T06
+    #   > a7 2026-05-17T04 > a9 2026-05-15T02
+    assert ids == ["a2", "a3", "a5", "a7", "a9"], ids
 
 
 # ---------------------------------------------------------------------------
@@ -1101,6 +1121,21 @@ def test_api_tunnel_skips_stale_fts(sentinel_db_path, fts_db_path, monkeypatch, 
     flask_app = create_app(tunnel=True, fts_db_path=fts_db_path, dev_cors=False)
     flask_app.config.update(TESTING=True)
     fresh_client = flask_app.test_client()
+
+    # 2b. Build a request-scoped DashboardDB the same way the API does and
+    # assert ``fts_available`` is False. The behavioral search assertion
+    # below would still pass IF a stale FTS happened to coincidentally
+    # return the right result set; this assertion guards directly against
+    # any FTS attachment in tunnel mode, not just the visible effects.
+    cached_path = flask_app.config["TUNNEL_TEMPFILE"]
+    db_probe = DashboardDB(tunnel=True, db_path=cached_path, fts_db_path=fts_db_path)
+    try:
+        assert db_probe.fts_available is False, (
+            "tunnel-mode DashboardDB must NOT attach the stale FTS index "
+            "(per req 1.1c the temp copy has no co-located FTS)"
+        )
+    finally:
+        db_probe.close()
 
     # 3. Run a search through the API. If the stale FTS were used, this would
     # match only article_id='STALE_ID' (which doesn't exist in the tunnel DB)
@@ -1166,6 +1201,45 @@ def test_api_sync_refused_in_tunnel_mode(sentinel_db_path, monkeypatch):
         cleanup()
 
 
+def test_api_sync_status_signals_tunnel_mode(sentinel_db_path, monkeypatch):
+    """[finding #2] ``GET /api/sync/status`` flags tunnel mode in its response.
+
+    In tunnel mode there is no persisted sync record by design (the DB is
+    fetched on each startup, and ``POST /api/sync`` is refused). Returning
+    a bare ``{"last_sync": null}`` would be indistinguishable from a fresh
+    install where no sync has ever run -- which can mislead the dashboard
+    into prompting the user to sync. The status response carries an explicit
+    ``tunnel_mode: true`` flag so the client knows the null is intentional.
+    """
+    import shutil
+
+    from dashboard import db as db_module
+
+    def fake_run(argv, capture_output, text, timeout):  # noqa: ARG001
+        shutil.copy(sentinel_db_path, argv[-1])
+
+        class _OK:
+            returncode = 0
+            stderr = ""
+
+        return _OK()
+
+    monkeypatch.setattr(db_module.subprocess, "run", fake_run)
+
+    flask_app = create_app(tunnel=True, dev_cors=False)
+    flask_app.config.update(TESTING=True)
+    tunnel_client = flask_app.test_client()
+
+    resp = tunnel_client.get("/api/sync/status")
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body == {"last_sync": None, "tunnel_mode": True}
+
+    cleanup = flask_app.config.get("TUNNEL_CLEANUP")
+    if callable(cleanup):
+        cleanup()
+
+
 # ---------------------------------------------------------------------------
 # CORS disabled-mode coverage (finding #13)
 # ---------------------------------------------------------------------------
@@ -1204,6 +1278,31 @@ def test_app_cors_denies_non_vite_origin(client):
     assert allowed != "*"
 
 
+def test_app_cors_denies_non_vite_origin_preflight(client):
+    """[1.1a, finding #13] Preflight (OPTIONS) requests from a non-Vite Origin
+    are not granted CORS approval.
+
+    A browser issues a preflight ``OPTIONS`` with ``Origin`` +
+    ``Access-Control-Request-Method`` before any non-simple cross-origin
+    request. The simple-GET test above misses preflight regressions, so we
+    pin the preflight-denial behavior explicitly: the evil origin must not
+    appear in ``Access-Control-Allow-Origin`` and the wildcard must never be
+    used.
+    """
+    resp = client.options(
+        "/api/stats",
+        headers={
+            "Origin": "https://evil.example.com",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    allowed = resp.headers.get("Access-Control-Allow-Origin")
+    # Either no header at all, or echoed as the Vite origin (never the attacker).
+    assert allowed in (None, "http://localhost:5173"), allowed
+    assert allowed != "https://evil.example.com"
+    assert allowed != "*"
+
+
 # ---------------------------------------------------------------------------
 # Date-range validation (finding #14)
 # ---------------------------------------------------------------------------
@@ -1217,7 +1316,12 @@ def test_app_cors_denies_non_vite_origin(client):
         ("date_from", "2026/05/22"),  # wrong separator
         ("date_to", "tomorrow"),
         ("date_to", "26-05-22"),  # 2-digit year
-        ("date_to", "2026-13-01"),  # ...month 13 still matches the prefix
+        # Calendar-impossible dates: month13, day30 of feb, hour25.
+        # The previous shape-only regex let these through; the calendar-aware
+        # validator now rejects them.
+        ("date_to", "2026-13-01"),
+        ("date_from", "2026-02-30"),
+        ("date_from", "2026-05-22T25:00:00"),
     ],
     ids=[
         "from-word",
@@ -1226,6 +1330,8 @@ def test_app_cors_denies_non_vite_origin(client):
         "to-word",
         "to-2digit-year",
         "to-month13",
+        "from-feb30",
+        "from-hour25",
     ],
 )
 def test_api_articles_rejects_invalid_date(client, param, value):
@@ -1233,28 +1339,34 @@ def test_api_articles_rejects_invalid_date(client, param, value):
 
     Spec doesn't require validation, but accepting arbitrary strings under
     lex comparison silently returns wrong-or-empty results -- a UX trap
-    worth a 400.
-
-    Note: this regex only validates SHAPE, not calendar validity. ``2026-13-01``
-    is rejected because the regex requires ``\\d{2}`` followed by an ISO date
-    format that doesn't have anything trailing the day -- but it DOES match
-    the prefix, and SQLite lex-comparison will give the user nothing. The
-    test name flags this case so a future tightening (full date parsing) is
-    visible.
+    worth a 400. Validation goes through ``datetime.fromisoformat`` so
+    calendar-impossible values (month 13, Feb 30, hour 25) are caught too.
     """
     resp = client.get(f"/api/articles?{param}={value}")
-    # Pure regex shape-validation: ``2026-13-01`` slips through (matches
-    # YYYY-MM-DD shape). The other 5 are rejected. The first 5 must 400; the
-    # ``month13`` case is documented as a known-loose-validation hole.
-    if value == "2026-13-01":
-        # Documents that shape-only validation lets this through. A future
-        # full-calendar parse would flip this assertion to 400.
-        assert resp.status_code == 200
-        return
     assert resp.status_code == 400, resp.get_json()
     body = resp.get_json()
     assert "error" in body
-    assert param in body["error"].lower()
+    # Combined-error shape: ``fields`` carries the per-parameter messages,
+    # so a single bad parameter shows up under its own key.
+    assert "fields" in body
+    assert param in body["fields"]
+
+
+def test_api_articles_combines_date_field_errors(client):
+    """[finding #7] Both ``date_from`` and ``date_to`` errors arrive together.
+
+    A user with two bad dates gets ONE 400 response listing BOTH problems,
+    not two round-trips. Locks the combined-error contract introduced
+    alongside the calendar-aware validator.
+    """
+    resp = client.get("/api/articles?date_from=yesterday&date_to=tomorrow")
+    assert resp.status_code == 400, resp.get_json()
+    body = resp.get_json()
+    assert body["error"] == "Invalid ISO date(s)"
+    assert set(body["fields"].keys()) == {"date_from", "date_to"}
+    # Each field carries a human-readable error mentioning the bad value.
+    assert "yesterday" in body["fields"]["date_from"]
+    assert "tomorrow" in body["fields"]["date_to"]
 
 
 def test_api_articles_accepts_valid_iso_dates(client):

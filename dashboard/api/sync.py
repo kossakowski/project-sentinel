@@ -93,8 +93,15 @@ def trigger_sync():
 def sync_status():
     """Return the timestamp + result of the last sync (req 1.7a).
 
-    Returns ``{"last_sync": null}`` when no sync has ever been performed.
+    Returns ``{"last_sync": null}`` when no sync has ever been performed. In
+    tunnel mode the dashboard fetches a fresh copy of the production DB on
+    each startup and ``POST /api/sync`` is refused, so there is no persisted
+    sync record by design. The status endpoint returns
+    ``{"last_sync": null, "tunnel_mode": true}`` in that case so the client
+    can distinguish "sync intentionally disabled" from "no sync ever ran".
     """
+    if current_app.config.get("USE_TUNNEL", False):
+        return jsonify({"last_sync": None, "tunnel_mode": True})
     record = _read_last_sync()
     if record is None:
         return jsonify({"last_sync": None})
