@@ -181,6 +181,7 @@ class TestingConfig(BaseModel):
     dry_run: bool = False
     test_mode: bool = False
     test_headlines_file: str = "tests/fixtures/test_headlines.yaml"
+    eval_set_file: str = "tests/fixtures/eval_set.yaml"
 
 
 class ProcessingDedup(BaseModel):

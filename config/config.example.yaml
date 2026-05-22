@@ -580,3 +580,4 @@ testing:
   dry_run: false
   test_mode: false
   test_headlines_file: tests/fixtures/test_headlines.yaml
+  eval_set_file: tests/fixtures/eval_set.yaml

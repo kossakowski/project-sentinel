@@ -1,0 +1,748 @@
+- id: 50fa6438-89b9-4e2a-86c6-f5523bf14ec9
+  title: President bundled into bunker as drone shuts down Lithuania's capital - The
+    Telegraph
+  summary: President bundled into bunker as drone shuts down Lithuania's capital The
+    Telegraph
+  source_name: GoogleNews:Russia attack NATO
+  source_type: google_news
+  language: en
+  human_tier: FLEE
+  human_action: CALL
+  human_urgency: 9
+  human_justification: Suggests an urgent event in Lithuania that made the President
+    evacuate to a bunker. That suggests intense military attack on Lithuania.
+  human_flag: null
+  labeled_at: '2026-05-22T01:45:00Z'
+- id: 2a10f1fa-a7c8-4849-811e-db74f3685641
+  title: Russia and Belarus Hold Nuclear Drills Near NATO Borders in Move Kyiv Calls
+    Unprecedented - insightnews.media
+  summary: Russia and Belarus Hold Nuclear Drills Near NATO Borders in Move Kyiv Calls
+    Unprecedented insightnews.media
+  source_name: GoogleNews:Russia attack NATO
+  source_type: google_news
+  language: en
+  human_tier: WATCH
+  human_action: SMS
+  human_urgency: 7
+  human_justification: Russian and Belarus nuclear cooperation is extremely alarming,
+    but as this is a drill it takes the grade down. Drills are projection of strength,
+    not directly threatening. Anything nuclear + military is at least a 6.
+  human_flag: null
+  labeled_at: '2026-05-22T01:47:00Z'
+- id: 7abc4c38-89b8-48dc-a5c0-383c128118e0
+  title: ⚡️ **Россия начинает ядерные учения ** Минобороны РФ объявило о двухдневных
+    учениях по подготовке и применению ядерных сил с 19 по 21 мая. К учениям привлекут
+    более 64 тысяч военных и около 8 тысяч
+  summary: ⚡️ **Россия начинает ядерные учения ** Минобороны РФ объявило о двухдневных
+    учениях по подготовке и применению ядерных сил с 19 по 21 мая. К учениям привлекут
+    более 64 тысяч военных и около 8 тысяч единиц техники, включая Ракетные войска
+    стратегического назначения, Тихоокеанский и Северный флоты. Отдельно планируется
+    отработать взаимодействие с ядерным оружием, размещённым в Беларуси.
+  source_name: Ukrainian Air Force
+  source_type: telegram
+  language: uk
+  human_tier: WATCH
+  human_action: SMS
+  human_urgency: 7
+  human_justification: Anything nuclear weapon connected is extremely alarming, however
+    as this is a drill and not immediate danger the grade goes down to 7. Something
+    to watch rather than requiring direct reaction.
+  human_flag: null
+  labeled_at: '2026-05-22T01:49:00Z'
+- id: 93f0a720-68d2-4373-baf6-c245db67e3b8
+  title: 'Karol Nawrocki w Bukareszcie: Polska i Rumunia to „twierdze” wschodniej
+    flanki NATO'
+  summary: Prezydent RP Karol Nawrocki, przebywający z trzydniową wizytą roboczą w
+    Rumunii, spotkał się w Bukareszcie z prezydentem Nicușorem Danem. Podczas konferencji
+    prasowej obaj liderzy podkreślili strategiczne partnerstwo Polski i Rumunii oraz
+    ich wyjątkową odpowiedzialność za bezpieczeństwo całego regionu.
+  source_name: Defence24
+  source_type: rss
+  language: pl
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 1
+  human_justification: Diplomatic visit, no military threat.
+  human_flag: null
+  labeled_at: '2026-05-22T01:50:00Z'
+- id: 9009f66c-58cd-47b7-8d86-891871e88b7a
+  title: Niezidentyfikowany dron znaleziony w pobliżu granicy z Rosją
+  summary: W pobliżu polsko-rosyjskiej granicy znaleziono drona, na którego podzespołach
+    były napisy zapisane cyrylicą – informuje RMF24. Teren miał zostać zabezpieczony
+    przez Żandarmerię Wojskową.
+  source_name: Defence24
+  source_type: rss
+  language: pl
+  human_tier: NOTE
+  human_action: SMS
+  human_urgency: 5
+  human_justification: Any Russian forces on Polish ground is alarming and requires
+    notification. However one drone, on the ground not in the air, unknown origin
+    (Cyrillic means it could be Russian or Ukrainian) means severity is not intense.
+    Does not point to an intentional attack.
+  human_flag: null
+  labeled_at: '2026-05-22T01:52:00Z'
+- id: 9642a05b-8d35-4cdc-8df9-8a72be5b6d8f
+  title: Two drones from Russia crash in Latvia, army says - The Straits Times
+  summary: Two drones from Russia crash in Latvia, army says The Straits Times
+  source_name: GoogleNews:Russia attack NATO
+  source_type: google_news
+  language: en
+  human_tier: NOTE
+  human_action: SMS
+  human_urgency: 5
+  human_justification: Worth noting but nothing urgent. Does not concern Poland -
+    anything concerning Poland is automatically higher urgency. 'Crash' does not suggest
+    attack. Small number of drones, could be unintentional or accident.
+  human_flag: null
+  labeled_at: '2026-05-22T01:54:00Z'
+- id: b6f4ab78-f3ef-4401-b930-5d38ff4ec9ad
+  title: Estonia shoots down drone over its territory for the first time - The New
+    Voice of Ukraine
+  summary: Estonia shoots down drone over its territory for the first time The New
+    Voice of Ukraine
+  source_name: GoogleNews:Russia attack NATO
+  source_type: google_news
+  language: en
+  human_tier: WATCH
+  human_action: SMS
+  human_urgency: 7
+  human_justification: Suggests two armies collided - a drone flew and was shot down.
+    Direct military clash. What lowers the grade is it does not concern Poland directly,
+    number of drones is low, and origins unknown.
+  human_flag: null
+  labeled_at: '2026-05-22T01:56:00Z'
+- id: 6484047c-f2c5-4706-91fd-2b50e8981907
+  title: Residents of Lithuania's capital told to shelter as drone alarm underlines
+    NATO's eastern jitters - Stamford Advocate
+  summary: Residents of Lithuania's capital told to shelter as drone alarm underlines
+    NATO's eastern jitters Stamford Advocate
+  source_name: GoogleNews:NATO Article 5
+  source_type: google_news
+  language: en
+  human_tier: FLEE
+  human_action: CALL
+  human_urgency: 9
+  human_justification: Residents told to shelter suggests intense military event in
+    Lithuania's capital. Same pattern as president-bunker article - active threat
+    to Baltic NATO state.
+  human_flag: null
+  labeled_at: '2026-05-22T01:57:00Z'
+- id: eae99dff-98e0-4a2a-b8d7-2265cfd35f5b
+  title: Residents of Lithuania's capital told to shelter as drone alarm underlines
+    NATO's eastern jitters - Chattanooga Times Free Press
+  summary: Residents of Lithuania's capital told to shelter as drone alarm underlines
+    NATO's eastern jitters Chattanooga Times Free Press
+  source_name: GoogleNews:invasion Baltic states
+  source_type: google_news
+  language: en
+  human_tier: FLEE
+  human_action: CALL
+  human_urgency: 9
+  human_justification: Residents told to shelter suggests intense military event in
+    Lithuania's capital. Active threat to Baltic NATO state.
+  human_flag: null
+  labeled_at: '2026-05-22T01:58:00Z'
+- id: b573b329-9c6d-4925-872a-8ff34aa85563
+  title: Exams suspended due to drone alert in several of Latvia's regions
+  summary: On Tuesday, 9th-grade students across Latvia are taking their Latvian language
+    exam. Due to a potential air hazard, the centralised Latvian language exam has
+    been suspended in the regions where the hazard has been declared.
+  source_name: LSM Latvia
+  source_type: rss
+  language: en
+  human_tier: WATCH
+  human_action: SMS
+  human_urgency: 8
+  human_justification: The 'alert' suggests something urgent and dangerous. Does not
+    seem too intense and does not concern Poland so the grade is lower.
+  human_flag: null
+  labeled_at: '2026-05-22T01:59:00Z'
+- id: 08583bf7-52ae-4ec2-b714-a5f872b7aca4
+  title: Pierwszy taki incydent w kraju NATO. Dron spadł na budynek - RMF24
+  summary: Pierwszy taki incydent w kraju NATO. Dron spadł na budynek RMF24
+  source_name: GoogleNews:Rosja atak
+  source_type: google_news
+  language: pl
+  human_tier: NOTE
+  human_action: SMS
+  human_urgency: 6
+  human_justification: States a drone hit a building in some NATO country. Very vague
+    - too little to cause alarm but should trigger SMS. May require a human to read
+    the full article and evaluate.
+  human_flag: null
+  labeled_at: '2026-05-22T02:01:00Z'
+- id: 17eb393b-f15c-4232-baeb-bc24151a0e36
+  title: '"Shahedy" nad wschodnią Polską. Prawda wyszła na jaw - WP Tech'
+  summary: '"Shahedy" nad wschodnią Polską. Prawda wyszła na jaw WP Tech'
+  source_name: GoogleNews:rosyjskie drony Polska
+  source_type: google_news
+  language: pl
+  human_tier: FLEE
+  human_action: CALL
+  human_urgency: 10
+  human_justification: Suggests direct attack on Poland.
+  human_flag: null
+  labeled_at: '2026-05-22T02:02:00Z'
+- id: 952c36aa-d845-4c59-aab2-d85117870cc8
+  title: Alarm w państwie NATO. Dron naruszył przestrzeń powietrzną. „Znajdźcie ochronę”
+    - Radio Zet
+  summary: Alarm w państwie NATO. Dron naruszył przestrzeń powietrzną. „Znajdźcie
+    ochronę” Radio Zet
+  source_name: GoogleNews:rosyjskie drony Polska
+  source_type: google_news
+  language: pl
+  human_tier: FLEE
+  human_action: CALL
+  human_urgency: 9
+  human_justification: Alarming content, suggestion of direct attack. Airspace violation
+    with civilian shelter warning in a NATO state.
+  human_flag: null
+  labeled_at: '2026-05-22T02:03:00Z'
+- id: a236d3b9-1da3-42c8-a148-e0541a010f24
+  title: '2 Drones, 1 Resignation: Latvian Defense Chief Quits After Strike Exposes
+    Air Defense Gaps - Kyiv Post'
+  summary: '2 Drones, 1 Resignation: Latvian Defense Chief Quits After Strike Exposes
+    Air Defense Gaps Kyiv Post'
+  source_name: GoogleNews:Russia attack NATO
+  source_type: google_news
+  language: en
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 4
+  human_justification: Aftermath/political fallout, not active threat.
+  human_flag: null
+  labeled_at: '2026-05-22T02:04:00Z'
+- id: f15fdc10-0675-41ef-9e80-ba0d110f963b
+  title: Stany Zjednoczone alarmują po serii ataków na Bałtyku. "Putin testuje model
+    konfliktu"
+  summary: Według Stanów Zjednoczonych Rosja opracowała zaawansowane zdolności prowadzenia
+    wojny podwodnej i prawdopodobnie odpowiada za serię podmorskich aktów sabotażu
+    na Bałtyku. — Musimy to nagłaśniać — powiedział amerykański senator James E. Risch,
+    cytowany przez PAP.
+  source_name: Onet Wiadomości
+  source_type: rss
+  language: pl
+  human_tier: NOTE
+  human_action: SMS
+  human_urgency: 6
+  human_justification: Speculation, not something urgent posing a direct threat. But
+    worth noting.
+  human_flag: null
+  labeled_at: '2026-05-22T02:05:00Z'
+- id: b4bf63fe-0196-40d6-ab22-962f2a8abe2e
+  title: British fighters scramble after drone crashes in Romania - News24
+  summary: British fighters scramble after drone crashes in Romania News24
+  source_name: GoogleNews:Russia attack NATO
+  source_type: google_news
+  language: en
+  human_tier: NOTE
+  human_action: SMS
+  human_urgency: 5
+  human_justification: Does not concern Poland. Specifies drone 'crashed' so unclear
+    if intentional. One drone - threat does not seem intense.
+  human_flag: null
+  labeled_at: '2026-05-22T02:06:00Z'
+- id: 9d0b2924-44be-4eb1-9812-fd4165319e9b
+  title: NATO jet shoots down suspected Ukrainian drone over Estonia - The Indian
+    Express
+  summary: NATO jet shoots down suspected Ukrainian drone over Estonia The Indian
+    Express
+  source_name: GoogleNews:NATO Article 5
+  source_type: google_news
+  language: en
+  human_tier: NOTE
+  human_action: SMS
+  human_urgency: 6
+  human_justification: Direct military interaction. Grade lowered because it states
+    it's a Ukrainian drone, over Estonia not Poland, and only one drone.
+  human_flag: null
+  labeled_at: '2026-05-22T02:07:00Z'
+- id: d57c2724-5914-4d32-870c-3dce7d6a728c
+  title: Lithuania issues 'probable air alert' in Vilnius, border regions over drone
+    sighting
+  summary: Lithuania's armed forces have activated the NATO air policing mission and
+    issued "a probable air alert" warning after a suspected drone was detected near
+    the country's border on Wednesday morning.
+  source_name: LRT Lithuania
+  source_type: rss
+  language: en
+  human_tier: WATCH
+  human_action: SMS
+  human_urgency: 8
+  human_justification: Air alert in Baltic capital, NATO air policing activated. Grade
+    lowered by the fact that it's not Poland.
+  human_flag: null
+  labeled_at: '2026-05-22T02:08:00Z'
+- id: 7b7ffa1b-3fb4-437f-9da0-9931eb3f048f
+  title: Appearance of drones in Baltic Region direct consequence of Russia's illegal
+    aggressive war against Ukraine – Estonian FM - Interfax-Ukraine
+  summary: Appearance of drones in Baltic Region direct consequence of Russia's illegal
+    aggressive war against Ukraine – Estonian FM Interfax-Ukraine
+  source_name: GoogleNews:Russia attack NATO
+  source_type: google_news
+  language: en
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 3
+  human_justification: Political commentary, not active threat.
+  human_flag: null
+  labeled_at: '2026-05-22T02:09:00Z'
+- id: 72265445-191e-4cb3-aa4f-e4a8e109190e
+  title: NATO, EU chiefs show support for Baltic states in wake of Russia drone accusations
+    - ERR
+  summary: NATO, EU chiefs show support for Baltic states in wake of Russia drone
+    accusations ERR
+  source_name: GoogleNews:Russia attack NATO
+  source_type: google_news
+  language: en
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 3
+  human_justification: Political commentary/diplomatic support, not active threat.
+  human_flag: null
+  labeled_at: '2026-05-22T02:10:00Z'
+- id: 574abdcf-4b7e-473b-a1e3-683d4dd3afab
+  title: Alarm na Litwie. Radary wykryły niezidentyfikowany obiekt - Polskie Radio
+    24
+  summary: Alarm na Litwie. Radary wykryły niezidentyfikowany obiekt Polskie Radio
+    24
+  source_name: GoogleNews:atak wojskowy Polska
+  source_type: google_news
+  language: pl
+  human_tier: WATCH
+  human_action: SMS
+  human_urgency: 7
+  human_justification: Suggests possible military attack. Grade lowered because it
+    does not concern Poland directly, the object is singular, and its nature is yet
+    unknown.
+  human_flag: null
+  labeled_at: '2026-05-22T02:11:00Z'
+- id: 2126baa3-a46e-4491-98f6-4a13f97ebc04
+  title: Suspected Ukrainian military drone discovered after crashing in Lithuania
+  summary: A suspected Ukrainian military drone was found crashed in Lithuania on
+    Sunday, officials said, as Baltic NATO members face growing concern over stray
+    drones crossing into their airspace from the war in neighboring Ukraine.
+  source_name: France 24 Europe
+  source_type: rss
+  language: en
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 4
+  human_justification: Ukrainian drone crashed in Lithuania suggests an accident,
+    not an intentional attack. 'Crashed' does not mean attacked. Not worth noting.
+  human_flag: null
+  labeled_at: '2026-05-22T02:12:00Z'
+- id: 3dac7801-f0c1-4368-bd95-7fc2cfc49d81
+  title: 'Poland: Polish police find military drone on Russian border | blue News
+    - blue News'
+  summary: 'Poland: Polish police find military drone on Russian border | blue News
+    blue News'
+  source_name: GoogleNews:military attack Poland
+  source_type: google_news
+  language: en
+  human_tier: WATCH
+  human_action: SMS
+  human_urgency: 8
+  human_justification: Concerns Poland directly - military drone found on Polish territory
+    near Russian border, which makes the grade higher. Lowered because it's not urgent
+    - drone was found inactive on the ground.
+  human_flag: null
+  labeled_at: '2026-05-22T02:13:00Z'
+- id: 65ec76b7-7f13-443a-a7df-1c2169b40075
+  title: Samolot NATO zestrzelil ukraińskiego drona nad Estonią
+  summary: W przestrzeni powietrznej Estonii doszło do incydentu z udziałem bezzałogowego
+    statku powietrznego, który został przechwycony i zestrzelony przez samolot NATO.
+    Zdarzenie zostało potwierdzone przez estońskiego ministra obrony Hanno Pevkura,
+    który podkreślił, że był to pierwszy przypadek użycia siły wobec drona nad terytorium
+    kraju.
+  source_name: Defence24
+  source_type: rss
+  language: pl
+  human_tier: WATCH
+  human_action: SMS
+  human_urgency: 7
+  human_justification: Worth noting, but grade downgraded because it concerns Estonia,
+    the drone is Ukrainian, so likely not intentional.
+  human_flag: null
+  labeled_at: '2026-05-22T02:14:00Z'
+- id: 499fe87d-ee08-462c-839f-92ff55e0c780
+  title: 'Europe Today: Latvia in turmoil after PM resigns over drone incursion —
+    what now? - AOL.com'
+  summary: 'Europe Today: Latvia in turmoil after PM resigns over drone incursion
+    — what now? AOL.com'
+  source_name: GoogleNews:Russia attack NATO
+  source_type: google_news
+  language: en
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 3
+  human_justification: Political aftermath, not active threat.
+  human_flag: null
+  labeled_at: '2026-05-22T02:15:00Z'
+- id: fd47c2b7-9c54-4408-8258-642f3dd8f876
+  title: Polish ABW warns cyberattacks shifting from espionage and data theft toward
+    physical disruption of critical infrastructure - Industrial Cyber
+  summary: Polish ABW warns cyberattacks shifting from espionage and data theft toward
+    physical disruption of critical infrastructure Industrial Cyber
+  source_name: GoogleNews:military attack Poland
+  source_type: google_news
+  language: en
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 4
+  human_justification: Cyber threat warning, not kinetic military attack. No immediate
+    danger. A report/speculation, not an actual event.
+  human_flag: null
+  labeled_at: '2026-05-22T02:16:00Z'
+- id: 7f63acb4-8ed6-499e-8320-aae913d4d4f1
+  title: British fighter jets scrambled after Russian strike on Nato border - The
+    Telegraph
+  summary: British fighter jets scrambled after Russian strike on Nato border The
+    Telegraph
+  source_name: GoogleNews:Russia attack NATO
+  source_type: google_news
+  language: en
+  human_tier: FLEE
+  human_action: CALL
+  human_urgency: 9
+  human_justification: Direct attack, clash between Russia and NATO.
+  human_flag: null
+  labeled_at: '2026-05-22T02:17:00Z'
+- id: 9c7d109c-9edd-4f21-941a-ebfcbc156e94
+  title: URCS joins restoration work in Sumy after Russia's attack
+  summary: Volunteers of the Ukrainian Red Cross Society (URCS) have joined restoration
+    efforts in damaged residential buildings in Sumy following an overnight drone
+    attack on the city by Russia.
+  source_name: Interfax-Ukraine EN
+  source_type: rss
+  language: en
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 1
+  human_justification: Attack on Ukraine not Poland/Baltics, humanitarian aftermath.
+  human_flag: null
+  labeled_at: '2026-05-22T02:18:00Z'
+- id: 18786bab-d7ab-4ff5-afb4-d5e1c0831931
+  title: Russia pummels Kyiv, killing at least 10 as advance in the east slows
+  summary: Russia pummelled Kyiv for hours early on Thursday, firing hundreds of drones
+    and dozens of missiles in an attack that killed at least 10 people and further
+    shredded hopes of a halt to Moscow's grinding invasion. FRANCE 24's August Hakansson
+    reports.
+  source_name: France 24 Europe
+  source_type: rss
+  language: en
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 3
+  human_justification: Attack on Ukraine not Poland/Baltics/Romania. It's a warzone
+    so this is standard.
+  human_flag: null
+  labeled_at: '2026-05-22T02:19:00Z'
+- id: 02a400eb-47bc-41d3-b24a-49761fef4c9a
+  title: Putin Warns Latvia and NATO Allies of Retaliation Over Alleged Ukrainian
+    Drone Deployment - CubaHeadlines
+  summary: Putin Warns Latvia and NATO Allies of Retaliation Over Alleged Ukrainian
+    Drone Deployment CubaHeadlines
+  source_name: GoogleNews:Russia attack NATO
+  source_type: google_news
+  language: en
+  human_tier: WATCH
+  human_action: SMS
+  human_urgency: 7
+  human_justification: Putin threatening NATO is alarming but it's rhetoric not action.
+  human_flag: null
+  labeled_at: '2026-05-22T02:20:00Z'
+- id: 76ddc3fe-02f1-4a54-a76e-f22d41145209
+  title: Russo-Ukrainian war must not be overshadowed by Iran war, Zelenskyy says
+    after Dnipro strikes
+  summary: 'Russian missile strike on Dnipro on 25 April: five people were killed,
+    over 40 were injured and two are considered missing. President Volodymyr Zelenskyy
+    reports the details.'
+  source_name: Ukrainska Pravda EN
+  source_type: rss
+  language: en
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 2
+  human_justification: Attack on Ukraine, standard warzone reporting. Political opinion.
+  human_flag: null
+  labeled_at: '2026-05-22T02:21:00Z'
+- id: e6ecda65-24e8-4482-b86c-ebf8755016ad
+  title: Russia shoots down 505 Ukrainian aircraft-type drones in day — Defense Ministry
+  summary: According to the Defense Ministry, 671 aircraft, 284 helicopters, 140,399
+    unmanned aerial vehicles, 658 anti-aircraft missile systems, 29,127 tanks and
+    other armored combat vehicles
+  source_name: TASS
+  source_type: rss
+  language: en
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 2
+  human_justification: Russian propaganda from TASS, internal warzone reporting, no
+    relevance to Poland/Baltics.
+  human_flag: null
+  labeled_at: '2026-05-22T02:22:00Z'
+- id: 518e381c-1776-4d4e-9830-32f3a66de67a
+  title: 'Rosja podwaja ataki dronów: do 500 bezzałogowców dziennie - 112.ua'
+  summary: 'Rosja podwaja ataki dronów: do 500 bezzałogowców dziennie 112.ua'
+  source_name: GoogleNews:Rosja atak
+  source_type: google_news
+  language: pl
+  human_tier: NOTE
+  human_action: SMS
+  human_urgency: 5
+  human_justification: Article is vague. We assume it's Ukraine because it's the only
+    country where plausibly attacks are doubled, but we don't know for certain.
+  human_flag: null
+  labeled_at: '2026-05-22T02:23:00Z'
+- id: c0430a1b-8523-40be-9caf-60effdd66e30
+  title: Hungary Summons Russian Ambassador for First Time Over Drone Strikes on Ukraine
+    - Kyiv Post
+  summary: Hungary Summons Russian Ambassador for First Time Over Drone Strikes on
+    Ukraine Kyiv Post
+  source_name: GoogleNews:scrambled jets Poland
+  source_type: google_news
+  language: en
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 4
+  human_justification: Diplomatic action not military threat, concerns Ukraine not
+    Poland. Grade still high because it suggests a shift in Hungary's policy towards
+    Russia.
+  human_flag: null
+  labeled_at: '2026-05-22T02:24:00Z'
+- id: 81950eb9-f4a2-4653-8032-1c16cd637025
+  title: Ukraine's Air Force explain interception rate of Shahed UAVs by drone-based
+    air defence crews
+  summary: Units that have joined a new branch of service – the Forces of Immediate
+    Air Defence Cover, the so-called small air defence – are currently being formed
+    within Ukraine's Air Force. Many newly created crews are still undergoing training
+    and do not yet have sufficient technical equipment to demonstrate results.
+  source_name: Ukrainska Pravda EN
+  source_type: rss
+  language: en
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 1
+  human_justification: Ukraine internal military reporting, no relevance to Poland/Baltics.
+  human_flag: null
+  labeled_at: '2026-05-22T02:25:00Z'
+- id: 1e6fda4f-35b6-446e-b663-7db2750f3236
+  title: Zmasowane rosyjskie ataki, dron wleciał do mieszkania. Są ofiary śmiertelne
+  summary: Rosja przeprowadziła zmasowane kolejne ataki na terytorium Ukrainy. W Chersoniu
+    dwie osoby zginęły po uderzeniu drona w autobus, a jedna osoba została ranna gdy
+    bezzałogowiec Shahed wleciał do mieszkania w Charkowie. Ostatecznie nie doszło
+    do wybuchu. Wołodymyr Zełenski zarzucił Rosjanom urządzanie brutalnego ludzkiego
+    safari.
+  source_name: Polsat News
+  source_type: rss
+  language: pl
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 1
+  human_justification: Attack on Ukraine not Poland/Baltics, standard warzone reporting.
+  human_flag: null
+  labeled_at: '2026-05-22T02:26:00Z'
+- id: 060a8871-6d0a-4ab2-9318-8ab6696c673d
+  title: Four injured in Russian strikes on Kherson Oblast
+  summary: Four people were injured as a result of Russian bombardments and drone
+    attacks on Kherson Oblast on 20 May, including two men who were hurt when an FPV
+    drone hit a milk tanker in the village of Rakivka.
+  source_name: Ukrainska Pravda EN
+  source_type: rss
+  language: en
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 1
+  human_justification: Attack on Ukraine, standard warzone reporting.
+  human_flag: null
+  labeled_at: '2026-05-22T02:27:00Z'
+- id: 3eb72705-405f-4a51-bc92-2d5b0b226793
+  title: Russia sets new record for drone, missile attacks on Ukraine in April - ABC
+    News - Breaking News, Latest News and Videos
+  summary: Russia sets new record for drone, missile attacks on Ukraine in April ABC
+    News - Breaking News, Latest News and Videos
+  source_name: GoogleNews:military attack Poland
+  source_type: google_news
+  language: en
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 4
+  human_justification: Attack on Ukraine not Poland/Baltics, standard warzone reporting.
+    Grade higher because it suggests escalation of Russia's war effort.
+  human_flag: null
+  labeled_at: '2026-05-22T02:28:00Z'
+- id: d88d293d-5725-4c81-871a-6912ba79f254
+  title: Ukraine condemns Russia over 'severe humanitarian crisis' in occupied Kherson
+    Oblast
+  summary: '"Residents attempting to buy food or flee in private vehicles are being
+    targeted by Russian drone attacks," Ukraine''s Foreign Ministry said.'
+  source_name: Kyiv Independent
+  source_type: rss
+  language: en
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 1
+  human_justification: Attack on Ukraine, standard warzone reporting.
+  human_flag: null
+  labeled_at: '2026-05-22T02:29:00Z'
+- id: db649d9f-9c98-49e7-836a-23b9c52cdd87
+  title: Ilu Rosjan zginęło na własnym terytorium? Ukraińskie drony wdzierają się
+    coraz głębiej w kraj Putina
+  summary: Od 2022 r. w wyniku wojny w 27 regionach Rosji i na okupowanym Krymie zginęło
+    co najmniej 1406 cywilów. 183 z nich zginęło od początku 2026 r., co daje 2,4
+    razy więcej niż w tym samym okresie roku poprzedniego. Większość tych zgonów spowodowana
+    jest atakami dronów. "Nowa Gazieta" zebrała wszystkie znane przypadki z dostępnych
+    źródeł.
+  source_name: Onet Wiadomości
+  source_type: rss
+  language: pl
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 1
+  human_justification: Ukraine attacking Russia, no relevance to Poland/Baltics.
+  human_flag: null
+  labeled_at: '2026-05-22T02:30:00Z'
+- id: b3da5f5d-98c1-44df-ad23-22a8e4c93935
+  title: 'To stało się w nocy: Ukraińskie drony nie dają spokoju Moskwie. Kim Dzong
+    Un straszy - Rzeczpospolita'
+  summary: 'To stało się w nocy: Ukraińskie drony nie dają spokoju Moskwie. Kim Dzong
+    Un straszy Rzeczpospolita'
+  source_name: GoogleNews:Rosja atak
+  source_type: google_news
+  language: pl
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 1
+  human_justification: Ukraine attacking Russia, no relevance to Poland/Baltics.
+  human_flag: null
+  labeled_at: '2026-05-22T02:31:00Z'
+- id: 7d2cce23-504a-4033-a11f-6d02d7d2a4c9
+  title: Alarm dla gospodarki USA. Wojna i ropa podbijają koszty długu
+  summary: Dochodowość obligacji USA, Japonii oraz wielu innych krajów wzrosła, gdyż
+    inwestorzy spodziewają się wyższej inflacji po wzroście cen ropy naftowej.
+  source_name: Rzeczpospolita
+  source_type: rss
+  language: pl
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 1
+  human_justification: Economic news, no military relevance.
+  human_flag: null
+  labeled_at: '2026-05-22T02:32:00Z'
+- id: 5203755f-f85e-40f7-933e-aaa06946f52f
+  title: '🇳🇴 🇬🇧 🇺🇦 Тренування, що рятують життя: підготовка Збройних Сил України в
+    рамках операції ІНТЕРФЛЕКС'
+  summary: '🇳🇴 🇬🇧 🇺🇦 Тренування, що рятують життя: підготовка Збройних Сил України
+    в рамках операції ІНТЕРФЛЕКС (INTERFLEX)'
+  source_name: Ukrainian Air Force
+  source_type: telegram
+  language: uk
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 1
+  human_justification: Ukrainian military training in UK, no relevance to Poland/Baltics.
+  human_flag: null
+  labeled_at: '2026-05-22T02:33:00Z'
+- id: 6570bd13-354c-453b-85d5-3c775917d802
+  title: Środowy przegląd mediów; Kijów stawia na zbrojeniową niezależność; O krok
+    od pożyczki
+  summary: Codzienny przegląd mediów sektora bezpieczeństwa i obronności.
+  source_name: Defence24
+  source_type: rss
+  language: pl
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 1
+  human_justification: Media roundup, news concerns Ukraine.
+  human_flag: null
+  labeled_at: '2026-05-22T02:34:00Z'
+- id: 0fddcce8-01eb-4c0d-a241-05c758aaf850
+  title: Trzęsienie ziemi w sondażu CBOS. Trzy partie poza Sejmem, jedna z rekordowym
+    wzrostem
+  summary: Koalicja Obywatelska utrzymuje pozycję lidera w najnowszym sondażu CBOS,
+    choć jej poparcie nieznacznie spadło. Prawo i Sprawiedliwość zyskało na popularności,
+    a Konfederacja Wolność i Niepodległość notuje wyraźny wzrost. Najnowsze badanie
+    pokazuje także, które ugrupowania nie przekroczyły progu wyborczego.
+  source_name: RMF24
+  source_type: rss
+  language: pl
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 1
+  human_justification: Polish domestic politics, no military relevance.
+  human_flag: null
+  labeled_at: '2026-05-22T02:35:00Z'
+- id: 8b7e8c27-3aeb-4c63-9abb-606443cb5ffe
+  title: Generał Polko o amerykańskich żołnierzach. „Dla Europy nie jest to priorytet”
+  summary: Pogłoski o wstrzymaniu wysłanie do Europy blisko 4 tysięcy żołnierzy 2.
+    Pancernej Brygadowej Grupy Bojowej z 1. Dywizji Kawalerii USA wynikają bezpośrednio
+    z amerykańskiej strategii. Dla Europy nie jest to jednak kluczowy problem – mówi
+    w rozmowie z „Rz” były dowódca GROM, gen. Roman Polko.
+  source_name: Rzeczpospolita
+  source_type: rss
+  language: pl
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 4
+  human_justification: Military commentary/analysis, no active threat. Concerns Poland
+    so the grade is higher.
+  human_flag: null
+  labeled_at: '2026-05-22T02:36:00Z'
+- id: 2e1438d8-139d-4f71-a3fd-e3560d94516e
+  title: Zełenski planuje ustawę o najemnikach. Demobilizacja przez eksport weteranów?
+  summary: Kijów chce do końca 2026 roku przyjąć ustawę o najemnikach. Pozwoli to
+    na rekrutację do prywatnych najemniczych firm zarejestrowanych w Ukrainie i prawdopodobny
+    udział weteranów w zagranicznych operacjach.
+  source_name: Defence24
+  source_type: rss
+  language: pl
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 1
+  human_justification: Ukraine internal policy, no relevance to Poland/Baltics.
+  human_flag: null
+  labeled_at: '2026-05-22T02:37:00Z'
+- id: 0b038e73-744d-401e-b62d-c0c3b04c50d2
+  title: 'DISPATCH FROM WARSAW: Questions on Article 5, NATO Unity Permeate Polish
+    Security Confab - National Defense Magazine'
+  summary: 'DISPATCH FROM WARSAW: Questions on Article 5, NATO Unity Permeate Polish
+    Security Confab National Defense Magazine'
+  source_name: GoogleNews:NATO Article 5
+  source_type: google_news
+  language: en
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 1
+  human_justification: Conference/discussion about NATO, no active threat.
+  human_flag: null
+  labeled_at: '2026-05-22T02:38:00Z'
+- id: 7f3fb83b-59b6-4b51-8f98-f6d064a29249
+  title: Boomerang UAV immune to electronic warfare, can fly over 45 km — soldier
+  summary: The drone's frame is made of non-conductive textolite, which increases
+    its operational reliability
+  source_name: TASS
+  source_type: rss
+  language: en
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 1
+  human_justification: Russian military tech reporting from TASS, no relevance to
+    Poland/Baltics.
+  human_flag: null
+  labeled_at: '2026-05-22T02:39:00Z'
+- id: 7904d52d-74d8-4a8d-8799-ca4250e9a315
+  title: 'Tania tarcza przeciw dronom: Merops zmienia zasady obrony powietrznej -
+    Strefa Obrony'
+  summary: 'Tania tarcza przeciw dronom: Merops zmienia zasady obrony powietrznej
+    Strefa Obrony'
+  source_name: GoogleNews:rosyjskie drony Polska
+  source_type: google_news
+  language: pl
+  human_tier: NOISE
+  human_action: LOG
+  human_urgency: 1
+  human_justification: Polish defense tech news, no active threat.
+  human_flag: null
+  labeled_at: '2026-05-22T02:40:00Z'

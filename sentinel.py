@@ -74,6 +74,15 @@ def build_parser() -> argparse.ArgumentParser:
         "Choices: phone_call, sms, whatsapp. Bypasses fetching, classification, "
         "and corroboration — injects a synthetic event directly into the alert system.",
     )
+    parser.add_argument(
+        "--eval",
+        nargs="?",
+        const="DEFAULT",
+        metavar="PATH",
+        help="Run classification eval against a YAML eval set "
+        "(default: tests/fixtures/eval_set.yaml). "
+        "Hits the live API. Saves a JSON report to data/eval/.",
+    )
     return parser
 
 
@@ -236,6 +245,14 @@ def main() -> None:
         _run_test_file(args.test_file, config, logger)
         sys.exit(0)
 
+    # Eval mode — run classifier against labeled eval set
+    if args.eval is not None:
+        eval_path = (
+            args.eval if args.eval != "DEFAULT" else config.testing.eval_set_file
+        )
+        _run_eval(eval_path, config, logger)
+        # _run_eval handles its own exit code
+
     # Mode: health check
     if args.health:
         print_health(config)
@@ -362,6 +379,26 @@ def _run_test_file(filepath: str, config, logger) -> None:
             print(f"  FAILED: {e}\n")
 
     print("-" * 80)
+
+
+def _run_eval(eval_set_path: str, config, logger) -> None:
+    """Run the classification eval harness, print a report, exit with status."""
+    from sentinel.eval.harness import format_report, run_eval, save_report_json
+
+    if not os.path.exists(eval_set_path):
+        print(f"Error: eval set file not found: {eval_set_path}", file=sys.stderr)
+        sys.exit(1)
+
+    logger.info("Eval mode: %s", eval_set_path)
+    report = run_eval(eval_set_path, config)
+
+    print(format_report(report))
+
+    json_path = save_report_json(report)
+    print(f"Detailed report: {json_path}")
+
+    # Exit 0 if all pass, 1 otherwise — useful for CI gating.
+    sys.exit(0 if report.metrics.get("overall_pass_rate", 0) == 1.0 else 1)
 
 
 def _run_test_alert(alert_type: str, config, logger) -> None:

@@ -1,0 +1,1124 @@
+# Sentinel Classification Eval Set
+# Extracted from 8 daily audit reports: 2026-03-24 through 2026-05-01
+# Each entry represents a documented classification example (wrong or notably correct)
+# from the manual audit record. Use for regression testing of the Haiku classifier.
+#
+# Schema fields:
+#   haiku_output: what the classifier actually produced (null = not reported in audit)
+#   expected:     what the audit determined was correct
+#   failure_mode: dominant failure pattern
+#
+# Failure mode vocabulary:
+#   google_news_query_bias        - classifier inferred country from query string, not article
+#   ukraine_as_monitored          - Ukrainian territory/event misclassified as PL/LT/LV/EE
+#   romania_spillover             - non-monitored country (RO/FI) misidentified as monitored
+#   headline_literal_no_qualifiers - qualifier words (propaganda/threatens/prepares) ignored
+#   cyber_severity_inflation      - vulnerability disclosure or stats rated as active incident
+#   attribution_uncertain_high_urgency - high urgency despite unknown aggressor/low confidence
+#   propaganda_treated_as_attack  - information operation classified as kinetic event
+#   false_negative_filtered_out   - missed by keyword filter (included where summary is quoted)
+#   correct_classification        - explicitly praised in audit as correct
+#   other                         - does not fit above categories
+
+---
+
+# ── 2026-03-24 ──────────────────────────────────────────────────────────────
+
+- id: mezha-gn-query-missile-strike-ukraine-as-poland
+  headline: "Russian forces launched a combined drone and cruise missile strike"
+  summary: null
+  source: "GoogleNews:drone incursion Poland / mezha.net"
+  language: uk
+  audit_date: "2026-03-24"
+  haiku_output:
+    is_military_event: true
+    event_type: missile_strike
+    urgency_score: 9
+    affected_countries: ["PL"]
+    aggressor: RU
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: missile_strike
+    urgency_min: 2
+    urgency_max: 2
+    affected_countries: ["UA"]
+    aggressor: RU
+    expected_action: log_only
+  failure_mode: google_news_query_bias
+  notes: "Audit 2026-03-24 Pattern 1. Article describes RU attack on Ukraine. Haiku hallucinated PL as target from the GN query 'drone incursion Poland'. Triggered SMS. Most dangerous single error in this audit."
+
+- id: united24-poland-mobilizes-jets-urgency-inflation
+  headline: "Poland Mobilizes Fighter Jets and Air Defense in Response to Russian Missile Strike"
+  summary: null
+  source: "UNITED24 Media"
+  language: en
+  audit_date: "2026-03-24"
+  haiku_output:
+    is_military_event: null
+    event_type: missile_strike
+    urgency_score: 9
+    affected_countries: ["PL"]
+    aggressor: null
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: airspace_violation
+    urgency_min: 5
+    urgency_max: 5
+    affected_countries: ["PL", "UA"]
+    aggressor: RU
+    expected_action: sms
+  failure_mode: ukraine_as_monitored
+  notes: "Audit 2026-03-24 Pattern 2. Poland activating air defense as precaution (not attacked) → urgency 9 instead of 5. Same pattern in 3 more articles (Onet, TVP Info, Polsat News). Caused 2 false SMSes."
+
+- id: bankier-drony-lwow-polskie-dokumenty
+  headline: "Drony uderzyły w serce Lwowa. Zagrożone bezcenne polskie dokumenty"
+  summary: null
+  source: "Bankier.pl"
+  language: pl
+  audit_date: "2026-03-24"
+  haiku_output:
+    is_military_event: null
+    event_type: null
+    urgency_score: 9
+    affected_countries: ["PL"]
+    aggressor: null
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: drone_attack
+    urgency_min: 4
+    urgency_max: 4
+    affected_countries: ["UA"]
+    aggressor: RU
+    expected_action: log_only
+  failure_mode: ukraine_as_monitored
+  notes: "Audit 2026-03-24 Pattern 3. Drones struck Lviv, Ukraine — not Poland. Haiku conflated 'places important to Poland' (Polish heritage in Lviv) with attack ON Poland. Same error in 6 more articles (wPolityce.pl, Dzieje.pl, etc.). Caused 5+ false SMS alerts."
+
+- id: onet-drony-centrum-lwowa-ukraine-only
+  headline: "Drony spadły na centrum Lwowa. Siedem osób rannych"
+  summary: null
+  source: "Onet"
+  language: pl
+  audit_date: "2026-03-24"
+  haiku_output:
+    is_military_event: null
+    event_type: null
+    urgency_score: 9
+    affected_countries: ["UA"]
+    aggressor: null
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: drone_attack
+    urgency_min: 4
+    urgency_max: 4
+    affected_countries: ["UA"]
+    aggressor: RU
+    expected_action: log_only
+  failure_mode: ukraine_as_monitored
+  notes: "Audit 2026-03-24 Pattern 4. Haiku correctly tagged UA but still scored urgency 9. Urgency 8-9 is reserved for attacks on PL/LT/LV/EE. Also repeated for Gazeta Wyborcza + Onet Moldova articles."
+
+- id: wgospodarce-drony-pociag-ambiguous-clickbait
+  headline: "Atak w środku nocy. Drony uderzyły w pociąg — są ofiary"
+  summary: null
+  source: "wGospodarce"
+  language: pl
+  audit_date: "2026-03-24"
+  haiku_output:
+    is_military_event: null
+    event_type: null
+    urgency_score: 9
+    affected_countries: ["PL"]
+    aggressor: null
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: drone_attack
+    urgency_min: 1
+    urgency_max: 2
+    affected_countries: []
+    aggressor: unknown
+    expected_action: log_only
+  failure_mode: headline_literal_no_qualifiers
+  notes: "Audit 2026-03-24 Pattern 5. Ambiguous clickbait headline almost certainly describes Ukraine (likely Lviv), not Poland. No corroborating source for Polish train attack. Haiku defaulted to worst case. Triggered SMS at urgency 9."
+
+- id: newsweek-nato-deploys-jets-hallucinated-scope
+  headline: "NATO Deploys Fighter Jets, Helicopters Over Russian Shahed Drone Attacks"
+  summary: null
+  source: "Newsweek"
+  language: en
+  audit_date: "2026-03-24"
+  haiku_output:
+    is_military_event: null
+    event_type: null
+    urgency_score: 7
+    affected_countries: ["PL", "LT", "LV", "EE"]
+    aggressor: null
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: airspace_violation
+    urgency_min: 4
+    urgency_max: 5
+    affected_countries: ["PL"]
+    aggressor: RU
+    expected_action: log_only
+  failure_mode: other
+  notes: "Audit 2026-03-24 Pattern 6. No evidence LT/LV/EE were involved. Haiku hallucinated all four monitored countries, likely primed by system prompt. Sent SMS listing all four as affected."
+
+# ── 2026-03-25 ──────────────────────────────────────────────────────────────
+
+- id: gn-rosja-atak-lwow-wazne-dla-polski
+  headline: "Rosjanie zaatakowali w biały dzień. Drony uderzyły w ważne dla Polski miejsca"
+  summary: null
+  source: "GoogleNews:Rosja atak"
+  language: pl
+  audit_date: "2026-03-25"
+  haiku_output:
+    is_military_event: true
+    event_type: drone_attack
+    urgency_score: 9
+    affected_countries: ["PL"]
+    aggressor: RU
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: drone_attack
+    urgency_min: 4
+    urgency_max: 4
+    affected_countries: ["UA"]
+    aggressor: RU
+    expected_action: log_only
+  failure_mode: ukraine_as_monitored
+  notes: "Audit 2026-03-25. Attack on Lviv Ukraine (Bernardine monastery, Historical Archive). 'Ważne dla Polski miejsca' = culturally significant Polish heritage in Lviv, not Polish territory. Generated SMS. Same error repeated for 'Lwów: rosyjskie drony uderzyły w ważne dla Polski miejsca'."
+
+- id: ukr-air-force-operational-report-invasion
+  headline: "Оперативна інформація станом на 22:00 24.03.2026 щодо російського вторгнення"
+  summary: "176 combat engagements today"
+  source: "Ukrainian Air Force"
+  language: uk
+  audit_date: "2026-03-25"
+  haiku_output:
+    is_military_event: true
+    event_type: invasion
+    urgency_score: 9
+    affected_countries: []
+    aggressor: null
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: artillery_shelling
+    urgency_min: 2
+    urgency_max: 2
+    affected_countries: []
+    aggressor: RU
+    expected_action: log_only
+  failure_mode: headline_literal_no_qualifiers
+  notes: "Audit 2026-03-25. Routine twice-daily Ukrainian Air Force operational summary classified as urgency 9 'invasion', triggering SMS. User received alert suggesting new invasion started. Second daily report at 08:00 was correctly assessed at urgency 2."
+
+- id: gn-rosyjski-dron-elektrownia-estonia-aggressor
+  headline: "Rosyjski dron uderzył w elektrownię w Estonii"
+  summary: null
+  source: "GoogleNews"
+  language: pl
+  audit_date: "2026-03-25"
+  haiku_output:
+    is_military_event: null
+    event_type: null
+    urgency_score: 8
+    affected_countries: ["EE"]
+    aggressor: RU
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: airspace_violation
+    urgency_min: 6
+    urgency_max: 6
+    affected_countries: ["EE"]
+    aggressor: UA
+    expected_action: sms
+  failure_mode: other
+  notes: "Audit 2026-03-25. Drone was stray Ukrainian UAV targeting Ust-Luga, not a deliberate Russian attack on Estonia. Misattributing aggressor as RU implies Article 5 scenario rather than accidental overflight. Urgency difference (8 vs 6) also significant."
+
+# ── 2026-03-26 ──────────────────────────────────────────────────────────────
+
+- id: gn-rosyjskie-drony-nad-nato-underscored-urgency
+  headline: "Rosyjskie drony nad NATO. \"Nie można strzelać z armaty do muchy\""
+  summary: null
+  source: "GoogleNews:rosyjskie drony Polska"
+  language: pl
+  audit_date: "2026-03-26"
+  haiku_output:
+    is_military_event: true
+    event_type: airspace_violation
+    urgency_score: 6
+    affected_countries: ["PL"]
+    aggressor: null
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: airspace_violation
+    urgency_min: 7
+    urgency_max: 8
+    affected_countries: ["PL", "EE", "LV"]
+    aggressor: UA
+    expected_action: sms
+  failure_mode: other
+  notes: "Audit 2026-03-26. Only article classified about the Estonia/Latvia drone event. Urgency 6 (WhatsApp) when underlying event — drone striking Estonian power plant — warrants 7-8 (SMS). Audit notes this is primarily a keyword filter problem limiting classifier input, not a pure classifier error."
+
+- id: gn-rosyjskie-drony-kolej-ukraina-polska
+  headline: "Rosyjskie drony mogą zagrozić kolei Ukraina - Polska"
+  summary: null
+  source: "GoogleNews:rosyjskie drony Polska"
+  language: pl
+  audit_date: "2026-03-26"
+  haiku_output:
+    is_military_event: null
+    event_type: null
+    urgency_score: 3
+    affected_countries: ["UA"]
+    aggressor: null
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: drone_attack
+    urgency_min: 4
+    urgency_max: 5
+    affected_countries: ["UA", "PL"]
+    aggressor: RU
+    expected_action: log_only
+  failure_mode: other
+  notes: "Audit 2026-03-26. Potential disruption of cross-border Ukraine-Poland railway. Borderline disagreement — audit notes Haiku's assessment is defensible (3 vs 4-5 doesn't change alert behavior)."
+
+# ── 2026-03-28 ──────────────────────────────────────────────────────────────
+
+- id: rmf24-baltyckie-panstwa-terytorium-aggressor-mismatch
+  headline: "Moskwa twierdzi, że państwa bałtyckie udostępniły swoje terytorium do ataków na Rosję"
+  summary: null
+  source: "RMF24"
+  language: pl
+  audit_date: "2026-03-28"
+  haiku_output:
+    is_military_event: null
+    event_type: null
+    urgency_score: null
+    affected_countries: null
+    aggressor: RU
+    confidence: 0.45
+  expected:
+    is_military_event: true
+    event_type: other
+    urgency_min: 4
+    urgency_max: 5
+    affected_countries: ["LT", "LV", "EE"]
+    aggressor: UA
+    expected_action: log_only
+  failure_mode: other
+  notes: "Audit 2026-03-28 DISAGREEMENT-1. Airspace violation caused by Ukrainian drones transiting Baltic airspace, not Russian aggression. Low confidence (0.45) for confirmed multi-source event is also problematic."
+
+- id: rmf28-expert-warns-russia-invasion-baltics-low-confidence
+  headline: "Expert warns Russia could invade Baltics in 2026"
+  summary: null
+  source: "RMF24 / multiple"
+  language: en
+  audit_date: "2026-03-28"
+  haiku_output:
+    is_military_event: null
+    event_type: null
+    urgency_score: null
+    affected_countries: null
+    aggressor: null
+    confidence: 0.15
+  expected:
+    is_military_event: true
+    event_type: other
+    urgency_min: 4
+    urgency_max: 5
+    affected_countries: ["LT", "LV", "EE"]
+    aggressor: RU
+    expected_action: log_only
+  failure_mode: other
+  notes: "Audit 2026-03-28 DISAGREEMENT-2. Confidence score misuse — model conflated 'certainty about my classification' with 'probability the event will escalate.' Confidence 0.15 on a clearly classifiable article."
+
+- id: rmf28-jets-scrambled-spy-planes-low-confidence
+  headline: "Fighter jets scrambled after Russian spy planes skim NATO territory"
+  summary: null
+  source: "Multiple EN sources"
+  language: en
+  audit_date: "2026-03-28"
+  haiku_output:
+    is_military_event: null
+    event_type: null
+    urgency_score: null
+    affected_countries: null
+    aggressor: null
+    confidence: 0.45
+  expected:
+    is_military_event: true
+    event_type: airspace_violation
+    urgency_min: 6
+    urgency_max: 7
+    affected_countries: ["PL"]
+    aggressor: RU
+    expected_action: sms
+  failure_mode: other
+  notes: "Audit 2026-03-28 DISAGREEMENT-2 example. Confirmed event from official sources rated confidence 0.45. Should be 0.70+."
+
+- id: rmf28-kremlin-propaganda-poland-allows-drones-empty-countries
+  headline: "Kremlin propaganda: Poland allows drones attacking Russia"
+  summary: null
+  source: "Multiple"
+  language: en
+  audit_date: "2026-03-28"
+  haiku_output:
+    is_military_event: null
+    event_type: null
+    urgency_score: null
+    affected_countries: []
+    aggressor: null
+    confidence: 0.15
+  expected:
+    is_military_event: true
+    event_type: other
+    urgency_min: 3
+    urgency_max: 4
+    affected_countries: ["PL"]
+    aggressor: RU
+    expected_action: log_only
+  failure_mode: propaganda_treated_as_attack
+  notes: "Audit 2026-03-28 DISAGREEMENT-3. Poland is the direct target of Russian information operation fabricating casus belli, yet affected_countries=[] and confidence=0.15. Both fields wrong."
+
+# ── 2026-03-30 ──────────────────────────────────────────────────────────────
+
+- id: wpolsce24-nagly-atak-drony-finland-as-poland
+  headline: "Nagłe uderzenie z powietrza. Trzy drony spadły w zaskakujących miejscach"
+  summary: null
+  source: "wPolsce24 via GoogleNews:rosyjskie drony Polska"
+  language: pl
+  audit_date: "2026-03-30"
+  haiku_output:
+    is_military_event: null
+    event_type: null
+    urgency_score: 8
+    affected_countries: ["PL"]
+    aggressor: RU
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: airspace_violation
+    urgency_min: 2
+    urgency_max: 2
+    affected_countries: []
+    aggressor: unknown
+    expected_action: log_only
+  failure_mode: google_news_query_bias
+  notes: "Audit 2026-03-30. Article is about Finnish drone incidents repackaged with sensationalist headline. Haiku inferred Poland from GN query 'rosyjskie drony Polska'. FALSE POSITIVE SMS at urgency 8."
+
+- id: radiozet-drony-kraj-nato-finland-as-poland
+  headline: "Drony wtargnęły w przestrzeń powietrzną kraju NATO. \"Traktujemy to bardzo poważnie\""
+  summary: null
+  source: "Radio Zet via GoogleNews:rosyjskie drony Polska"
+  language: pl
+  audit_date: "2026-03-30"
+  haiku_output:
+    is_military_event: null
+    event_type: null
+    urgency_score: 7
+    affected_countries: ["PL"]
+    aggressor: RU
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: airspace_violation
+    urgency_min: 3
+    urgency_max: 3
+    affected_countries: ["FI"]
+    aggressor: unknown
+    expected_action: log_only
+  failure_mode: romania_spillover
+  notes: "Audit 2026-03-30. Vague 'NATO country' headline — underlying event is Finland (confirmed by other sources). Drones were Ukrainian, not Russian. FALSE POSITIVE SMS at urgency 7."
+
+- id: super-express-drony-panstwo-nato-ukraine-aggressor
+  headline: "Drony rozbiły się w państwie NATO. \"Ukraiński bezzałogowiec\""
+  summary: null
+  source: "Super Express via GoogleNews:rosyjskie drony Polska"
+  language: pl
+  audit_date: "2026-03-30"
+  haiku_output:
+    is_military_event: null
+    event_type: null
+    urgency_score: 6
+    affected_countries: ["PL"]
+    aggressor: unknown
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: airspace_violation
+    urgency_min: 2
+    urgency_max: 2
+    affected_countries: ["FI"]
+    aggressor: UA
+    expected_action: log_only
+  failure_mode: google_news_query_bias
+  notes: "Audit 2026-03-30. Same Finnish drone incident. Article says 'Ukrainian drone' — aggressor is UA, not unknown. Poland inferred from search query. FALSE POSITIVE SMS."
+
+- id: bankier-rosja-winna-drony-panstwa-czlonkowskie-all-four
+  headline: "Rosja jest winowajcą? \"To przez nią drony latają nad państwami członkowskimi\""
+  summary: null
+  source: "Bankier.pl via GoogleNews:naruszenie przestrzeni powietrznej"
+  language: pl
+  audit_date: "2026-03-30"
+  haiku_output:
+    is_military_event: null
+    event_type: airspace_violation
+    urgency_score: 6
+    affected_countries: ["PL", "LT", "LV", "EE"]
+    aggressor: null
+    confidence: null
+  expected:
+    is_military_event: false
+    event_type: none
+    urgency_min: 3
+    urgency_max: 3
+    affected_countries: []
+    aggressor: none
+    expected_action: log_only
+  failure_mode: attribution_uncertain_high_urgency
+  notes: "Audit 2026-03-30. Speculative, opinion-style headline about drones over EU states generally. No specific incident reported. Haiku listed all four monitored countries, appearing primed by system prompt. FALSE POSITIVE SMS."
+
+- id: cyberdefence24-cyberatak-centrum-medyczne-false-negative
+  headline: "Cyberatak na polskie centrum medyczne. Kolejny w tym miesiącu"
+  summary: null
+  source: "CyberDefence24"
+  language: pl
+  audit_date: "2026-03-30"
+  haiku_output:
+    is_military_event: false
+    event_type: none
+    urgency_score: 3
+    affected_countries: null
+    aggressor: null
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: cyber_attack
+    urgency_min: 5
+    urgency_max: 5
+    affected_countries: ["PL"]
+    aggressor: RU
+    expected_action: sms
+  failure_mode: other
+  notes: "Audit 2026-03-30. FALSE NEGATIVE. Cyberattack on Polish medical infrastructure should be is_military_event=true, urgency 5. Logged only instead of SMS."
+
+- id: kyiv-independent-lv-ee-drone-urgency-underscore
+  headline: "Ukraine war latest: drones straying into LV/EE"
+  summary: null
+  source: "Kyiv Independent"
+  language: en
+  audit_date: "2026-03-30"
+  haiku_output:
+    is_military_event: null
+    event_type: drone_attack
+    urgency_score: 3
+    affected_countries: ["LV", "EE"]
+    aggressor: null
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: airspace_violation
+    urgency_min: 5
+    urgency_max: 5
+    affected_countries: ["LV", "EE"]
+    aggressor: UA
+    expected_action: sms
+  failure_mode: other
+  notes: "Audit 2026-03-30. Drone incursion into two monitored countries (LV and EE) scored as urgency 3 log-only instead of minimum urgency 5 SMS. Countries correctly identified but urgency severely underscored."
+
+# ── 2026-04-04 ──────────────────────────────────────────────────────────────
+
+- id: bestialski-atak-rosji-500-dronow-false-phone-call
+  headline: "Bestialski atak Rosji. Użyli blisko 500 dronów i pocisków, zginęła jedna osoba"
+  summary: "Masowy atak na Polskę (fabricated by classifier)"
+  source: "GoogleNews/Polskie Radio 24"
+  language: pl
+  audit_date: "2026-04-04"
+  haiku_output:
+    is_military_event: true
+    event_type: drone_attack
+    urgency_score: 9
+    affected_countries: ["PL"]
+    aggressor: RU
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: airspace_violation
+    urgency_min: 5
+    urgency_max: 6
+    affected_countries: ["PL"]
+    aggressor: RU
+    expected_action: sms
+  failure_mode: headline_literal_no_qualifiers
+  notes: "Audit 2026-04-04 DISAGREEMENT #1 CRITICAL. Massive April 3 combined Russian strike ON UKRAINE (579 air weapons). Connection to Poland: jets scrambled + wreckage in Opole. Haiku fabricated summary 'masowy atak na Polskę'. TRIGGERED A PHONE CALL with corroboration_required=1. Correct action is SMS (urgency 5-6)."
+
+- id: niespokane-natesenie-drony-panstwo-nato-estonia-wrong
+  headline: "Niespotykane natężenie. Drony naruszyły przestrzeń powietrzną kraju NATO"
+  summary: null
+  source: "Multiple PL sources"
+  language: pl
+  audit_date: "2026-04-04"
+  haiku_output:
+    is_military_event: null
+    event_type: null
+    urgency_score: 7
+    affected_countries: []
+    aggressor: RU
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: airspace_violation
+    urgency_min: 5
+    urgency_max: 6
+    affected_countries: ["EE"]
+    aggressor: UA
+    expected_action: sms
+  failure_mode: other
+  notes: "Audit 2026-04-04 DISAGREEMENT #2. Empty affected_countries and wrong aggressor (RU vs UA — drones were Ukrainian deflected by Russian EW). Same alert tier (SMS) but corrupts corroboration data."
+
+- id: mysliwce-nad-polska-fabricated-violation-summary
+  headline: "Myśliwce nad Polską"
+  summary: null
+  source: "Multiple PL sources"
+  language: pl
+  audit_date: "2026-04-04"
+  haiku_output:
+    is_military_event: null
+    event_type: null
+    urgency_score: 7
+    affected_countries: null
+    aggressor: null
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: airspace_violation
+    urgency_min: 5
+    urgency_max: 6
+    affected_countries: ["PL"]
+    aggressor: RU
+    expected_action: sms
+  failure_mode: other
+  notes: "Audit 2026-04-04 DISAGREEMENT #3. Haiku summary_pl fabricated 'Zarejestrowano naruszenie polskiej przestrzeni powietrznej' — no confirmed violation at that point, only precautionary scramble. Urgency 7 vs 5-6 also inflated."
+
+- id: rosja-celowo-drony-nato-all-four-wrong
+  headline: "Rosja celowo wysyła drony na terytorium NATO"
+  summary: null
+  source: "Multiple PL sources"
+  language: pl
+  audit_date: "2026-04-04"
+  haiku_output:
+    is_military_event: null
+    event_type: null
+    urgency_score: 6
+    affected_countries: ["PL", "LT", "LV", "EE"]
+    aggressor: null
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: airspace_violation
+    urgency_min: 4
+    urgency_max: 4
+    affected_countries: ["LT", "LV", "EE"]
+    aggressor: UA
+    expected_action: log_only
+  failure_mode: other
+  notes: "Audit 2026-04-04 DISAGREEMENT #4. Poland was not affected by March 31 drone incidents (EE/LV/LT only). Urgency 6 triggers SMS; urgency 4 would be log-only."
+
+- id: zelensky-ostrzega-baltyckie-troop-movement-mismatch
+  headline: "Zełenski ostrzega państwa bałtyckie"
+  summary: null
+  source: "Multiple PL sources"
+  language: pl
+  audit_date: "2026-04-04"
+  haiku_output:
+    is_military_event: null
+    event_type: troop_movement
+    urgency_score: 6
+    affected_countries: null
+    aggressor: null
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: other
+    urgency_min: 3
+    urgency_max: 4
+    affected_countries: ["LT", "LV", "EE"]
+    aggressor: RU
+    expected_action: log_only
+  failure_mode: headline_literal_no_qualifiers
+  notes: "Audit 2026-04-04 DISAGREEMENT #5. Zelensky's political warning about potential future Russian mobilization classified as actual troop_movement event. Urgency 6 (SMS) vs 3-4 (log-only)."
+
+- id: kolejne-drony-panstwo-baltyckie-wrong-country
+  headline: "Kolejne drony nad państwem bałtyckim"
+  summary: null
+  source: "Multiple PL sources"
+  language: pl
+  audit_date: "2026-04-04"
+  haiku_output:
+    is_military_event: null
+    event_type: null
+    urgency_score: null
+    affected_countries: ["LT"]
+    aggressor: RU
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: airspace_violation
+    urgency_min: 5
+    urgency_max: 6
+    affected_countries: ["EE"]
+    aggressor: UA
+    expected_action: sms
+  failure_mode: other
+  notes: "Audit 2026-04-04 DISAGREEMENT #6. March 31 drone incidents were in Estonia, not Lithuania. Wrong country AND wrong aggressor (Ukrainian drones deflected by Russian EW)."
+
+- id: francja-boi-sie-dronow-bialorusi-nonmonitored
+  headline: "Francja boi się dronów z Białorusi"
+  summary: null
+  source: "Multiple"
+  language: pl
+  audit_date: "2026-04-04"
+  haiku_output:
+    is_military_event: true
+    event_type: null
+    urgency_score: 3
+    affected_countries: ["FR"]
+    aggressor: null
+    confidence: null
+  expected:
+    is_military_event: false
+    event_type: none
+    urgency_min: 1
+    urgency_max: 1
+    affected_countries: []
+    aggressor: none
+    expected_action: log_only
+  failure_mode: other
+  notes: "Audit 2026-04-04 DISAGREEMENT #9. France is not a monitored country. Policy analysis article, not a military event. Impact was minimal (urgency 3 = log-only) but is_military_event=true is wrong."
+
+# ── 2026-04-12 ──────────────────────────────────────────────────────────────
+
+- id: pl-ad-missile-fragment-classified-russian-strike
+  headline: "Fragment polskiego pocisku obrony przeciwlotniczej w sadzie w Lubelskim"
+  summary: "Multiple sources covering same incident; one event classified as missile_strike RU urgency 7, another as drone_attack urgency 6, one correctly as 'fragment polskiego pocisku' urgency 6"
+  source: "Multiple sources (events 718dfdc2, 0d7956a1, e0f7878c)"
+  language: pl
+  audit_date: "2026-04-12"
+  haiku_output:
+    is_military_event: true
+    event_type: missile_strike
+    urgency_score: 7
+    affected_countries: ["PL"]
+    aggressor: RU
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: airspace_violation
+    urgency_min: 4
+    urgency_max: 4
+    affected_countries: ["PL"]
+    aggressor: none
+    expected_action: log_only
+  failure_mode: other
+  notes: "Audit 2026-04-12 PRIMARY DISAGREEMENT. Polish AD interceptor debris from Sept 2025 intercept found in Lubelskie orchard. Three separate SMS alerts sent with conflicting interpretations (events 718dfdc2, 0d7956a1, e0f7878c). Event 718dfdc2 classified as Russian missile_strike urgency 7 — factually wrong. Friendly AD debris is NOT a Russian missile strike."
+
+- id: polskie-radio-alarm-morzu-naval-blockade-wrong
+  headline: "Alarm na morzu, wykryli rosyjskie okręty podwodne"
+  summary: null
+  source: "Polskie Radio 24"
+  language: pl
+  audit_date: "2026-04-12"
+  haiku_output:
+    is_military_event: null
+    event_type: naval_blockade
+    urgency_score: 6
+    affected_countries: ["PL"]
+    aggressor: RU
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: other
+    urgency_min: 4
+    urgency_max: 4
+    affected_countries: ["PL", "LT", "LV", "EE"]
+    aggressor: RU
+    expected_action: log_only
+  failure_mode: other
+  notes: "Audit 2026-04-12. Routine NATO submarine tracking classified as naval_blockade — factually wrong (no interdiction of shipping lanes). Event 37d5979c. Urgency 6 (WhatsApp) vs 4 (log-only)."
+
+- id: 4-miliony-cyberatakow-statystyczna-inflacja
+  headline: "4 miliony cyberataków na polskich żołnierzy"
+  summary: "Polish general disclosed military systems faced 4 million cyberattack attempts (annual baseline)"
+  source: "Multiple"
+  language: pl
+  audit_date: "2026-04-12"
+  haiku_output:
+    is_military_event: true
+    event_type: cyber_attack
+    urgency_score: 7
+    affected_countries: ["PL"]
+    aggressor: null
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: other
+    urgency_min: 3
+    urgency_max: 4
+    affected_countries: ["PL"]
+    aggressor: RU
+    expected_action: log_only
+  failure_mode: cyber_severity_inflation
+  notes: "Audit 2026-04-12 event 0af04588. Annual statistical disclosure classified as active cyber incident. '4 million attempts over the year' is baseline noise, not an ongoing attack. Urgency 7 (SMS) vs 3-4 (log-only)."
+
+- id: belarus-drone-bases-inconsistent-affected-countries
+  headline: "Russia Establishing Long-Range Drone Bases In Belarus"
+  summary: null
+  source: "Yahoo / EN sources"
+  language: en
+  audit_date: "2026-04-12"
+  haiku_output:
+    is_military_event: null
+    event_type: null
+    urgency_score: 6
+    affected_countries: []
+    aggressor: null
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: troop_movement
+    urgency_min: 6
+    urgency_max: 6
+    affected_countries: ["PL", "LT", "LV", "EE"]
+    aggressor: RU
+    expected_action: sms
+  failure_mode: other
+  notes: "Audit 2026-04-12 row 130. Same story correctly tagged ['PL'] in rows 171/172/220 but empty here — prevents corroboration grouping. Belarus drone base story generated 4 separate SMS alerts (7a076c1d, 2f8a2330, 83edf6da, ce29b527) instead of one corroborated alert. Belarus borders all four target countries."
+
+# ── 2026-05-01 ──────────────────────────────────────────────────────────────
+
+- id: zawalone-budynki-gruzy-dzieci-gn-query-phone-tier
+  headline: "Zawalone budynki, ludzie pod gruzami. Wśród rannych dzieci, dramatyczny atak Rosji"
+  summary: null
+  source: "GoogleNews:atak wojskowy Polska / NewMedia24"
+  language: pl
+  audit_date: "2026-05-01"
+  haiku_output:
+    is_military_event: true
+    event_type: airstrike
+    urgency_score: 9
+    affected_countries: ["PL"]
+    aggressor: RU
+    confidence: 0.95
+  expected:
+    is_military_event: true
+    event_type: airstrike
+    urgency_min: 2
+    urgency_max: 2
+    affected_countries: ["UA"]
+    aggressor: RU
+    expected_action: log_only
+  failure_mode: google_news_query_bias
+  notes: "Audit 2026-05-01 FALSE POSITIVE #1 (article 84d35ecf). No Polish territorial markers in title/summary. Matches dozens of articles about Russian strikes on Ukrainian residential buildings (Dnipro, Kharkiv, Kyiv). Only 'Poland' reference is the GN query string 'atak wojskowy Polska'. Phone-call-eligible with corroboration_required=1."
+
+- id: liganews-minister-ostrzal-rosyjski-ukraine-as-poland
+  headline: "Minister spraw wewnętrznych o skutkach ostrzału rosyjskiego: są informacje o osobach zaginionych, trwają operacje poszukiwawcze"
+  summary: null
+  source: "GoogleNews:Rosja atak / liganews.net"
+  language: pl
+  audit_date: "2026-05-01"
+  haiku_output:
+    is_military_event: true
+    event_type: artillery_shelling
+    urgency_score: 9
+    affected_countries: ["PL"]
+    aggressor: RU
+    confidence: 0.95
+  expected:
+    is_military_event: true
+    event_type: artillery_shelling
+    urgency_min: 2
+    urgency_max: 2
+    affected_countries: ["UA"]
+    aggressor: RU
+    expected_action: log_only
+  failure_mode: google_news_query_bias
+  notes: "Audit 2026-05-01 FALSE POSITIVE #2 (article c8ede83d). liganews.net is a Ukraine-focused aggregator — all 26 of its articles in the dataset are Ukraine-from-Ukraine reporting. 'Minister spraw wewnętrznych' without country prefix = Ukraine's Interior Minister (Klymenko). Currently retry_pending (phone-call-eligible). Single highest-risk failure in this audit."
+
+- id: russia-prepares-invasion-estonia-narva-propaganda
+  headline: "Russia prepares invasion of Estonia: social media propaganda targets Narva"
+  summary: "Trwają przygotowania do potencjalnego ataku militarnego (Haiku summary — not present in source)"
+  source: "GoogleNews:invasion Baltic states / 112.ua"
+  language: en
+  audit_date: "2026-05-01"
+  haiku_output:
+    is_military_event: true
+    event_type: invasion
+    urgency_score: 8
+    affected_countries: ["EE"]
+    aggressor: RU
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: other
+    urgency_min: 4
+    urgency_max: 4
+    affected_countries: ["EE"]
+    aggressor: RU
+    expected_action: log_only
+  failure_mode: propaganda_treated_as_attack
+  notes: "Audit 2026-05-01 DISAGREEMENT (article 962ba044). Headline self-qualifies — story is about social media propaganda priming Narva audiences, not military preparations. Haiku's summary_pl added 'Trwają przygotowania do potencjalnego ataku militarnego' — conclusion not in source. Crossed SMS threshold."
+
+- id: tp-link-router-vulnerabilities-latvia-cyber-inflation
+  headline: "TP-Link router vulnerabilities found in Latvia"
+  summary: null
+  source: "LSM Latvia"
+  language: en
+  audit_date: "2026-05-01"
+  haiku_output:
+    is_military_event: null
+    event_type: cyber_attack
+    urgency_score: 7
+    affected_countries: ["LV"]
+    aggressor: null
+    confidence: null
+  expected:
+    is_military_event: false
+    event_type: none
+    urgency_min: 4
+    urgency_max: 4
+    affected_countries: ["LV"]
+    aggressor: none
+    expected_action: log_only
+  failure_mode: cyber_severity_inflation
+  notes: "Audit 2026-05-01 DISAGREEMENT (article 111f548d). Vulnerability disclosure / international investigation, not an active attack on Latvian critical infrastructure. Should be urgency 4 (log-only). Currently fires SMS at urgency 7."
+
+- id: stan-podwyzszonego-zagrozenia-polska-low-credibility-sms
+  headline: "Stan podwyższonego zagrożenia w całej Polsce. Warszawa uruchamia alarm i wzmacnia ochronę kraju"
+  summary: null
+  source: "Warszawa w Pigułce (low-credibility hyperlocal blog)"
+  language: pl
+  audit_date: "2026-05-01"
+  haiku_output:
+    is_military_event: null
+    event_type: other
+    urgency_score: 7
+    affected_countries: ["PL"]
+    aggressor: unknown
+    confidence: 0.6
+  expected:
+    is_military_event: true
+    event_type: other
+    urgency_min: 4
+    urgency_max: 5
+    affected_countries: ["PL"]
+    aggressor: unknown
+    expected_action: log_only
+  failure_mode: attribution_uncertain_high_urgency
+  notes: "Audit 2026-05-01 DISAGREEMENT (article bc9c5576). Defensive posture with aggressor=unknown and confidence=0.6 should not reach SMS threshold. Low-credibility source (hyperlocal blog). Urgency 7 → SMS; should be 4-5 → log-only."
+
+# ── Correct classifications (explicitly praised) ──────────────────────────
+
+- id: ukr-air-force-daily-correct-u2-empty-countries
+  headline: "(~590 Ukrainian Air Force daily operational reports, e.g.) Оперативна інформація станом на 08:00 ..."
+  summary: "Routine summary of ongoing combat engagements in Ukraine"
+  source: "Ukrainian Air Force"
+  language: uk
+  audit_date: "2026-05-01"
+  haiku_output:
+    is_military_event: true
+    event_type: artillery_shelling
+    urgency_score: 2
+    affected_countries: []
+    aggressor: RU
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: artillery_shelling
+    urgency_min: 2
+    urgency_max: 2
+    affected_countries: []
+    aggressor: RU
+    expected_action: log_only
+  failure_mode: correct_classification
+  notes: "Audit 2026-05-01 Strong Point. After initial misclassification on 2026-03-25 (urgency 9 invasion), the system correctly rates all ~590 Ukrainian Air Force daily summaries as U=2 with empty countries. Regression guard: must stay log_only."
+
+- id: poland-jet-scramble-responses-correct-u5-6
+  headline: "Poland scrambles jets in response to Russian strikes on Ukraine"
+  summary: null
+  source: "Multiple EN sources"
+  language: en
+  audit_date: "2026-05-01"
+  haiku_output:
+    is_military_event: true
+    event_type: airspace_violation
+    urgency_score: 5
+    affected_countries: ["PL"]
+    aggressor: RU
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: airspace_violation
+    urgency_min: 5
+    urgency_max: 6
+    affected_countries: ["PL"]
+    aggressor: RU
+    expected_action: sms
+  failure_mode: correct_classification
+  notes: "Audit 2026-05-01 Strong Point. Polish jet-scrambling responses to Russian Ukraine strikes correctly rated U=5-6, NOT 9. This was a problem in earlier audits (2026-03-24 Pattern 2). Regression guard."
+
+- id: wyryki-drone-on-polish-house-correct-u8
+  headline: "Drone/missile fragment found on Polish house in Wyryki (Sept 2025 incident echoing in coverage)"
+  summary: null
+  source: "Multiple"
+  language: pl
+  audit_date: "2026-05-01"
+  haiku_output:
+    is_military_event: true
+    event_type: drone_attack
+    urgency_score: 8
+    affected_countries: ["PL"]
+    aggressor: RU
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: drone_attack
+    urgency_min: 8
+    urgency_max: 8
+    affected_countries: ["PL"]
+    aggressor: RU
+    expected_action: sms
+  failure_mode: correct_classification
+  notes: "Audit 2026-05-01 Strong Point. Genuine Russian drone-on-Polish-house event (Wyryki Sept 2025 incident) correctly rated U=8. Regression guard: must stay sms tier."
+
+- id: hybrid-warfare-arson-sabotage-correct-u7
+  headline: "Russian sabotage: Poland charges five suspects over arson of Warsaw shopping center"
+  summary: "Poland charged 5 suspects for sabotage on behalf of Russian intelligence (arson at OBI Warsaw, IKEA Vilnius, Marywilska 44)"
+  source: "Multiple EN/PL"
+  language: en
+  audit_date: "2026-05-01"
+  haiku_output:
+    is_military_event: true
+    event_type: other
+    urgency_score: 7
+    affected_countries: ["PL"]
+    aggressor: RU
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: other
+    urgency_min: 7
+    urgency_max: 7
+    affected_countries: ["PL"]
+    aggressor: RU
+    expected_action: sms
+  failure_mode: correct_classification
+  notes: "Audit 2026-05-01 Strong Point. Hybrid-warfare arson/sabotage campaign in Poland correctly rated U=7. Regression guard: hybrid warfare against PL must trigger SMS."
+
+- id: estonia-beach-drone-debris-correct-u4-6
+  headline: "Estonian beach drone debris incidents"
+  summary: null
+  source: "ERR Estonia"
+  language: en
+  audit_date: "2026-05-01"
+  haiku_output:
+    is_military_event: true
+    event_type: airspace_violation
+    urgency_score: 5
+    affected_countries: ["EE"]
+    aggressor: UA
+    confidence: null
+  expected:
+    is_military_event: true
+    event_type: airspace_violation
+    urgency_min: 4
+    urgency_max: 6
+    affected_countries: ["EE"]
+    aggressor: UA
+    expected_action: sms
+  failure_mode: correct_classification
+  notes: "Audit 2026-05-01 Strong Point. Estonia beach drone-debris incidents (stray Ukrainian drones) correctly rated U=4-6 with correct aggressor=UA. Regression guard."
+
+- id: polsat-sbU-dywersja-ukrainie-correct-low
+  headline: "SBU o nowej strategii Rosji. Chodzi o akty dywersji w Ukrainie"
+  summary: null
+  source: "Polsat News"
+  language: pl
+  audit_date: "2026-03-28"
+  haiku_output:
+    is_military_event: true
+    event_type: other
+    urgency_score: 2
+    affected_countries: []
+    aggressor: RU
+    confidence: 0.3
+  expected:
+    is_military_event: true
+    event_type: other
+    urgency_min: 2
+    urgency_max: 2
+    affected_countries: []
+    aggressor: RU
+    expected_action: log_only
+  failure_mode: correct_classification
+  notes: "Audit 2026-03-28 supplementary. Russian sabotage strategy in Ukraine correctly receives low urgency 2. Matched via 'alarm' substring in 'alarmuje'. No disagreement."
+
+- id: defence24-abolicja-ochotnicy-correct-false
+  headline: "Prezydent podpisał ustawę o abolicji dla polskich ochotników"
+  summary: "Polish amnesty law for Ukraine volunteers, not a military event"
+  source: "Defence24"
+  language: pl
+  audit_date: "2026-03-28"
+  haiku_output:
+    is_military_event: false
+    event_type: none
+    urgency_score: 1
+    affected_countries: []
+    aggressor: none
+    confidence: 0.95
+  expected:
+    is_military_event: false
+    event_type: none
+    urgency_min: 1
+    urgency_max: 1
+    affected_countries: []
+    aggressor: none
+    expected_action: log_only
+  failure_mode: correct_classification
+  notes: "Audit 2026-03-28 supplementary. Polish amnesty law for Ukraine volunteers correctly identified as non-event with confidence 0.95. Regression guard: legal/political articles must not become military events."
+
+# ── Count summary ────────────────────────────────────────────────────────────
+# Total entries: 45
+# Breakdown by audit date:
+#   2026-03-24: 6
+#   2026-03-25: 3
+#   2026-03-26: 2
+#   2026-03-28: 5
+#   2026-03-30: 6
+#   2026-04-04: 7
+#   2026-04-12: 4
+#   2026-05-01: 12
+#
+# Breakdown by failure_mode:
+#   google_news_query_bias:          5
+#   ukraine_as_monitored:            4
+#   romania_spillover:               1
+#   headline_literal_no_qualifiers:  4
+#   cyber_severity_inflation:        2
+#   attribution_uncertain_high_urgency: 2
+#   propaganda_treated_as_attack:    2
+#   false_negative_filtered_out:     0  (skipped — all had quoted headlines but audit
+#                                        said "missed" without classifier output)
+#   correct_classification:          7
+#   other:                           18
+#
+# Coverage: all 8 audits represented. All verbatim headlines sourced from audit text.
