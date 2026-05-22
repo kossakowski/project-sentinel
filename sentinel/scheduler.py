@@ -31,6 +31,7 @@ from sentinel.diagnostic import DiagnosticArticle, DiagnosticData
 from sentinel.models import Article
 from sentinel.processing.deduplicator import Deduplicator
 from sentinel.processing.keyword_filter import KeywordFilter
+from sentinel.processing.enricher import ArticleEnricher
 from sentinel.processing.normalizer import Normalizer
 
 
@@ -148,6 +149,7 @@ class SentinelPipeline:
         self.normalizer = Normalizer()
         self.deduplicator = Deduplicator(self.db, config)
         self.keyword_filter = KeywordFilter(config)
+        self.enricher = ArticleEnricher(config)
         self.classifier = Classifier(config)
         self.corroborator = Corroborator(self.db, config)
         self.twilio_client = TwilioClient(config)
@@ -232,7 +234,11 @@ class SentinelPipeline:
         relevant = self.keyword_filter.filter_batch(unique)
         self.logger.info("After keyword filter: %d relevant articles", len(relevant))
 
-        # Step 5: Classify (only if there are relevant articles)
+        # Step 5: Enrich articles with insufficient summaries
+        if relevant:
+            relevant = await self.enricher.enrich_batch(relevant)
+
+        # Step 6: Classify (only if there are relevant articles)
         classifications = []
         if relevant:
             try:

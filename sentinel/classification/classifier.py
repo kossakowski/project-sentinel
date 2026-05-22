@@ -228,7 +228,7 @@ class Classifier:
     def _build_user_prompt(self, article: Article) -> str:
         """Build the user prompt for classification."""
         published = article.published_at.isoformat() if article.published_at else "unknown"
-        return USER_PROMPT_TEMPLATE.format(
+        prompt = USER_PROMPT_TEMPLATE.format(
             source_name=article.source_name,
             source_type=article.source_type,
             language=article.language,
@@ -236,6 +236,16 @@ class Classifier:
             title=article.title,
             summary=article.summary,
         )
+        enrichment = article.raw_metadata.get("enrichment", {})
+        if enrichment.get("method") in ("heuristic", "llm") and not enrichment.get("fetched"):
+            prompt = prompt.replace(
+                f"Summary: {article.summary}",
+                f"Summary: {article.summary}\n"
+                "Note: Article body could not be fetched. The summary above may just be "
+                "the headline repeated. Exercise extreme caution with country attribution "
+                "— do not assume a monitored country is affected unless explicitly stated.",
+            )
+        return prompt
 
     def _call_api(self, article: Article) -> anthropic.types.Message:
         """Call the Anthropic API with one retry on API errors."""

@@ -7,7 +7,7 @@ import httpx
 
 from sentinel.config import GoogleNewsQuery, SentinelConfig
 from sentinel.fetchers.base import BaseFetcher
-from sentinel.fetchers.rss import strip_html
+from sentinel.utils import strip_html
 from sentinel.models import Article
 
 # Language to (hl, gl) mapping for Google News RSS
