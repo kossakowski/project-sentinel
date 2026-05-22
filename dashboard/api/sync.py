@@ -12,7 +12,7 @@ so the status survives a server restart. The sync itself runs synchronously
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from flask import Blueprint, current_app, jsonify
 
@@ -40,7 +40,7 @@ def _read_last_sync() -> dict | None:
     if not os.path.exists(path):
         return None
     try:
-        with open(path, "r", encoding="utf-8") as fh:
+        with open(path, encoding="utf-8") as fh:
             return json.load(fh)
     except (json.JSONDecodeError, OSError):
         return None
@@ -62,14 +62,27 @@ def trigger_sync():
     the outcome with a UTC timestamp, and returns the `SyncResult` as JSON
     (req 1.7). A failed sync still returns HTTP 200 with ``success: false`` so
     the client can surface the structured error.
+
+    In tunnel mode the dashboard already fetches a fresh copy of the production
+    DB on every startup, so an explicit ``POST /api/sync`` would be redundant
+    and would write into the wrong (temp) location. The endpoint returns
+    HTTP 409 Conflict in tunnel mode rather than silently writing to /tmp.
     """
     cfg = current_app.config
+    if cfg.get("USE_TUNNEL", False):
+        return (
+            jsonify(
+                {"error": ("Sync is not available in tunnel mode; the dashboard fetches fresh data on each startup.")}
+            ),
+            409,
+        )
+
     result = sync.sync_db(
         db_path=cfg.get("SENTINEL_DB_PATH"),
         fts_db_path=cfg.get("SENTINEL_FTS_DB_PATH"),
     )
     record = {
-        "last_sync": datetime.now(timezone.utc).isoformat(),
+        "last_sync": datetime.now(UTC).isoformat(),
         "result": result.to_dict(),
     }
     _write_last_sync(record)

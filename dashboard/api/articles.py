@@ -6,6 +6,8 @@ Routes (registered under the ``/api`` prefix by `dashboard.app`):
 * ``GET /api/articles/<id>``       -- full article detail with classifier input
 """
 
+import re
+
 from flask import Blueprint, jsonify, request
 
 from dashboard.api._common import get_db
@@ -13,6 +15,15 @@ from dashboard.classifier_input import build_classifier_input
 from dashboard.db import ALLOWED_PAGE_SIZES, DEFAULT_PAGE_SIZE
 
 articles_bp = Blueprint("articles", __name__)
+
+# Accepts a YYYY-MM-DD date or any ISO 8601 prefix (e.g. YYYY-MM-DDTHH:MM:SS,
+# with optional fractional seconds and timezone). Lexicographic comparison
+# against the ISO 8601 ``published_at`` column works correctly for any of
+# these prefixes; arbitrary strings like "yesterday" would silently misbehave.
+_ISO_DATE_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}"
+    r"(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+\-]\d{2}:?\d{2})?)?$"
+)
 
 
 def _parse_int(value: str | None, default: int | None = None) -> int | None:
@@ -30,6 +41,18 @@ def _parse_bool(value: str | None) -> bool | None:
     if value is None or value == "":
         return None
     return value.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _validate_iso_date(value: str | None) -> bool:
+    """Return True when ``value`` is None/empty or a valid ISO-8601 prefix.
+
+    Accepts ``YYYY-MM-DD`` and ``YYYY-MM-DDTHH:MM[:SS[.fff]][Z|±HH:MM]``.
+    Used to reject query strings like ``date_from=yesterday`` that would
+    otherwise produce silent zero-result responses via lex comparison.
+    """
+    if value is None or value == "":
+        return True
+    return bool(_ISO_DATE_RE.match(value))
 
 
 @articles_bp.route("/articles", methods=["GET"])
@@ -56,6 +79,20 @@ def list_articles():
 
     query = (args.get("q") or "").strip()
 
+    # Validate date filters at the API boundary -- ``published_at`` is an
+    # ISO-8601 string column, so non-ISO inputs would silently misbehave under
+    # lex comparison. Reject them up-front with a clear 400.
+    date_from = args.get("date_from")
+    date_to = args.get("date_to")
+    for label, value in (("date_from", date_from), ("date_to", date_to)):
+        if not _validate_iso_date(value):
+            return (
+                jsonify(
+                    {"error": (f"Invalid {label} value: {value!r}. Expected ISO 8601 (YYYY-MM-DD or full datetime).")}
+                ),
+                400,
+            )
+
     # Build the filters dict from query params -- used by both search and list.
     filters = {
         "source_name": args.get("source_name"),
@@ -63,8 +100,8 @@ def list_articles():
         "language": args.get("language"),
         "urgency_min": _parse_int(args.get("urgency_min")),
         "urgency_max": _parse_int(args.get("urgency_max")),
-        "date_from": args.get("date_from"),
-        "date_to": args.get("date_to"),
+        "date_from": date_from,
+        "date_to": date_to,
         "pipeline_status": args.get("pipeline_status"),
         "event_type": args.get("event_type"),
         "has_alert": _parse_bool(args.get("has_alert")),

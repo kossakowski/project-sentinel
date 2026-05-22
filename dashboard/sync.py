@@ -26,10 +26,10 @@ class SyncResult:
     """Outcome of a `sync_db()` call (req 1.3b)."""
 
     success: bool
-    file_size: int = 0          # bytes of the synced sentinel.db
-    article_count: int = 0      # rows in the articles table after sync
-    duration: float = 0.0       # wall-clock seconds for the whole sync
-    error: str | None = None    # error message when success is False
+    file_size: int = 0  # bytes of the synced sentinel.db
+    article_count: int = 0  # rows in the articles table after sync
+    duration: float = 0.0  # wall-clock seconds for the whole sync
+    error: str | None = None  # error message when success is False
 
     def to_dict(self) -> dict:
         """Return a plain-dict form for JSON responses."""
@@ -56,8 +56,10 @@ def scp_database(dest_path: str) -> None:
     result = subprocess.run(
         [
             "scp",
-            "-P", str(config.SSH_PORT),
-            "-o", "BatchMode=yes",
+            "-P",
+            str(config.SSH_PORT),
+            "-o",
+            "BatchMode=yes",
             config.scp_source(),
             dest_path,
         ],
@@ -66,14 +68,10 @@ def scp_database(dest_path: str) -> None:
         timeout=config.SCP_TIMEOUT_SECONDS,
     )
     if result.returncode != 0:
-        raise RuntimeError(
-            f"SCP failed (exit {result.returncode}): {result.stderr.strip()}"
-        )
+        raise RuntimeError(f"SCP failed (exit {result.returncode}): {result.stderr.strip()}")
 
 
-def build_fts_index(
-    db_path: str, fts_db_path: str | None = None
-) -> None:
+def build_fts_index(db_path: str, fts_db_path: str | None = None) -> int:
     """Build (or rebuild) the FTS5 `articles_fts` index for ``db_path``.
 
     The FTS5 virtual table is created in a SEPARATE database file
@@ -82,6 +80,10 @@ def build_fts_index(
     covers the ``title`` and ``summary`` columns and stores each article's
     ``id`` as an unindexed column so search results can be joined back to the
     full article rows.
+
+    Returns the article count read from the same connection used to build the
+    index -- callers (notably ``sync_db``) can reuse this rather than opening
+    a second connection just to ``SELECT COUNT(*)``.
 
     This function performs the REAL FTS build -- it is exercised directly by
     the test suite against a local DB file and is never mocked.
@@ -98,31 +100,20 @@ def build_fts_index(
     src_uri = f"file:{os.path.abspath(db_path)}?mode=ro"
     conn = sqlite3.connect(src_uri, uri=True)
     try:
-        conn.execute(
-            "ATTACH DATABASE ? AS fts", (os.path.abspath(fts_path),)
-        )
+        conn.execute("ATTACH DATABASE ? AS fts", (os.path.abspath(fts_path),))
         # `id` is UNINDEXED: stored for the join-back but not tokenized.
-        conn.execute(
-            "CREATE VIRTUAL TABLE fts.articles_fts USING fts5("
-            "article_id UNINDEXED, title, summary)"
-        )
+        conn.execute("CREATE VIRTUAL TABLE fts.articles_fts USING fts5(article_id UNINDEXED, title, summary)")
         conn.execute(
             "INSERT INTO fts.articles_fts (article_id, title, summary) "
             "SELECT id, title, COALESCE(summary, '') FROM main.articles"
         )
         conn.commit()
+        # Read the count on the same connection -- avoids a second open of
+        # the source DB just to SELECT COUNT(*).
+        article_count = conn.execute("SELECT COUNT(*) FROM main.articles").fetchone()[0]
     finally:
         conn.close()
-
-
-def _count_articles(db_path: str) -> int:
-    """Return the row count of the articles table in ``db_path`` (read-only)."""
-    uri = f"file:{os.path.abspath(db_path)}?mode=ro"
-    conn = sqlite3.connect(uri, uri=True)
-    try:
-        return conn.execute("SELECT COUNT(*) FROM articles").fetchone()[0]
-    finally:
-        conn.close()
+    return article_count
 
 
 def sync_db(
@@ -134,7 +125,8 @@ def sync_db(
     Steps:
       1. Ensure the local data directory exists (req 1.3c).
       2. SCP the production sentinel DB to ``db_path`` (req 1.3).
-      3. Build the FTS5 ``articles_fts`` index into ``fts_db_path`` (req 1.3a).
+      3. Build the FTS5 ``articles_fts`` index into ``fts_db_path`` (req 1.3a)
+         and capture the article count from that same connection.
       4. Return a `SyncResult` describing the outcome (req 1.3b).
 
     Any failure is captured and returned as ``SyncResult(success=False, ...)``
@@ -147,12 +139,12 @@ def sync_db(
     try:
         ensure_data_dir(os.path.dirname(os.path.abspath(dest)))
         scp_database(dest)
-        build_fts_index(dest, fts_path)
+        article_count = build_fts_index(dest, fts_path)
 
         return SyncResult(
             success=True,
             file_size=os.path.getsize(dest),
-            article_count=_count_articles(dest),
+            article_count=article_count,
             duration=round(time.monotonic() - started, 3),
             error=None,
         )

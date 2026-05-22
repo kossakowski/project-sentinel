@@ -230,8 +230,11 @@ is a plain file with no remote query service, so port-forwarding would target no
 that returns paginated, sorted, filtered article rows with LEFT JOINs to classifications.
 Supported filters: `source_name`, `source_type`, `language`, `urgency_min`, `urgency_max`,
 `date_from`, `date_to`, `pipeline_status` ("all", "classified", "unclassified"),
-`event_type`, `has_alert` (boolean). Supported sort columns: `published_at`, `fetched_at`,
-`urgency_score`, `source_name`, `title`, `confidence`. Sort direction: `asc` or `desc`.
+`event_type`, `has_alert` (boolean). The `pipeline_status` filter MAY additionally accept
+the output values `"event_created"` and `"alert_sent"` (defined in req 1.4b) as inputs,
+narrowing results to articles that reached those later pipeline stages. Supported sort
+columns: `published_at`, `fetched_at`, `urgency_score`, `source_name`, `title`,
+`confidence`. Sort direction: `asc` or `desc`.
 
 **1.2c** — `DashboardDB` MUST provide a method `get_article_detail(article_id)` that
 returns the full article row joined with its classification (if any), linked events (by

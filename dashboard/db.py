@@ -21,12 +21,13 @@ falls back to a `LIKE` scan. The temporary copy used in tunnel mode has no FTS
 index, so tunnel-mode search always uses the LIKE fallback.
 """
 
+import contextlib
 import json
 import os
 import sqlite3
 import subprocess
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from dashboard import config
 
@@ -144,20 +145,21 @@ class DashboardDB:
         the configured SSH port + user. FTS5 is not built for the temp copy, so
         search falls back to LIKE in tunnel mode.
         """
-        # NamedTemporaryFile with delete=False so we control teardown ourselves
-        # (scp / sqlite need the path; we remove it in close()).
-        tmp = tempfile.NamedTemporaryFile(
-            prefix="dashboard_tunnel_", suffix=".db", delete=False
-        )
-        tmp.close()
-        self._tunnel_tempfile = tmp.name
+        # mkstemp gives us a unique path without the cleanup-on-GC behaviour
+        # of NamedTemporaryFile: we hand the path to scp / sqlite and tear it
+        # down ourselves in close()/atexit.
+        fd, path = tempfile.mkstemp(prefix="dashboard_tunnel_", suffix=".db")
+        os.close(fd)
+        self._tunnel_tempfile = path
 
         try:
             result = subprocess.run(
                 [
                     "scp",
-                    "-P", str(config.SSH_PORT),
-                    "-o", "BatchMode=yes",
+                    "-P",
+                    str(config.SSH_PORT),
+                    "-o",
+                    "BatchMode=yes",
                     config.scp_source(),
                     self._tunnel_tempfile,
                 ],
@@ -183,32 +185,49 @@ class DashboardDB:
         if path is None:
             return
         self._tunnel_tempfile = None
-        try:
+        # Already gone, or never created -- nothing to clean up.
+        with contextlib.suppress(OSError):
             os.remove(path)
-        except OSError:
-            # Already gone, or never created -- nothing to clean up.
-            pass
+
+    def detach_tempfile(self) -> str | None:
+        """Detach and return the path of the tunnel-mode temp DB, if any.
+
+        Transfers ownership of the temp file FROM this `DashboardDB` TO the
+        caller: after this call, ``close()`` will no longer delete the file,
+        and the caller is responsible for removing it.
+
+        Returns the path (still on disk) or ``None`` if this instance was not
+        operating in self-fetching tunnel mode. Used by the app factory's
+        startup bootstrap to keep the SCP'd file alive for the lifetime of
+        the Flask app.
+        """
+        path = self._tunnel_tempfile
+        self._tunnel_tempfile = None
+        return path
 
     def _maybe_attach_fts(self) -> None:
         """ATTACH the FTS index DB if it exists and holds an articles_fts table.
 
-        The check is process-fixed (the FTS DB doesn't appear/disappear during
-        a dashboard session), so the application factory probes it once at
-        startup and stashes the result on ``app.config["FTS_AVAILABLE"]``;
-        per-request `get_db()` could pass that hint to skip the sqlite_master
-        query entirely. Each request still ATTACHes the file, but the probe
-        cost is one tiny cached query.
+        In **tunnel mode** the FTS index is intentionally never attached: the
+        SCP'd temp copy has no co-located FTS DB, and any locally present FTS
+        file (from a prior ``--sync``) is STALE relative to the freshly fetched
+        production rows. Attaching it would silently return wrong/empty hits.
+        Spec req 1.1c is explicit: "FTS5 is not built for the temporary copy,
+        so search falls back to LIKE." So tunnel mode short-circuits here and
+        leaves `self._fts_available = False` -- ``search_articles`` then takes
+        the LIKE branch on every query.
         """
+        if self.tunnel:
+            # Tunnel mode contract: no FTS, always LIKE fallback (req 1.1c).
+            self._fts_available = False
+            return
         if not os.path.exists(self.fts_db_path):
             self._fts_available = False
             return
         try:
-            self.conn.execute(
-                "ATTACH DATABASE ? AS fts", (os.path.abspath(self.fts_db_path),)
-            )
+            self.conn.execute("ATTACH DATABASE ? AS fts", (os.path.abspath(self.fts_db_path),))
             row = self.conn.execute(
-                "SELECT name FROM fts.sqlite_master "
-                "WHERE type = 'table' AND name = 'articles_fts'"
+                "SELECT name FROM fts.sqlite_master WHERE type = 'table' AND name = 'articles_fts'"
             ).fetchone()
             self._fts_available = row is not None
         except sqlite3.Error:
@@ -261,13 +280,9 @@ class DashboardDB:
             "is_military_event": bool(row["is_military_event"]),
             "event_type": row["event_type"],
             "urgency_score": row["urgency_score"],
-            "affected_countries": DashboardDB._parse_json_list(
-                row["affected_countries"]
-            ),
+            "affected_countries": DashboardDB._parse_json_list(row["affected_countries"]),
             "aggressor": row["aggressor"],
-            "is_new_event": bool(row["is_new_event"])
-            if row["is_new_event"] is not None
-            else None,
+            "is_new_event": bool(row["is_new_event"]) if row["is_new_event"] is not None else None,
             "confidence": row["confidence"],
             "summary_pl": row["summary_pl"],
             "classified_at": row["classified_at"],
@@ -301,9 +316,7 @@ class DashboardDB:
         }
 
     @staticmethod
-    def _derive_pipeline_status(
-        is_classified: bool, event_created: bool, alert_sent: bool
-    ) -> str:
+    def _derive_pipeline_status(is_classified: bool, event_created: bool, alert_sent: bool) -> str:
         """Map join results to a pipeline status string (req 1.4b).
 
         Order matters: an article with an alert is also event_created and
@@ -416,8 +429,7 @@ class DashboardDB:
     # is a JSON blob used only by `get_article_detail`, so list/search queries
     # avoid reading and discarding it per row (low-severity I/O cleanup).
     _LIST_ARTICLE_COLUMNS = (
-        "a.id, a.source_name, a.source_url, a.source_type, a.title, "
-        "a.summary, a.language, a.published_at, a.fetched_at"
+        "a.id, a.source_name, a.source_url, a.source_type, a.title, a.summary, a.language, a.published_at, a.fetched_at"
     )
 
     def _list_select_columns(self) -> str:
@@ -490,15 +502,9 @@ class DashboardDB:
         direction = "ASC" if str(order).lower() == "asc" else "DESC"
 
         where_sql, params = self._build_filters(filters or {})
-        base = (
-            " FROM articles a "
-            "LEFT JOIN classifications c ON c.article_id = a.id"
-            + where_sql
-        )
+        base = " FROM articles a LEFT JOIN classifications c ON c.article_id = a.id" + where_sql
 
-        total = self.conn.execute(
-            "SELECT COUNT(*)" + base, params
-        ).fetchone()[0]
+        total = self.conn.execute("SELECT COUNT(*)" + base, params).fetchone()[0]
 
         offset = (page - 1) * page_size
         # Stable secondary sort on a.id so equal sort keys paginate predictably.
@@ -568,11 +574,16 @@ class DashboardDB:
         # Fetch all alert_records for the matched event ids in ONE query, then
         # group by event_id. Placeholders are generated dynamically (one ? per
         # id) -- safe because the ids are server-issued UUIDs we just SELECTed.
+        # SQLite caps compiled-statement variables at SQLITE_MAX_VARIABLE_NUMBER
+        # (default 999 on older builds, 32766 on builds since 3.32). This is
+        # effectively unreachable on the current dataset (501 events total, and
+        # an article is realistically linked to at most a handful), so no
+        # chunking is needed -- documented here in case events-per-article ever
+        # spikes orders of magnitude beyond today's distribution.
         event_ids = [ev["id"] for ev in event_rows]
         placeholders = ",".join("?" * len(event_ids))
         alert_rows = self.conn.execute(
-            f"SELECT * FROM alert_records WHERE event_id IN ({placeholders}) "
-            "ORDER BY sent_at",
+            f"SELECT * FROM alert_records WHERE event_id IN ({placeholders}) ORDER BY sent_at",
             event_ids,
         ).fetchall()
         alerts_by_event: dict[str, list[dict]] = {eid: [] for eid in event_ids}
@@ -598,9 +609,7 @@ class DashboardDB:
                     "id": ev["id"],
                     "event_type": ev["event_type"],
                     "urgency_score": ev["urgency_score"],
-                    "affected_countries": self._parse_json_list(
-                        ev["affected_countries"]
-                    ),
+                    "affected_countries": self._parse_json_list(ev["affected_countries"]),
                     "aggressor": ev["aggressor"],
                     "summary_pl": ev["summary_pl"],
                     "first_seen_at": ev["first_seen_at"],
@@ -665,12 +674,24 @@ class DashboardDB:
 
         if self._fts_available:
             return self._search_fts(
-                query, filters or {}, effective_sort, effective_order,
-                explicit_sort, page, page_size, offset,
+                query,
+                filters or {},
+                effective_sort,
+                effective_order,
+                explicit_sort,
+                page,
+                page_size,
+                offset,
             )
         return self._search_like(
-            query, filters or {}, effective_sort, effective_order,
-            explicit_sort, page, page_size, offset,
+            query,
+            filters or {},
+            effective_sort,
+            effective_order,
+            explicit_sort,
+            page,
+            page_size,
+            offset,
         )
 
     def _search_fts(
@@ -690,18 +711,14 @@ class DashboardDB:
         where_sql, filter_params = self._build_filters(filters)
         # Combine the FTS MATCH predicate with the filter predicates.
         if where_sql:
-            where_clause = (
-                " WHERE f.articles_fts MATCH ? AND "
-                + where_sql.removeprefix(" WHERE ")
-            )
+            where_clause = " WHERE f.articles_fts MATCH ? AND " + where_sql.removeprefix(" WHERE ")
         else:
             where_clause = " WHERE f.articles_fts MATCH ?"
 
         base = (
             " FROM fts.articles_fts f "
             "JOIN articles a ON a.id = f.article_id "
-            "LEFT JOIN classifications c ON c.article_id = a.id"
-            + where_clause
+            "LEFT JOIN classifications c ON c.article_id = a.id" + where_clause
         )
 
         total = self.conn.execute(
@@ -718,9 +735,7 @@ class DashboardDB:
             order_clause = "ORDER BY f.rank, a.id ASC"
 
         rows = self.conn.execute(
-            f"SELECT {self._list_select_columns()}{base} "
-            f"{order_clause} "
-            "LIMIT ? OFFSET ?",
+            f"SELECT {self._list_select_columns()}{base} {order_clause} LIMIT ? OFFSET ?",
             [match_query, *filter_params, page_size, offset],
         ).fetchall()
 
@@ -767,28 +782,17 @@ class DashboardDB:
         # special semantics for backslash by default (so the Python-to-SQL
         # mapping is easy to misread). '|' is a single ASCII character that
         # never appears as a LIKE metacharacter and reads cleanly here.
-        escaped = (
-            query.replace("|", "||")
-            .replace("%", "|%")
-            .replace("_", "|_")
-        )
+        escaped = query.replace("|", "||").replace("%", "|%").replace("_", "|_")
         like = f"%{escaped}%"
 
         where_sql, filter_params = self._build_filters(filters)
         like_clause = "(a.title LIKE ? ESCAPE '|' OR a.summary LIKE ? ESCAPE '|')"
         if where_sql:
-            where_clause = (
-                " WHERE " + like_clause + " AND "
-                + where_sql.removeprefix(" WHERE ")
-            )
+            where_clause = " WHERE " + like_clause + " AND " + where_sql.removeprefix(" WHERE ")
         else:
             where_clause = " WHERE " + like_clause
 
-        base = (
-            " FROM articles a "
-            "LEFT JOIN classifications c ON c.article_id = a.id"
-            + where_clause
-        )
+        base = " FROM articles a LEFT JOIN classifications c ON c.article_id = a.id" + where_clause
 
         total = self.conn.execute(
             "SELECT COUNT(*)" + base,
@@ -804,9 +808,7 @@ class DashboardDB:
             order_clause = "ORDER BY a.published_at DESC, a.id DESC"
 
         rows = self.conn.execute(
-            f"SELECT {self._list_select_columns()}{base} "
-            f"{order_clause} "
-            "LIMIT ? OFFSET ?",
+            f"SELECT {self._list_select_columns()}{base} {order_clause} LIMIT ? OFFSET ?",
             [like, like, *filter_params, page_size, offset],
         ).fetchall()
 
@@ -829,18 +831,10 @@ class DashboardDB:
         """
         cur = self.conn
 
-        total_articles = cur.execute(
-            "SELECT COUNT(*) FROM articles"
-        ).fetchone()[0]
-        total_classified = cur.execute(
-            "SELECT COUNT(*) FROM classifications"
-        ).fetchone()[0]
-        total_events = cur.execute(
-            "SELECT COUNT(*) FROM events"
-        ).fetchone()[0]
-        total_alerts = cur.execute(
-            "SELECT COUNT(*) FROM alert_records"
-        ).fetchone()[0]
+        total_articles = cur.execute("SELECT COUNT(*) FROM articles").fetchone()[0]
+        total_classified = cur.execute("SELECT COUNT(*) FROM classifications").fetchone()[0]
+        total_events = cur.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+        total_alerts = cur.execute("SELECT COUNT(*) FROM alert_records").fetchone()[0]
 
         # Articles per day for the last 30 days, including days with zero
         # articles (req 1.6a). Build the full 30-day calendar, then overlay
@@ -850,53 +844,42 @@ class DashboardDB:
             "FROM articles "
             "WHERE substr(published_at, 1, 10) >= ? "
             "GROUP BY day",
-            ((datetime.now(timezone.utc) - timedelta(days=29)).strftime(
-                "%Y-%m-%d"
-            ),),
+            ((datetime.now(UTC) - timedelta(days=29)).strftime("%Y-%m-%d"),),
         ).fetchall()
         counts_by_day = {r["day"]: r["n"] for r in raw_per_day}
-        today = datetime.now(timezone.utc).date()
+        today = datetime.now(UTC).date()
         articles_per_day = []
         for offset in range(29, -1, -1):
             day = (today - timedelta(days=offset)).strftime("%Y-%m-%d")
-            articles_per_day.append(
-                {"date": day, "count": counts_by_day.get(day, 0)}
-            )
+            articles_per_day.append({"date": day, "count": counts_by_day.get(day, 0)})
 
         # Urgency distribution: count per score 1-10, including zero buckets.
         urgency_raw = {
             r["urgency_score"]: r["n"]
             for r in cur.execute(
-                "SELECT urgency_score, COUNT(*) AS n FROM classifications "
-                "GROUP BY urgency_score"
+                "SELECT urgency_score, COUNT(*) AS n FROM classifications GROUP BY urgency_score"
             ).fetchall()
         }
-        urgency_distribution = [
-            {"urgency_score": score, "count": urgency_raw.get(score, 0)}
-            for score in range(1, 11)
-        ]
+        urgency_distribution = [{"urgency_score": score, "count": urgency_raw.get(score, 0)} for score in range(1, 11)]
 
         source_distribution = [
             {"source_name": r["source_name"], "count": r["n"]}
             for r in cur.execute(
-                "SELECT source_name, COUNT(*) AS n FROM articles "
-                "GROUP BY source_name ORDER BY n DESC"
+                "SELECT source_name, COUNT(*) AS n FROM articles GROUP BY source_name ORDER BY n DESC"
             ).fetchall()
         ]
 
         language_distribution = [
             {"language": r["language"], "count": r["n"]}
             for r in cur.execute(
-                "SELECT language, COUNT(*) AS n FROM articles "
-                "GROUP BY language ORDER BY n DESC"
+                "SELECT language, COUNT(*) AS n FROM articles GROUP BY language ORDER BY n DESC"
             ).fetchall()
         ]
 
         event_type_distribution = [
             {"event_type": r["event_type"], "count": r["n"]}
             for r in cur.execute(
-                "SELECT event_type, COUNT(*) AS n FROM events "
-                "GROUP BY event_type ORDER BY n DESC"
+                "SELECT event_type, COUNT(*) AS n FROM events GROUP BY event_type ORDER BY n DESC"
             ).fetchall()
         ]
 
@@ -905,8 +888,7 @@ class DashboardDB:
         # reached an event; alerts_sent counts distinct articles whose event
         # produced an alert.
         events_created = cur.execute(
-            "SELECT COUNT(DISTINCT je.value) "
-            "FROM events e, json_each(e.article_ids) je"
+            "SELECT COUNT(DISTINCT je.value) FROM events e, json_each(e.article_ids) je"
         ).fetchone()[0]
         alerts_sent = cur.execute(
             "SELECT COUNT(DISTINCT je.value) "

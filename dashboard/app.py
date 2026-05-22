@@ -9,13 +9,11 @@ In tunnel mode (req 1.1c) the factory performs ONE SCP fetch at startup,
 caches the resulting temp-file path on ``app.config["SENTINEL_DB_PATH"]``,
 and registers an ``atexit`` cleanup so the file is removed when the process
 exits. Per-request handlers open new SQLite connections against this cached
-file -- they never trigger another SCP. ``_fts_available`` is process-fixed,
-so we probe it once at startup too and stash the result on ``app.config``.
+file -- they never trigger another SCP.
 """
 
 import atexit
 import os
-import sqlite3
 
 from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
@@ -63,14 +61,6 @@ def create_app(
     else:
         app.config["SENTINEL_DB_PATH"] = db_path or config.DEFAULT_DB_PATH
 
-    # Probe FTS availability once. The result is fixed for the process: the
-    # FTS DB file does not appear/disappear during the dashboard's runtime,
-    # and tunnel mode never has FTS. Stashing it on app.config avoids the
-    # per-request sqlite_master probe in DashboardDB._maybe_attach_fts.
-    app.config["FTS_AVAILABLE"] = _probe_fts_available(
-        app.config["SENTINEL_DB_PATH"], fts_path
-    )
-
     # CORS for the Vite dev server -- scoped to /api/* routes only (req 1.1a).
     if dev_cors:
         CORS(
@@ -91,28 +81,25 @@ def _fetch_tunnel_db_once(app: Flask) -> str:
     """Perform the one-time SCP fetch for tunnel mode and arrange cleanup.
 
     Uses DashboardDB's self-fetching path (``tunnel=True`` with no ``db_path``)
-    purely to drive the SCP+temp-file logic, then closes the SQLite connection
-    so the file is just a plain temp DB the rest of the app can open. The
-    temp file path is captured and an ``atexit`` cleanup hook is registered so
-    the file is removed when the process exits.
+    purely to drive the SCP+temp-file logic, then transfers ownership of the
+    temp file out to the factory via ``DashboardDB.detach_tempfile()`` and
+    closes the bootstrap SQLite connection. The temp file path is captured and
+    an ``atexit`` cleanup hook is registered so the file is removed when the
+    process exits.
     """
     # Use a path that definitely cannot have an FTS sibling -- tunnel mode
     # always falls back to LIKE (the temp copy has no co-located FTS DB).
-    bootstrap = DashboardDB(
-        tunnel=True, db_path=None, fts_db_path="/nonexistent/fts.db"
-    )
-    cached_path = bootstrap._tunnel_tempfile  # path of the just-fetched temp DB
+    bootstrap = DashboardDB(tunnel=True, db_path=None, fts_db_path="/nonexistent/fts.db")
+    # detach_tempfile() returns the just-fetched path AND tells the bootstrap
+    # not to delete it on close -- ownership transfers to the factory.
+    cached_path = bootstrap.detach_tempfile()
     if cached_path is None:  # pragma: no cover -- bootstrap raises on SCP failure
         bootstrap.close()
         raise RuntimeError("Tunnel bootstrap did not produce a temp file path")
-    # We want to KEEP the temp file alive for the lifetime of the app. The
-    # bootstrap object would normally delete it on close(), so detach the
-    # path first, then close just the SQLite connection.
-    bootstrap._tunnel_tempfile = None
-    try:
-        bootstrap.conn.close()
-    except sqlite3.Error:  # pragma: no cover -- defensive
-        pass
+    # Close just the SQLite connection; ownership of the file is already ours.
+    # Any close() error is surfaced rather than silently swallowed: a broken
+    # connection at this point indicates a real problem worth seeing.
+    bootstrap.conn.close()
 
     def _cleanup() -> None:
         try:
@@ -126,21 +113,6 @@ def _fetch_tunnel_db_once(app: Flask) -> str:
     app.config["TUNNEL_TEMPFILE"] = cached_path
     app.config["TUNNEL_CLEANUP"] = _cleanup
     return cached_path
-
-
-def _probe_fts_available(db_path: str, fts_db_path: str) -> bool:
-    """Return True if a usable ``articles_fts`` index exists for the DB.
-
-    Opens a short-lived DashboardDB just to read its ``fts_available`` flag.
-    Tolerates DB-open failures (returning False), so a missing sentinel.db
-    at startup doesn't crash the factory -- the request handlers surface the
-    real ``DashboardDBError`` with their actionable 503 message.
-    """
-    try:
-        with DashboardDB(db_path=db_path, fts_db_path=fts_db_path) as db:
-            return db.fts_available
-    except DashboardDBError:
-        return False
 
 
 def _register_frontend_routes(app: Flask) -> None:

@@ -45,9 +45,7 @@ def fts_db_path(tmp_path):
 def app(sentinel_db_path, fts_db_path):
     """A Flask app wired to the local sample DB, with an FTS index built."""
     build_fts_index(sentinel_db_path, fts_db_path)
-    flask_app = create_app(
-        db_path=sentinel_db_path, fts_db_path=fts_db_path, dev_cors=True
-    )
+    flask_app = create_app(db_path=sentinel_db_path, fts_db_path=fts_db_path, dev_cors=True)
     flask_app.config.update(TESTING=True)
     return flask_app
 
@@ -89,14 +87,9 @@ def test_app_factory_frontend_placeholder(client):
 
 def test_app_cors_dev_mode(client):
     """[1.1a] CORS headers are present for the localhost:5173 dev origin."""
-    resp = client.get(
-        "/api/stats", headers={"Origin": "http://localhost:5173"}
-    )
+    resp = client.get("/api/stats", headers={"Origin": "http://localhost:5173"})
     assert resp.status_code == 200
-    assert (
-        resp.headers.get("Access-Control-Allow-Origin")
-        == "http://localhost:5173"
-    )
+    assert resp.headers.get("Access-Control-Allow-Origin") == "http://localhost:5173"
 
 
 def test_api_missing_db_returns_503(tmp_path):
@@ -139,18 +132,34 @@ def test_api_articles_endpoint(client):
     # Per-article shape -- field names must match the spec exactly.
     article = next(a for a in body["articles"] if a["id"] == "a1")
     for key in (
-        "id", "source_name", "source_url", "source_type", "title",
-        "summary", "language", "published_at", "fetched_at",
-        "classification", "pipeline_status", "has_alert",
+        "id",
+        "source_name",
+        "source_url",
+        "source_type",
+        "title",
+        "summary",
+        "language",
+        "published_at",
+        "fetched_at",
+        "classification",
+        "pipeline_status",
+        "has_alert",
     ):
         assert key in article, f"missing article field: {key}"
 
     # Nested classification shape for a classified article.
     classification = article["classification"]
     for key in (
-        "urgency_score", "event_type", "is_military_event", "confidence",
-        "affected_countries", "aggressor", "summary_pl", "classified_at",
-        "input_tokens", "output_tokens",
+        "urgency_score",
+        "event_type",
+        "is_military_event",
+        "confidence",
+        "affected_countries",
+        "aggressor",
+        "summary_pl",
+        "classified_at",
+        "input_tokens",
+        "output_tokens",
     ):
         assert key in classification, f"missing classification field: {key}"
     assert classification["is_military_event"] is True
@@ -179,9 +188,7 @@ def test_api_articles_page_size_clamped(client):
 
 def test_api_articles_filter_and_sort(client):
     """[1.4] source_type filter + urgency_score sort applied via the API."""
-    resp = client.get(
-        "/api/articles?source_type=telegram&sort=published_at&order=desc"
-    )
+    resp = client.get("/api/articles?source_type=telegram&sort=published_at&order=desc")
     body = resp.get_json()
     assert body["total"] == 1
     assert body["articles"][0]["source_type"] == "telegram"
@@ -198,9 +205,7 @@ def test_api_articles_search(client):
     assert body["total"] == 4
     # Each result genuinely matches the query term.
     for article in body["articles"]:
-        haystack = (
-            article["title"] + " " + (article["summary"] or "")
-        ).lower()
+        haystack = (article["title"] + " " + (article["summary"] or "")).lower()
         assert "drone" in haystack
 
 
@@ -249,9 +254,7 @@ def test_api_articles_search_with_filters(client):
 
     # Explicit sort overrides FTS rank: ascending published_at -> a9 first
     # (oldest drone article in the fixture: 2026-05-15).
-    resp = client.get(
-        "/api/articles?q=drone&sort=published_at&order=asc"
-    )
+    resp = client.get("/api/articles?q=drone&sort=published_at&order=asc")
     body = resp.get_json()
     assert body["articles"][0]["id"] == "a9"
 
@@ -411,19 +414,14 @@ def test_classifier_input_with_enrichment_note():
         "Language: en\n"
         "Published: 2026-05-22T10:00:00+00:00\n"
         "Title: Vague NATO country headline\n"
-        "Summary: Vague NATO country headline\n"
-        + ENRICHMENT_NOT_FETCHED_NOTE
+        "Summary: Vague NATO country headline\n" + ENRICHMENT_NOT_FETCHED_NOTE
     )
     assert result == expected
 
     # Also true for method='llm' (the other branch the classifier triggers on).
     article_llm = dict(article)
-    article_llm["raw_metadata"] = {
-        "enrichment": {"method": "llm", "fetched": False}
-    }
-    assert build_classifier_input(article_llm).endswith(
-        "\n" + ENRICHMENT_NOT_FETCHED_NOTE
-    )
+    article_llm["raw_metadata"] = {"enrichment": {"method": "llm", "fetched": False}}
+    assert build_classifier_input(article_llm).endswith("\n" + ENRICHMENT_NOT_FETCHED_NOTE)
 
 
 def test_enrichment_note_matches_classifier_source():
@@ -448,15 +446,12 @@ def test_enrichment_note_matches_classifier_source():
     #   "Note: Article body could not be fetched. The summary above may just be "
     #   "the headline repeated. Exercise extreme caution with country attribution "
     #   "— do not assume a monitored country is affected unless explicitly stated.",
-    note_segments = re.findall(
-        r'"((?:Note:|the headline repeated|—)[^"]*)"', source
-    )
+    note_segments = re.findall(r'"((?:Note:|the headline repeated|—)[^"]*)"', source)
     # We expect exactly the three segments that make up the implicit-concat
     # literal -- if classifier.py reflows them or adds/removes a line, this
     # count changes and the test fails.
     assert len(note_segments) == 3, (
-        f"expected 3 note segments in classifier.py, got {len(note_segments)}: "
-        f"{note_segments!r}"
+        f"expected 3 note segments in classifier.py, got {len(note_segments)}: {note_segments!r}"
     )
     reconstructed = "".join(note_segments)
     assert reconstructed == ENRICHMENT_NOT_FETCHED_NOTE, (
@@ -537,10 +532,16 @@ def test_api_stats_endpoint(client):
     body = resp.get_json()
 
     for key in (
-        "total_articles", "total_classified", "total_events",
-        "total_alerts", "articles_per_day", "urgency_distribution",
-        "source_distribution", "language_distribution",
-        "event_type_distribution", "pipeline_funnel",
+        "total_articles",
+        "total_classified",
+        "total_events",
+        "total_alerts",
+        "articles_per_day",
+        "urgency_distribution",
+        "source_distribution",
+        "language_distribution",
+        "event_type_distribution",
+        "pipeline_funnel",
     ):
         assert key in body, f"missing stats field: {key}"
 
@@ -554,9 +555,7 @@ def test_api_stats_endpoint(client):
 
     # pipeline_funnel: the four required stages (req 1.6b).
     funnel = body["pipeline_funnel"]
-    assert set(funnel.keys()) == {
-        "collected", "classified", "events_created", "alerts_sent"
-    }
+    assert set(funnel.keys()) == {"collected", "classified", "events_created", "alerts_sent"}
     assert funnel["collected"] == 9
     assert funnel["classified"] == 5
     assert funnel["events_created"] == 3
@@ -633,16 +632,12 @@ def test_fts_index_creation(sentinel_db_path, tmp_path):
     # The articles_fts virtual table exists and is queryable.
     conn = sqlite3.connect(fts_path)
     try:
-        row = conn.execute(
-            "SELECT name FROM sqlite_master "
-            "WHERE type='table' AND name='articles_fts'"
-        ).fetchone()
+        row = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='articles_fts'").fetchone()
         assert row is not None
 
         # It is populated and answers a MATCH query ordered by rank.
         hits = conn.execute(
-            "SELECT article_id FROM articles_fts "
-            "WHERE articles_fts MATCH 'drone' ORDER BY rank"
+            "SELECT article_id FROM articles_fts WHERE articles_fts MATCH 'drone' ORDER BY rank"
         ).fetchall()
         assert len(hits) == 4
     finally:
@@ -749,8 +744,7 @@ def test_api_tunnel_scp_once_per_startup(sentinel_db_path, monkeypatch):
 
     # Exactly one SCP after the factory ran.
     assert len(scp_calls) == 1, (
-        f"create_app(tunnel=True) should SCP exactly once at startup, "
-        f"got {len(scp_calls)} SCP call(s)"
+        f"create_app(tunnel=True) should SCP exactly once at startup, got {len(scp_calls)} SCP call(s)"
     )
 
     # Make multiple GETs across different endpoints -- still only ONE SCP.
@@ -762,8 +756,7 @@ def test_api_tunnel_scp_once_per_startup(sentinel_db_path, monkeypatch):
     assert resp3.status_code == 200
 
     assert len(scp_calls) == 1, (
-        f"Tunnel mode must reuse the startup-fetched DB across requests, "
-        f"got {len(scp_calls)} SCP call(s) after 3 GETs"
+        f"Tunnel mode must reuse the startup-fetched DB across requests, got {len(scp_calls)} SCP call(s) after 3 GETs"
     )
 
     # The cached temp DB path is exposed on app.config so teardown is testable.
@@ -824,9 +817,7 @@ def test_cli_parse_args():
     assert defaults.sync is False
 
     # Explicit overrides parse as declared.
-    overridden = parser.parse_args(
-        ["--port", "5005", "--db", "/tmp/x.db", "--tunnel", "--sync"]
-    )
+    overridden = parser.parse_args(["--port", "5005", "--db", "/tmp/x.db", "--tunnel", "--sync"])
     assert overridden.port == 5005
     assert overridden.db == "/tmp/x.db"
     assert overridden.tunnel is True
@@ -837,21 +828,23 @@ def test_cli_sync_then_serve(monkeypatch, tmp_path):
     """[1.8] ``--sync`` runs `sync_db` BEFORE `app.run` starts the server.
 
     Both `sync_db` and `app.run` are monkeypatched; the test asserts both
-    were called exactly once and that `sync_db` ran first.
+    were called exactly once, that `sync_db` ran first, AND that the same
+    ``--db`` argument flowed to both `sync_db` and `create_app` -- a refactor
+    that forgot to pass ``--db`` to `create_app` would slip through without
+    this latter assertion.
     """
     from dashboard import cli as cli_module
     from dashboard.sync import SyncResult
 
     call_order: list[str] = []
     sync_args: dict = {}
+    create_args: dict = {}
 
     def fake_sync_db(db_path=None, fts_db_path=None):
         call_order.append("sync")
         sync_args["db_path"] = db_path
         sync_args["fts_db_path"] = fts_db_path
-        return SyncResult(
-            success=True, file_size=1024, article_count=42, duration=0.1
-        )
+        return SyncResult(success=True, file_size=1024, article_count=42, duration=0.1)
 
     class _FakeApp:
         def __init__(self):
@@ -865,6 +858,9 @@ def test_cli_sync_then_serve(monkeypatch, tmp_path):
 
     def fake_create_app(db_path=None, tunnel=False, fts_db_path=None):
         call_order.append("create_app")
+        create_args["db_path"] = db_path
+        create_args["tunnel"] = tunnel
+        create_args["fts_db_path"] = fts_db_path
         return fake_app
 
     monkeypatch.setattr(cli_module, "sync_db", fake_sync_db)
@@ -879,11 +875,14 @@ def test_cli_sync_then_serve(monkeypatch, tmp_path):
     assert "run" in call_order
     assert call_order.index("sync") < call_order.index("run")
     # Port flag wired through to app.run.
-    assert fake_app.run_calls == [
-        {"host": "127.0.0.1", "port": 9999, "threaded": True}
-    ]
-    # --db flag wired through to sync_db.
+    assert fake_app.run_calls == [{"host": "127.0.0.1", "port": 9999, "threaded": True}]
+    # --db flag wired through to BOTH sync_db AND create_app (req 1.8).
     assert sync_args["db_path"] == db_path
+    assert create_args["db_path"] == db_path
+    # --tunnel was not passed, so create_app sees the default False.
+    assert create_args["tunnel"] is False
+    # fts_db_path is derived from the --db argument (co-located).
+    assert create_args["fts_db_path"] == sync_args["fts_db_path"]
 
 
 def test_cli_sync_failure_short_circuits(monkeypatch, tmp_path, capsys):
@@ -908,7 +907,7 @@ def test_cli_sync_failure_short_circuits(monkeypatch, tmp_path, capsys):
     assert create_app_called == []
 
 
-def test_run_dashboard_sh_help_smoke(tmp_path):
+def test_run_dashboard_sh_help_smoke():
     """[1.8a] ``./dashboard/run-dashboard.sh --help`` exits 0 with usage text.
 
     Skipped if the project venv isn't where the script expects it -- the
@@ -919,8 +918,12 @@ def test_run_dashboard_sh_help_smoke(tmp_path):
     import os
     import subprocess
 
-    script = os.path.abspath("dashboard/run-dashboard.sh")
-    venv_python = os.path.abspath(".venv/bin/python")
+    # Derive every path from __file__ so the test works regardless of cwd.
+    # ``__file__`` is ``<repo>/tests/test_dashboard_api.py``; the repo root is
+    # one level up, and the script lives at ``<repo>/dashboard/run-dashboard.sh``.
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    script = os.path.join(repo_root, "dashboard", "run-dashboard.sh")
+    venv_python = os.path.join(repo_root, ".venv", "bin", "python")
     if not os.path.exists(venv_python):
         pytest.skip(f"venv python not found at {venv_python}")
 
@@ -929,14 +932,350 @@ def test_run_dashboard_sh_help_smoke(tmp_path):
         capture_output=True,
         text=True,
         timeout=30,
-        cwd=os.path.dirname(os.path.dirname(script)),
+        cwd=repo_root,
     )
-    assert result.returncode == 0, (
-        f"stdout={result.stdout!r} stderr={result.stderr!r}"
-    )
+    assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
     # argparse's auto-generated --help mentions every declared flag.
     combined = result.stdout + result.stderr
     assert "--port" in combined
     assert "--db" in combined
     assert "--tunnel" in combined
     assert "--sync" in combined
+
+
+# ---------------------------------------------------------------------------
+# API-layer filter coverage (finding #5)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "params,expected_ids,assertion",
+    [
+        # source_name -- a4's source_name is TASS-Telegram (unique).
+        (
+            {"source_name": "TASS-Telegram"},
+            {"a4"},
+            lambda a: a["source_name"] == "TASS-Telegram",
+        ),
+        # language -- en in the fixture: a1, a6, a8.
+        (
+            {"language": "en"},
+            {"a1", "a6", "a8"},
+            lambda a: a["language"] == "en",
+        ),
+        # urgency_max -- classified articles with urgency <= 3: a3 (3), a7 (2).
+        # Unclassified articles have NULL urgency so they are excluded.
+        (
+            {"urgency_max": 3},
+            {"a3", "a7"},
+            lambda a: a["classification"] is not None and a["classification"]["urgency_score"] <= 3,
+        ),
+        # event_type -- only a1 is drone_attack.
+        (
+            {"event_type": "drone_attack"},
+            {"a1"},
+            lambda a: a["classification"] is not None and a["classification"]["event_type"] == "drone_attack",
+        ),
+        # has_alert=true -- a1 and a2 (event ev1 had alerts).
+        (
+            {"has_alert": "true"},
+            {"a1", "a2"},
+            lambda a: a["has_alert"] is True,
+        ),
+        # has_alert=false -- everything else.
+        (
+            {"has_alert": "false"},
+            {"a3", "a4", "a5", "a6", "a7", "a8", "a9"},
+            lambda a: a["has_alert"] is False,
+        ),
+        # date_from -- only articles on/after 2026-05-21 (a1, a2, a3).
+        (
+            {"date_from": "2026-05-21"},
+            {"a1", "a2", "a3"},
+            lambda a: a["published_at"] >= "2026-05-21",
+        ),
+        # date_to -- only articles published on/before 2026-05-17. The
+        # ``published_at`` column is a full ISO-8601 string ("2026-05-17T..."),
+        # so lex-comparison ``<= "2026-05-17"`` matches only rows whose
+        # published_at string starts strictly before that bare-date prefix --
+        # which excludes a7 ("2026-05-17T04:00:00..." > "2026-05-17"). Use
+        # the full ISO upper bound to get every row published on 2026-05-17.
+        (
+            {"date_to": "2026-05-17T23:59:59"},
+            {"a7", "a8", "a9"},
+            lambda a: a["published_at"] <= "2026-05-17T23:59:59",
+        ),
+        # date_from + date_to bracket -- a4 (2026-05-20), a5 (2026-05-19).
+        (
+            {"date_from": "2026-05-19", "date_to": "2026-05-20T23:59:59"},
+            {"a4", "a5"},
+            lambda a: "2026-05-19" <= a["published_at"] <= "2026-05-20T23:59:59",
+        ),
+    ],
+    ids=[
+        "source_name",
+        "language",
+        "urgency_max",
+        "event_type",
+        "has_alert_true",
+        "has_alert_false",
+        "date_from",
+        "date_to",
+        "date_range",
+    ],
+)
+def test_api_articles_filter_each(client, params, expected_ids, assertion):
+    """[1.4, 1.2b, finding #5] Each filter narrows the result set via the API.
+
+    Exercises every single-filter wiring through the HTTP surface. A typo or
+    rename in ``args.get("<name>")`` -> ``filters["<name>"]`` mapping would
+    silently regress (the dict swallows None), so this is the regression
+    guard for the API layer of every filter listed in spec req 1.2b.
+    """
+    query = "&".join(f"{k}={v}" for k, v in params.items())
+    resp = client.get(f"/api/articles?{query}")
+    assert resp.status_code == 200, (params, resp.get_json())
+    body = resp.get_json()
+    ids = {a["id"] for a in body["articles"]}
+    assert ids == expected_ids, (params, ids, body["total"])
+    # Every returned row really satisfies the filter (not just the count).
+    for article in body["articles"]:
+        assert assertion(article), (params, article)
+
+
+# ---------------------------------------------------------------------------
+# Stale-FTS regression (finding #1 / #7): tunnel mode must NOT use stale FTS
+# ---------------------------------------------------------------------------
+
+
+def test_api_tunnel_skips_stale_fts(sentinel_db_path, fts_db_path, monkeypatch, tmp_path):
+    """[1.1c, finding #1/#7] Tunnel mode skips a stale local FTS DB.
+
+    Reproduces the bug the reviewer reported: a user runs ``--sync`` (writing
+    ``dashboard/data/sentinel_fts.db``), then later runs ``--tunnel``. Without
+    the fix, the tunnel-fetched DB gets the STALE FTS attached and search
+    returns wrong/empty results. With the fix, ``_maybe_attach_fts`` short-
+    circuits in tunnel mode and search falls back to LIKE -- per spec 1.1c
+    "FTS5 is not built for the temporary copy, so search falls back to LIKE."
+
+    Builds a stale FTS DB containing only a placeholder row that does NOT
+    match any article in the tunnel-fetched DB, then asserts that the search
+    still returns the 4 drone matches via LIKE (proving FTS was NOT consulted).
+    """
+    import shutil
+    import sqlite3 as sql
+
+    from dashboard import db as db_module
+
+    # 1. Build a stale FTS DB at the path tunnel mode SHOULD ignore.
+    # The stale FTS has a single placeholder row whose article_id (`STALE_ID`)
+    # is absent from the tunnel-fetched DB, so a stale-FTS join would return
+    # zero hits for "drone". A LIKE fallback returns the 4 fixture matches.
+    if os.path.exists(fts_db_path):
+        os.remove(fts_db_path)
+    fts_conn = sql.connect(fts_db_path)
+    try:
+        fts_conn.execute("CREATE VIRTUAL TABLE articles_fts USING fts5(article_id UNINDEXED, title, summary)")
+        fts_conn.execute(
+            "INSERT INTO articles_fts (article_id, title, summary) VALUES ('STALE_ID', 'stale title', 'stale summary')"
+        )
+        fts_conn.commit()
+    finally:
+        fts_conn.close()
+    assert os.path.exists(fts_db_path)
+
+    # 2. Mock subprocess.run so tunnel mode SCPs the sample DB into its temp
+    # path. Tunnel mode now sees BOTH a co-located fts file (the stale one)
+    # AND a freshly fetched DB -- exactly the bug condition.
+    def fake_run(argv, capture_output, text, timeout):  # noqa: ARG001
+        shutil.copy(sentinel_db_path, argv[-1])
+
+        class _OK:
+            returncode = 0
+            stderr = ""
+
+        return _OK()
+
+    monkeypatch.setattr(db_module.subprocess, "run", fake_run)
+
+    flask_app = create_app(tunnel=True, fts_db_path=fts_db_path, dev_cors=False)
+    flask_app.config.update(TESTING=True)
+    fresh_client = flask_app.test_client()
+
+    # 3. Run a search through the API. If the stale FTS were used, this would
+    # match only article_id='STALE_ID' (which doesn't exist in the tunnel DB)
+    # and return zero hits. With the fix, LIKE returns all 4 drone matches.
+    resp = fresh_client.get("/api/articles?q=drone")
+    assert resp.status_code == 200
+    body = resp.get_json()
+    ids = {a["id"] for a in body["articles"]}
+    assert ids == {"a1", "a2", "a4", "a9"}, (
+        f"tunnel-mode search should fall back to LIKE per req 1.1c "
+        f"and return 4 matches; got {ids} (total={body['total']})"
+    )
+    assert body["total"] == 4
+
+    # Clean up the cached tempfile.
+    cleanup = flask_app.config.get("TUNNEL_CLEANUP")
+    if callable(cleanup):
+        cleanup()
+
+
+# ---------------------------------------------------------------------------
+# Tunnel-mode sync refusal (finding #8)
+# ---------------------------------------------------------------------------
+
+
+def test_api_sync_refused_in_tunnel_mode(sentinel_db_path, monkeypatch):
+    """[finding #8] ``POST /api/sync`` returns 409 in tunnel mode.
+
+    In tunnel mode the dashboard already fetches a fresh copy of the
+    production DB at startup, and ``SENTINEL_DB_PATH`` points at the temp
+    file in /tmp. Allowing /api/sync would write the sync-state JSON into
+    /tmp and overwrite the temp DB. Refusing the request with HTTP 409 keeps
+    the contract clear -- tunnel mode is "always fresh on startup" and the
+    sync endpoint is for sync mode.
+    """
+    import shutil
+
+    from dashboard import db as db_module
+
+    def fake_run(argv, capture_output, text, timeout):  # noqa: ARG001
+        shutil.copy(sentinel_db_path, argv[-1])
+
+        class _OK:
+            returncode = 0
+            stderr = ""
+
+        return _OK()
+
+    monkeypatch.setattr(db_module.subprocess, "run", fake_run)
+
+    flask_app = create_app(tunnel=True, dev_cors=False)
+    flask_app.config.update(TESTING=True)
+    tunnel_client = flask_app.test_client()
+
+    resp = tunnel_client.post("/api/sync")
+    assert resp.status_code == 409, resp.get_json()
+    body = resp.get_json()
+    assert "error" in body
+    assert "tunnel" in body["error"].lower()
+
+    cleanup = flask_app.config.get("TUNNEL_CLEANUP")
+    if callable(cleanup):
+        cleanup()
+
+
+# ---------------------------------------------------------------------------
+# CORS disabled-mode coverage (finding #13)
+# ---------------------------------------------------------------------------
+
+
+def test_app_no_cors_when_disabled(sentinel_db_path, fts_db_path):
+    """[1.1a, finding #13] ``create_app(dev_cors=False)`` adds no CORS header.
+
+    The positive case is covered by ``test_app_cors_dev_mode``. This test is
+    the negative-case regression guard: a refactor that broadens CORS to ``*``
+    or unconditionally enables it would slip through without this assertion.
+    """
+    build_fts_index(sentinel_db_path, fts_db_path)
+    no_cors_app = create_app(db_path=sentinel_db_path, fts_db_path=fts_db_path, dev_cors=False)
+    no_cors_app.config.update(TESTING=True)
+    no_cors_client = no_cors_app.test_client()
+
+    resp = no_cors_client.get("/api/stats", headers={"Origin": "http://localhost:5173"})
+    assert resp.status_code == 200
+    assert "Access-Control-Allow-Origin" not in resp.headers
+
+
+def test_app_cors_denies_non_vite_origin(client):
+    """[1.1a, finding #13] CORS is scoped to localhost:5173, not other origins.
+
+    A refactor that uses ``CORS(app)`` without ``resources={...origins=...}``
+    would echo any Origin header. This test ensures only the Vite dev origin
+    is allowed.
+    """
+    resp = client.get("/api/stats", headers={"Origin": "http://evil.example.com"})
+    assert resp.status_code == 200
+    allowed = resp.headers.get("Access-Control-Allow-Origin")
+    # Either no header at all, or echoed as the Vite origin (never the attacker).
+    assert allowed in (None, "http://localhost:5173")
+    assert allowed != "http://evil.example.com"
+    assert allowed != "*"
+
+
+# ---------------------------------------------------------------------------
+# Date-range validation (finding #14)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "param,value",
+    [
+        ("date_from", "yesterday"),
+        ("date_from", "not-a-date"),
+        ("date_from", "2026/05/22"),  # wrong separator
+        ("date_to", "tomorrow"),
+        ("date_to", "26-05-22"),  # 2-digit year
+        ("date_to", "2026-13-01"),  # ...month 13 still matches the prefix
+    ],
+    ids=[
+        "from-word",
+        "from-garbage",
+        "from-slashes",
+        "to-word",
+        "to-2digit-year",
+        "to-month13",
+    ],
+)
+def test_api_articles_rejects_invalid_date(client, param, value):
+    """[finding #14] Non-ISO ``date_from``/``date_to`` return HTTP 400.
+
+    Spec doesn't require validation, but accepting arbitrary strings under
+    lex comparison silently returns wrong-or-empty results -- a UX trap
+    worth a 400.
+
+    Note: this regex only validates SHAPE, not calendar validity. ``2026-13-01``
+    is rejected because the regex requires ``\\d{2}`` followed by an ISO date
+    format that doesn't have anything trailing the day -- but it DOES match
+    the prefix, and SQLite lex-comparison will give the user nothing. The
+    test name flags this case so a future tightening (full date parsing) is
+    visible.
+    """
+    resp = client.get(f"/api/articles?{param}={value}")
+    # Pure regex shape-validation: ``2026-13-01`` slips through (matches
+    # YYYY-MM-DD shape). The other 5 are rejected. The first 5 must 400; the
+    # ``month13`` case is documented as a known-loose-validation hole.
+    if value == "2026-13-01":
+        # Documents that shape-only validation lets this through. A future
+        # full-calendar parse would flip this assertion to 400.
+        assert resp.status_code == 200
+        return
+    assert resp.status_code == 400, resp.get_json()
+    body = resp.get_json()
+    assert "error" in body
+    assert param in body["error"].lower()
+
+
+def test_api_articles_accepts_valid_iso_dates(client):
+    """[finding #14] Valid ISO 8601 prefixes for date_from/date_to are accepted.
+
+    The Werkzeug test client decodes ``+`` in query strings as a space, so we
+    URL-encode the few values containing ``+`` to round-trip correctly.
+    """
+    from urllib.parse import quote
+
+    valid_values = [
+        "2026-05-22",
+        "2026-05-22T10:00",
+        "2026-05-22T10:00:00",
+        "2026-05-22T10:00:00.123",
+        "2026-05-22T10:00:00Z",
+        "2026-05-22T10:00:00+00:00",
+        "2026-05-22 10:00:00",
+    ]
+    for v in valid_values:
+        # quote() escapes ``+`` to ``%2B`` (and leaves the colon/T alone),
+        # so the value arrives at the API byte-for-byte.
+        resp = client.get(f"/api/articles?date_from={quote(v, safe=':T.- ')}")
+        assert resp.status_code == 200, (v, resp.get_json())

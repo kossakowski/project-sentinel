@@ -159,46 +159,63 @@ def _build_sentinel_db(path: str) -> None:
 
         articles = [
             _article_row(
-                "a1", source_name="TASS", source_type="rss", language="en",
+                "a1",
+                source_name="TASS",
+                source_type="rss",
+                language="en",
                 title="Russian drone strike near Polish border",
                 summary="A military drone crossed into Poland airspace.",
                 published_at="2026-05-22T10:00:00+00:00",
             ),
             _article_row(
-                "a2", source_name="TVN24", source_type="rss", language="pl",
+                "a2",
+                source_name="TVN24",
+                source_type="rss",
+                language="pl",
                 title="Drony nad Polska wykryte przez wojsko",
                 summary="Wojsko potwierdza, ze drone naruszyl przestrzen.",
                 published_at="2026-05-22T09:00:00+00:00",
             ),
             _article_row(
-                "a3", source_name="Onet", source_type="google_news",
+                "a3",
+                source_name="Onet",
+                source_type="google_news",
                 language="pl",
                 title="Politycy komentuja sytuacje na granicy",
                 summary="Komentarze polityczne po incydencie granicznym.",
                 published_at="2026-05-21T08:00:00+00:00",
             ),
             _article_row(
-                "a4", source_name="TASS-Telegram", source_type="telegram",
+                "a4",
+                source_name="TASS-Telegram",
+                source_type="telegram",
                 language="ru",
                 title="Telegram channel reports troop movement",
                 summary="A drone was found near the border region.",
                 published_at="2026-05-20T07:00:00+00:00",
             ),
             _article_row(
-                "a5", source_name="Onet", source_type="rss", language="pl",
+                "a5",
+                source_name="Onet",
+                source_type="rss",
+                language="pl",
                 title="Pogoda na weekend bedzie sloneczna",
                 summary="Prognoza pogody zapowiada cieple dni.",
                 published_at="2026-05-19T06:00:00+00:00",
             ),
             _article_row(
-                "a6", source_name="PAP", source_type="google_news",
+                "a6",
+                source_name="PAP",
+                source_type="google_news",
                 language="en",
                 title="Economic forum opens in Warsaw",
                 summary="Business leaders gather for an annual conference.",
                 published_at="2026-05-18T05:00:00+00:00",
             ),
             _article_row(
-                "a7", source_name="Defence24", source_type="rss",
+                "a7",
+                source_name="Defence24",
+                source_type="rss",
                 language="pl",
                 title="Analiza zdolnosci obronnych regionu",
                 summary="Artykul analityczny o systemach obrony.",
@@ -206,41 +223,41 @@ def _build_sentinel_db(path: str) -> None:
             ),
             # a8 has NULL summary -- exercises COALESCE / null handling.
             (
-                "a8", "Reuters", "https://example.com/a8", "rss",
-                "Sports roundup of the week", None, "en",
-                "2026-05-16T03:00:00+00:00", "2026-05-16T03:00:00+00:00",
-                "hash-a8", "sports roundup of the week", None,
+                "a8",
+                "Reuters",
+                "https://example.com/a8",
+                "rss",
+                "Sports roundup of the week",
+                None,
+                "en",
+                "2026-05-16T03:00:00+00:00",
+                "2026-05-16T03:00:00+00:00",
+                "hash-a8",
+                "sports roundup of the week",
+                None,
             ),
             # a9 is UNCLASSIFIED but its summary mentions "drone" -- the
             # search+pipeline_status filter test asserts that the filter is
             # actually applied (not vacuously true because all drone articles
             # happen to be classified).
             _article_row(
-                "a9", source_name="WP", source_type="rss", language="pl",
+                "a9",
+                source_name="WP",
+                source_type="rss",
+                language="pl",
                 title="Niejasna informacja z agencji",
                 summary="Plotka o drone gdzies w okolicy -- niepotwierdzone.",
                 published_at="2026-05-15T02:00:00+00:00",
             ),
         ]
-        conn.executemany(
-            "INSERT INTO articles VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", articles
-        )
+        conn.executemany("INSERT INTO articles VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", articles)
 
         classifications = [
-            _classification_row("c1", "a1", urgency_score=9,
-                                 event_type="drone_attack", confidence=0.95),
-            _classification_row("c2", "a2", urgency_score=7,
-                                 event_type="airspace_violation",
-                                 confidence=0.88),
-            _classification_row("c3", "a3", urgency_score=3,
-                                 event_type="none", confidence=0.40,
-                                 is_military_event=0),
-            _classification_row("c4", "a4", urgency_score=5,
-                                 event_type="troop_movement",
-                                 confidence=0.60),
-            _classification_row("c7", "a7", urgency_score=2,
-                                 event_type="none", confidence=0.30,
-                                 is_military_event=0),
+            _classification_row("c1", "a1", urgency_score=9, event_type="drone_attack", confidence=0.95),
+            _classification_row("c2", "a2", urgency_score=7, event_type="airspace_violation", confidence=0.88),
+            _classification_row("c3", "a3", urgency_score=3, event_type="none", confidence=0.40, is_military_event=0),
+            _classification_row("c4", "a4", urgency_score=5, event_type="troop_movement", confidence=0.60),
+            _classification_row("c7", "a7", urgency_score=2, event_type="none", confidence=0.30, is_military_event=0),
         ]
         conn.executemany(
             "INSERT INTO classifications VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -251,36 +268,61 @@ def _build_sentinel_db(path: str) -> None:
         # ev2 links a4 and has NO alerts (-> event_created).
         events = [
             (
-                "ev1", "drone_attack", 9, json.dumps(["PL"]), "RU",
+                "ev1",
+                "drone_attack",
+                9,
+                json.dumps(["PL"]),
+                "RU",
                 "Atak dronow w poblizu polskiej granicy.",
-                "2026-05-22T10:05:00+00:00", "2026-05-22T10:30:00+00:00",
-                2, json.dumps(["a1", "a2"]), "sms_sent",
+                "2026-05-22T10:05:00+00:00",
+                "2026-05-22T10:30:00+00:00",
+                2,
+                json.dumps(["a1", "a2"]),
+                "sms_sent",
                 "2026-05-22T10:35:00+00:00",
             ),
             (
-                "ev2", "troop_movement", 5, json.dumps(["LT"]), "RU",
+                "ev2",
+                "troop_movement",
+                5,
+                json.dumps(["LT"]),
+                "RU",
                 "Ruch wojsk w poblizu granicy.",
-                "2026-05-20T07:10:00+00:00", "2026-05-20T07:20:00+00:00",
-                1, json.dumps(["a4"]), "pending", None,
+                "2026-05-20T07:10:00+00:00",
+                "2026-05-20T07:20:00+00:00",
+                1,
+                json.dumps(["a4"]),
+                "pending",
+                None,
             ),
         ]
-        conn.executemany(
-            "INSERT INTO events VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", events
-        )
+        conn.executemany("INSERT INTO events VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", events)
 
         alerts = [
             (
-                "al1", "ev1", "phone_call", "CA111", "completed", 42, 1,
-                "2026-05-22T10:35:00+00:00", "Alert: drone attack",
+                "al1",
+                "ev1",
+                "phone_call",
+                "CA111",
+                "completed",
+                42,
+                1,
+                "2026-05-22T10:35:00+00:00",
+                "Alert: drone attack",
             ),
             (
-                "al2", "ev1", "sms", "SM222", "sent", None, 1,
-                "2026-05-22T10:36:00+00:00", "SMS update",
+                "al2",
+                "ev1",
+                "sms",
+                "SM222",
+                "sent",
+                None,
+                1,
+                "2026-05-22T10:36:00+00:00",
+                "SMS update",
             ),
         ]
-        conn.executemany(
-            "INSERT INTO alert_records VALUES (?,?,?,?,?,?,?,?,?)", alerts
-        )
+        conn.executemany("INSERT INTO alert_records VALUES (?,?,?,?,?,?,?,?,?)", alerts)
         conn.commit()
     finally:
         conn.close()
@@ -332,10 +374,8 @@ def test_db_get_articles_pagination(sentinel_db_path, fts_db_path):
     # 9 sample articles; with page_size=3, page 2 holds rows 4-6.
     db = DashboardDB(db_path=sentinel_db_path, fts_db_path=fts_db_path)
     try:
-        page1 = db.get_articles(page=1, page_size=3,
-                                sort="published_at", order="desc")
-        page2 = db.get_articles(page=2, page_size=3,
-                                sort="published_at", order="desc")
+        page1 = db.get_articles(page=1, page_size=3, sort="published_at", order="desc")
+        page2 = db.get_articles(page=2, page_size=3, sort="published_at", order="desc")
 
         assert page1["total"] == 9
         assert page1["page"] == 1
@@ -363,9 +403,7 @@ def test_db_get_articles_filters(db_no_fts):
 
     assert result["total"] == 1
     assert len(result["articles"]) == 1
-    assert all(
-        a["source_type"] == "telegram" for a in result["articles"]
-    )
+    assert all(a["source_type"] == "telegram" for a in result["articles"])
     assert result["articles"][0]["id"] == "a4"
 
 
@@ -377,9 +415,7 @@ def test_db_get_articles_filters_more(db_no_fts):
     assert all(a["language"] == "pl" for a in pl["articles"])
 
     # urgency_min / urgency_max (on the joined classification)
-    urgent = db_no_fts.get_articles(
-        filters={"urgency_min": 7, "urgency_max": 10}
-    )
+    urgent = db_no_fts.get_articles(filters={"urgency_min": 7, "urgency_max": 10})
     assert urgent["total"] == 2
     assert {a["id"] for a in urgent["articles"]} == {"a1", "a2"}
 
@@ -392,32 +428,28 @@ def test_db_get_articles_filters_more(db_no_fts):
 def test_db_get_articles_sort(db_no_fts):
     """[1.2b] Sorting by urgency_score desc returns the highest score first."""
     result = db_no_fts.get_articles(
-        sort="urgency_score", order="desc",
+        sort="urgency_score",
+        order="desc",
         filters={"pipeline_status": "classified"},
     )
-    scores = [
-        a["classification"]["urgency_score"] for a in result["articles"]
-    ]
+    scores = [a["classification"]["urgency_score"] for a in result["articles"]]
     assert scores == sorted(scores, reverse=True)
     assert scores[0] == 9  # a1 has the top urgency
 
     # Ascending direction is also honoured.
     asc = db_no_fts.get_articles(
-        sort="urgency_score", order="asc",
+        sort="urgency_score",
+        order="asc",
         filters={"pipeline_status": "classified"},
     )
-    asc_scores = [
-        a["classification"]["urgency_score"] for a in asc["articles"]
-    ]
+    asc_scores = [a["classification"]["urgency_score"] for a in asc["articles"]]
     assert asc_scores == sorted(asc_scores)
 
 
 def test_db_get_articles_pipeline_status(db_no_fts):
     """[1.2b, 1.4b] Filtering by pipeline_status='unclassified' returns rows
     that have no classification."""
-    result = db_no_fts.get_articles(
-        filters={"pipeline_status": "unclassified"}
-    )
+    result = db_no_fts.get_articles(filters={"pipeline_status": "unclassified"})
 
     # a5, a6, a8, a9 have no classification row.
     assert result["total"] == 4
@@ -513,9 +545,7 @@ def test_db_search_fts5(db_with_fts):
     assert result["total"] == 4
     # Every returned article genuinely matches.
     for article in result["articles"]:
-        haystack = (
-            article["title"] + " " + (article["summary"] or "")
-        ).lower()
+        haystack = (article["title"] + " " + (article["summary"] or "")).lower()
         assert "drone" in haystack
 
 
@@ -548,9 +578,7 @@ def test_db_search_like_fallback(db_no_fts):
     # LIKE matches on title OR summary, same set as FTS for this corpus.
     assert ids == {"a1", "a2", "a4", "a9"}
     for article in result["articles"]:
-        haystack = (
-            article["title"] + " " + (article["summary"] or "")
-        ).lower()
+        haystack = (article["title"] + " " + (article["summary"] or "")).lower()
         assert "drone" in haystack
 
 
@@ -566,6 +594,73 @@ def test_db_search_like_special_chars(db_no_fts):
     # No article contains a literal '%' so this must return nothing.
     result = db_no_fts.search_articles("%")
     assert result["total"] == 0
+
+
+def test_db_search_like_escape_pipe_and_underscore(sentinel_db_path, fts_db_path):
+    """[1.2d, finding #4] LIKE escape handles the ESCAPE character (``|``) and ``_``.
+
+    The LIKE escape character is ``|`` (vertical bar). The implementation must:
+      * Pre-escape user-supplied ``|`` to ``||`` so a literal pipe in the query
+        is matched as a pipe rather than swallowed as an ESCAPE prefix that
+        consumes the next character.
+      * Pre-escape ``_`` to ``|_`` so it matches only literal underscore, not
+        "any character" (LIKE's single-char wildcard).
+      * Apply the ``|`` self-escape FIRST -- otherwise a later ``|`` introduced
+        by escaping ``%`` or ``_`` would itself be re-escaped.
+
+    Fixture has no article containing a literal ``|`` or ``_``, so searches
+    for those characters must return zero hits. A regression that removed the
+    ``|`` self-escape would still return zero here (no false-positive surface),
+    but a regression that DROPPED escaping entirely would either crash on
+    "trailing escape" or match unexpected things. We add a row containing a
+    literal ``_`` to prove the ``_`` escape works correctly.
+    """
+    import sqlite3 as sql
+
+    # Add a row with a literal underscore in its summary, so we can prove an
+    # ``_``-escaped query returns ONLY that row -- not every article (which
+    # would happen if ``_`` were left as the LIKE single-char wildcard).
+    conn = sql.connect(sentinel_db_path)
+    try:
+        conn.execute(
+            "INSERT INTO articles (id, source_name, source_url, source_type, "
+            "title, summary, language, published_at, fetched_at, url_hash, "
+            "title_normalized) VALUES "
+            "('a_under', 'Local', 'https://example.com/a_under', 'rss', "
+            "'Headline with literal underscore', "
+            "'A unique_underscore_token in body.', 'en', "
+            "'2026-05-22T11:00:00+00:00', '2026-05-22T11:00:00+00:00', "
+            "'hash-a_under', 'headline with literal underscore')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    db = DashboardDB(db_path=sentinel_db_path, fts_db_path=fts_db_path)
+    try:
+        assert db.fts_available is False  # exercise the LIKE path
+
+        # 1. Query containing ``|`` -- not present anywhere in the fixture.
+        # A broken escape that treated ``|`` as an ESCAPE prefix could either
+        # raise "trailing escape" or silently match unintended rows.
+        pipe_result = db.search_articles("|")
+        assert pipe_result["total"] == 0
+
+        # 2. Query containing ``_`` -- with escaping, only the row containing
+        # a literal underscore matches; without escaping, every row matches
+        # (since "_" is LIKE's single-char wildcard and "%_%" matches all).
+        underscore_result = db.search_articles("_under")
+        ids = {a["id"] for a in underscore_result["articles"]}
+        # The new row's summary contains "unique_underscore_token" -- both
+        # ``a_under`` (literal _under in summary) AND no other row.
+        assert ids == {"a_under"}, ids
+
+        # 3. Combined pipe + underscore query -- still zero hits because no
+        # row contains both characters in sequence.
+        combo = db.search_articles("|_")
+        assert combo["total"] == 0
+    finally:
+        db.close()
 
 
 # ---------------------------------------------------------------------------
@@ -590,7 +685,8 @@ def test_db_tunnel_mode(sentinel_db_path, monkeypatch):
     import shutil
     import tempfile
 
-    from dashboard import config, db as db_module
+    from dashboard import config
+    from dashboard import db as db_module
 
     captured_argv: list[list[str]] = []
 
@@ -627,9 +723,7 @@ def test_db_tunnel_mode(sentinel_db_path, monkeypatch):
         batch_idx = argv.index("BatchMode=yes")
         assert argv[batch_idx - 1] == "-o"
         # Source is the production DB path on the deploy host.
-        assert (
-            "deploy@178.104.76.254:/var/lib/sentinel/sentinel.db" in argv
-        )
+        assert "deploy@178.104.76.254:/var/lib/sentinel/sentinel.db" in argv
         # Destination (last argv element) is in the OS temp directory and
         # has the dashboard tunnel prefix + .db suffix.
         tmp_path = argv[-1]
@@ -649,9 +743,7 @@ def test_db_tunnel_mode(sentinel_db_path, monkeypatch):
             )
 
         # The DB is still queryable read-only.
-        row_count = database.conn.execute(
-            "SELECT COUNT(*) FROM articles"
-        ).fetchone()[0]
+        row_count = database.conn.execute("SELECT COUNT(*) FROM articles").fetchone()[0]
         assert row_count == 9
 
         # FTS is unavailable in tunnel mode (no FTS DB file present).
@@ -663,7 +755,10 @@ def test_db_tunnel_mode(sentinel_db_path, monkeypatch):
         # Finding #12: prove the LIKE fallback wiring works in tunnel mode.
         like_result = database.search_articles("drone")
         assert {a["id"] for a in like_result["articles"]} == {
-            "a1", "a2", "a4", "a9",
+            "a1",
+            "a2",
+            "a4",
+            "a9",
         }
     finally:
         database.close()
@@ -719,10 +814,16 @@ def test_db_get_stats(db_no_fts):
 
     # Required top-level keys.
     for key in (
-        "total_articles", "total_classified", "total_events",
-        "total_alerts", "articles_per_day", "urgency_distribution",
-        "source_distribution", "language_distribution",
-        "event_type_distribution", "pipeline_funnel",
+        "total_articles",
+        "total_classified",
+        "total_events",
+        "total_alerts",
+        "articles_per_day",
+        "urgency_distribution",
+        "source_distribution",
+        "language_distribution",
+        "event_type_distribution",
+        "pipeline_funnel",
     ):
         assert key in stats, f"missing stats key: {key}"
 
@@ -738,10 +839,7 @@ def test_db_get_stats(db_no_fts):
 
     # urgency_distribution: one bucket per score 1-10.
     assert len(stats["urgency_distribution"]) == 10
-    urgency_by_score = {
-        d["urgency_score"]: d["count"]
-        for d in stats["urgency_distribution"]
-    }
+    urgency_by_score = {d["urgency_score"]: d["count"] for d in stats["urgency_distribution"]}
     assert urgency_by_score[9] == 1  # a1
     assert urgency_by_score[7] == 1  # a2
     assert urgency_by_score[10] == 0  # zero bucket present
@@ -756,9 +854,7 @@ def test_db_get_stats(db_no_fts):
 
     # pipeline_funnel has the four required stages (req 1.6b).
     funnel = stats["pipeline_funnel"]
-    assert set(funnel.keys()) == {
-        "collected", "classified", "events_created", "alerts_sent"
-    }
+    assert set(funnel.keys()) == {"collected", "classified", "events_created", "alerts_sent"}
     assert funnel["collected"] == 9
     assert funnel["classified"] == 5
     # ev1 (a1,a2) + ev2 (a4) -> 3 distinct articles reached events.
