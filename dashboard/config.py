@@ -53,12 +53,8 @@ SSH_PORT = 2222
 # Absolute path to the sentinel SQLite database on the production server.
 REMOTE_DB_PATH = "/var/lib/sentinel/sentinel.db"
 
-# Local port used for the SSH tunnel forward (-L) in tunnel mode.
-TUNNEL_LOCAL_PORT = 7022
-
-# Seconds to wait for the SCP copy / SSH tunnel before giving up.
+# Seconds to wait for the SCP copy before giving up.
 SCP_TIMEOUT_SECONDS = 60
-TUNNEL_STARTUP_TIMEOUT_SECONDS = 15
 
 
 def ssh_target() -> str:

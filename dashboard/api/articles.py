@@ -34,14 +34,18 @@ def _parse_bool(value: str | None) -> bool | None:
 
 @articles_bp.route("/articles", methods=["GET"])
 def list_articles():
-    """Return a page of articles (req 1.4, 1.4a).
+    """Return a page of articles (req 1.4, 1.4a, 1.4c).
 
     Query params: page, page_size (25/50/100), sort, order, source_name,
     source_type, language, urgency_min, urgency_max, date_from, date_to,
     pipeline_status, event_type, has_alert, q (search query).
 
-    When ``q`` is provided, full-text/LIKE search is used and other filters
-    are not applied (search is a distinct mode).
+    When ``q`` is provided, the search composes with every filter parameter
+    plus ``sort``/``order`` (req 1.4c): the request returns articles whose
+    title or summary matches the query AND that satisfy all other filters.
+    FTS rank ordering is used as the default sort under search only when no
+    explicit ``sort`` parameter is provided; an explicit ``sort`` overrides
+    rank ordering.
     """
     args = request.args
 
@@ -52,29 +56,42 @@ def list_articles():
 
     query = (args.get("q") or "").strip()
 
+    # Build the filters dict from query params -- used by both search and list.
+    filters = {
+        "source_name": args.get("source_name"),
+        "source_type": args.get("source_type"),
+        "language": args.get("language"),
+        "urgency_min": _parse_int(args.get("urgency_min")),
+        "urgency_max": _parse_int(args.get("urgency_max")),
+        "date_from": args.get("date_from"),
+        "date_to": args.get("date_to"),
+        "pipeline_status": args.get("pipeline_status"),
+        "event_type": args.get("event_type"),
+        "has_alert": _parse_bool(args.get("has_alert")),
+    }
+
+    # Detect whether the caller explicitly asked for a sort. Under search this
+    # determines FTS rank vs explicit-sort ordering (req 1.4c).
+    explicit_sort = args.get("sort")
+    sort = explicit_sort or "published_at"
+    order = args.get("order", "desc")
+
     db = get_db()
     try:
         if query:
             result = db.search_articles(
-                query, page=page, page_size=page_size
+                query,
+                filters=filters,
+                sort=explicit_sort,  # None when no explicit sort was given
+                order=order,
+                page=page,
+                page_size=page_size,
             )
         else:
-            filters = {
-                "source_name": args.get("source_name"),
-                "source_type": args.get("source_type"),
-                "language": args.get("language"),
-                "urgency_min": _parse_int(args.get("urgency_min")),
-                "urgency_max": _parse_int(args.get("urgency_max")),
-                "date_from": args.get("date_from"),
-                "date_to": args.get("date_to"),
-                "pipeline_status": args.get("pipeline_status"),
-                "event_type": args.get("event_type"),
-                "has_alert": _parse_bool(args.get("has_alert")),
-            }
             result = db.get_articles(
                 filters=filters,
-                sort=args.get("sort", "published_at"),
-                order=args.get("order", "desc"),
+                sort=sort,
+                order=order,
                 page=page,
                 page_size=page_size,
             )

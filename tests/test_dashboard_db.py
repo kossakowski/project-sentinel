@@ -10,6 +10,7 @@ event_created / alert_sent), FTS5 search, and the LIKE fallback.
 """
 
 import json
+import os
 import sqlite3
 
 import pytest
@@ -158,7 +159,7 @@ def _build_sentinel_db(path: str) -> None:
             _article_row(
                 "a1", source_name="TASS", source_type="rss", language="en",
                 title="Russian drone strike near Polish border",
-                summary="Multiple military drones crossed into Poland airspace.",
+                summary="A military drone crossed into Poland airspace.",
                 published_at="2026-05-22T10:00:00+00:00",
             ),
             _article_row(
@@ -506,12 +507,23 @@ def test_db_search_fts5(db_with_fts):
 
 
 def test_db_search_fts5_ranked(db_with_fts):
-    """[1.2d] FTS5 results are ordered by relevance rank, not arbitrarily."""
-    # 'drone' appears in a1's title AND summary -> should rank above a4
-    # where it appears only in the summary.
+    """[1.2d] FTS5 results are ordered by relevance rank, not arbitrarily.
+
+    a1 is the only article in the fixture containing the literal token
+    "drone" in BOTH its title ("Russian drone strike near Polish border")
+    and its summary ("A military drone crossed into Poland airspace.").
+    a2's title is Polish ("Drony nad Polska" -- tokenized as "drony", not
+    "drone") and contains "drone" only in its summary; a4 has "drone" only
+    in its summary too. So under FTS5 BM25 rank ordering, a1 MUST come first
+    -- the assertion fails if results are returned in arbitrary or
+    date-based order.
+    """
     result = db_with_fts.search_articles("drone")
     returned_ids = [a["id"] for a in result["articles"]]
-    assert returned_ids[0] in ("a1", "a2")
+    # a1 is the only article with the literal token in title AND summary,
+    # so under genuine rank ordering it must come first.
+    assert returned_ids[0] == "a1"
+    assert set(returned_ids) == {"a1", "a2", "a4"}
 
 
 def test_db_search_like_fallback(db_no_fts):
@@ -541,6 +553,127 @@ def test_db_search_like_special_chars(db_no_fts):
     # No article contains a literal '%' so this must return nothing.
     result = db_no_fts.search_articles("%")
     assert result["total"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Tests -- tunnel mode (req 1.1c / 1.2a, acceptance test #21)
+# ---------------------------------------------------------------------------
+
+
+def test_db_tunnel_mode(sentinel_db_path, monkeypatch):
+    """[1.1c, 1.2a] Acceptance test #21: tunnel mode SCP argv + lifecycle.
+
+    Tunnel mode MUST:
+      * Invoke ``scp`` with the correct argv -- ``-P 2222``, ``BatchMode=yes``,
+        source ``deploy@178.104.76.254:/var/lib/sentinel/sentinel.db``, dest a
+        temp file in the OS tempdir.
+      * Open the temp copy read-only (``?mode=ro``).
+      * Remove the temp file on ``close()`` so each session is fresh.
+
+    Hermetic: ``subprocess.run`` is monkeypatched -- no real SCP runs. The
+    monkeypatch instead copies a local sample DB into the temp path the SCP
+    invocation would have written to, so the subsequent SQLite open succeeds.
+    """
+    import shutil
+    import tempfile
+
+    from dashboard import config, db as db_module
+
+    captured_argv: list[list[str]] = []
+
+    class _FakeCompletedProcess:
+        returncode = 0
+        stderr = ""
+
+    def fake_run(argv, capture_output, text, timeout):  # noqa: ARG001
+        captured_argv.append(list(argv))
+        # argv[-1] is the destination path the scp would have written to.
+        shutil.copy(sentinel_db_path, argv[-1])
+        return _FakeCompletedProcess()
+
+    monkeypatch.setattr(db_module.subprocess, "run", fake_run)
+
+    database = DashboardDB(tunnel=True, fts_db_path="/nonexistent/fts.db")
+    try:
+        # 1. scp was invoked exactly once with the expected argv.
+        assert len(captured_argv) == 1
+        argv = captured_argv[0]
+        assert argv[0] == "scp"
+        # Port flag and value, in order.
+        assert "-P" in argv
+        port_idx = argv.index("-P")
+        assert argv[port_idx + 1] == str(config.SSH_PORT) == "2222"
+        # BatchMode=yes is the value following an '-o' option.
+        assert "BatchMode=yes" in argv
+        batch_idx = argv.index("BatchMode=yes")
+        assert argv[batch_idx - 1] == "-o"
+        # Source is the production DB path on the deploy host.
+        assert (
+            "deploy@178.104.76.254:/var/lib/sentinel/sentinel.db" in argv
+        )
+        # Destination (last argv element) is in the OS temp directory and
+        # has the dashboard tunnel prefix + .db suffix.
+        tmp_path = argv[-1]
+        assert os.path.dirname(tmp_path) == tempfile.gettempdir()
+        assert os.path.basename(tmp_path).startswith("dashboard_tunnel_")
+        assert tmp_path.endswith(".db")
+        # The temp file exists during the session.
+        assert os.path.exists(tmp_path)
+
+        # 2. The connection opens the temp copy read-only -- writes raise.
+        with pytest.raises(sqlite3.OperationalError):
+            database.conn.execute(
+                "INSERT INTO articles (id, source_name, source_url, "
+                "source_type, title, language, published_at, fetched_at, "
+                "url_hash, title_normalized) VALUES "
+                "('x','x','x','x','x','x','x','x','x','x')"
+            )
+
+        # The DB is still queryable read-only.
+        row_count = database.conn.execute(
+            "SELECT COUNT(*) FROM articles"
+        ).fetchone()[0]
+        assert row_count == 8
+
+        # FTS is unavailable in tunnel mode (no FTS DB file present).
+        assert database.fts_available is False
+    finally:
+        database.close()
+
+    # 3. Temp file is removed on close().
+    assert not os.path.exists(tmp_path)
+
+
+def test_db_tunnel_mode_scp_failure(monkeypatch):
+    """[1.1c, 1.2a] A non-zero scp exit raises RuntimeError and cleans up.
+
+    Complements the happy-path test: when the SCP fetch fails, the tunnel
+    constructor must surface the failure and not leave a stale temp file
+    behind.
+    """
+    from dashboard import db as db_module
+
+    leaked_paths: list[str] = []
+
+    class _FailingProcess:
+        returncode = 1
+        stderr = "Permission denied (publickey)."
+
+    def fake_run(argv, capture_output, text, timeout):  # noqa: ARG001
+        # Record the temp path scp would have written to so we can verify
+        # it was cleaned up.
+        leaked_paths.append(argv[-1])
+        return _FailingProcess()
+
+    monkeypatch.setattr(db_module.subprocess, "run", fake_run)
+
+    with pytest.raises(RuntimeError, match="SSH tunnel DB fetch failed"):
+        DashboardDB(tunnel=True)
+
+    # And the would-have-been-leaked temp file does not exist.
+    assert leaked_paths
+    for path in leaked_paths:
+        assert not os.path.exists(path)
 
 
 # ---------------------------------------------------------------------------

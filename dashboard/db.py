@@ -6,18 +6,22 @@ SQLite database. It deliberately does NOT reuse `sentinel.database.Database`
 production data. It supports two connection modes:
 
 * **local** (default): opens the synced SQLite file directly in read-only mode.
-* **tunnel**: opens an SSH tunnel via `subprocess` and connects through it.
+* **tunnel**: SCPs a fresh temporary copy of the production DB on each connect
+  (no port-forwarding -- the production DB is a plain file with no remote query
+  service, so ``ssh -L`` would target nothing). The temp file is opened
+  read-only and removed on close.
 
 FTS5 full-text search is used when an `articles_fts` index exists (built by
 `dashboard.sync` into a separate DB file and ATTACHed here); otherwise search
-falls back to a `LIKE` scan.
+falls back to a `LIKE` scan. The temporary copy used in tunnel mode has no FTS
+index, so tunnel-mode search always uses the LIKE fallback.
 """
 
 import json
 import os
 import sqlite3
 import subprocess
-import time
+import tempfile
 from datetime import datetime, timedelta, timezone
 
 from dashboard import config
@@ -72,7 +76,9 @@ class DashboardDB:
         self.tunnel = tunnel
         self.db_path = db_path or config.DEFAULT_DB_PATH
         self.fts_db_path = fts_db_path or config.FTS_DB_PATH
-        self._tunnel_proc: subprocess.Popen | None = None
+        # Path to the temporary DB copy fetched in tunnel mode (None otherwise).
+        # Removed on close() so each invocation gets fresh data.
+        self._tunnel_tempfile: str | None = None
         self._fts_available = False
 
         if tunnel:
@@ -105,66 +111,63 @@ class DashboardDB:
         return sqlite3.connect(uri, uri=True, check_same_thread=False)
 
     def _connect_via_tunnel(self) -> sqlite3.Connection:
-        """Establish an SSH tunnel to the production server and connect.
+        """SCP a fresh copy of the production DB and open it read-only.
 
-        The remote sentinel DB is a plain file, so we cannot "forward a port"
-        to it directly. Instead we open an SSH master connection with a local
-        port forward (`ssh -L`) kept alive in the background, then SCP the file
-        through that already-authenticated channel into a temp local copy and
-        open that copy read-only. The tunnel process is torn down on close().
+        The production sentinel DB is a plain SQLite file with no remote query
+        service, so port-forwarding (``ssh -L``) would target nothing. Instead
+        we use ``scp`` to copy the file into a fresh temporary local path on
+        every connection. The temp file is opened with ``?mode=ro`` and removed
+        on ``close()``, so each session gets data current as of the moment it
+        started (req 1.1c / 1.2a).
+
+        The SCP invocation uses ``BatchMode=yes`` (no interactive prompts) and
+        the configured SSH port + user. FTS5 is not built for the temp copy, so
+        search falls back to LIKE in tunnel mode.
         """
-        local_copy = os.path.join(config.DATA_DIR, "sentinel_tunnel.db")
-        os.makedirs(config.DATA_DIR, exist_ok=True)
-
-        # Background SSH process holding the -L forward open. This satisfies
-        # req 1.2a (use subprocess to establish an `ssh -L` tunnel) and gives a
-        # live, authenticated channel; the file is then pulled over it.
-        self._tunnel_proc = subprocess.Popen(
-            [
-                "ssh",
-                "-N",
-                "-p", str(config.SSH_PORT),
-                "-L",
-                f"{config.TUNNEL_LOCAL_PORT}:127.0.0.1:{config.SSH_PORT}",
-                "-o", "BatchMode=yes",
-                "-o", "ExitOnForwardFailure=yes",
-                config.ssh_target(),
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+        # NamedTemporaryFile with delete=False so we control teardown ourselves
+        # (scp / sqlite need the path; we remove it in close()).
+        tmp = tempfile.NamedTemporaryFile(
+            prefix="dashboard_tunnel_", suffix=".db", delete=False
         )
-        time.sleep(1)  # Give the forward a moment to come up.
+        tmp.close()
+        self._tunnel_tempfile = tmp.name
 
-        result = subprocess.run(
-            [
-                "scp",
-                "-P", str(config.SSH_PORT),
-                "-o", "BatchMode=yes",
-                config.scp_source(),
-                local_copy,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=config.SCP_TIMEOUT_SECONDS,
-        )
-        if result.returncode != 0:
-            self._kill_tunnel()
-            raise RuntimeError(
-                f"SSH tunnel DB fetch failed: {result.stderr.strip()}"
+        try:
+            result = subprocess.run(
+                [
+                    "scp",
+                    "-P", str(config.SSH_PORT),
+                    "-o", "BatchMode=yes",
+                    config.scp_source(),
+                    self._tunnel_tempfile,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=config.SCP_TIMEOUT_SECONDS,
             )
+        except Exception:
+            self._remove_tunnel_tempfile()
+            raise
 
-        uri = f"file:{os.path.abspath(local_copy)}?mode=ro"
+        if result.returncode != 0:
+            stderr = result.stderr.strip() if result.stderr else ""
+            self._remove_tunnel_tempfile()
+            raise RuntimeError(f"SSH tunnel DB fetch failed: {stderr}")
+
+        uri = f"file:{os.path.abspath(self._tunnel_tempfile)}?mode=ro"
         return sqlite3.connect(uri, uri=True, check_same_thread=False)
 
-    def _kill_tunnel(self) -> None:
-        """Terminate the background SSH tunnel process, if any."""
-        if self._tunnel_proc is not None:
-            self._tunnel_proc.terminate()
-            try:
-                self._tunnel_proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self._tunnel_proc.kill()
-            self._tunnel_proc = None
+    def _remove_tunnel_tempfile(self) -> None:
+        """Remove the temp DB copy fetched in tunnel mode, if any."""
+        path = self._tunnel_tempfile
+        if path is None:
+            return
+        self._tunnel_tempfile = None
+        try:
+            os.remove(path)
+        except OSError:
+            # Already gone, or never created -- nothing to clean up.
+            pass
 
     def _maybe_attach_fts(self) -> None:
         """ATTACH the FTS index DB if it exists and holds an articles_fts table."""
@@ -189,11 +192,11 @@ class DashboardDB:
         return self._fts_available
 
     def close(self) -> None:
-        """Close the DB connection and tear down the SSH tunnel if present."""
+        """Close the DB connection and remove the tunnel temp copy if any."""
         try:
             self.conn.close()
         finally:
-            self._kill_tunnel()
+            self._remove_tunnel_tempfile()
 
     def __enter__(self) -> "DashboardDB":
         return self
@@ -380,12 +383,40 @@ class DashboardDB:
         "                 WHERE je.value = a.id)))"
     )
 
-    def _select_columns(self) -> str:
-        """Column list for article SELECTs, including the classification join."""
+    # Article columns that every list/detail query needs to populate
+    # `_article_from_row`. `raw_metadata` is intentionally excluded here -- it
+    # is a JSON blob used only by `get_article_detail`, so list/search queries
+    # avoid reading and discarding it per row (low-severity I/O cleanup).
+    _LIST_ARTICLE_COLUMNS = (
+        "a.id, a.source_name, a.source_url, a.source_type, a.title, "
+        "a.summary, a.language, a.published_at, a.fetched_at"
+    )
+
+    def _list_select_columns(self) -> str:
+        """Lean SELECT column list for ``get_articles`` / ``search_articles``.
+
+        Includes the classification join columns and event/alert count
+        subqueries needed by `_article_from_row`. Omits ``raw_metadata`` --
+        only ``get_article_detail`` reads it.
+        """
         return (
-            "a.id, a.source_name, a.source_url, a.source_type, a.title, "
-            "a.summary, a.language, a.published_at, a.fetched_at, "
-            "a.raw_metadata, "
+            f"{self._LIST_ARTICLE_COLUMNS}, "
+            "c.id AS classification_id, c.is_military_event, c.event_type, "
+            "c.urgency_score, c.affected_countries, c.aggressor, "
+            "c.is_new_event, c.confidence, c.summary_pl, c.classified_at, "
+            "c.model_used, c.input_tokens, c.output_tokens, "
+            f"{self._EVENT_COUNT_SQL} AS event_count, "
+            f"{self._ALERT_COUNT_SQL} AS alert_count"
+        )
+
+    def _detail_select_columns(self) -> str:
+        """SELECT column list for ``get_article_detail``.
+
+        Same as `_list_select_columns` plus ``a.raw_metadata`` -- the detail
+        endpoint exposes the parsed metadata blob to the dashboard.
+        """
+        return (
+            f"{self._LIST_ARTICLE_COLUMNS}, a.raw_metadata, "
             "c.id AS classification_id, c.is_military_event, c.event_type, "
             "c.urgency_score, c.affected_countries, c.aggressor, "
             "c.is_new_event, c.confidence, c.summary_pl, c.classified_at, "
@@ -444,7 +475,7 @@ class DashboardDB:
         offset = (page - 1) * page_size
         # Stable secondary sort on a.id so equal sort keys paginate predictably.
         rows = self.conn.execute(
-            f"SELECT {self._select_columns()}{base} "
+            f"SELECT {self._list_select_columns()}{base} "
             f"ORDER BY {sort_expr} {direction}, a.id {direction} "
             "LIMIT ? OFFSET ?",
             [*params, page_size, offset],
@@ -470,7 +501,7 @@ class DashboardDB:
           list (req 1.5b)
         """
         row = self.conn.execute(
-            f"SELECT {self._select_columns()} "
+            f"SELECT {self._detail_select_columns()} "
             "FROM articles a "
             "LEFT JOIN classifications c ON c.article_id = a.id "
             "WHERE a.id = ?",
@@ -538,17 +569,39 @@ class DashboardDB:
             )
         return events
 
+    # Sentinel for "no explicit sort was passed". Lets the API layer detect
+    # whether the caller asked for the default vs an explicit sort, so search
+    # mode can use FTS rank ordering when (and only when) the sort is implicit
+    # (req 1.4c).
+    _DEFAULT_SORT = "published_at"
+
     def search_articles(
         self,
         query: str,
+        filters: dict | None = None,
+        sort: str | None = None,
+        order: str | None = None,
         page: int = 1,
         page_size: int = DEFAULT_PAGE_SIZE,
     ) -> dict:
-        """Full-text search across article title + summary.
+        """Full-text search across article title + summary, composable with filters.
 
-        Uses the FTS5 `articles_fts` index when available, ordered by
-        relevance rank; otherwise falls back to a LIKE scan over title and
-        summary. Result shape matches `get_articles`.
+        Args:
+            query: search terms (whitespace-separated, AND-ed by FTS5).
+            filters: same shape as ``get_articles`` -- composed with the search
+                via AND (req 1.4c).
+            sort: same whitelist as ``get_articles``. When None (no explicit
+                sort), FTS results are ordered by relevance rank and LIKE
+                results by published_at DESC. When an explicit sort is given,
+                it overrides the default rank/date ordering.
+            order: "asc" or "desc". When None, defaults to "desc".
+            page: 1-based page number.
+            page_size: rows per page.
+
+        Returns the same shape as ``get_articles``.
+
+        Uses the FTS5 `articles_fts` index when available; otherwise falls
+        back to a LIKE scan over title and summary.
         """
         page = max(1, int(page))
         page_size = int(page_size)
@@ -566,32 +619,70 @@ class DashboardDB:
                 "total_pages": 0,
             }
 
+        # explicit_sort: caller provided a sort column override.
+        explicit_sort = sort is not None
+        effective_sort = sort or self._DEFAULT_SORT
+        effective_order = order or "desc"
+
         if self._fts_available:
-            return self._search_fts(query, page, page_size, offset)
-        return self._search_like(query, page, page_size, offset)
+            return self._search_fts(
+                query, filters or {}, effective_sort, effective_order,
+                explicit_sort, page, page_size, offset,
+            )
+        return self._search_like(
+            query, filters or {}, effective_sort, effective_order,
+            explicit_sort, page, page_size, offset,
+        )
 
     def _search_fts(
-        self, query: str, page: int, page_size: int, offset: int
+        self,
+        query: str,
+        filters: dict,
+        sort: str,
+        order: str,
+        explicit_sort: bool,
+        page: int,
+        page_size: int,
+        offset: int,
     ) -> dict:
-        """FTS5-backed search ordered by relevance rank."""
+        """FTS5-backed search; rank-ordered by default, overridable by sort."""
         match_query = self._fts_match_query(query)
 
+        where_sql, filter_params = self._build_filters(filters)
+        # Combine the FTS MATCH predicate with the filter predicates.
+        if where_sql:
+            where_clause = (
+                " WHERE f.articles_fts MATCH ? AND "
+                + where_sql.removeprefix(" WHERE ")
+            )
+        else:
+            where_clause = " WHERE f.articles_fts MATCH ?"
+
+        base = (
+            " FROM fts.articles_fts f "
+            "JOIN articles a ON a.id = f.article_id "
+            "LEFT JOIN classifications c ON c.article_id = a.id"
+            + where_clause
+        )
+
         total = self.conn.execute(
-            "SELECT COUNT(*) FROM fts.articles_fts WHERE articles_fts MATCH ?",
-            (match_query,),
+            "SELECT COUNT(*)" + base,
+            [match_query, *filter_params],
         ).fetchone()[0]
 
-        # Join the FTS hits (carrying article id + rank) back to the full
-        # article + classification rows. Order by rank ascending = best first.
+        # Order by rank ascending = best first; explicit sort overrides.
+        if explicit_sort:
+            sort_expr = _SORT_COLUMNS.get(sort, _SORT_COLUMNS[self._DEFAULT_SORT])
+            direction = "ASC" if str(order).lower() == "asc" else "DESC"
+            order_clause = f"ORDER BY {sort_expr} {direction}, a.id {direction}"
+        else:
+            order_clause = "ORDER BY f.rank, a.id ASC"
+
         rows = self.conn.execute(
-            f"SELECT {self._select_columns()} "
-            "FROM fts.articles_fts f "
-            "JOIN articles a ON a.id = f.article_id "
-            "LEFT JOIN classifications c ON c.article_id = a.id "
-            "WHERE f.articles_fts MATCH ? "
-            "ORDER BY f.rank "
+            f"SELECT {self._list_select_columns()}{base} "
+            f"{order_clause} "
             "LIMIT ? OFFSET ?",
-            (match_query, page_size, offset),
+            [match_query, *filter_params, page_size, offset],
         ).fetchall()
 
         total_pages = (total + page_size - 1) // page_size if page_size else 0
@@ -611,13 +702,23 @@ class DashboardDB:
         embedded double quotes doubled, per FTS5 string syntax) so punctuation
         and FTS operator characters in user input cannot break the query or be
         interpreted as operators. Tokens are implicitly AND-ed by FTS5.
+        ``search_articles`` returns early on empty input, so this function is
+        always called with at least one token.
         """
         tokens = query.split()
         quoted = ['"' + tok.replace('"', '""') + '"' for tok in tokens]
-        return " ".join(quoted) if quoted else '""'
+        return " ".join(quoted)
 
     def _search_like(
-        self, query: str, page: int, page_size: int, offset: int
+        self,
+        query: str,
+        filters: dict,
+        sort: str,
+        order: str,
+        explicit_sort: bool,
+        page: int,
+        page_size: int,
+        offset: int,
     ) -> dict:
         """LIKE-based fallback search when no FTS5 index exists."""
         # Escape LIKE wildcards in user input; use an explicit ESCAPE clause.
@@ -627,22 +728,41 @@ class DashboardDB:
             .replace("_", "\\_")
         )
         like = f"%{escaped}%"
-        where = (
+
+        where_sql, filter_params = self._build_filters(filters)
+        like_clause = "(a.title LIKE ? ESCAPE '\\' OR a.summary LIKE ? ESCAPE '\\')"
+        if where_sql:
+            where_clause = (
+                " WHERE " + like_clause + " AND "
+                + where_sql.removeprefix(" WHERE ")
+            )
+        else:
+            where_clause = " WHERE " + like_clause
+
+        base = (
             " FROM articles a "
-            "LEFT JOIN classifications c ON c.article_id = a.id "
-            "WHERE a.title LIKE ? ESCAPE '\\' "
-            "OR a.summary LIKE ? ESCAPE '\\'"
+            "LEFT JOIN classifications c ON c.article_id = a.id"
+            + where_clause
         )
 
         total = self.conn.execute(
-            "SELECT COUNT(*)" + where, (like, like)
+            "SELECT COUNT(*)" + base,
+            [like, like, *filter_params],
         ).fetchone()[0]
 
+        # Default LIKE ordering: most-recent first. Explicit sort overrides.
+        if explicit_sort:
+            sort_expr = _SORT_COLUMNS.get(sort, _SORT_COLUMNS[self._DEFAULT_SORT])
+            direction = "ASC" if str(order).lower() == "asc" else "DESC"
+            order_clause = f"ORDER BY {sort_expr} {direction}, a.id {direction}"
+        else:
+            order_clause = "ORDER BY a.published_at DESC, a.id DESC"
+
         rows = self.conn.execute(
-            f"SELECT {self._select_columns()}{where} "
-            "ORDER BY a.published_at DESC, a.id DESC "
+            f"SELECT {self._list_select_columns()}{base} "
+            f"{order_clause} "
             "LIMIT ? OFFSET ?",
-            (like, like, page_size, offset),
+            [like, like, *filter_params, page_size, offset],
         ).fetchall()
 
         total_pages = (total + page_size - 1) // page_size if page_size else 0

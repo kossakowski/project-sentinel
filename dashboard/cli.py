@@ -11,6 +11,7 @@ Flags (req 1.8):
 """
 
 import argparse
+import os
 import sys
 
 from dashboard import config
@@ -48,6 +49,19 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _derive_fts_path(db_path: str) -> str:
+    """Return the FTS index path co-located with the given DB.
+
+    When the user passes a custom ``--db`` location, the FTS index belongs
+    next to the synced DB (``<db_dir>/sentinel_fts.db``) -- not stranded in
+    the default ``dashboard/data/`` directory. When ``--db`` is the default,
+    this returns the default FTS path unchanged.
+    """
+    if db_path == config.DEFAULT_DB_PATH:
+        return config.FTS_DB_PATH
+    return os.path.join(os.path.dirname(os.path.abspath(db_path)), "sentinel_fts.db")
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point. Returns a process exit code.
 
@@ -56,9 +70,11 @@ def main(argv: list[str] | None = None) -> int:
     """
     args = build_parser().parse_args(argv)
 
+    fts_db_path = _derive_fts_path(args.db)
+
     if args.sync:
         print("Syncing production database...")
-        result = sync_db(db_path=args.db)
+        result = sync_db(db_path=args.db, fts_db_path=fts_db_path)
         if result.success:
             print(
                 f"Sync OK: {result.article_count} articles, "
@@ -68,7 +84,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Sync FAILED: {result.error}", file=sys.stderr)
             return 1
 
-    app = create_app(db_path=args.db, tunnel=args.tunnel)
+    app = create_app(
+        db_path=args.db, tunnel=args.tunnel, fts_db_path=fts_db_path
+    )
     print(f"Starting dashboard on http://127.0.0.1:{args.port}")
     # threaded=True so per-request SQLite connections run on worker threads;
     # this is a single-user localhost tool, so the dev server is sufficient.

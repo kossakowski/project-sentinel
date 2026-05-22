@@ -8,13 +8,15 @@ The sample-DB builder is reused from `test_dashboard_db` so both test modules
 exercise the same fixture data.
 """
 
-import json
 import sqlite3
 
 import pytest
 
 from dashboard.app import create_app
-from dashboard.classifier_input import build_classifier_input
+from dashboard.classifier_input import (
+    ENRICHMENT_NOT_FETCHED_NOTE,
+    build_classifier_input,
+)
 from dashboard.db import DashboardDB
 from dashboard.sync import build_fts_index
 from tests.test_dashboard_db import _build_sentinel_db
@@ -201,6 +203,61 @@ def test_api_articles_search(client):
         assert "drone" in haystack
 
 
+def test_api_articles_search_with_filters(client):
+    """[1.4c] Acceptance test #20: search composes with filters and sort.
+
+    ``?q=drone&pipeline_status=unclassified`` returns articles whose title or
+    summary matches "drone" AND that have no classification. With three drone
+    articles in the fixture (a1, a2, a4 -- all classified), this MUST return
+    zero results when filtered to unclassified -- proving the filter is
+    actually applied alongside search.
+
+    An explicit ``sort`` parameter MUST override FTS rank ordering.
+    """
+    # Search + pipeline_status filter -- the three drone articles are all
+    # classified, so the unclassified-filtered search returns nothing.
+    resp = client.get("/api/articles?q=drone&pipeline_status=unclassified")
+    body = resp.get_json()
+    assert body["total"] == 0
+    assert body["articles"] == []
+
+    # Search + classified filter -- still finds all three.
+    resp = client.get("/api/articles?q=drone&pipeline_status=classified")
+    body = resp.get_json()
+    assert body["total"] == 3
+    assert {a["id"] for a in body["articles"]} == {"a1", "a2", "a4"}
+
+    # Search + source_type filter -- only a4 is a telegram drone article.
+    resp = client.get("/api/articles?q=drone&source_type=telegram")
+    body = resp.get_json()
+    assert body["total"] == 1
+    assert body["articles"][0]["id"] == "a4"
+
+    # Search + urgency filter -- a1 (urgency 9) and a2 (urgency 7) only.
+    resp = client.get("/api/articles?q=drone&urgency_min=7")
+    body = resp.get_json()
+    assert {a["id"] for a in body["articles"]} == {"a1", "a2"}
+
+    # Default search (no explicit sort) -- FTS rank ordering. a1 has "drone"
+    # in both title AND summary so it ranks first.
+    resp = client.get("/api/articles?q=drone")
+    body = resp.get_json()
+    assert body["articles"][0]["id"] == "a1"
+
+    # Explicit sort overrides FTS rank: ascending published_at -> a4 first
+    # (oldest drone article in the fixture: 2026-05-20).
+    resp = client.get(
+        "/api/articles?q=drone&sort=published_at&order=asc"
+    )
+    body = resp.get_json()
+    assert body["articles"][0]["id"] == "a4"
+
+    # Explicit sort by urgency descending under search -> a1 first (urgency 9).
+    resp = client.get("/api/articles?q=drone&sort=urgency_score&order=desc")
+    body = resp.get_json()
+    assert body["articles"][0]["id"] == "a1"
+
+
 # ---------------------------------------------------------------------------
 # GET /api/articles/<id>
 # ---------------------------------------------------------------------------
@@ -253,12 +310,43 @@ def test_api_article_detail_unclassified(client):
 # ---------------------------------------------------------------------------
 
 
+def _extract_per_article_block(article: dict) -> str:
+    """Return the exact per-article block from the live classifier template.
+
+    Renders ``USER_PROMPT_TEMPLATE`` from ``classifier.py`` with the article's
+    fields, then extracts the substring between the ``"Analyze this article:"``
+    preamble and the trailing ``"Respond with JSON:"`` schema -- i.e. the
+    Source/Language/Published/Title/Summary block the dashboard reconstructs.
+
+    Used by the reconstruction test to assert byte-for-byte equality against
+    the real template, so any drift in classifier.py's per-article format
+    fails the test.
+    """
+    from sentinel.classification.classifier import USER_PROMPT_TEMPLATE
+
+    rendered = USER_PROMPT_TEMPLATE.format(
+        source_name=article["source_name"],
+        source_type=article["source_type"],
+        language=article["language"],
+        published_at=article["published_at"],
+        title=article["title"],
+        summary=article["summary"],
+    )
+    # Slice between the preamble line and the schema header.
+    head = "Analyze this article:\n\n"
+    tail = "\n\nRespond with JSON:"
+    head_idx = rendered.index(head) + len(head)
+    tail_idx = rendered.index(tail, head_idx)
+    return rendered[head_idx:tail_idx]
+
+
 def test_classifier_input_reconstruction():
     """[1.5a] The reconstructed input matches the classifier.py prompt format.
 
-    The expected string is built from `USER_PROMPT_TEMPLATE` in
-    `sentinel/classification/classifier.py` -- the per-article 5-line block:
-    Source / Language / Published / Title / Summary.
+    Asserts the reconstruction equals byte-for-byte the per-article block
+    extracted directly from ``USER_PROMPT_TEMPLATE`` -- any drift in the
+    classifier's per-article format (a reordered line, a renamed field, a new
+    line) fails this test deterministically.
     """
     article = {
         "source_name": "TVN24",
@@ -279,21 +367,141 @@ def test_classifier_input_reconstruction():
     )
     assert result == expected
 
-    # Cross-check field-by-field against the real classifier template, so
-    # this test fails if classifier.py's format ever drifts.
-    from sentinel.classification.classifier import USER_PROMPT_TEMPLATE
+    # Exact match against the live classifier per-article block -- this fails
+    # if classifier.py's format drifts (line reorder, field rename, new line).
+    template_block = _extract_per_article_block(article)
+    assert result == template_block
 
-    rendered = USER_PROMPT_TEMPLATE.format(
-        source_name=article["source_name"],
-        source_type=article["source_type"],
-        language=article["language"],
-        published_at=article["published_at"],
-        title=article["title"],
-        summary=article["summary"],
+
+def test_classifier_input_with_enrichment_note():
+    """[1.5a] An enrichment-flagged article whose body fetch failed gets the
+    caution note appended -- matching ``Classifier._build_user_prompt``.
+
+    The classifier appends a note after the Summary line when
+    ``raw_metadata.enrichment.method`` is in {heuristic, llm} AND
+    ``enrichment.fetched`` is falsy. The dashboard reconstruction must do the
+    same -- otherwise the displayed input misrepresents what the classifier
+    actually saw for production-exercised enrichment-flagged articles.
+    """
+    article = {
+        "source_name": "Google News",
+        "source_type": "google_news",
+        "language": "en",
+        "published_at": "2026-05-22T10:00:00+00:00",
+        "title": "Vague NATO country headline",
+        "summary": "Vague NATO country headline",
+        "raw_metadata": {
+            "enrichment": {
+                "method": "heuristic",
+                "fetched": False,
+                "original_summary": "Vague NATO country headline",
+            }
+        },
+    }
+    result = build_classifier_input(article)
+
+    # Reconstruction equals the 5-line block plus the note appended on a new
+    # line right after the Summary -- byte-for-byte the same shape the
+    # classifier produces (see classifier.py:_build_user_prompt).
+    expected = (
+        "Source: Google News (google_news)\n"
+        "Language: en\n"
+        "Published: 2026-05-22T10:00:00+00:00\n"
+        "Title: Vague NATO country headline\n"
+        "Summary: Vague NATO country headline\n"
+        + ENRICHMENT_NOT_FETCHED_NOTE
     )
-    # Every line of our reconstruction appears verbatim in the real prompt.
-    for line in result.split("\n"):
-        assert line in rendered
+    assert result == expected
+
+    # Also true for method='llm' (the other branch the classifier triggers on).
+    article_llm = dict(article)
+    article_llm["raw_metadata"] = {
+        "enrichment": {"method": "llm", "fetched": False}
+    }
+    assert build_classifier_input(article_llm).endswith(
+        "\n" + ENRICHMENT_NOT_FETCHED_NOTE
+    )
+
+
+def test_enrichment_note_matches_classifier_source():
+    """[1.5a] The dashboard's enrichment caution note is byte-identical to the
+    string the classifier appends in ``_build_user_prompt``.
+
+    Reads the classifier source via ``inspect.getsource`` and reconstructs the
+    note from the Python string literals there (one literal per line via
+    implicit concatenation). Asserts that reconstruction equals the dashboard
+    constant. This is the drift guard: if classifier.py changes the note,
+    this test fails before the dashboard misrepresents what the classifier
+    saw.
+    """
+    import inspect
+    import re
+
+    from sentinel.classification.classifier import Classifier
+
+    source = inspect.getsource(Classifier._build_user_prompt)
+    # Find the consecutive string literals starting with the note prefix.
+    # The source looks like:
+    #   "Note: Article body could not be fetched. The summary above may just be "
+    #   "the headline repeated. Exercise extreme caution with country attribution "
+    #   "— do not assume a monitored country is affected unless explicitly stated.",
+    note_segments = re.findall(
+        r'"((?:Note:|the headline repeated|—)[^"]*)"', source
+    )
+    # We expect exactly the three segments that make up the implicit-concat
+    # literal -- if classifier.py reflows them or adds/removes a line, this
+    # count changes and the test fails.
+    assert len(note_segments) == 3, (
+        f"expected 3 note segments in classifier.py, got {len(note_segments)}: "
+        f"{note_segments!r}"
+    )
+    reconstructed = "".join(note_segments)
+    assert reconstructed == ENRICHMENT_NOT_FETCHED_NOTE, (
+        "classifier.py note has drifted from dashboard.ENRICHMENT_NOT_FETCHED_NOTE"
+    )
+
+
+def test_classifier_input_without_enrichment_note():
+    """[1.5a] When enrichment was successful (fetched=True) or absent, the
+    caution note is NOT appended -- the classifier only adds it when the body
+    fetch failed for an enrichment-flagged article.
+    """
+    # Case 1: enrichment succeeded.
+    article_fetched = {
+        "source_name": "Google News",
+        "source_type": "google_news",
+        "language": "en",
+        "published_at": "2026-05-22T10:00:00+00:00",
+        "title": "Some title",
+        "summary": "Enriched body content.",
+        "raw_metadata": {
+            "enrichment": {"method": "heuristic", "fetched": True},
+        },
+    }
+    assert ENRICHMENT_NOT_FETCHED_NOTE not in build_classifier_input(article_fetched)
+
+    # Case 2: enrichment method is "none" (article was not flagged).
+    article_none = {
+        "source_name": "Direct RSS",
+        "source_type": "rss",
+        "language": "en",
+        "published_at": "2026-05-22T10:00:00+00:00",
+        "title": "Some title",
+        "summary": "A full summary already.",
+        "raw_metadata": {"enrichment": {"method": "none"}},
+    }
+    assert ENRICHMENT_NOT_FETCHED_NOTE not in build_classifier_input(article_none)
+
+    # Case 3: no raw_metadata at all.
+    article_no_meta = {
+        "source_name": "Direct RSS",
+        "source_type": "rss",
+        "language": "en",
+        "published_at": "2026-05-22T10:00:00+00:00",
+        "title": "Some title",
+        "summary": "Body",
+    }
+    assert ENRICHMENT_NOT_FETCHED_NOTE not in build_classifier_input(article_no_meta)
 
 
 def test_classifier_input_missing_published():
