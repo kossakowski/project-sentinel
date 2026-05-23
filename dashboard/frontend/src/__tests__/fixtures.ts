@@ -2,6 +2,8 @@
 
 import type {
   AlertRecord,
+  Annotation,
+  ArticleAnnotation,
   Article,
   ArticleDetail,
   Classification,
@@ -44,6 +46,8 @@ export function makeArticle(overrides: Partial<Article> = {}): Article {
     classification: makeClassification(),
     pipeline_status: "classified",
     has_alert: false,
+    // Phase 4: every article carries an `annotation` field (req 4.5).
+    annotation: null,
     ...overrides,
   };
 }
@@ -113,6 +117,34 @@ export function makeArticleDetail(
   };
 }
 
+export function makeAnnotation(
+  overrides: Partial<Annotation> = {},
+): Annotation {
+  return {
+    id: "ann-1",
+    article_id: "art-1",
+    label: "correct",
+    expected_urgency: 6,
+    notes: "Looks right.",
+    created_at: "2026-05-22T11:00:00+00:00",
+    updated_at: "2026-05-22T11:00:00+00:00",
+    article_title: null,
+    article_urgency_score: null,
+    ...overrides,
+  };
+}
+
+export function makeArticleAnnotation(
+  overrides: Partial<ArticleAnnotation> = {},
+): ArticleAnnotation {
+  return {
+    label: "correct",
+    expected_urgency: 6,
+    notes: "Looks right.",
+    ...overrides,
+  };
+}
+
 export function makeStats(overrides: Partial<StatsResponse> = {}): StatsResponse {
   // Build a 30-day calendar so tests that traverse articles_per_day get a
   // realistic length without hard-coding 30 entries everywhere.
@@ -163,6 +195,11 @@ export function makeStats(overrides: Partial<StatsResponse> = {}): StatsResponse
       classified: 155,
       events_created: 60,
       alerts_sent: 25,
+    },
+    annotation_stats: {
+      total: 0,
+      by_label: { correct: 0, incorrect: 0, uncertain: 0 },
+      average_urgency_deviation: null,
     },
     ...overrides,
   };

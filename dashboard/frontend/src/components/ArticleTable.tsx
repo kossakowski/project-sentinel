@@ -4,6 +4,7 @@ import { Link, useLocation } from "react-router-dom";
 import type { Article, ArticleDetail, SortColumn, SortOrder } from "../types";
 import { ALL_COLUMNS, type ColumnKey } from "./columns";
 import { pipelineStatusBadge, urgencyClass } from "./badges";
+import { AnnotationBadge } from "./AnnotationBadge";
 import { safeHref } from "../utils/safeHref";
 import { ApiError, fetchArticleDetail } from "../api/client";
 
@@ -472,6 +473,9 @@ function renderCell(
     case "is_military_event":
       if (!article.classification) return "—";
       return article.classification.is_military_event ? "Yes" : "No";
+    case "annotation":
+      // Phase 4 (req 4.4) — small coloured dot per label; em dash when none.
+      return <AnnotationBadge annotation={article.annotation} />;
     default:
       return null;
   }

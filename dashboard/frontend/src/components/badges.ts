@@ -2,7 +2,7 @@
 // Kept separate from the JSX components so the mapping can be exercised by
 // unit tests without rendering a tree.
 
-import type { PipelineStatus } from "../types";
+import type { AnnotationLabel, PipelineStatus } from "../types";
 
 /** Urgency score → CSS class (req 2.2d). null/undefined → null (no class). */
 export function urgencyClass(score: number | null | undefined): string | null {
@@ -60,4 +60,28 @@ const PIPELINE_BADGE: Record<PipelineStatus, BadgeConfig> = {
 
 export function pipelineStatusBadge(status: PipelineStatus): BadgeConfig {
   return PIPELINE_BADGE[status] ?? PIPELINE_BADGE.unclassified;
+}
+
+/** Annotation badge config — small coloured dot + label (req 4.4).
+ *
+ *  Green for "correct", red for "incorrect", yellow for "uncertain".
+ *  Colours mirror the Tailwind 500/600 family so they read clearly on the
+ *  dashboard's dark surface. `color` is the inline hex used by the dot
+ *  itself (recharts-style inline fills would otherwise force a separate
+ *  CSS variable per tier). */
+export interface AnnotationBadgeConfig {
+  label: string;
+  color: string;
+  className: string;
+}
+
+const ANNOTATION_BADGE: Record<AnnotationLabel, AnnotationBadgeConfig> = {
+  correct: { label: "Correct", color: "#16a34a", className: "annotation-dot annotation-dot-correct" },
+  incorrect: { label: "Incorrect", color: "#dc2626", className: "annotation-dot annotation-dot-incorrect" },
+  uncertain: { label: "Uncertain", color: "#eab308", className: "annotation-dot annotation-dot-uncertain" },
+};
+
+/** Map an annotation label to its colour + display text (req 4.4). */
+export function annotationBadge(label: AnnotationLabel): AnnotationBadgeConfig {
+  return ANNOTATION_BADGE[label] ?? ANNOTATION_BADGE.uncertain;
 }

@@ -61,6 +61,11 @@ function emptyStats(overrides: Partial<StatsResponse> = {}): StatsResponse {
       events_created: 0,
       alerts_sent: 0,
     },
+    annotation_stats: {
+      total: 0,
+      by_label: { correct: 0, incorrect: 0, uncertain: 0 },
+      average_urgency_deviation: null,
+    },
     ...overrides,
   };
 }

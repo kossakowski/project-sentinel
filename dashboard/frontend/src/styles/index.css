@@ -1059,3 +1059,137 @@ input[type="checkbox"] {
   color: var(--text-muted);
   font-style: italic;
 }
+
+/* Annotation badge (inline, ArticleTable) ----------------------------- */
+.annotation-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.annotation-empty {
+  color: var(--text-muted);
+}
+.annotation-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+}
+.annotation-badge-label {
+  font-weight: 600;
+}
+
+/* Annotation panel (article detail) ----------------------------------- */
+.annotation-panel {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 16px;
+}
+.annotation-panel-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.annotation-panel-updated {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.annotation-panel-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.annotation-panel-label-group {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+.annotation-panel-label-legend {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.annotation-panel-label-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.annotation-panel-label-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text);
+}
+.annotation-panel-label-button-selected {
+  border-width: 2px;
+  font-weight: 600;
+}
+.annotation-panel-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.annotation-panel-field-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.annotation-panel-input,
+.annotation-panel-textarea {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text);
+}
+.annotation-panel-textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+.annotation-panel-actions {
+  display: flex;
+  gap: 8px;
+}
+.annotation-panel-save,
+.annotation-panel-delete {
+  padding: 6px 14px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+}
+.annotation-panel-save {
+  background: var(--badge-event-bg, #1e40af);
+  color: var(--badge-event-fg, #dbeafe);
+}
+.annotation-panel-delete {
+  background: var(--badge-alert-bg, #7f1d1d);
+  color: var(--badge-alert-fg, #fecaca);
+}
+.annotation-panel-error {
+  margin: 0;
+  font-size: 12px;
+  color: #fca5a5;
+}
+.annotation-panel-success {
+  margin: 0;
+  font-size: 12px;
+  color: #86efac;
+}

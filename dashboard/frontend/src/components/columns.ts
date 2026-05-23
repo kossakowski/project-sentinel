@@ -19,7 +19,8 @@ export type ColumnKey =
   | "affected_countries"
   | "pipeline_status"
   | "summary_pl"
-  | "is_military_event";
+  | "is_military_event"
+  | "annotation";
 
 export interface ColumnDef {
   key: ColumnKey;
@@ -45,9 +46,11 @@ export const ALL_COLUMNS: ReadonlyArray<ColumnDef> = [
   { key: "pipeline_status", label: "Status", sortable: false },
   { key: "summary_pl", label: "Summary (PL)", sortable: false },
   { key: "is_military_event", label: "Military?", sortable: false },
+  // Phase 4 (req 4.4) — coloured dot per annotation label, "—" when none.
+  { key: "annotation", label: "Note", sortable: false },
 ];
 
-/** Spec req 2.2a default visible columns. */
+/** Spec req 2.2a default visible columns (Phase 4 req 4.4a adds annotation). */
 export const DEFAULT_VISIBLE_COLUMNS: ReadonlyArray<ColumnKey> = [
   "published_at",
   "title",
@@ -56,6 +59,7 @@ export const DEFAULT_VISIBLE_COLUMNS: ReadonlyArray<ColumnKey> = [
   "urgency_score",
   "event_type",
   "pipeline_status",
+  "annotation",
 ];
 
 /** localStorage key for persisted column visibility (req 2.3a). */

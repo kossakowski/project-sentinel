@@ -136,6 +136,12 @@ def list_articles():
         "pipeline_status": args.get("pipeline_status"),
         "event_type": args.get("event_type"),
         "has_alert": _parse_bool(args.get("has_alert")),
+        # Annotation filters (req 4.5a). ``has_annotation`` is a boolean
+        # query param; ``annotation_label`` is a string ("correct" /
+        # "incorrect" / "uncertain"). Both reach the DB layer as ``ann.*``
+        # SQL predicates so pagination respects the filter (req 4.5a).
+        "has_annotation": _parse_bool(args.get("has_annotation")),
+        "annotation_label": args.get("annotation_label") or None,
     }
 
     # Detect whether the caller explicitly asked for a sort. Under search this

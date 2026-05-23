@@ -8,6 +8,7 @@
 
 import { Link, useLocation, useParams } from "react-router-dom";
 
+import { AnnotationPanel } from "../components/AnnotationPanel";
 import { ClassifierView } from "../components/ClassifierView";
 import { EventTimeline } from "../components/EventTimeline";
 import { pipelineStatusBadge } from "../components/badges";
@@ -144,6 +145,12 @@ export function ArticleDetailPage() {
       </header>
 
       <ClassifierView article={data} />
+
+      {/* Phase 4 (req 4.3) — annotation form sits below the classifier view.
+          We deliberately let the hook fetch /api/annotations/<id> itself
+          (instead of seeding from data.annotation) so the panel has the
+          full record incl. created_at/updated_at for "Last updated". */}
+      <AnnotationPanel articleId={data.id} />
 
       <EventTimeline events={data.events ?? []} />
     </div>

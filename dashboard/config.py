@@ -27,6 +27,12 @@ DEFAULT_DB_PATH = os.path.join(DATA_DIR, "sentinel.db")
 # synced sentinel.db file remains byte-for-byte unmodified after a sync.
 FTS_DB_PATH = os.path.join(DATA_DIR, "sentinel_fts.db")
 
+# Local annotations database (Phase 4). Kept separate from the sentinel DB so
+# user annotations persist across production-DB syncs — re-running ``--sync``
+# overwrites ``sentinel.db`` byte-for-byte, but this file lives next to it
+# untouched. Joined into article queries at runtime via SQLite ATTACH.
+ANNOTATIONS_DB_PATH = os.path.join(DATA_DIR, "annotations.db")
+
 # Built React frontend directory (Phase 2 deliverable -- may not exist yet).
 FRONTEND_DIST_DIR = os.path.join(DASHBOARD_DIR, "frontend", "dist")
 

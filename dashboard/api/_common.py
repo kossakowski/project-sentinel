@@ -32,4 +32,5 @@ def get_db() -> DashboardDB:
         db_path=cfg.get("SENTINEL_DB_PATH"),
         tunnel=cfg.get("USE_TUNNEL", False),
         fts_db_path=cfg.get("SENTINEL_FTS_DB_PATH"),
+        annotations_db_path=cfg.get("ANNOTATIONS_DB_PATH"),
     )

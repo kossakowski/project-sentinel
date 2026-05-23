@@ -6,6 +6,10 @@
 // single port). No hard-coded base URL.
 
 import type {
+  Annotation,
+  AnnotationLabel,
+  AnnotationListResponse,
+  AnnotationPayload,
   Article,
   ArticleDetail,
   ArticleListResponse,
@@ -144,6 +148,67 @@ export function triggerSync(init?: RequestInit): Promise<SyncTriggerResponse> {
 /** GET /api/sync/status — last sync timestamp + result (req 1.7a). */
 export function fetchSyncStatus(init?: RequestInit): Promise<SyncStatus> {
   return request<SyncStatus>("/api/sync/status", init);
+}
+
+// ---------------------------------------------------------------------------
+// Annotation endpoints (Phase 4, req 4.2/4.2a/4.2b/4.2c)
+// ---------------------------------------------------------------------------
+
+/** GET /api/annotations/<id> — single annotation; rejects with ApiError(404)
+ *  when no annotation exists. Callers that want "null on missing" should
+ *  catch the 404 specifically (mirrors how the spec separates the absent and
+ *  error cases — see useAnnotations). */
+export function fetchAnnotation(
+  articleId: string,
+  init?: RequestInit,
+): Promise<Annotation> {
+  return request<Annotation>(
+    `/api/annotations/${encodeURIComponent(articleId)}`,
+    init,
+  );
+}
+
+/** GET /api/annotations — paginated list with optional `label` filter. */
+export function fetchAnnotations(
+  params: {
+    label?: AnnotationLabel;
+    sort?: "updated_at" | "created_at" | "label" | "expected_urgency";
+    order?: "asc" | "desc";
+    page?: number;
+    page_size?: number;
+  } = {},
+  init?: RequestInit,
+): Promise<AnnotationListResponse> {
+  const search = buildSearchParams(params as Record<string, ParamValue>);
+  const qs = search.toString();
+  const url = qs ? `/api/annotations?${qs}` : "/api/annotations";
+  return request<AnnotationListResponse>(url, init);
+}
+
+/** POST /api/annotations — create or update (upsert) an annotation. */
+export function saveAnnotation(
+  payload: AnnotationPayload,
+  init?: RequestInit,
+): Promise<Annotation> {
+  return request<Annotation>("/api/annotations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    ...(init ?? {}),
+  });
+}
+
+/** DELETE /api/annotations/<id> — remove an annotation; resolves on 204. */
+export function deleteAnnotation(
+  articleId: string,
+  init?: RequestInit,
+): Promise<void> {
+  // request() returns null on empty bodies (204 No Content); the void cast
+  // makes the call site cleaner than threading a `null` through callers.
+  return request<void>(`/api/annotations/${encodeURIComponent(articleId)}`, {
+    method: "DELETE",
+    ...(init ?? {}),
+  });
 }
 
 // Re-export Article so consumers can `import { Article } from "../api/client"`

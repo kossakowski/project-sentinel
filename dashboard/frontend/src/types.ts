@@ -30,6 +30,61 @@ export type SortColumn =
   | "title"
   | "confidence";
 
+/** Allowed annotation labels (req 4.1, 4.2d). */
+export type AnnotationLabel = "correct" | "incorrect" | "uncertain";
+
+/** Nested annotation block on an article (req 4.5). Null when no annotation
+ *  has been recorded for the article. Three fields only — `id`, `created_at`,
+ *  and `updated_at` are exposed by the dedicated `/api/annotations` endpoints
+ *  but the per-article shape stays narrow on purpose. */
+export interface ArticleAnnotation {
+  label: AnnotationLabel;
+  expected_urgency: number | null;
+  notes: string | null;
+}
+
+/** Full annotation record as returned by `/api/annotations` endpoints. */
+export interface Annotation {
+  id: string;
+  article_id: string;
+  label: AnnotationLabel;
+  expected_urgency: number | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  /** Joined from the sentinel DB on list responses (null when unjoined). */
+  article_title?: string | null;
+  article_urgency_score?: number | null;
+}
+
+/** Paginated /api/annotations response. */
+export interface AnnotationListResponse {
+  annotations: Annotation[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+/** Body accepted by POST /api/annotations (req 4.2). */
+export interface AnnotationPayload {
+  article_id: string;
+  label: AnnotationLabel;
+  expected_urgency?: number | null;
+  notes?: string | null;
+}
+
+/** Aggregated annotation stats nested under StatsResponse.annotation_stats (req 4.6). */
+export interface AnnotationStats {
+  total: number;
+  by_label: {
+    correct: number;
+    incorrect: number;
+    uncertain: number;
+  };
+  average_urgency_deviation: number | null;
+}
+
 /** Nested classification block on an article. Null when unclassified. */
 export interface Classification {
   id: string;
@@ -80,7 +135,7 @@ export interface EventRecord {
   alert_records: AlertRecord[];
 }
 
-/** Article row as returned by GET /api/articles (req 1.4a). */
+/** Article row as returned by GET /api/articles (req 1.4a, 4.5). */
 export interface Article {
   id: string;
   source_name: string;
@@ -94,6 +149,9 @@ export interface Article {
   classification: Classification | null;
   pipeline_status: PipelineStatus;
   has_alert: boolean;
+  /** Phase 4: per-article annotation (req 4.5). Null when no annotation
+   *  has been recorded; otherwise the three spec-mandated fields. */
+  annotation: ArticleAnnotation | null;
 }
 
 /** Article detail returned by GET /api/articles/<id> (req 1.5). */
@@ -130,6 +188,10 @@ export interface ArticleQueryParams {
   pipeline_status?: PipelineStatus | "all";
   event_type?: string;
   has_alert?: boolean;
+  /** Phase 4 (req 4.5a) — filter to annotated / unannotated articles. */
+  has_annotation?: boolean;
+  /** Phase 4 (req 4.5a) — narrow to one annotation label. */
+  annotation_label?: AnnotationLabel;
   q?: string;
 }
 
@@ -188,6 +250,10 @@ export interface StatsResponse {
   language_distribution: LanguageBucket[];
   event_type_distribution: EventTypeBucket[];
   pipeline_funnel: PipelineFunnel;
+  /** Phase 4 (req 4.6) — annotation aggregates: total, per-label counts,
+   *  and the mean |classifier-urgency − user-urgency| across articles where
+   *  both values are present (null when no such pair exists). */
+  annotation_stats: AnnotationStats;
 }
 
 /** Per-call result returned by POST /api/sync (matches SyncResult.to_dict). */

@@ -19,6 +19,16 @@ FTS5 full-text search is used when an `articles_fts` index exists (built by
 `dashboard.sync` into a separate DB file and ATTACHed here); otherwise search
 falls back to a `LIKE` scan. The temporary copy used in tunnel mode has no FTS
 index, so tunnel-mode search always uses the LIKE fallback.
+
+User annotations (Phase 4) live in a SEPARATE local SQLite file
+(``dashboard/data/annotations.db``, managed by `dashboard.annotations`).
+DashboardDB ATTACHes that file as alias ``annotations`` so the article list
+query can LEFT JOIN it and include each article's annotation (or null) in the
+response without an N+1 follow-up query. The annotations file is local +
+persistent and SAFE to attach in BOTH local and tunnel modes (unlike FTS,
+which is intentionally never attached in tunnel mode because the SCP'd temp
+copy has no co-located FTS index and any stale local FTS file would silently
+return wrong rows).
 """
 
 import contextlib
@@ -81,6 +91,7 @@ class DashboardDB:
         db_path: str | None = None,
         tunnel: bool = False,
         fts_db_path: str | None = None,
+        annotations_db_path: str | None = None,
     ) -> None:
         """Open a read-only connection to the sentinel database.
 
@@ -98,16 +109,23 @@ class DashboardDB:
             fts_db_path: Path to the separate FTS index database. Defaults to
                 ``config.FTS_DB_PATH``. When the file exists it is ATTACHed and
                 full-text search uses it.
+            annotations_db_path: Path to the local annotations DB
+                (Phase 4). Defaults to ``config.ANNOTATIONS_DB_PATH``. The
+                file is ATTACHed when it exists; missing-file is OK (means
+                "no annotations yet" — every JOIN result is null on the
+                annotation side, matching the "no annotation" state).
         """
         self.tunnel = tunnel
         self.db_path = db_path or config.DEFAULT_DB_PATH
         self.fts_db_path = fts_db_path or config.FTS_DB_PATH
+        self.annotations_db_path = annotations_db_path or config.ANNOTATIONS_DB_PATH
         # Path to the temporary DB copy fetched in tunnel mode (None otherwise).
         # Removed on close() ONLY when this instance fetched it itself; when
         # the caller pre-fetched and passed ``db_path``, cleanup is the
         # caller's responsibility (the app factory tears it down on shutdown).
         self._tunnel_tempfile: str | None = None
         self._fts_available = False
+        self._annotations_available = False
 
         if tunnel and db_path is None:
             # Self-fetching tunnel mode: own the temp file end-to-end.
@@ -119,6 +137,7 @@ class DashboardDB:
 
         self.conn.row_factory = sqlite3.Row
         self._maybe_attach_fts()
+        self._maybe_attach_annotations()
 
     # ------------------------------------------------------------------
     # Connection management
@@ -251,6 +270,37 @@ class DashboardDB:
         """True when an FTS5 `articles_fts` index is attached and usable."""
         return self._fts_available
 
+    def _maybe_attach_annotations(self) -> None:
+        """ATTACH the annotations DB if it exists and holds an `annotations` table.
+
+        Unlike FTS, the annotations DB is local + persistent in BOTH local
+        and tunnel modes (it lives at ``dashboard/data/annotations.db`` and
+        is owned by the user, not the production server). Article IDs are
+        stable UUIDs across syncs, so the JOIN ``annotations.article_id =
+        articles.id`` is correct even when the sentinel DB was just
+        SCPed in tunnel mode.
+
+        Missing file is OK and expected on a fresh install — every LEFT JOIN
+        simply returns NULL on the annotation side, matching the "no
+        annotation" semantics for every article.
+        """
+        if not os.path.exists(self.annotations_db_path):
+            self._annotations_available = False
+            return
+        try:
+            self.conn.execute("ATTACH DATABASE ? AS annotations", (os.path.abspath(self.annotations_db_path),))
+            row = self.conn.execute(
+                "SELECT name FROM annotations.sqlite_master WHERE type = 'table' AND name = 'annotations'"
+            ).fetchone()
+            self._annotations_available = row is not None
+        except sqlite3.Error:
+            self._annotations_available = False
+
+    @property
+    def annotations_available(self) -> bool:
+        """True when the annotations DB is attached and queryable."""
+        return self._annotations_available
+
     def close(self) -> None:
         """Close the DB connection and remove the tunnel temp copy if any."""
         try:
@@ -304,6 +354,31 @@ class DashboardDB:
             "output_tokens": row["output_tokens"],
         }
 
+    def _annotation_from_row(self, row: sqlite3.Row) -> dict | None:
+        """Build the nested `annotation` dict from a joined row, or None.
+
+        The LIST + DETAIL queries LEFT JOIN ``annotations.annotations`` only
+        when the annotations DB is attached; when it is not (fresh install,
+        no annotations.db yet), the row never carries an ``annotation_label``
+        column at all. ``sqlite3.Row`` raises ``IndexError`` on missing keys,
+        so we guard with ``row.keys()`` to support both shapes.
+
+        Returns the spec-mandated three-field shape ``{label, expected_urgency,
+        notes}`` (req 4.5) when an annotation exists, else None.
+        """
+        # sqlite3.Row.__contains__ checks *values* not column names, so we
+        # must explicitly inspect .keys() here — `not in row` would always
+        # return True for an unmatched column-name string.
+        if "annotation_label" not in row.keys():  # noqa: SIM118
+            return None
+        if row["annotation_label"] is None:
+            return None
+        return {
+            "label": row["annotation_label"],
+            "expected_urgency": row["annotation_expected_urgency"],
+            "notes": row["annotation_notes"],
+        }
+
     def _article_from_row(self, row: sqlite3.Row) -> dict:
         """Build a full article dict (with nested classification + status)."""
         classification = self._classification_from_row(row)
@@ -326,6 +401,11 @@ class DashboardDB:
             "classification": classification,
             "pipeline_status": pipeline_status,
             "has_alert": has_alert,
+            # Per req 4.5: every article response (list + detail) MUST carry
+            # an `annotation` field, null when no annotation exists. When the
+            # annotations DB is not attached this is always null — matching
+            # the "no annotation" state across all rows.
+            "annotation": self._annotation_from_row(row),
         }
 
     @staticmethod
@@ -436,6 +516,33 @@ class DashboardDB:
             else:
                 clauses.append(f"{self._ALERT_COUNT_SQL} = 0")
 
+        # Annotation filters (req 4.5a). When the annotations DB is not
+        # attached the filters can't reference the `ann.*` columns, but they
+        # still produce a correct empty result set: every article behaves
+        # as "no annotation" so `has_annotation=true` returns 0 rows and
+        # `has_annotation=false`/`annotation_label=...` matches everything
+        # or nothing accordingly. Emitting unconditionally-false / TRUE
+        # placeholders keeps the queries simple AND preserves pagination.
+        has_annotation = filters.get("has_annotation")
+        if has_annotation is not None:
+            if self._annotations_available:
+                if has_annotation:
+                    clauses.append("ann.id IS NOT NULL")
+                else:
+                    clauses.append("ann.id IS NULL")
+            else:
+                # No annotations DB attached -> every article is "unannotated".
+                clauses.append("1=1" if not has_annotation else "1=0")
+
+        annotation_label = filters.get("annotation_label")
+        if annotation_label:
+            if self._annotations_available:
+                clauses.append("ann.label = ?")
+                params.append(annotation_label)
+            else:
+                # Asking for a specific label when no annotations exist -> empty.
+                clauses.append("1=0")
+
         if not clauses:
             return "", params
         return " WHERE " + " AND ".join(clauses), params
@@ -470,12 +577,41 @@ class DashboardDB:
         "a.id, a.source_name, a.source_url, a.source_type, a.title, a.summary, a.language, a.published_at, a.fetched_at"
     )
 
+    def _annotation_select_fragment(self) -> str:
+        """Optional annotation columns for the SELECT list.
+
+        Returns an empty string when the annotations DB is not attached, or
+        a comma-prefixed fragment of three columns (``annotation_label``,
+        ``annotation_expected_urgency``, ``annotation_notes``) when it is.
+        ``_article_from_row`` picks them up via ``_annotation_from_row``.
+        """
+        if not self._annotations_available:
+            return ""
+        return (
+            ", ann.label AS annotation_label, "
+            "ann.expected_urgency AS annotation_expected_urgency, "
+            "ann.notes AS annotation_notes"
+        )
+
+    def _annotation_join_fragment(self) -> str:
+        """Optional ``LEFT JOIN annotations.annotations`` clause.
+
+        Empty string when the annotations DB is not attached. The JOIN runs
+        on the SQLite side so pagination + ``annotation_label`` filtering
+        respect the same row set — Python post-filtering would silently
+        break ``total`` / ``total_pages``.
+        """
+        if not self._annotations_available:
+            return ""
+        return " LEFT JOIN annotations.annotations ann ON ann.article_id = a.id"
+
     def _list_select_columns(self) -> str:
         """Lean SELECT column list for ``get_articles`` / ``search_articles``.
 
-        Includes the classification join columns and event/alert count
-        subqueries needed by `_article_from_row`. Omits ``raw_metadata`` --
-        only ``get_article_detail`` reads it.
+        Includes the classification join columns, event/alert count
+        subqueries, and (when the annotations DB is attached) the per-row
+        annotation fields. Omits ``raw_metadata`` -- only
+        ``get_article_detail`` reads it.
         """
         return (
             f"{self._LIST_ARTICLE_COLUMNS}, "
@@ -485,6 +621,7 @@ class DashboardDB:
             "c.model_used, c.input_tokens, c.output_tokens, "
             f"{self._EVENT_COUNT_SQL} AS event_count, "
             f"{self._ALERT_COUNT_SQL} AS alert_count"
+            f"{self._annotation_select_fragment()}"
         )
 
     def _detail_select_columns(self) -> str:
@@ -501,6 +638,7 @@ class DashboardDB:
             "c.model_used, c.input_tokens, c.output_tokens, "
             f"{self._EVENT_COUNT_SQL} AS event_count, "
             f"{self._ALERT_COUNT_SQL} AS alert_count"
+            f"{self._annotation_select_fragment()}"
         )
 
     # ------------------------------------------------------------------
@@ -540,7 +678,11 @@ class DashboardDB:
         direction = "ASC" if str(order).lower() == "asc" else "DESC"
 
         where_sql, params = self._build_filters(filters or {})
-        base = " FROM articles a LEFT JOIN classifications c ON c.article_id = a.id" + where_sql
+        base = (
+            " FROM articles a "
+            "LEFT JOIN classifications c ON c.article_id = a.id"
+            f"{self._annotation_join_fragment()}" + where_sql
+        )
 
         total = self.conn.execute("SELECT COUNT(*)" + base, params).fetchone()[0]
 
@@ -575,7 +717,8 @@ class DashboardDB:
         row = self.conn.execute(
             f"SELECT {self._detail_select_columns()} "
             "FROM articles a "
-            "LEFT JOIN classifications c ON c.article_id = a.id "
+            "LEFT JOIN classifications c ON c.article_id = a.id"
+            f"{self._annotation_join_fragment()} "
             "WHERE a.id = ?",
             (article_id,),
         ).fetchone()
@@ -760,7 +903,8 @@ class DashboardDB:
         base = (
             " FROM fts.articles_fts f "
             "JOIN articles a ON a.id = f.article_id "
-            "LEFT JOIN classifications c ON c.article_id = a.id" + where_clause
+            "LEFT JOIN classifications c ON c.article_id = a.id"
+            f"{self._annotation_join_fragment()}" + where_clause
         )
 
         total = self.conn.execute(
@@ -834,7 +978,11 @@ class DashboardDB:
         else:
             where_clause = " WHERE " + like_clause
 
-        base = " FROM articles a LEFT JOIN classifications c ON c.article_id = a.id" + where_clause
+        base = (
+            " FROM articles a "
+            "LEFT JOIN classifications c ON c.article_id = a.id"
+            f"{self._annotation_join_fragment()}" + where_clause
+        )
 
         total = self.conn.execute(
             "SELECT COUNT(*)" + base,
@@ -958,6 +1106,8 @@ class DashboardDB:
             "WHERE e.id IN (SELECT event_id FROM alert_records)"
         ).fetchone()[0]
 
+        annotation_stats = self._annotation_stats()
+
         return {
             "total_articles": total_articles,
             "total_classified": total_classified,
@@ -975,4 +1125,49 @@ class DashboardDB:
                 "events_created": events_created,
                 "alerts_sent": alerts_sent,
             },
+            # Annotation statistics (req 4.6). Always present so the frontend
+            # contract is stable; ``total=0`` + zero-filled ``by_label`` when
+            # the annotations DB is empty or not attached.
+            "annotation_stats": annotation_stats,
+        }
+
+    def _annotation_stats(self) -> dict:
+        """Aggregate per-label counts + mean urgency deviation (req 4.6).
+
+        ``average_urgency_deviation`` is the mean of
+        ``|classification.urgency_score - annotation.expected_urgency|``
+        across articles that have BOTH a classification.urgency_score AND a
+        non-null annotation.expected_urgency. None when no such pair exists.
+        Computed in SQL across the ATTACHed annotations + sentinel rows so
+        large datasets don't require pulling every row into Python.
+        """
+        zero_filled_labels = {label: 0 for label in ("correct", "incorrect", "uncertain")}
+        if not self._annotations_available:
+            return {
+                "total": 0,
+                "by_label": zero_filled_labels,
+                "average_urgency_deviation": None,
+            }
+
+        total = self.conn.execute("SELECT COUNT(*) FROM annotations.annotations").fetchone()[0]
+        by_label_raw = {
+            row["label"]: row["n"]
+            for row in self.conn.execute(
+                "SELECT label, COUNT(*) AS n FROM annotations.annotations GROUP BY label"
+            ).fetchall()
+        }
+        by_label = {label: int(by_label_raw.get(label, 0)) for label in zero_filled_labels}
+
+        deviation_row = self.conn.execute(
+            "SELECT AVG(ABS(c.urgency_score - ann.expected_urgency)) AS dev "
+            "FROM annotations.annotations ann "
+            "JOIN classifications c ON c.article_id = ann.article_id "
+            "WHERE ann.expected_urgency IS NOT NULL AND c.urgency_score IS NOT NULL"
+        ).fetchone()
+        deviation = deviation_row["dev"] if deviation_row else None
+
+        return {
+            "total": int(total),
+            "by_label": by_label,
+            "average_urgency_deviation": float(deviation) if deviation is not None else None,
         }

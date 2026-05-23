@@ -27,6 +27,7 @@ def create_app(
     db_path: str | None = None,
     tunnel: bool = False,
     fts_db_path: str | None = None,
+    annotations_db_path: str | None = None,
     dev_cors: bool = True,
 ) -> Flask:
     """Create and configure the dashboard Flask application.
@@ -40,6 +41,9 @@ def create_app(
             temp file is removed on process exit via ``atexit``.
         fts_db_path: path to the separate FTS index DB. Defaults to
             ``config.FTS_DB_PATH``.
+        annotations_db_path: path to the local annotations DB (Phase 4).
+            Defaults to ``config.ANNOTATIONS_DB_PATH``. The file + table
+            are auto-created on first access by `AnnotationDB`.
         dev_cors: when True (default), enable CORS for the Vite dev server
             origin so the React dev server can call the API (req 1.1a).
 
@@ -50,6 +54,7 @@ def create_app(
 
     fts_path = fts_db_path or config.FTS_DB_PATH
     app.config["SENTINEL_FTS_DB_PATH"] = fts_path
+    app.config["ANNOTATIONS_DB_PATH"] = annotations_db_path or config.ANNOTATIONS_DB_PATH
     app.config["USE_TUNNEL"] = tunnel
 
     if tunnel:

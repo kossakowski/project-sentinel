@@ -105,8 +105,10 @@ describe("ArticleTable", () => {
       "Urgency",
       "Event type",
       "Status",
+      "Note",
     ]);
-    // Sanity: default list itself matches the spec.
+    // Sanity: default list itself matches the spec (Phase 4 req 4.4a adds
+    // the annotation column to the defaults).
     expect(DEFAULT_VISIBLE_COLUMNS).toEqual([
       "published_at",
       "title",
@@ -115,6 +117,7 @@ describe("ArticleTable", () => {
       "urgency_score",
       "event_type",
       "pipeline_status",
+      "annotation",
     ]);
   });
 
