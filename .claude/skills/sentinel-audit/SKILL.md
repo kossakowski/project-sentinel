@@ -56,7 +56,7 @@ events (id TEXT PK, event_type TEXT, urgency_score INTEGER, affected_countries T
           e.affected_countries, e.source_count, e.first_seen_at, e.last_updated_at,
           e.alert_status
    FROM events e, json_each(e.article_ids) je
-   WHERE e.first_seen_at > '{since}';
+   WHERE e.last_updated_at > '{since}';
    ```
    This produces one row per (event, article) membership and can be joined back to `classifications` / `articles` by `article_id`.
 
@@ -155,7 +155,7 @@ SELECT e.id AS event_id, je.value AS article_id, e.event_type, e.urgency_score,
        e.affected_countries, e.source_count, e.first_seen_at, e.last_updated_at,
        e.alert_status
 FROM events e, json_each(e.article_ids) je
-WHERE e.first_seen_at > '{since}';
+WHERE e.last_updated_at > '{since}';
 ```
 
 Also retrieve:
@@ -218,7 +218,7 @@ For each disagreement, state what Haiku said, what you would say, and why the di
 
 #### Organize the report by event
 
-Before writing disagreements into the report, partition the classified articles into two groups using the `article_id -> event_id` mapping built from query 1g (or the Python `json.loads` join described in the Database section):
+Before writing the Step 3 report section, partition the classified articles into two groups using the `article_id -> event_id` mapping built from query 1g (or the Python `json.loads` join described in the Database section):
 
 1. **Articles belonging to an event** — group together every classified article whose `id` appears in some `events.article_ids` JSON array. Each event becomes ONE block in the report containing the event metadata and a bullet-list of its constituent articles, with any per-article disagreements nested inside that block.
 2. **Standalone classified articles** — articles whose `id` does NOT appear in any event row's `article_ids`. List these flat under a "Standalone classified articles" sub-heading, ordered by `published_at` ascending.
@@ -238,7 +238,7 @@ Before writing disagreements into the report, partition the classified articles 
 - `alert_status`
 - A bullet-list of the constituent articles, each line showing `title`, `source_name`, `published_at`
 
-If the event block contains any classification disagreements, render the existing `### DISAGREEMENT:` blocks nested under the event block (after the bullet list).
+If the event block contains any classification disagreements, render the existing `#### DISAGREEMENT:` blocks nested under the event block (after the bullet list).
 
 ### Step 4: Source health check
 
