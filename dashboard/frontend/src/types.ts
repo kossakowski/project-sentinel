@@ -171,13 +171,18 @@ export interface PipelineFunnel {
   alerts_sent: number;
 }
 
-/** Full /api/stats response (req 1.6). */
+/** Full /api/stats response (req 1.6, 3.4a). */
 export interface StatsResponse {
   total_articles: number;
   total_classified: number;
   total_events: number;
   total_alerts: number;
   articles_per_day: ArticlesPerDay[];
+  /** Parallel per-day series of articles that reached classification, used by
+   *  the overview time-series chart (req 3.4a). Same 30-day calendar as
+   *  ``articles_per_day`` — point-aligned by index, keyed by the article's
+   *  publication date (NOT the classifier-run timestamp). */
+  classified_per_day: ArticlesPerDay[];
   urgency_distribution: UrgencyBucket[];
   source_distribution: SourceBucket[];
   language_distribution: LanguageBucket[];

@@ -13,6 +13,38 @@ export function urgencyClass(score: number | null | undefined): string | null {
   return "urgency-low";
 }
 
+/** Urgency tier label — pairs with `urgencyClass` for chart legends + a11y. */
+export type UrgencyTier = "critical" | "high" | "medium" | "low";
+
+/** Map an urgency score to a tier name (req 3.5). */
+export function urgencyTier(score: number): UrgencyTier {
+  if (score >= 9) return "critical";
+  if (score >= 7) return "high";
+  if (score >= 5) return "medium";
+  return "low";
+}
+
+/** Urgency score → hex colour for SVG fills (req 3.5).
+ *
+ *  Mirrors the same 1-4 / 5-6 / 7-8 / 9-10 thresholds as `urgencyClass` —
+ *  recharts' SVG bars need a literal fill colour (not a CSS class), so this
+ *  function returns one shade per tier. Values are chosen to be legible on
+ *  the dark dashboard background and to match the dashboard palette:
+ *  - 1-4 gray (#64748b), 5-6 yellow (#f59e0b), 7-8 orange (#ea580c), 9-10 red (#dc2626).
+ */
+export function urgencyColor(score: number): string {
+  switch (urgencyTier(score)) {
+    case "critical":
+      return "#dc2626";
+    case "high":
+      return "#ea580c";
+    case "medium":
+      return "#f59e0b";
+    case "low":
+      return "#64748b";
+  }
+}
+
 /** Pipeline status → display config (req 2.2e). */
 export interface BadgeConfig {
   label: string;

@@ -628,6 +628,7 @@ def test_api_stats_endpoint(client):
         "total_events",
         "total_alerts",
         "articles_per_day",
+        "classified_per_day",
         "urgency_distribution",
         "source_distribution",
         "language_distribution",
@@ -642,6 +643,15 @@ def test_api_stats_endpoint(client):
     # articles_per_day: 30 zero-filled day entries (req 1.6a).
     assert len(body["articles_per_day"]) == 30
     for entry in body["articles_per_day"]:
+        assert set(entry.keys()) == {"date", "count"}
+
+    # classified_per_day (req 3.4a) — same 30-day calendar so the overview
+    # chart can plot two point-aligned series.
+    assert len(body["classified_per_day"]) == 30
+    article_dates = [e["date"] for e in body["articles_per_day"]]
+    classified_dates = [e["date"] for e in body["classified_per_day"]]
+    assert article_dates == classified_dates
+    for entry in body["classified_per_day"]:
         assert set(entry.keys()) == {"date", "count"}
 
     # pipeline_funnel: the four required stages (req 1.6b).

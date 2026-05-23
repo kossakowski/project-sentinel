@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 import type { Article, ArticleDetail, SortColumn, SortOrder } from "../types";
 import { ALL_COLUMNS, type ColumnKey } from "./columns";
@@ -63,6 +63,17 @@ export function ArticleTable({
   emptyState,
   fetchDetail,
 }: ArticleTableProps) {
+  const location = useLocation();
+  // Pass the current URL state (pathname + search) on every title-link click
+  // so the detail page can render a "Back to articles" link that restores the
+  // user's previous filter/sort/page (req 3.10). Stable across renders so
+  // ArticleRow's React.memo opportunities aren't broken — the value only
+  // changes when the URL itself changes, which is exactly when we want it to.
+  const linkState = useMemo(
+    () => ({ from: `${location.pathname}${location.search}` }),
+    [location.pathname, location.search],
+  );
+
   const columns = useMemo(
     () =>
       ALL_COLUMNS.filter((col) =>
@@ -212,6 +223,7 @@ export function ArticleTable({
                 expanded={expanded.has(article.id)}
                 detail={details.get(article.id) ?? null}
                 onToggle={() => toggleRow(article.id)}
+                linkState={linkState}
               />
             ))
           )}
@@ -227,9 +239,19 @@ interface ArticleRowProps {
   expanded: boolean;
   detail: DetailEntry | null;
   onToggle: () => void;
+  /** Forwarded to the title `<Link>` so the detail page can navigate back to
+   *  the previously-filtered list (req 3.10). */
+  linkState: { from: string };
 }
 
-function ArticleRow({ article, columns, expanded, detail, onToggle }: ArticleRowProps) {
+function ArticleRow({
+  article,
+  columns,
+  expanded,
+  detail,
+  onToggle,
+  linkState,
+}: ArticleRowProps) {
   return (
     <>
       <tr className="article-row" data-testid={`article-row-${article.id}`}>
@@ -246,7 +268,7 @@ function ArticleRow({ article, columns, expanded, detail, onToggle }: ArticleRow
         </td>
         {columns.map((key) => (
           <td key={key} className={`col-${key} ${cellClassFor(key, article)}`}>
-            {renderCell(key, article)}
+            {renderCell(key, article, linkState)}
           </td>
         ))}
       </tr>
@@ -386,7 +408,11 @@ function cellClassFor(key: ColumnKey, article: Article): string {
   return "";
 }
 
-function renderCell(key: ColumnKey, article: Article) {
+function renderCell(
+  key: ColumnKey,
+  article: Article,
+  linkState: { from: string },
+) {
   switch (key) {
     case "published_at":
       return formatDate(article.published_at);
@@ -396,6 +422,7 @@ function renderCell(key: ColumnKey, article: Article) {
       return (
         <Link
           to={`/articles/${encodeURIComponent(article.id)}`}
+          state={linkState}
           className="article-title-link"
           data-testid="article-title-link"
         >

@@ -922,6 +922,7 @@ def test_db_get_stats(db_no_fts):
         "total_events",
         "total_alerts",
         "articles_per_day",
+        "classified_per_day",
         "urgency_distribution",
         "source_distribution",
         "language_distribution",
@@ -939,6 +940,16 @@ def test_db_get_stats(db_no_fts):
     assert len(stats["articles_per_day"]) == 30
     for entry in stats["articles_per_day"]:
         assert set(entry.keys()) == {"date", "count"}
+
+    # classified_per_day: same 30-day calendar, point-aligned with
+    # articles_per_day so the overview chart can plot two series (req 3.4a).
+    assert len(stats["classified_per_day"]) == 30
+    article_dates = [e["date"] for e in stats["articles_per_day"]]
+    classified_dates = [e["date"] for e in stats["classified_per_day"]]
+    assert article_dates == classified_dates
+    for entry in stats["classified_per_day"]:
+        assert set(entry.keys()) == {"date", "count"}
+        assert entry["count"] >= 0
 
     # urgency_distribution: one bucket per score 1-10.
     assert len(stats["urgency_distribution"]) == 10

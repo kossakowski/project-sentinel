@@ -50,6 +50,7 @@ function emptyStats(overrides: Partial<StatsResponse> = {}): StatsResponse {
     total_events: 0,
     total_alerts: 0,
     articles_per_day: [],
+    classified_per_day: [],
     urgency_distribution: [],
     source_distribution: [{ source_name: "TVN24", count: 1 }],
     language_distribution: [],

@@ -867,9 +867,10 @@ class DashboardDB:
         """Return aggregate pipeline + distribution statistics (req 1.2e).
 
         Keys: total_articles, total_classified, total_events, total_alerts,
-        articles_per_day (last 30 days incl. zero days), urgency_distribution,
-        source_distribution, language_distribution, event_type_distribution,
-        pipeline_funnel.
+        articles_per_day (last 30 days incl. zero days), classified_per_day
+        (parallel series for the overview time-series chart, req 3.4a),
+        urgency_distribution, source_distribution, language_distribution,
+        event_type_distribution, pipeline_funnel.
         """
         cur = self.conn
 
@@ -880,20 +881,39 @@ class DashboardDB:
 
         # Articles per day for the last 30 days, including days with zero
         # articles (req 1.6a). Build the full 30-day calendar, then overlay
-        # the DB counts keyed by YYYY-MM-DD.
+        # the DB counts keyed by YYYY-MM-DD. classified_per_day is built from
+        # the same calendar so the two series are point-aligned on the
+        # frontend chart (req 3.4a).
+        cutoff_iso = (datetime.now(UTC) - timedelta(days=29)).strftime("%Y-%m-%d")
         raw_per_day = cur.execute(
             "SELECT substr(published_at, 1, 10) AS day, COUNT(*) AS n "
             "FROM articles "
             "WHERE substr(published_at, 1, 10) >= ? "
             "GROUP BY day",
-            ((datetime.now(UTC) - timedelta(days=29)).strftime("%Y-%m-%d"),),
+            (cutoff_iso,),
         ).fetchall()
         counts_by_day = {r["day"]: r["n"] for r in raw_per_day}
+        # Classified-per-day: keyed by the article's publication date (not the
+        # classifier-run time) so the two series compare like-for-like —
+        # "x articles published on day D, y of those eventually reached
+        # classification". Join classifications to articles to get the
+        # article's published_at, then bucket the same way.
+        classified_raw = cur.execute(
+            "SELECT substr(a.published_at, 1, 10) AS day, COUNT(*) AS n "
+            "FROM classifications c "
+            "JOIN articles a ON a.id = c.article_id "
+            "WHERE substr(a.published_at, 1, 10) >= ? "
+            "GROUP BY day",
+            (cutoff_iso,),
+        ).fetchall()
+        classified_by_day = {r["day"]: r["n"] for r in classified_raw}
         today = datetime.now(UTC).date()
         articles_per_day = []
+        classified_per_day = []
         for offset in range(29, -1, -1):
             day = (today - timedelta(days=offset)).strftime("%Y-%m-%d")
             articles_per_day.append({"date": day, "count": counts_by_day.get(day, 0)})
+            classified_per_day.append({"date": day, "count": classified_by_day.get(day, 0)})
 
         # Urgency distribution: count per score 1-10, including zero buckets.
         urgency_raw = {
@@ -944,6 +964,7 @@ class DashboardDB:
             "total_events": total_events,
             "total_alerts": total_alerts,
             "articles_per_day": articles_per_day,
+            "classified_per_day": classified_per_day,
             "urgency_distribution": urgency_distribution,
             "source_distribution": source_distribution,
             "language_distribution": language_distribution,
