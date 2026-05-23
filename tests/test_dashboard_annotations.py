@@ -38,6 +38,16 @@ def annotations_db_path(tmp_path):
 
 
 @pytest.fixture
+def fts_db_path(tmp_path):
+    """Tmp path for the FTS DB — points at a nonexistent file so DashboardDB
+    deterministically takes the LIKE search path. Without this pin the default
+    ``config.FTS_DB_PATH`` is used, which can point at a real on-disk FTS file
+    from a prior ``--sync`` and silently flip search into the FTS branch.
+    """
+    return str(tmp_path / "sentinel_fts.db")
+
+
+@pytest.fixture
 def annotation_db(annotations_db_path):
     """A fresh, write-capable `AnnotationDB` over the tmp annotations file."""
     db = AnnotationDB(db_path=annotations_db_path)
@@ -48,11 +58,12 @@ def annotation_db(annotations_db_path):
 
 
 @pytest.fixture
-def app(sentinel_db_path, annotations_db_path):
+def app(sentinel_db_path, annotations_db_path, fts_db_path):
     """Flask app wired to BOTH the tmp sentinel DB and tmp annotations DB."""
     flask_app = create_app(
         db_path=sentinel_db_path,
         annotations_db_path=annotations_db_path,
+        fts_db_path=fts_db_path,
         dev_cors=False,
     )
     flask_app.config.update(TESTING=True)
@@ -459,11 +470,11 @@ def test_annotation_stats(client):
 # ---------------------------------------------------------------------------
 
 
-def test_articles_with_no_annotations_db(sentinel_db_path, tmp_path):
+def test_articles_with_no_annotations_db(sentinel_db_path, fts_db_path, tmp_path):
     """No annotations.db file present -> every article's annotation is null and stats are zeroed."""
     nonexistent = str(tmp_path / "never_created.db")
     assert not os.path.exists(nonexistent)
-    db = DashboardDB(db_path=sentinel_db_path, annotations_db_path=nonexistent)
+    db = DashboardDB(db_path=sentinel_db_path, fts_db_path=fts_db_path, annotations_db_path=nonexistent)
     try:
         assert db.annotations_available is False
         articles = db.get_articles()
@@ -477,10 +488,10 @@ def test_articles_with_no_annotations_db(sentinel_db_path, tmp_path):
         db.close()
 
 
-def test_filter_with_no_annotations_db_returns_empty(sentinel_db_path, tmp_path):
+def test_filter_with_no_annotations_db_returns_empty(sentinel_db_path, fts_db_path, tmp_path):
     """has_annotation=true with no annotations DB returns zero rows (sane fallback)."""
     nonexistent = str(tmp_path / "never_created.db")
-    db = DashboardDB(db_path=sentinel_db_path, annotations_db_path=nonexistent)
+    db = DashboardDB(db_path=sentinel_db_path, fts_db_path=fts_db_path, annotations_db_path=nonexistent)
     try:
         result = db.get_articles(filters={"has_annotation": True})
         assert result["total"] == 0
@@ -491,7 +502,7 @@ def test_filter_with_no_annotations_db_returns_empty(sentinel_db_path, tmp_path)
         db.close()
 
 
-def test_search_with_annotation_filter(sentinel_db_path, annotations_db_path):
+def test_search_with_annotation_filter(sentinel_db_path, fts_db_path, annotations_db_path):
     """Search + annotation_label composes correctly under the LIKE path."""
     ann_db = AnnotationDB(db_path=annotations_db_path)
     try:
@@ -501,7 +512,7 @@ def test_search_with_annotation_filter(sentinel_db_path, annotations_db_path):
     finally:
         ann_db.close()
 
-    db = DashboardDB(db_path=sentinel_db_path, annotations_db_path=annotations_db_path)
+    db = DashboardDB(db_path=sentinel_db_path, fts_db_path=fts_db_path, annotations_db_path=annotations_db_path)
     try:
         result = db.search_articles("drone", filters={"annotation_label": "correct"})
         # a1, a2, a4, a9 mention drone — only a1 is labelled correct.
@@ -511,12 +522,12 @@ def test_search_with_annotation_filter(sentinel_db_path, annotations_db_path):
         db.close()
 
 
-def test_annotation_persists_across_dashboard_db_reopen(sentinel_db_path, annotations_db_path):
+def test_annotation_persists_across_dashboard_db_reopen(sentinel_db_path, fts_db_path, annotations_db_path):
     """Annotations written via AnnotationDB are visible through DashboardDB on a fresh open."""
     with AnnotationDB(db_path=annotations_db_path) as ann_db:
         ann_db.upsert("a1", label="uncertain", expected_urgency=7, notes="needs review")
 
-    db = DashboardDB(db_path=sentinel_db_path, annotations_db_path=annotations_db_path)
+    db = DashboardDB(db_path=sentinel_db_path, fts_db_path=fts_db_path, annotations_db_path=annotations_db_path)
     try:
         detail = db.get_article_detail("a1")
         assert detail is not None
