@@ -2,6 +2,7 @@ import { Link, NavLink, Route, Routes } from "react-router-dom";
 
 import { ArticleDetailPage } from "./pages/ArticleDetailPage";
 import { ArticlesPage } from "./pages/ArticlesPage";
+import { EventDetailPage } from "./pages/EventDetailPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { ToastProvider } from "./components/Toast";
 
@@ -11,6 +12,7 @@ import { ToastProvider } from "./components/Toast";
  *   /                  Overview (analytics landing page, req 3.1)
  *   /articles          Article list (Phase 2)
  *   /articles/:id      Article detail (req 3.7)
+ *   /events/:id        Event detail (SPEC_ALERT_GROUPING.md req 2.4)
  *
  * The nav exposes both top-level destinations so the overview ↔ articles
  * round-trip in req 3.10 is one click in either direction.
@@ -43,6 +45,7 @@ export function App() {
             <Route path="/" element={<OverviewPage />} />
             <Route path="/articles" element={<ArticlesPage />} />
             <Route path="/articles/:id" element={<ArticleDetailPage />} />
+            <Route path="/events/:id" element={<EventDetailPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </main>

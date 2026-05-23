@@ -7,6 +7,7 @@ import type {
   Article,
   ArticleDetail,
   Classification,
+  EventDetail,
   EventRecord,
   StatsResponse,
 } from "../types";
@@ -113,6 +114,25 @@ export function makeArticleDetail(
     events: [],
     classifier_input:
       "Source: TVN24 (rss)\nLanguage: pl\nPublished: 2026-05-22T10:00:00+00:00\nTitle: Article one\nSummary: Body of article one with details.",
+    ...overrides,
+  };
+}
+
+/** SPEC_ALERT_GROUPING.md req 2.6b — `EventDetail` fixture with a small
+ *  article list and one alert record by default. Overrides let tests pin
+ *  any sub-field (e.g. empty alert_records, multiple articles). */
+export function makeEventDetail(overrides: Partial<EventDetail> = {}): EventDetail {
+  const base = makeEventRecord({
+    article_ids: ["art-1", "art-2"],
+    source_count: 2,
+    alert_records: [makeAlertRecord()],
+  });
+  return {
+    ...base,
+    articles: [
+      makeArticle({ id: "art-1", event_id: base.id }),
+      makeArticle({ id: "art-2", title: "Article two", event_id: base.id }),
+    ],
     ...overrides,
   };
 }

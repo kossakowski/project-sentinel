@@ -73,6 +73,14 @@ DEFAULT_PAGE_SIZE = 50
 # default is defined exactly once -- preventing the two paths from drifting.
 DEFAULT_SORT = "published_at"
 
+# Retention window (in days) used to scope the article-list ``event_id``
+# JSON-membership join (spec req 2.2b). Bounding the JSON scan to recent
+# events keeps the per-row subquery cheap on a paginated 25/50/100 list —
+# every article-list row scans only events whose ``first_seen_at`` is within
+# this window. Events older than the window are effectively invisible to the
+# article-list lookup, matching the spec's "article-retention window".
+EVENT_ID_RETENTION_DAYS = 30
+
 
 class DashboardDBError(RuntimeError):
     """Raised when the dashboard cannot open the sentinel database.
@@ -92,6 +100,7 @@ class DashboardDB:
         tunnel: bool = False,
         fts_db_path: str | None = None,
         annotations_db_path: str | None = None,
+        event_id_retention_days: int | None = None,
     ) -> None:
         """Open a read-only connection to the sentinel database.
 
@@ -114,11 +123,20 @@ class DashboardDB:
                 file is ATTACHed when it exists; missing-file is OK (means
                 "no annotations yet" — every JOIN result is null on the
                 annotation side, matching the "no annotation" state).
+            event_id_retention_days: How many days back to scan when looking
+                up an article's ``event_id`` via the JSON-membership join
+                (spec req 2.2b). Defaults to ``EVENT_ID_RETENTION_DAYS`` (30).
+                Tests can pass a large value (e.g. 36500) to make the lookup
+                time-independent against fixture rows whose ``first_seen_at``
+                may be older than 30 days at test-runtime.
         """
         self.tunnel = tunnel
         self.db_path = db_path or config.DEFAULT_DB_PATH
         self.fts_db_path = fts_db_path or config.FTS_DB_PATH
         self.annotations_db_path = annotations_db_path or config.ANNOTATIONS_DB_PATH
+        self.event_id_retention_days = (
+            event_id_retention_days if event_id_retention_days is not None else EVENT_ID_RETENTION_DAYS
+        )
         # Path to the temporary DB copy fetched in tunnel mode (None otherwise).
         # Removed on close() ONLY when this instance fetched it itself; when
         # the caller pre-fetched and passed ``db_path``, cleanup is the
@@ -388,6 +406,12 @@ class DashboardDB:
             event_created=bool(row["event_count"]),
             alert_sent=has_alert,
         )
+        # Spec req 2.2a: every Article row carries an ``event_id`` field, null
+        # when the article is not a member of any retained event. The column is
+        # populated by ``_EVENT_ID_SQL`` (a correlated scalar subquery). When
+        # callers omit the column (e.g. a row produced outside the list/detail
+        # paths), default to None so the response shape stays stable.
+        event_id = row["event_id"] if "event_id" in row.keys() else None  # noqa: SIM118
         return {
             "id": row["id"],
             "source_name": row["source_name"],
@@ -401,6 +425,9 @@ class DashboardDB:
             "classification": classification,
             "pipeline_status": pipeline_status,
             "has_alert": has_alert,
+            # Per spec 2.2: the article-list response surfaces the event this
+            # article belongs to (null when no retained event contains it).
+            "event_id": event_id,
             # Per req 4.5: every article response (list + detail) MUST carry
             # an `annotation` field, null when no annotation exists. When the
             # annotations DB is not attached this is always null — matching
@@ -568,6 +595,21 @@ class DashboardDB:
         "   WHERE EXISTS (SELECT 1 FROM json_each(e.article_ids) je "
         "                 WHERE je.value = a.id)))"
     )
+    # Per-article ``event_id`` lookup (spec req 2.2). Returns the id of the
+    # retained event whose ``article_ids`` JSON contains ``a.id``; NULL when
+    # the article is not in any retained event. Scoped to events whose
+    # ``first_seen_at`` is within ``EVENT_ID_RETENTION_DAYS`` (req 2.2b) so the
+    # per-row JSON scan stays bounded on paginated list responses. When more
+    # than one event matches (req 2.2c edge case — corroborator should
+    # prevent uniqueness violations but does not enforce them) the lowest
+    # ``first_seen_at`` event wins; the endpoint MUST NOT raise.
+    _EVENT_ID_SQL = (
+        "(SELECT e.id FROM events e "
+        " WHERE e.first_seen_at >= datetime('now', '-' || ? || ' days') "
+        "   AND EXISTS (SELECT 1 FROM json_each(e.article_ids) je "
+        "               WHERE je.value = a.id) "
+        " ORDER BY e.first_seen_at ASC LIMIT 1)"
+    )
 
     # Article columns that every list/detail query needs to populate
     # `_article_from_row`. `raw_metadata` is intentionally excluded here -- it
@@ -609,9 +651,14 @@ class DashboardDB:
         """Lean SELECT column list for ``get_articles`` / ``search_articles``.
 
         Includes the classification join columns, event/alert count
-        subqueries, and (when the annotations DB is attached) the per-row
-        annotation fields. Omits ``raw_metadata`` -- only
-        ``get_article_detail`` reads it.
+        subqueries, the per-row ``event_id`` lookup (spec req 2.2), and (when
+        the annotations DB is attached) the per-row annotation fields. Omits
+        ``raw_metadata`` -- only ``get_article_detail`` reads it.
+
+        ``_EVENT_ID_SQL`` carries one ``?`` placeholder (the retention-days
+        bound from spec req 2.2b); callers MUST prepend
+        ``EVENT_ID_RETENTION_DAYS`` to their parameter list before the
+        existing filter / search params.
         """
         return (
             f"{self._LIST_ARTICLE_COLUMNS}, "
@@ -620,7 +667,8 @@ class DashboardDB:
             "c.is_new_event, c.confidence, c.summary_pl, c.classified_at, "
             "c.model_used, c.input_tokens, c.output_tokens, "
             f"{self._EVENT_COUNT_SQL} AS event_count, "
-            f"{self._ALERT_COUNT_SQL} AS alert_count"
+            f"{self._ALERT_COUNT_SQL} AS alert_count, "
+            f"{self._EVENT_ID_SQL} AS event_id"
             f"{self._annotation_select_fragment()}"
         )
 
@@ -628,7 +676,11 @@ class DashboardDB:
         """SELECT column list for ``get_article_detail``.
 
         Same as `_list_select_columns` plus ``a.raw_metadata`` -- the detail
-        endpoint exposes the parsed metadata blob to the dashboard.
+        endpoint exposes the parsed metadata blob to the dashboard. The
+        ``event_id`` column is included for consistency with the list shape,
+        even though ``get_article_detail`` also returns the full linked
+        ``events`` list separately. Same parameter contract as
+        ``_list_select_columns`` (prepend ``EVENT_ID_RETENTION_DAYS``).
         """
         return (
             f"{self._LIST_ARTICLE_COLUMNS}, a.raw_metadata, "
@@ -637,7 +689,8 @@ class DashboardDB:
             "c.is_new_event, c.confidence, c.summary_pl, c.classified_at, "
             "c.model_used, c.input_tokens, c.output_tokens, "
             f"{self._EVENT_COUNT_SQL} AS event_count, "
-            f"{self._ALERT_COUNT_SQL} AS alert_count"
+            f"{self._ALERT_COUNT_SQL} AS alert_count, "
+            f"{self._EVENT_ID_SQL} AS event_id"
             f"{self._annotation_select_fragment()}"
         )
 
@@ -688,11 +741,15 @@ class DashboardDB:
 
         offset = (page - 1) * page_size
         # Stable secondary sort on a.id so equal sort keys paginate predictably.
+        # ``_list_select_columns`` embeds ``_EVENT_ID_SQL`` which takes ONE
+        # leading parameter (the retention-days bound); prepend it before
+        # the filter params (which feed the WHERE clause) and the pagination
+        # params at the tail.
         rows = self.conn.execute(
             f"SELECT {self._list_select_columns()}{base} "
             f"ORDER BY {sort_expr} {direction}, a.id {direction} "
             "LIMIT ? OFFSET ?",
-            [*params, page_size, offset],
+            [self.event_id_retention_days, *params, page_size, offset],
         ).fetchall()
 
         total_pages = (total + page_size - 1) // page_size
@@ -714,13 +771,16 @@ class DashboardDB:
         * ``events`` -- list of linked events, each with an ``alert_records``
           list (req 1.5b)
         """
+        # ``_detail_select_columns`` embeds ``_EVENT_ID_SQL`` (one leading
+        # ``?`` for the retention-days bound); prepend it before the WHERE
+        # parameter (``article_id``).
         row = self.conn.execute(
             f"SELECT {self._detail_select_columns()} "
             "FROM articles a "
             "LEFT JOIN classifications c ON c.article_id = a.id"
             f"{self._annotation_join_fragment()} "
             "WHERE a.id = ?",
-            (article_id,),
+            (self.event_id_retention_days, article_id),
         ).fetchone()
         if row is None:
             return None
@@ -807,6 +867,93 @@ class DashboardDB:
                 }
             )
         return events
+
+    def get_event_with_articles(self, event_id: str) -> dict | None:
+        """Return one event with its full article list and alert timeline.
+
+        Spec req 2.1, 2.1a. Returns the event row + every article whose id
+        appears in ``events.article_ids`` (ordered by ``published_at`` ASC) +
+        every ``alert_record`` for the event (ordered by ``sent_at`` ASC).
+        Returns None when no event has the given id (the API layer turns this
+        into a 404).
+
+        Shape matches the spec's normative example exactly:
+        ``{id, event_type, urgency_score, affected_countries, aggressor,
+        summary_pl, first_seen_at, last_updated_at, source_count,
+        article_ids, alert_status, acknowledged_at, articles[],
+        alert_records[]}``. Each article entry carries the same fields the
+        article-list endpoint returns (id, source_name, source_url,
+        source_type, title, summary, language, published_at, fetched_at,
+        classification, pipeline_status, has_alert, event_id, annotation),
+        so the frontend can render them via the same component used in the
+        article list.
+        """
+        event_row = self.conn.execute(
+            "SELECT * FROM events WHERE id = ?",
+            (event_id,),
+        ).fetchone()
+        if event_row is None:
+            return None
+
+        article_ids = self._parse_json_list(event_row["article_ids"])
+
+        # Pull all articles whose id is in this event's ``article_ids`` JSON
+        # array, using the same column set the list endpoint returns so the
+        # frontend can reuse its existing article render path. SQLite's
+        # ``SQLITE_MAX_VARIABLE_NUMBER`` (default 999, 32766 on 3.32+) bounds
+        # the IN list — events realistically hold ≤ a few dozen article_ids
+        # so no chunking is needed at the current data volume. Ordering is by
+        # ``published_at`` ASC per spec 2.1a.
+        articles: list[dict] = []
+        if article_ids:
+            placeholders = ",".join("?" * len(article_ids))
+            article_rows = self.conn.execute(
+                f"SELECT {self._list_select_columns()} "
+                "FROM articles a "
+                "LEFT JOIN classifications c ON c.article_id = a.id"
+                f"{self._annotation_join_fragment()} "
+                f"WHERE a.id IN ({placeholders}) "
+                "ORDER BY a.published_at ASC, a.id ASC",
+                [self.event_id_retention_days, *article_ids],
+            ).fetchall()
+            articles = [self._article_from_row(r) for r in article_rows]
+
+        # Alert records for this event, ordered by sent_at ASC (spec 2.5c).
+        alert_rows = self.conn.execute(
+            "SELECT * FROM alert_records WHERE event_id = ? ORDER BY sent_at ASC",
+            (event_id,),
+        ).fetchall()
+        alert_records = [
+            {
+                "id": ar["id"],
+                "event_id": ar["event_id"],
+                "alert_type": ar["alert_type"],
+                "twilio_sid": ar["twilio_sid"],
+                "status": ar["status"],
+                "duration_seconds": ar["duration_seconds"],
+                "attempt_number": ar["attempt_number"],
+                "sent_at": ar["sent_at"],
+                "message_body": ar["message_body"],
+            }
+            for ar in alert_rows
+        ]
+
+        return {
+            "id": event_row["id"],
+            "event_type": event_row["event_type"],
+            "urgency_score": event_row["urgency_score"],
+            "affected_countries": self._parse_json_list(event_row["affected_countries"]),
+            "aggressor": event_row["aggressor"],
+            "summary_pl": event_row["summary_pl"],
+            "first_seen_at": event_row["first_seen_at"],
+            "last_updated_at": event_row["last_updated_at"],
+            "source_count": event_row["source_count"],
+            "article_ids": article_ids,
+            "alert_status": event_row["alert_status"],
+            "acknowledged_at": event_row["acknowledged_at"],
+            "articles": articles,
+            "alert_records": alert_records,
+        }
 
     def search_articles(
         self,
@@ -920,9 +1067,12 @@ class DashboardDB:
         else:
             order_clause = "ORDER BY f.rank, a.id ASC"
 
+        # ``_list_select_columns`` carries one leading ``?`` for the event-id
+        # retention-days bound (req 2.2b); prepend it before the FTS MATCH
+        # param + filter params + pagination params.
         rows = self.conn.execute(
             f"SELECT {self._list_select_columns()}{base} {order_clause} LIMIT ? OFFSET ?",
-            [match_query, *filter_params, page_size, offset],
+            [self.event_id_retention_days, match_query, *filter_params, page_size, offset],
         ).fetchall()
 
         total_pages = (total + page_size - 1) // page_size
@@ -997,9 +1147,12 @@ class DashboardDB:
         else:
             order_clause = "ORDER BY a.published_at DESC, a.id DESC"
 
+        # ``_list_select_columns`` carries one leading ``?`` for the event-id
+        # retention-days bound (req 2.2b); prepend it before the LIKE params
+        # + filter params + pagination params.
         rows = self.conn.execute(
             f"SELECT {self._list_select_columns()}{base} {order_clause} LIMIT ? OFFSET ?",
-            [like, like, *filter_params, page_size, offset],
+            [self.event_id_retention_days, like, like, *filter_params, page_size, offset],
         ).fetchall()
 
         total_pages = (total + page_size - 1) // page_size

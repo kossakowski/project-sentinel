@@ -14,6 +14,7 @@ import type {
   ArticleDetail,
   ArticleListResponse,
   ArticleQueryParams,
+  EventDetail,
   StatsResponse,
   SyncStatus,
   SyncTriggerResponse,
@@ -135,6 +136,19 @@ export function fetchArticleDetail(
 /** GET /api/stats — aggregate dashboard statistics (req 1.6). */
 export function fetchStats(init?: RequestInit): Promise<StatsResponse> {
   return request<StatsResponse>("/api/stats", init);
+}
+
+/** GET /api/events/<id> — one event with its full article list and alert
+ *  timeline (SPEC_ALERT_GROUPING.md req 2.1, 2.6). Rejects with
+ *  ApiError(404) when no event has the given id. */
+export function fetchEvent(
+  eventId: string,
+  init?: RequestInit,
+): Promise<EventDetail> {
+  return request<EventDetail>(
+    `/api/events/${encodeURIComponent(eventId)}`,
+    init,
+  );
 }
 
 /** POST /api/sync — trigger a fresh DB sync from production (req 1.7). */

@@ -28,9 +28,14 @@ def get_db() -> DashboardDB:
     ``.close()`` on the returned DashboardDB (typically in a ``finally`` block).
     """
     cfg = current_app.config
+    # ``EVENT_ID_RETENTION_DAYS`` is passed through so tests / future callers
+    # can widen the per-row event-id lookup window without monkeypatching the
+    # module-level default. Falls through to None so ``DashboardDB`` uses its
+    # built-in default (30 days, per spec 2.2b) when the key is absent.
     return DashboardDB(
         db_path=cfg.get("SENTINEL_DB_PATH"),
         tunnel=cfg.get("USE_TUNNEL", False),
         fts_db_path=cfg.get("SENTINEL_FTS_DB_PATH"),
         annotations_db_path=cfg.get("ANNOTATIONS_DB_PATH"),
+        event_id_retention_days=cfg.get("EVENT_ID_RETENTION_DAYS"),
     )

@@ -1193,3 +1193,206 @@ input[type="checkbox"] {
   font-size: 12px;
   color: #86efac;
 }
+
+/* Event-grouping styles ------------------------------------------------- */
+/* Spec SPEC_ALERT_GROUPING.md req 2.3a — first row of an event group:
+ * a clickable indicator (chevron + count) navigates to /events/<id>. */
+.article-row-event-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 4px;
+  padding: 1px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--badge-event-fg, #fed7aa);
+  background: var(--badge-event-bg, #9a3412);
+  border-radius: 3px;
+  text-decoration: none;
+}
+.article-row-event-indicator:hover {
+  filter: brightness(1.15);
+}
+.article-row-event-indicator-chevron {
+  font-size: 9px;
+}
+.article-row-event-indicator-count {
+  font-size: 10px;
+}
+/* Spec 2.3b — continuation rows are visually distinguished from fresh rows
+ * via TWO independent cues (coloured left border + faded background) so the
+ * grouping reads correctly to colour-blind users. */
+.article-table tbody tr.article-row.article-row-in-group {
+  /* Faded background: half-opacity of the table-stripe colour, layered on
+   * top so the stripe alternation remains the dominant cue. */
+  background: rgba(154, 52, 18, 0.12);
+}
+.article-table tbody tr.article-row.article-row-in-group > td:first-child {
+  /* Coloured left border on the first cell — second of the two visual
+   * cues required by spec 2.3b. */
+  border-left: 3px solid var(--badge-event-bg, #9a3412);
+  padding-left: 7px;
+}
+.article-row-expanded.article-row-expanded-in-group > td {
+  border-left: 3px solid var(--badge-event-bg, #9a3412);
+  padding-left: 21px;
+}
+
+/* Event detail page styles --------------------------------------------- */
+.event-detail-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px;
+}
+.event-detail-back-link {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--link);
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.event-detail-back-link:hover {
+  background: var(--bg-elevated);
+}
+.event-detail-header {
+  background: var(--bg-elevated);
+  padding: 16px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+.event-detail-title {
+  margin: 0 0 12px;
+  font-size: 20px;
+}
+.event-detail-meta {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 6px 12px;
+  margin: 0;
+}
+.event-detail-meta dt {
+  color: var(--text-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.event-detail-meta dd {
+  margin: 0;
+}
+.event-detail-urgency-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.event-detail-country-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.event-detail-country-chip {
+  display: inline-block;
+  background: var(--bg-table-stripe, #1e293b);
+  color: var(--text);
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+}
+.event-detail-alert-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  background: var(--badge-event-bg, #9a3412);
+  color: var(--badge-event-fg, #fed7aa);
+}
+.event-detail-articles,
+.event-detail-alert-timeline {
+  background: var(--bg-elevated);
+  padding: 16px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+.event-detail-articles-list,
+.event-detail-alert-timeline-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.event-detail-article {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px;
+}
+.event-detail-article-title {
+  display: inline-block;
+  margin-bottom: 6px;
+  font-weight: 600;
+  color: var(--link);
+}
+.event-detail-article-title:hover {
+  color: var(--link-hover);
+}
+.event-detail-article-meta {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 2px 8px;
+  margin: 0;
+  font-size: 12px;
+}
+.event-detail-article-meta dt {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.event-detail-article-meta dd {
+  margin: 0;
+}
+.event-detail-article-urgency {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.event-detail-alert-timeline-item {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 10px;
+}
+.event-detail-alert-timeline-header {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+.event-detail-alert-timeline-type {
+  font-weight: 600;
+}
+.event-detail-alert-timeline-body {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.event-detail-alert-timeline-expand {
+  margin-top: 4px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--link);
+  padding: 2px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+}
+.event-detail-error-message {
+  color: #fca5a5;
+}

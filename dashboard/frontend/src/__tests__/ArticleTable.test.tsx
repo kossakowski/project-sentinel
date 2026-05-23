@@ -1,9 +1,16 @@
-// Tests for ArticleTable — covers reqs 2.2, 2.2a, 2.2b, 2.2d, 2.2e.
+// Tests for ArticleTable — covers reqs 2.2, 2.2a, 2.2b, 2.2d, 2.2e PLUS
+// SPEC_ALERT_GROUPING.md Phase 2 acceptance tests #8 (event-group indicator
+// rendered + clickable) and #9 (standalone rows unchanged).
 
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+} from "react-router-dom";
 
 import { ArticleTable } from "../components/ArticleTable";
 import {
@@ -343,5 +350,124 @@ describe("ArticleTable", () => {
     expect(badges[2]).toHaveClass("badge-classified");
     expect(badges[3]).toHaveTextContent("Unclassified");
     expect(badges[3]).toHaveClass("badge-unclassified");
+  });
+
+  // SPEC_ALERT_GROUPING.md acceptance test #8 — three consecutive rows
+  // sharing one event_id render a single event-group indicator on the FIRST
+  // grouped row (spec 2.3a); clicking it navigates to /events/<id>
+  // (spec 2.3d). Continuation rows carry the in-group styling (spec 2.3b).
+  it("test_article_table_renders_event_group_indicator", async () => {
+    const groupedArticles = [
+      makeArticle({ id: "g1", title: "Grouped row 1", event_id: "ev-xyz" }),
+      makeArticle({ id: "g2", title: "Grouped row 2", event_id: "ev-xyz" }),
+      makeArticle({ id: "g3", title: "Grouped row 3", event_id: "ev-xyz" }),
+      makeArticle({ id: "s1", title: "Standalone row", event_id: null }),
+    ];
+
+    // LocationProbe so the post-click navigation is asserted by URL change.
+    function Probe() {
+      const location = useLocation();
+      return (
+        <span data-testid="probe-pathname">{location.pathname}</span>
+      );
+    }
+
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter
+        initialEntries={["/articles"]}
+        future={routerFutureFlags}
+      >
+        <Routes>
+          <Route
+            path="/articles"
+            element={
+              <ArticleTable
+                articles={groupedArticles}
+                visibleColumns={["title"]}
+                sort="published_at"
+                order="desc"
+                onSortChange={() => {}}
+              />
+            }
+          />
+          <Route
+            path="/events/:id"
+            element={<div data-testid="events-landed" />}
+          />
+        </Routes>
+        <Probe />
+      </MemoryRouter>,
+    );
+
+    // Spec 2.3a — EXACTLY ONE indicator per event group across the rendered
+    // table. The grouped event has one indicator (on the first row); the
+    // standalone row has no indicator. ``getAllByTestId`` ensures we'd
+    // notice if two indicators appeared for the same group.
+    const indicators = screen.getAllByTestId("event-group-indicator-ev-xyz");
+    expect(indicators).toHaveLength(1);
+
+    // Spec 2.3b — continuation rows carry the in-group class so they read
+    // as part of the same visual group (faded background + left border, two
+    // independent cues per the accessibility requirement). The first row
+    // does NOT carry the class (it owns the indicator instead).
+    const row1 = screen.getByTestId("article-row-g1");
+    const row2 = screen.getByTestId("article-row-g2");
+    const row3 = screen.getByTestId("article-row-g3");
+    expect(row1.className).not.toContain("article-row-in-group");
+    expect(row2.className).toContain("article-row-in-group");
+    expect(row3.className).toContain("article-row-in-group");
+
+    // Spec 2.3d — clicking the indicator navigates to /events/<id>. The
+    // indicator is a <Link>, so userEvent click should trigger router
+    // navigation in the MemoryRouter.
+    const indicator = indicators[0];
+    expect(indicator.tagName.toLowerCase()).toBe("a");
+    expect(indicator.getAttribute("href")).toBe("/events/ev-xyz");
+    await user.click(indicator);
+    await waitFor(() => {
+      expect(screen.getByTestId("events-landed")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("probe-pathname").textContent).toBe(
+      "/events/ev-xyz",
+    );
+  });
+
+  // SPEC_ALERT_GROUPING.md acceptance test #9 — when no rows have a
+  // non-null event_id, NO grouping styling is added (spec 2.3c — the
+  // existing default styling MUST be preserved unchanged).
+  it("test_article_table_standalone_row_unchanged", () => {
+    const standaloneArticles = [
+      makeArticle({ id: "s1", title: "Plain row 1", event_id: null }),
+      makeArticle({ id: "s2", title: "Plain row 2", event_id: null }),
+      makeUnclassifiedArticle({ id: "s3", title: "Plain row 3", event_id: null }),
+    ];
+
+    render(
+      <MemoryRouter future={routerFutureFlags}>
+        <ArticleTable
+          articles={standaloneArticles}
+          visibleColumns={["title"]}
+          sort="published_at"
+          order="desc"
+          onSortChange={() => {}}
+        />
+      </MemoryRouter>,
+    );
+
+    // No event-group indicator anywhere in the DOM.
+    const indicators = document.querySelectorAll(
+      "[data-testid^='event-group-indicator-']",
+    );
+    expect(indicators.length).toBe(0);
+
+    // No continuation-row class anywhere either.
+    expect(document.querySelectorAll(".article-row-in-group").length).toBe(0);
+
+    // Each row's data-event-role marker reads "standalone".
+    for (const id of ["s1", "s2", "s3"]) {
+      const row = screen.getByTestId(`article-row-${id}`);
+      expect(row.getAttribute("data-event-role")).toBe("standalone");
+    }
   });
 });

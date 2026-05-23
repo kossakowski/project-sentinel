@@ -152,6 +152,12 @@ export interface Article {
   /** Phase 4: per-article annotation (req 4.5). Null when no annotation
    *  has been recorded; otherwise the three spec-mandated fields. */
   annotation: ArticleAnnotation | null;
+  /** SPEC_ALERT_GROUPING.md req 2.2a / 2.6a — id of the event this article
+   *  belongs to, computed via JSON-membership join against
+   *  ``events.article_ids``. Null when the article is not in any retained
+   *  event. Optional in the type for backwards compatibility with fixture
+   *  callers that pre-date Phase 2; the API always emits the field. */
+  event_id?: string | null;
 }
 
 /** Article detail returned by GET /api/articles/<id> (req 1.5). */
@@ -159,6 +165,14 @@ export interface ArticleDetail extends Article {
   raw_metadata: Record<string, unknown>;
   events: EventRecord[];
   classifier_input: string;
+}
+
+/** SPEC_ALERT_GROUPING.md req 2.6b — `EventDetail` extends `EventRecord` with
+ *  the full list of member articles, returned by GET /api/events/<id>.
+ *  ``alert_records`` is already on `EventRecord` and carries over unchanged.
+ *  Articles are ordered by ``published_at`` ASC per spec 2.1a. */
+export interface EventDetail extends EventRecord {
+  articles: Article[];
 }
 
 /** Paginated response wrapper used by /api/articles. */

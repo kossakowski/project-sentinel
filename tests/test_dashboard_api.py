@@ -1492,3 +1492,232 @@ def test_api_articles_accepts_valid_iso_dates(client):
         # so the value arrives at the API byte-for-byte.
         resp = client.get(f"/api/articles?date_from={quote(v, safe=':T.- ')}")
         assert resp.status_code == 200, (v, resp.get_json())
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 (spec SPEC_ALERT_GROUPING.md) -- event-grouping endpoints
+# ---------------------------------------------------------------------------
+
+# The shared fixture-built sentinel DB has two events:
+#   ev1  drone_attack / urgency 9 / first_seen_at 2026-05-22T10:05 / PL
+#        articles: a1 (TASS), a2 (TVN24);  2 alert_records: phone_call, sms
+#   ev2  troop_movement / urgency 5 / first_seen_at 2026-05-20T07:10 / LT
+#        articles: a4 (TASS-Telegram);     no alerts
+# Both events' ``first_seen_at`` are dated 2026-05-20/22 -- but the event-id
+# retention-window scan is anchored at SQLite's ``datetime('now')`` (wall-clock
+# time), so if these tests run more than ~30 days after those dates the
+# default 30-day window would silently drop both events from the per-row
+# ``event_id`` lookup. The fixture below widens that window to 100 years so
+# the tests are deterministic regardless of when they run.
+
+
+@pytest.fixture
+def wide_event_window_client(sentinel_db_path, fts_db_path):
+    """Flask test client with the event-id retention window widened far.
+
+    Spec req 2.2b says the JSON-membership join is scoped to events within
+    the retention window (default 30 days). This fixture pushes the bound
+    out to a century so the deterministic ev1/ev2 rows from the shared
+    fixture are always in scope regardless of wall-clock time when the
+    test runs (fixture events are dated 2026-05-20 / 22; without widening,
+    re-running the suite past 2026-06 would silently start returning
+    ``event_id: null`` everywhere).
+    """
+    build_fts_index(sentinel_db_path, fts_db_path)
+    flask_app = create_app(db_path=sentinel_db_path, fts_db_path=fts_db_path, dev_cors=False)
+    flask_app.config.update(TESTING=True, EVENT_ID_RETENTION_DAYS=365 * 100)
+    return flask_app.test_client()
+
+
+def test_event_detail_returns_200_with_full_shape(wide_event_window_client):
+    """[2.1, 2.1a] GET /api/events/<id> returns 200 + every required field.
+
+    The fixture's ``ev1`` has two member articles (a1, a2) and two alert
+    records, exercising both nested arrays. Article ordering is
+    ``published_at`` ASC per spec 2.1a (a2 at 09:00 < a1 at 10:00); alert
+    records are ``sent_at`` ASC (al1 at 10:35 < al2 at 10:36).
+    """
+    resp = wide_event_window_client.get("/api/events/ev1")
+    assert resp.status_code == 200
+    body = resp.get_json()
+
+    # Every event-level field from the spec's normative example MUST be present.
+    expected_keys = {
+        "id",
+        "event_type",
+        "urgency_score",
+        "affected_countries",
+        "aggressor",
+        "summary_pl",
+        "first_seen_at",
+        "last_updated_at",
+        "source_count",
+        "article_ids",
+        "alert_status",
+        "acknowledged_at",
+        "articles",
+        "alert_records",
+    }
+    assert expected_keys.issubset(body.keys()), expected_keys - set(body.keys())
+
+    # Event metadata mirrors the fixture row.
+    assert body["id"] == "ev1"
+    assert body["event_type"] == "drone_attack"
+    assert body["urgency_score"] == 9
+    assert body["affected_countries"] == ["PL"]
+    assert body["aggressor"] == "RU"
+    assert body["source_count"] == 2
+    assert body["article_ids"] == ["a1", "a2"]
+    assert body["alert_status"] == "sms_sent"
+
+    # ``articles`` populated, ordered by published_at ASC (a2 first).
+    assert [a["id"] for a in body["articles"]] == ["a2", "a1"]
+    # Per-article shape matches the article-list response (req 2.1a).
+    for article in body["articles"]:
+        for field in (
+            "id",
+            "source_name",
+            "source_url",
+            "source_type",
+            "title",
+            "summary",
+            "language",
+            "published_at",
+            "fetched_at",
+            "classification",
+            "pipeline_status",
+            "has_alert",
+            "event_id",
+            "annotation",
+        ):
+            assert field in article, f"missing article field: {field}"
+        # Each member article carries the event_id back-reference.
+        assert article["event_id"] == "ev1"
+
+    # ``alert_records`` populated, ordered by sent_at ASC.
+    assert [r["id"] for r in body["alert_records"]] == ["al1", "al2"]
+    for record in body["alert_records"]:
+        for field in (
+            "id",
+            "event_id",
+            "alert_type",
+            "twilio_sid",
+            "status",
+            "duration_seconds",
+            "attempt_number",
+            "sent_at",
+            "message_body",
+        ):
+            assert field in record, f"missing alert record field: {field}"
+
+
+def test_event_detail_returns_404_for_unknown_id(client):
+    """[2.1b] An unknown event id returns HTTP 404 + JSON error body."""
+    resp = client.get("/api/events/not-a-real-event-uuid")
+    assert resp.status_code == 404
+    body = resp.get_json()
+    assert "error" in body
+    assert body["error"] == "event not found"
+
+
+@pytest.mark.parametrize("method", ["POST", "PUT", "DELETE", "PATCH"])
+def test_event_detail_rejects_non_get_methods(client, method):
+    """[2.1c] The endpoint is read-only — non-GET verbs return 405."""
+    resp = client.open("/api/events/ev1", method=method)
+    assert resp.status_code == 405, (method, resp.status_code, resp.get_json())
+
+
+def test_article_list_includes_event_id(wide_event_window_client):
+    """[2.2, 2.2a] Every Article row carries an ``event_id`` field.
+
+    At least one row in the fixture has a non-null ``event_id`` (a1 / a2
+    are in ev1, a4 is in ev2). Articles that are not in any event row
+    (a3, a5-9) have ``event_id: null``.
+    """
+    resp = wide_event_window_client.get("/api/articles?page_size=50")
+    assert resp.status_code == 200
+    body = resp.get_json()
+
+    # The field is present on every row (key exists; value may be null).
+    for article in body["articles"]:
+        assert "event_id" in article, f"missing event_id on {article['id']}"
+
+    # At least one row has a non-null event_id.
+    non_null = [a for a in body["articles"] if a["event_id"] is not None]
+    assert len(non_null) >= 1
+
+
+def test_article_list_event_id_for_non_event_article(wide_event_window_client):
+    """[2.2a] An article that no event row references returns event_id: null.
+
+    a3 is classified but not a member of any ``events.article_ids`` JSON
+    array, so the per-row JSON-membership subquery returns NULL.
+    """
+    resp = wide_event_window_client.get("/api/articles?page_size=50")
+    body = resp.get_json()
+    by_id = {a["id"]: a for a in body["articles"]}
+
+    # a3 is in the fixture but is NOT a member of any event.
+    assert by_id["a3"]["event_id"] is None
+    # a5/a6/a8/a9 are unclassified and not in any event either.
+    assert by_id["a5"]["event_id"] is None
+    assert by_id["a6"]["event_id"] is None
+    assert by_id["a8"]["event_id"] is None
+    assert by_id["a9"]["event_id"] is None
+
+
+def test_article_list_event_id_for_event_member(wide_event_window_client):
+    """[2.2, 2.2b] An article whose id appears in events.article_ids returns that event's id.
+
+    a1 and a2 are both in ev1's article_ids JSON array; a4 is in ev2's.
+    The per-row lookup MUST resolve each to the correct event id (proving
+    the JSON-membership join works end-to-end).
+    """
+    resp = wide_event_window_client.get("/api/articles?page_size=50")
+    body = resp.get_json()
+    by_id = {a["id"]: a for a in body["articles"]}
+
+    assert by_id["a1"]["event_id"] == "ev1"
+    assert by_id["a2"]["event_id"] == "ev1"
+    assert by_id["a4"]["event_id"] == "ev2"
+
+
+def test_event_id_join_scoped_to_retention_window(sentinel_db_path, fts_db_path):
+    """[2.2b] Articles whose only event row was pruned return event_id: null.
+
+    Spec 2.2b says the JSON-membership scan is scoped to events within the
+    retention window — articles whose event row is OUTSIDE the window (or
+    deleted entirely) MUST surface ``event_id: null`` on the list response.
+    We simulate this by inserting a brand-new article and NOT inserting any
+    event row referencing it; the lookup correctly returns null. (The same
+    code path covers the "event row pruned" case — once an event row is
+    gone from ``events``, no article can resolve to it.)
+    """
+    # Add a fresh article with no corresponding event row.
+    import sqlite3 as sql
+
+    conn = sql.connect(sentinel_db_path)
+    try:
+        conn.execute(
+            "INSERT INTO articles (id, source_name, source_url, source_type, "
+            "title, summary, language, published_at, fetched_at, url_hash, "
+            "title_normalized) VALUES "
+            "('orphan-1', 'OrphanSrc', 'https://example.com/orphan-1', 'rss', "
+            "'Orphan headline (no event row)', 'Body text.', 'en', "
+            "'2026-05-22T12:00:00+00:00', '2026-05-22T12:00:00+00:00', "
+            "'hash-orphan-1', 'orphan headline')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    build_fts_index(sentinel_db_path, fts_db_path)
+    flask_app = create_app(db_path=sentinel_db_path, fts_db_path=fts_db_path, dev_cors=False)
+    flask_app.config.update(TESTING=True, EVENT_ID_RETENTION_DAYS=365 * 100)
+    test_client = flask_app.test_client()
+
+    resp = test_client.get("/api/articles?page_size=50")
+    body = resp.get_json()
+    by_id = {a["id"]: a for a in body["articles"]}
+    assert "orphan-1" in by_id
+    assert by_id["orphan-1"]["event_id"] is None

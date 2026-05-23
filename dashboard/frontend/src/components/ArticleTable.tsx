@@ -8,6 +8,73 @@ import { AnnotationBadge } from "./AnnotationBadge";
 import { safeHref } from "../utils/safeHref";
 import { ApiError, fetchArticleDetail } from "../api/client";
 
+/** Event-grouping pass result for a single row (spec 2.3a/b/c).
+ *
+ *  - ``role: "first"`` — this row is the first of a consecutive same-event
+ *    run; render the event-group indicator (clickable badge) + a count of
+ *    visible group members so the badge reads "Event: N articles".
+ *  - ``role: "continuation"`` — same event as the previous row; apply the
+ *    in-group styling (coloured left border + faded background = two visual
+ *    changes, spec 2.3b accessibility requirement).
+ *  - ``role: "standalone"`` — null event_id, or non-consecutive: no extra
+ *    styling, indicator hidden (spec 2.3c).
+ */
+type EventGroupRole = "first" | "continuation" | "standalone";
+
+interface EventGroupInfo {
+  role: EventGroupRole;
+  /** Non-null only when ``role !== "standalone"`` — the event id this row
+   *  belongs to (used by the first-row indicator's Link). */
+  eventId: string | null;
+  /** Visible count of consecutive same-event rows including this one, used
+   *  on the first-row indicator badge (e.g. "Event: 4 articles"). 1 for
+   *  standalone rows. */
+  groupSize: number;
+}
+
+/** Walk the rendered article list once and tag each row with its grouping
+ *  role. Pure function; works against the rendering order (post-sort,
+ *  post-paginate) so it stays a render-time pass over the API response
+ *  (spec 2.3e — no re-query). */
+function computeEventGroups(articles: Article[]): EventGroupInfo[] {
+  const result: EventGroupInfo[] = articles.map(() => ({
+    role: "standalone",
+    eventId: null,
+    groupSize: 1,
+  }));
+
+  let i = 0;
+  while (i < articles.length) {
+    const eventId = articles[i].event_id ?? null;
+    if (!eventId) {
+      // Standalone — already initialized above. Move on.
+      i++;
+      continue;
+    }
+    // Walk forward as long as the next row shares the same event_id.
+    let runEnd = i;
+    while (
+      runEnd + 1 < articles.length &&
+      (articles[runEnd + 1].event_id ?? null) === eventId
+    ) {
+      runEnd++;
+    }
+    const runSize = runEnd - i + 1;
+    // A "group" requires at least 2 visible members — a lone row with a
+    // non-null event_id but no consecutive same-event neighbor still gets
+    // the indicator (so the user can navigate to the event) but stays
+    // visually unchanged otherwise. Treat it as a one-row group: role
+    // "first", no continuation rows after it.
+    result[i] = { role: "first", eventId, groupSize: runSize };
+    for (let j = i + 1; j <= runEnd; j++) {
+      result[j] = { role: "continuation", eventId, groupSize: runSize };
+    }
+    i = runEnd + 1;
+  }
+
+  return result;
+}
+
 interface ArticleTableProps {
   articles: Article[];
   visibleColumns: ReadonlyArray<ColumnKey>;
@@ -82,6 +149,12 @@ export function ArticleTable({
       ),
     [visibleColumns],
   );
+
+  // Single render-time pass over the (sorted/paginated) articles to tag each
+  // row's event-grouping role (spec 2.3a/b/c). Memoised on the articles
+  // array so we don't recompute on every unrelated state change (expand
+  // toggles, detail-fetch resolutions, etc.).
+  const eventGroups = useMemo(() => computeEventGroups(articles), [articles]);
 
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set<string>());
   // Per-row article-detail cache. Spec 2.2b requires raw_metadata in the
@@ -216,7 +289,7 @@ export function ArticleTable({
               </td>
             </tr>
           ) : (
-            articles.map((article) => (
+            articles.map((article, idx) => (
               <ArticleRow
                 key={article.id}
                 article={article}
@@ -225,6 +298,7 @@ export function ArticleTable({
                 detail={details.get(article.id) ?? null}
                 onToggle={() => toggleRow(article.id)}
                 linkState={linkState}
+                groupInfo={eventGroups[idx]}
               />
             ))
           )}
@@ -243,6 +317,8 @@ interface ArticleRowProps {
   /** Forwarded to the title `<Link>` so the detail page can navigate back to
    *  the previously-filtered list (req 3.10). */
   linkState: { from: string };
+  /** Event-grouping role + metadata for this row (spec 2.3). */
+  groupInfo: EventGroupInfo;
 }
 
 function ArticleRow({
@@ -252,10 +328,27 @@ function ArticleRow({
   detail,
   onToggle,
   linkState,
+  groupInfo,
 }: ArticleRowProps) {
+  // Spec 2.3b — apply at least two visual changes to continuation rows so
+  // the grouping is distinguishable to colour-blind users (the CSS class
+  // applies BOTH a coloured left border AND a faded background — two
+  // independent visual cues, neither colour-only). Standalone and "first"
+  // rows keep their existing default styling (spec 2.3c).
+  const rowClass = `article-row${
+    groupInfo.role === "continuation" ? " article-row-in-group" : ""
+  }`;
+  const expandedRowClass = `article-row-expanded${
+    groupInfo.role === "continuation" ? " article-row-expanded-in-group" : ""
+  }`;
   return (
     <>
-      <tr className="article-row" data-testid={`article-row-${article.id}`}>
+      <tr
+        className={rowClass}
+        data-testid={`article-row-${article.id}`}
+        data-event-id={groupInfo.eventId ?? ""}
+        data-event-role={groupInfo.role}
+      >
         <td className="col-expand">
           <button
             type="button"
@@ -266,6 +359,31 @@ function ArticleRow({
           >
             {expanded ? "▾" : "▸"}
           </button>
+          {/* Spec 2.3a/d — event-group indicator on the FIRST row of any
+              event run. Clickable Link to ``/events/<id>`` so the user can
+              jump to the consolidated event view in one click. Hidden on
+              continuation / standalone rows so each group has exactly one
+              indicator (spec 2.3a "a single MUST-present indicator"). */}
+          {groupInfo.role === "first" && groupInfo.eventId && (
+            <Link
+              to={`/events/${encodeURIComponent(groupInfo.eventId)}`}
+              className="article-row-event-indicator"
+              data-testid={`event-group-indicator-${groupInfo.eventId}`}
+              aria-label={`Open event ${groupInfo.eventId} (${groupInfo.groupSize} ${
+                groupInfo.groupSize === 1 ? "article" : "articles"
+              })`}
+              title={`Event: ${groupInfo.groupSize} ${
+                groupInfo.groupSize === 1 ? "article" : "articles"
+              }`}
+            >
+              <span className="article-row-event-indicator-chevron" aria-hidden="true">
+                ▾
+              </span>
+              <span className="article-row-event-indicator-count">
+                {groupInfo.groupSize}
+              </span>
+            </Link>
+          )}
         </td>
         {columns.map((key) => (
           <td key={key} className={`col-${key} ${cellClassFor(key, article)}`}>
@@ -274,7 +392,7 @@ function ArticleRow({
         ))}
       </tr>
       {expanded && (
-        <tr className="article-row-expanded">
+        <tr className={expandedRowClass}>
           <td colSpan={columns.length + 1}>
             <ArticleRowDetail article={article} detail={detail} />
           </td>
