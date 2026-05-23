@@ -46,6 +46,24 @@ events (id TEXT PK, event_type TEXT, urgency_score INTEGER, affected_countries T
         source_count INTEGER, article_ids TEXT, alert_status TEXT, acknowledged_at TEXT)
 ```
 
+### Article-to-event membership
+
+`events.article_ids` is **NOT** a foreign-key column on `articles` — it is a **JSON-encoded array** of article IDs stored as TEXT inside each event row. There is no `articles.event_id` column. To determine which event (if any) a given article belongs to, the audit script MUST either:
+
+1. **SQL approach:** Use SQLite's `json_each` table-valued function to expand the JSON array, e.g.
+   ```sql
+   SELECT e.id AS event_id, je.value AS article_id, e.event_type, e.urgency_score,
+          e.affected_countries, e.source_count, e.first_seen_at, e.last_updated_at,
+          e.alert_status
+   FROM events e, json_each(e.article_ids) je
+   WHERE e.first_seen_at > '{since}';
+   ```
+   This produces one row per (event, article) membership and can be joined back to `classifications` / `articles` by `article_id`.
+
+2. **Python approach:** Fetch the event rows with `article_ids` as TEXT, then in Python call `json.loads(row["article_ids"])` to obtain the list and build a `{article_id -> event_id}` lookup dictionary before iterating classifications.
+
+Either approach is acceptable. The Python join is simpler when the audit script already loads classifications into memory; the SQL `json_each` join is preferable when the volume is large.
+
 ## Keyword Matching Logic
 
 - **Slavic languages (PL, UK, RU):** substring matching — keyword "inwazj" matches "inwazja", "inwazji", "inwazją", etc.
@@ -127,6 +145,17 @@ SELECT * FROM events WHERE first_seen_at > '{since}';
 
 -- 1f. Alerts sent
 SELECT * FROM alert_records WHERE sent_at > '{since}';
+
+-- 1g. Event-to-article membership (needed for Step 3 event-grouped report).
+-- Expands the JSON array in events.article_ids via json_each so each row is
+-- one (event_id, article_id) pair joined with the event metadata. Alternative:
+-- fetch query 1e rows and json.loads(article_ids) in Python — pick whichever
+-- is simpler for the script you are writing.
+SELECT e.id AS event_id, je.value AS article_id, e.event_type, e.urgency_score,
+       e.affected_countries, e.source_count, e.first_seen_at, e.last_updated_at,
+       e.alert_status
+FROM events e, json_each(e.article_ids) je
+WHERE e.first_seen_at > '{since}';
 ```
 
 Also retrieve:
@@ -174,7 +203,7 @@ For each MISSED article:
 
 For articles that are NOT relevant: skip them silently.
 
-### Step 3: Classification quality audit
+### Step 3: Classification quality audit (event-grouped)
 
 Review EVERY classification from query 1b. Only flag CLEAR disagreements — ±1 urgency variance is normal for a smaller model.
 
@@ -186,6 +215,30 @@ Flag if:
 - `aggressor` is wrong
 
 For each disagreement, state what Haiku said, what you would say, and why the difference matters for the alert system.
+
+#### Organize the report by event
+
+Before writing disagreements into the report, partition the classified articles into two groups using the `article_id -> event_id` mapping built from query 1g (or the Python `json.loads` join described in the Database section):
+
+1. **Articles belonging to an event** — group together every classified article whose `id` appears in some `events.article_ids` JSON array. Each event becomes ONE block in the report containing the event metadata and a bullet-list of its constituent articles, with any per-article disagreements nested inside that block.
+2. **Standalone classified articles** — articles whose `id` does NOT appear in any event row's `article_ids`. List these flat under a "Standalone classified articles" sub-heading, ordered by `published_at` ascending.
+
+**Ordering rules:**
+- Event blocks at the top of Step 3's section MUST be ordered by `urgency_score` descending, then `first_seen_at` descending (highest-stakes events first; ties broken by most-recent-first).
+- Within each event block, the constituent articles MUST be listed in `published_at` ascending (the chronological order in which the news broke).
+- No article may appear in both an event block and the standalone section.
+
+**Each event block MUST show, in this order:**
+- `event_id` 8-char prefix (first 8 hex chars of the UUID, e.g. `d4585e99`)
+- `event_type`
+- `urgency_score`
+- `affected_countries`
+- `source_count`
+- `first_seen_at` → `last_updated_at` (time span)
+- `alert_status`
+- A bullet-list of the constituent articles, each line showing `title`, `source_name`, `published_at`
+
+If the event block contains any classification disagreements, render the existing `### DISAGREEMENT:` blocks nested under the event block (after the bullet list).
 
 ### Step 4: Source health check
 
@@ -250,11 +303,46 @@ echo "{current_utc_iso_timestamp}" > data/audit-reports/.last-audit-timestamp
 - **Suggested fix:** Add `"{keyword}"` to `monitoring.keywords.{lang}.{critical|high}` in config.yaml
 - **False positive risk:** {Low/Medium/High — would this keyword also match many irrelevant articles?}
 
-## Classification Disagreements
+## Classified Articles (grouped by event)
 
-{If none: "No significant classification errors identified."}
+{This section replaces the old flat "Classification Disagreements" list. Render one block per event, then a flat "Standalone classified articles" list for articles outside any event. Event blocks are ordered by `urgency_score` descending, then `first_seen_at` descending. Within each event block, constituent articles are listed in `published_at` ascending. If no classified articles were produced in the audit window, write "No classified articles in this audit window."}
 
-### DISAGREEMENT: [{source_name}] {title}
+### Event {event_id_prefix_8_chars}
+- **Type:** {event_type}
+- **Urgency:** {urgency_score} / 10
+- **Affected countries:** {affected_countries}
+- **Sources:** {source_count}
+- **Span:** {first_seen_at} → {last_updated_at}
+- **Alert status:** {alert_status}
+
+**Articles in this event ({N}):**
+- [{source_name}] {title} — {published_at}
+- [{source_name}] {title} — {published_at}
+- ...
+
+{If this event contains any classification disagreements, nest them here:}
+
+#### DISAGREEMENT: [{source_name}] {title}
+| Field | Haiku | Audit |
+|-------|-------|-------|
+| is_military_event | {value} | {value} |
+| urgency_score | {value} | {value} |
+| event_type | {value} | {value} |
+| affected_countries | {value} | {value} |
+- **Impact:** {What would change in alert behavior if Haiku's assessment were corrected}
+- **Suggested fix:** {Prompt adjustment, threshold change, or "acceptable model limitation"}
+
+{Repeat the "Event {id}" block for each event, ordered by urgency_score desc then first_seen_at desc.}
+
+### Standalone classified articles
+
+{Classified articles whose id does NOT appear in any event row's article_ids JSON array. Listed flat, ordered by `published_at` ascending. If none: "No standalone classified articles in this audit window."}
+
+- [{source_name}] {title} — {published_at} — urgency {urgency_score}, type {event_type}
+
+{If a standalone article has a classification disagreement, render the `#### DISAGREEMENT:` block below it.}
+
+#### DISAGREEMENT: [{source_name}] {title}
 | Field | Haiku | Audit |
 |-------|-------|-------|
 | is_military_event | {value} | {value} |
