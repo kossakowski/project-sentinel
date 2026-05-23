@@ -1,6 +1,6 @@
 """Tests for sentinel.alerts.state_machine."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -8,12 +8,10 @@ import pytest
 
 from sentinel.alerts.state_machine import (
     AlertStateMachine,
-    _format_call_message,
     _format_sms_message,
     _format_update_sms,
 )
 from sentinel.models import AlertRecord, Article, Event
-
 
 # --------------------------------------------------------------------------
 # Fixtures
@@ -36,8 +34,8 @@ def _make_event(
         affected_countries=["PL"],
         aggressor="RU",
         summary_pl="Rosja wystrzeliła rakiety w kierunku Polski.",
-        first_seen_at=datetime.now(timezone.utc),
-        last_updated_at=datetime.now(timezone.utc),
+        first_seen_at=datetime.now(UTC),
+        last_updated_at=datetime.now(UTC),
         source_count=source_count,
         article_ids=[str(uuid4())],
         alert_status=alert_status,
@@ -62,7 +60,7 @@ def _make_alert_record(
         status=status,
         duration_seconds=duration_seconds,
         attempt_number=attempt_number,
-        sent_at=sent_at or datetime.now(timezone.utc),
+        sent_at=sent_at or datetime.now(UTC),
         message_body="Test alert message",
     )
 
@@ -145,9 +143,7 @@ def test_medium_urgency_triggers_sms(state_machine, mock_twilio, config):
     """Urgency 6 -> SMS (WhatsApp disabled, routed to SMS)."""
     from sentinel.config import UrgencyLevel
 
-    config.alerts.urgency_levels["medium"] = UrgencyLevel(
-        min_score=5, action="sms", corroboration_required=1
-    )
+    config.alerts.urgency_levels["medium"] = UrgencyLevel(min_score=5, action="sms", corroboration_required=1)
 
     event = _make_event(urgency_score=6, source_count=1)
     state_machine.process_event(event)
@@ -164,9 +160,7 @@ def test_low_urgency_logs_only(state_machine, mock_twilio, config):
     """Urgency 3 -> no alert sent (log only)."""
     from sentinel.config import UrgencyLevel
 
-    config.alerts.urgency_levels["low"] = UrgencyLevel(
-        min_score=1, action="log_only"
-    )
+    config.alerts.urgency_levels["low"] = UrgencyLevel(min_score=1, action="log_only")
 
     event = _make_event(urgency_score=3, source_count=1)
     state_machine.process_event(event)
@@ -277,7 +271,7 @@ def test_cooldown_prevents_recall(state_machine, mock_twilio):
     event = _make_event(
         urgency_score=10,
         source_count=2,
-        acknowledged_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        acknowledged_at=datetime.now(UTC) - timedelta(hours=1),
     )
 
     state_machine.process_event(event)
@@ -297,8 +291,7 @@ def test_cooldown_expired_allows_call(_sleep, state_machine, mock_twilio, config
     event = _make_event(
         urgency_score=10,
         source_count=2,
-        acknowledged_at=datetime.now(timezone.utc)
-        - timedelta(hours=cooldown_hours + 1),
+        acknowledged_at=datetime.now(UTC) - timedelta(hours=cooldown_hours + 1),
     )
 
     state_machine.process_event(event)
@@ -317,7 +310,7 @@ def test_new_event_bypasses_cooldown(_sleep, state_machine, mock_twilio):
     event1 = _make_event(
         urgency_score=10,
         source_count=2,
-        acknowledged_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        acknowledged_at=datetime.now(UTC) - timedelta(hours=1),
     )
     state_machine.process_event(event1)
     mock_twilio.make_alert_call.assert_not_called()
@@ -340,7 +333,7 @@ def test_acknowledged_event_gets_sms_update(state_machine, db, mock_twilio):
     event = _make_event(urgency_score=10, source_count=2)
 
     # Create an acknowledged alert record with a sent_at in the past
-    past_time = datetime.now(timezone.utc) - timedelta(hours=1)
+    past_time = datetime.now(UTC) - timedelta(hours=1)
     record = _make_alert_record(
         event.id,
         alert_type="phone_call",
@@ -350,7 +343,7 @@ def test_acknowledged_event_gets_sms_update(state_machine, db, mock_twilio):
     db.insert_alert_record(record)
 
     # The event was updated after the last alert
-    event.last_updated_at = datetime.now(timezone.utc)
+    event.last_updated_at = datetime.now(UTC)
 
     state_machine.process_event(event)
 
@@ -378,6 +371,37 @@ def test_duplicate_alert_prevented(_sleep, state_machine, db, mock_twilio):
 
 
 # --------------------------------------------------------------------------
+# 14a. test_sms_not_resent_when_new_article_added
+# --------------------------------------------------------------------------
+def test_sms_not_resent_when_new_article_added(state_machine, db, mock_twilio):
+    """Reproduces the 2026-05-23 Latvia drone-lake bug: a non-acknowledged
+    SMS-status event was re-dispatched on every new article, firing one extra
+    SMS per article. Cooldown only engaged on acknowledged_at, so SMS events
+    spammed forever. Now the same-event re-dispatch must NOT re-fire SMS.
+    """
+    event = _make_event(urgency_score=7, source_count=1, event_type="airspace_violation")
+
+    state_machine.process_event(event)
+    assert mock_twilio.send_sms.call_count == 1
+
+    # Simulate corroborator adding a new article: same event id, source_count
+    # may bump, last_updated_at advances. The pending status is what the
+    # corroborator leaves on the row after each update.
+    event.article_ids.append(str(uuid4()))
+    event.last_updated_at = datetime.now(UTC) + timedelta(minutes=5)
+    event.alert_status = "pending"
+
+    state_machine.process_event(event)
+    assert mock_twilio.send_sms.call_count == 1, "SMS must not be re-sent for the same event when a new article arrives"
+
+    # Third article — still no extra SMS.
+    event.article_ids.append(str(uuid4()))
+    event.last_updated_at = datetime.now(UTC) + timedelta(minutes=10)
+    state_machine.process_event(event)
+    assert mock_twilio.send_sms.call_count == 1
+
+
+# --------------------------------------------------------------------------
 # 15. test_corroboration_upgrade_triggers_call
 # --------------------------------------------------------------------------
 @patch("sentinel.alerts.state_machine.time.sleep")
@@ -394,8 +418,8 @@ def test_corroboration_upgrade_triggers_call(_sleep, state_machine, db, mock_twi
         affected_countries=["PL"],
         aggressor="RU",
         summary_pl="Rosja wystrzeliła rakiety.",
-        first_seen_at=datetime.now(timezone.utc),
-        last_updated_at=datetime.now(timezone.utc),
+        first_seen_at=datetime.now(UTC),
+        last_updated_at=datetime.now(UTC),
         source_count=1,
         article_ids=[article_id_1],
         alert_status="pending",
@@ -430,7 +454,7 @@ def test_retry_interval_enforced(state_machine, db, mock_twilio, config):
         alert_type="phone_call",
         status="no-answer",
         attempt_number=1,
-        sent_at=datetime.now(timezone.utc),  # just now
+        sent_at=datetime.now(UTC),  # just now
     )
     db.insert_alert_record(recent_call)
 
@@ -456,7 +480,7 @@ def test_retry_interval_elapsed_allows_call(_sleep, state_machine, db, mock_twil
         alert_type="phone_call",
         status="no-answer",
         attempt_number=1,
-        sent_at=datetime.now(timezone.utc) - timedelta(minutes=retry_minutes + 1),
+        sent_at=datetime.now(UTC) - timedelta(minutes=retry_minutes + 1),
     )
     db.insert_alert_record(old_call)
 
@@ -478,8 +502,8 @@ def test_sms_format_includes_source_details(db, config):
         title="Atak rakietowy na Polskę",
         summary="Rakiety wystrzelone...",
         language="pl",
-        published_at=datetime.now(timezone.utc),
-        fetched_at=datetime.now(timezone.utc),
+        published_at=datetime.now(UTC),
+        fetched_at=datetime.now(UTC),
     )
     article2 = Article(
         source_name="TVN24",
@@ -488,8 +512,8 @@ def test_sms_format_includes_source_details(db, config):
         title="Rosja atakuje Polskę rakietami",
         summary="Potwierdzony atak...",
         language="pl",
-        published_at=datetime.now(timezone.utc),
-        fetched_at=datetime.now(timezone.utc),
+        published_at=datetime.now(UTC),
+        fetched_at=datetime.now(UTC),
     )
     db.insert_article(article1)
     db.insert_article(article2)
@@ -501,8 +525,8 @@ def test_sms_format_includes_source_details(db, config):
         affected_countries=["PL"],
         aggressor="RU",
         summary_pl="Rosja wystrzeliła rakiety.",
-        first_seen_at=datetime.now(timezone.utc),
-        last_updated_at=datetime.now(timezone.utc),
+        first_seen_at=datetime.now(UTC),
+        last_updated_at=datetime.now(UTC),
         source_count=2,
         article_ids=[article1.id, article2.id],
     )
@@ -527,8 +551,8 @@ def test_update_sms_includes_source_name(db, config):
         title="Nowe szczegóły ataku",
         summary="Dodatkowe informacje...",
         language="pl",
-        published_at=datetime.now(timezone.utc),
-        fetched_at=datetime.now(timezone.utc),
+        published_at=datetime.now(UTC),
+        fetched_at=datetime.now(UTC),
     )
     db.insert_article(article)
 
@@ -539,8 +563,8 @@ def test_update_sms_includes_source_name(db, config):
         affected_countries=["PL"],
         aggressor="RU",
         summary_pl="Nowe informacje o ataku.",
-        first_seen_at=datetime.now(timezone.utc),
-        last_updated_at=datetime.now(timezone.utc),
+        first_seen_at=datetime.now(UTC),
+        last_updated_at=datetime.now(UTC),
         source_count=3,
         article_ids=["old-id-1", "old-id-2", article.id],
     )
