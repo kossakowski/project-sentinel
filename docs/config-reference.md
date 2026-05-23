@@ -127,7 +127,7 @@ Consumed by: `sentinel/classification/classifier.py`
 | `max_tokens` | int | `512` | `512` | Max output tokens per classification call |
 | `temperature` | float | `0.0` | `0.0` | LLM temperature (0 = deterministic) |
 | `corroboration_required` | int | `1` | `2` | Min independent sources to form an event; live config overrides Pydantic default |
-| `corroboration_window_minutes` | int | `360` | `360` | Time window for grouping articles into a single event (6 hours) |
+| `corroboration_window_minutes` | int | `60` | `360` | Time window for grouping articles into a single event; live config still uses `60` minutes (Pydantic default is `360` = 6 hours) |
 | `summary_similarity_threshold` | int | `40` | `40` | Fuzzy token_sort_ratio for matching summaries to existing events; lower = more aggressive merging; range 0-100 |
 | `syndication_similarity_threshold` | int | `90` | `90` | Title similarity threshold above which two articles are treated as syndicated copies of one source; range 0-100 |
 

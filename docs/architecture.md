@@ -203,7 +203,7 @@ Post-alert state transitions (managed by `AlertStateMachine`, not corroborator):
 | YAML path | Type | Default | Effect |
 |---|---|---|---|
 | `classification.corroboration_required` | `int` | `2` | Min independent sources before `Event.alert_status` leaves `pending`. **Live config uses `1`.** |
-| `classification.corroboration_window_minutes` | `int` | `360` | Lookback window for grouping articles into the same Event (6 hours). |
+| `classification.corroboration_window_minutes` | `int` | `360` | Lookback window for grouping articles into the same Event (6 hours). **Live config still uses `60`.** |
 | `classification.summary_similarity_threshold` | `int` | `40` | Fuzzy token_sort_ratio for matching summaries to an existing event (range 0-100; lower = more aggressive merging). |
 | `classification.syndication_similarity_threshold` | `int` | `90` | Title similarity threshold above which two articles are treated as syndicated copies of one source (range 0-100). |
 | `classification.model` | `str` | `claude-haiku-4-5-20251001` | Anthropic model for classification |
