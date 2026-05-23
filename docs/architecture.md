@@ -278,7 +278,9 @@ Config loading: `sentinel/config.py:load_config()`. Env vars substituted via `${
 
 ## 10. Dashboard Subsystem (`dashboard/`)
 
-Separate from the monitoring runtime described above. Read-only Flask backend over the production SQLite DB; runs locally only, never deployed. Full reference: [`SPEC.md`](../SPEC.md).
+Separate from the monitoring runtime described above. Read-only Flask backend + React/Vite/TypeScript frontend over the production SQLite DB; runs locally only, never deployed. Full reference: [`SPEC.md`](../SPEC.md).
+
+### 10.1 Backend (Flask)
 
 | File | Responsibility |
 |---|---|
@@ -294,6 +296,52 @@ Separate from the monitoring runtime described above. Read-only Flask backend ov
 
 Tunnel mode does **not** use SSH port-forwarding (SQLite is a file, not a network service). It SCPs the live DB to a temp path at `create_app()`, opens it read-only, and removes it on exit. Tunnel mode forces LIKE-only search (no FTS) and refuses `POST /api/sync` (409).
 
+Multi-source filter: `GET /api/articles` accepts `source_name` as a repeated query parameter (e.g. `?source_name=PAP&source_name=TVN24`). `dashboard/api/articles.py` calls `request.args.getlist("source_name")`, trims whitespace, drops empty values, and passes `None | str | list[str]` to `dashboard/db.py:_build_filters`, which emits `source_name IN (?, ?, ...)` for the multi-value case. Single-value form preserved for backward compatibility.
+
+`raw_metadata` is always returned as a `dict` from `dashboard/db.py:get_article_detail` — non-object JSON values (string, array, null) are coerced to `{}` so the frontend can render without runtime checks.
+
 Data files (`dashboard/data/sentinel.db`, `dashboard/data/sentinel_fts.db`, planned `annotations.db`) are dashboard-owned and separate from production.
 
-Status: Phase 1 (backend) complete. Phases 2 (React frontend), 3 (analytics charts), and 4 (annotations) are spec'd but not implemented.
+### 10.2 Frontend (React/Vite/TypeScript at `dashboard/frontend/`)
+
+Stack: React 18.3 + react-router-dom 6 + Vite 5.4 + TypeScript 5.5 (strict) + vitest 2 + @testing-library/react + jsdom.
+
+| Path | Responsibility |
+|---|---|
+| `vite.config.ts` | Dev server on `:5173`; `/api/*` proxied to `http://localhost:5001` (Flask). Production build → `dist/`, served by Flask at `/` |
+| `src/main.tsx` | React entry; mounts `BrowserRouter` with v7 future flags from `utils/routerFutureFlags.ts` |
+| `src/App.tsx` | Root routes — `/` → `pages/ArticlesPage`; `/articles/:id` → Phase 3 placeholder |
+| `src/types.ts` | TypeScript interfaces field-for-field mirror of Phase 1 Python API (`Article`, `Classification`, `EventRecord`, `AlertRecord`, `StatsResponse`, `SyncResult`, `SyncStatus`, `ArticleDetail`, `ArticleQueryParams`). Enum-like unions widened with `\| string` to tolerate stale DB rows / backend drift; `event_type` is `string \| null` |
+| `src/api/client.ts` | Typed fetch client (`fetchArticles`, `fetchArticleDetail`, `fetchStats`, `triggerSync`, `fetchSyncStatus`); `ApiError` carries `status`/`body`/`url`; `buildSearchParams` emits repeated params for array values |
+| `src/hooks/useArticles.ts` | Data-fetching hook; `AbortController` + `requestIdRef` race guard; `refreshKey`-driven refetch; errors → toast |
+| `src/hooks/useLocalStorage.ts` | Persistent state hook with optional validator; corrupted or wrong-shape values fall back to `initialValue` AND clear the bad key (validator wrapped in try/catch) |
+| `src/pages/ArticlesPage.tsx` | Orchestrator — owns URL ↔ state mapping via `useSearchParams`; drives `useArticles`, parallel tab-count fetches, `fetchStats`; wires `SyncButton.refreshTick`; conditional sort param; broad clear-all |
+| `src/components/ArticleTable.tsx` | Main table; lazy-fetches `ArticleDetail` on row expand for `raw_metadata`; per-row `AbortController`; sort headers with `aria-pressed` indicator (shown only when explicit sort active); `safeHref` scheme validation for `source_url` |
+| `src/components/ColumnPicker.tsx` | Popover checkbox list for column visibility; localStorage-persisted; Escape-key dismiss |
+| `src/components/FilterBar.tsx` | Filter controls including `SourceMultiSelect` popover; URL state via `useSearchParams`; whitespace-trimmed values |
+| `src/components/FilterTabs.tsx` | All / Classified / Unclassified tabs with per-tab counts |
+| `src/components/SearchBar.tsx` | Search input with 300 ms debounce and clear (×) button |
+| `src/components/Pagination.tsx` | Page navigation + page-size selector (25/50/100, localStorage-persisted, resets to page 1 on size change) |
+| `src/components/SyncButton.tsx` | `POST /api/sync`; disabled in tunnel mode (tooltip explains); refreshes view via `refreshTick` callback |
+| `src/components/Toast.tsx` | Toast notification context + tray; `notify(message, variant)` API; React-stable via `useCallback` |
+| `src/components/columns.ts` | Column metadata (key, label, default visibility, localStorage key, `isColumnKeyList` validator) |
+| `src/components/badges.ts` | `urgencyClassFor` + `pipelineStatusBadge` helpers |
+| `src/utils/safeHref.ts` | Validates URL scheme (http/https only) before rendering as href — blocks `javascript:` / `data:` XSS |
+| `src/utils/routerFutureFlags.ts` | Shared v7 future flags (`v7_startTransition`, `v7_relativeSplatPath`) for `BrowserRouter` and test `MemoryRouter` rigs |
+| `src/styles/index.css` | Global styles — table, badges, urgency colors, popovers, toasts |
+
+### 10.3 Frontend Conventions
+
+- **URL is the canonical state surface** for filters, search (`q`), `sort`, `order`, `page`, and `tab` — managed via `react-router-dom` `useSearchParams`. Bookmarkable and shareable.
+- **localStorage** is used **only** for column visibility and `page_size` (user preferences, not filters).
+- **Conditional sort**: the `sort` param is sent to the backend only when the user has explicitly clicked a column header (URL has `sort=...`). With no explicit sort, the backend default ordering applies — FTS rank when a search `q` is present, recency otherwise. This preserves Phase 1's FTS rank behaviour. The UI shows the directional indicator (▲/▼) only when explicit sort is active; the first click of an unsorted column sorts descending, subsequent clicks alternate.
+- **Multi-source filter**: frontend repeats `?source_name=A&source_name=B` URL params; backend collapses with whitespace strip + empty drop into `None | str | list[str]` and emits a parameterized `IN (?, ?, ...)` clause. Single-value form (one source) preserved for backward compatibility.
+- **Lazy `raw_metadata` fetch**: row-detail data is **not** included in `/api/articles` (list response stays lean over ~37K articles). On row expand, `ArticleTable` calls `fetchArticleDetail(id)` with a per-row `AbortController`; results cached in a `Map<articleId, DetailEntry>`. Errors surface inline within the expanded row (intentionally not via global toast — too noisy for per-row fetches).
+- **Broad clear-all-filters**: resets tab, search, sort, order, page, and every `FilterBar` field. Only `page_size` is preserved (preference, not filter).
+- **Global error surfacing**: all non-row-level API errors go through the global Toast tray (`useToasts().notify`); `notify` is memoized stable so dependent effects don't refire spuriously.
+- **AbortController** is used consistently in `useArticles`, `ArticleTable.loadDetail`, and `ArticlesPage`'s stats/tab-count effects. Stale-response guards via `requestIdRef` in `useArticles`.
+- **XSS / scheme safety**: `source_url` is rendered as `<a href={...}>` only when the URL parses as `http`/`https`; otherwise rendered as plain text via `safeHref`. Article `id` is `encodeURIComponent`'d in router `<Link>`s.
+- **SQL injection guard (backend)**: every dashboard query is parameterized, including the dynamic `IN` clause for multi-source filter (placeholders generated to match the value count).
+- **Tunnel-mode surfacing**: `SyncButton` polls `/api/sync/status` and disables itself with an explanatory tooltip when `tunnel_mode: true`.
+
+Status: Phase 1 (backend) and Phase 2 (React frontend foundation) complete. Phase 3 (analytics + article detail), Phase 4 (annotations), and later phases are spec'd but not yet implemented. Phase 3 routes (`/articles/:id`) currently render a placeholder.

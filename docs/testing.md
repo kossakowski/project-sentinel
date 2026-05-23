@@ -93,3 +93,48 @@ Note: `--test-alert` **forces** `dry_run=False` regardless of config — its pur
 - Summary stats: articles fetched per source, filtered count, classified count, events created.
 
 Use when: tuning keyword lists (`monitoring.keywords` in config), validating classifier accuracy against live data, or investigating why a real event was or was not flagged.
+
+---
+
+## Dashboard Frontend Testing
+
+The dashboard's React frontend at `dashboard/frontend/` ships its own test suite (vitest + @testing-library/react + jsdom). All commands are run from the frontend directory.
+
+```bash
+# Install once (creates node_modules/)
+cd dashboard/frontend && npm install
+
+# Run all frontend unit tests
+cd dashboard/frontend && npx vitest run
+
+# Watch mode (for iterative development)
+cd dashboard/frontend && npm run test:watch
+
+# Type-check only — no compiled output
+cd dashboard/frontend && npx tsc --noEmit
+
+# Full production build (also type-checks via `tsc -b`)
+cd dashboard/frontend && npm run build
+```
+
+Test stack: `vitest@^2`, `@testing-library/react`, `@testing-library/user-event`, `@testing-library/jest-dom`, `jsdom`. Setup file at `src/test-setup.ts` wires jest-dom matchers. Shared fixtures live in `src/__tests__/fixtures.ts`.
+
+What's covered:
+
+| Test file | Focus |
+|---|---|
+| `src/__tests__/ArticleTable.test.tsx` | Rendering, sorting, expandable row + lazy `raw_metadata` fetch + error path, urgency colors, badges, sort-indicator visibility, `safeHref` plain-text fallback |
+| `src/__tests__/ArticlesPage.test.tsx` | Stats error toast, tab-count error toast, conditional sort param omission, broad clear-all (URL fully cleared), sync → stats refresh |
+| `src/__tests__/ColumnPicker.test.tsx` | Toggles + `localStorage` persistence |
+| `src/__tests__/FilterBar.test.tsx` | Filter → URL updates, clear-all, source multi-select round-trip |
+| `src/__tests__/FilterTabs.test.tsx` | Tab selection filters by `pipeline_status` |
+| `src/__tests__/SearchBar.test.tsx` | 300 ms debounce via `vi.useFakeTimers` |
+| `src/__tests__/Pagination.test.tsx` | Page-size change resets to page 1; `localStorage` persistence |
+| `src/__tests__/SyncButton.test.tsx` | Sync flow + tunnel-mode disabled state |
+| `src/__tests__/client.test.ts` | `ApiError` carries `status`/`body`/`url`/`message` correctly |
+| `src/__tests__/safeHref.test.ts` | http/https accept; javascript/data/ftp/malformed reject |
+| `src/__tests__/useLocalStorage.test.ts` | Hydration, malformed JSON fallback + clear, validator rejection |
+
+Phase 2 gate commands (from SPEC.md): `npm install`, `npm run build`, `npx tsc --noEmit`, `npx vitest run` — all must pass.
+
+**Backend coordination note.** The Phase 1 backend test `test_app_factory_frontend_placeholder` (in `tests/test_dashboard_api.py`) checks that `/` returns the bundled placeholder HTML when no built frontend is present. Phase 2 added a real `dashboard/frontend/dist/` so this test now monkeypatches `dashboard.app.config.FRONTEND_DIST_DIR` to a temporary empty directory — making it pass regardless of whether the developer has run `npm run build` locally.
