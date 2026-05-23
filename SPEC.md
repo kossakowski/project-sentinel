@@ -437,9 +437,11 @@ TypeScript. The `vite.config.ts` MUST proxy `/api/*` requests to `http://localho
 in Phase 1 requirements 1.4a, 1.5, and 1.6. Field names MUST be identical.
 
 **2.2 — Article Table:** `ArticleTable` MUST render articles in a table with clickable
-column headers for sorting. Clicking a column header MUST toggle sort direction
-(asc → desc → asc). The currently sorted column MUST show a directional indicator
-(▲ or ▼).
+column headers for sorting. Clicking a column header MUST toggle sort direction. The
+first click of an unsorted column sorts descending (highest value / newest first);
+subsequent clicks of the same column alternate between asc and desc. The currently
+sorted column MUST show a directional indicator (▲ or ▼); when no column is explicitly
+sorted (e.g. when an FTS search controls the ordering), no indicator is shown.
 
 **2.2a** — Default visible columns MUST be: published date, title, source name, language,
 urgency score, event type, pipeline status. These defaults MUST be overridable via the
