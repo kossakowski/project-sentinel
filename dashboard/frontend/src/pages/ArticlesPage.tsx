@@ -10,7 +10,6 @@ import {
   type ColumnKey,
 } from "../components/columns";
 import {
-  EMPTY_FILTERS,
   FilterBar,
   filterStateToQuery,
   type FilterState,
@@ -18,25 +17,31 @@ import {
 import { FilterTabs, type FilterTabValue, tabToPipelineStatus } from "../components/FilterTabs";
 import { SearchBar } from "../components/SearchBar";
 import {
-  ALLOWED_PAGE_SIZES,
   Pagination,
   isValidPageSize,
   type PageSize,
 } from "../components/Pagination";
 import { SyncButton } from "../components/SyncButton";
+import { useToasts } from "../components/Toast";
 import { useArticles } from "../hooks/useArticles";
 import { useLocalStorage } from "../hooks/useLocalStorage";
-import { fetchArticles, fetchStats } from "../api/client";
+import { ApiError, fetchArticles, fetchStats } from "../api/client";
 import type { ArticleQueryParams, SortColumn, SortOrder } from "../types";
 
 const DEFAULT_PAGE_SIZE: PageSize = 50;
-const DEFAULT_SORT: SortColumn = "published_at";
-const DEFAULT_ORDER: SortOrder = "desc";
+// Visual fallback used by the table when the URL has no explicit `sort` param.
+// We intentionally do NOT send `sort=` to the backend in that case so that
+// /api/articles' FTS rank ordering (req 1.4c) stays reachable while the user
+// is searching. Clicking a column header writes an explicit `sort=` into the
+// URL and re-engages the backend's column-sorting path.
+const DEFAULT_DISPLAY_SORT: SortColumn = "published_at";
+const DEFAULT_DISPLAY_ORDER: SortOrder = "desc";
 
 /** Whole articles page, composed of FilterTabs / FilterBar / SearchBar /
  *  ColumnPicker / SyncButton / ArticleTable / Pagination (req 2.x). */
 export function ArticlesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { notify } = useToasts();
 
   // Persistent UI preferences.
   const [visibleColumns, setVisibleColumns] = useLocalStorage<ColumnKey[]>(
@@ -51,8 +56,13 @@ export function ArticlesPage() {
   // Read state straight from the URL so reloads restore everything (req 2.4a, 2.6a).
   const tab = (searchParams.get("tab") as FilterTabValue) || "all";
   const search = searchParams.get("q") ?? "";
-  const sort = (searchParams.get("sort") as SortColumn) || DEFAULT_SORT;
-  const order = (searchParams.get("order") as SortOrder) || DEFAULT_ORDER;
+  // User-chosen sort is detected by the literal presence of `sort=` in the URL.
+  // When absent, the table still renders a default visual indicator but we do
+  // NOT send `sort` to the backend (preserves req 1.4c).
+  const userSort = searchParams.get("sort") as SortColumn | null;
+  const userOrder = searchParams.get("order") as SortOrder | null;
+  const displaySort: SortColumn = userSort ?? DEFAULT_DISPLAY_SORT;
+  const displayOrder: SortOrder = userOrder ?? DEFAULT_DISPLAY_ORDER;
   const page = Math.max(1, Number(searchParams.get("page") ?? "1") || 1);
   const pageSizeFromUrl = Number(searchParams.get("page_size") ?? "");
   const pageSize: PageSize = isValidPageSize(pageSizeFromUrl)
@@ -75,6 +85,10 @@ export function ArticlesPage() {
     [searchParams],
   );
 
+  // Counter that bumps after a sync — forces useArticles AND fetchStats to
+  // refetch fresh data so filter dropdowns and counts stay in sync (req 2.8).
+  const [refreshTick, setRefreshTick] = useState(0);
+
   // Track sources/event types for the FilterBar dropdowns (populated from /api/stats).
   const [sourceOptions, setSourceOptions] = useState<string[]>([]);
   const [eventTypeOptions, setEventTypeOptions] = useState<string[]>([]);
@@ -88,29 +102,36 @@ export function ArticlesPage() {
           stats.event_type_distribution.map((s) => s.event_type),
         );
       })
-      .catch(() => {
-        // Silent here — useArticles handles the broader error surface via toasts.
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        const message = errorMessage(error);
+        // Spec req 2.9a — API errors MUST be surfaced to the user.
+        notify(
+          `Couldn't load source/event filters: ${message}`,
+          "error",
+        );
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+    // refreshTick re-runs the effect after a successful sync — picks up new
+    // sources/event_types that didn't exist at first mount.
+  }, [refreshTick, notify]);
 
-  // Build the API query from URL state.
+  // Build the API query from URL state. `sort`/`order` are added only when
+  // the user has explicitly clicked a column header (see comments on
+  // DEFAULT_DISPLAY_SORT above for the FTS-rank rationale).
   const baseFilters = filterStateToQuery(filters);
   const pipelineStatus = tabToPipelineStatus(tab);
   const params: ArticleQueryParams = {
     ...baseFilters,
-    sort,
-    order,
     page,
     page_size: pageSize,
+    ...(userSort ? { sort: userSort } : {}),
+    ...(userSort && userOrder ? { order: userOrder } : {}),
     ...(pipelineStatus ? { pipeline_status: pipelineStatus } : {}),
     ...(search ? { q: search } : {}),
   };
-
-  // Counter that bumps after a sync — forces useArticles to refetch fresh data.
-  const [refreshTick, setRefreshTick] = useState(0);
 
   // Main fetch (current view).
   const { data, loading, error } = useArticles(params, refreshTick);
@@ -138,9 +159,12 @@ export function ArticlesPage() {
           classified: classifiedRes,
           unclassified: unclassifiedRes,
         });
-      } catch {
-        // Errors on the count side-channel are non-fatal; useArticles already
-        // surfaces the main load failure.
+      } catch (caught: unknown) {
+        if (cancelled) return;
+        // One toast per failed loadCounts run — even though three /api/articles
+        // calls fire in parallel, the user only needs to know counts are stale.
+        // Spec req 2.9a forbids silently swallowing the failure.
+        notify(`Couldn't refresh tab counts: ${errorMessage(caught)}`, "error");
       }
     }
     loadCounts();
@@ -170,61 +194,99 @@ export function ArticlesPage() {
     [setSearchParams],
   );
 
-  function onTabChange(next: FilterTabValue) {
-    updateSearchParams((p) => {
-      if (next === "all") p.delete("tab");
-      else p.set("tab", next);
-      p.set("page", "1");
-    });
-  }
+  const onTabChange = useCallback(
+    (next: FilterTabValue) => {
+      updateSearchParams((p) => {
+        if (next === "all") p.delete("tab");
+        else p.set("tab", next);
+        p.set("page", "1");
+      });
+    },
+    [updateSearchParams],
+  );
 
-  function onSortChange(column: SortColumn) {
-    const nextOrder: SortOrder =
-      sort === column ? (order === "asc" ? "desc" : "asc") : "desc";
-    updateSearchParams((p) => {
-      p.set("sort", column);
-      p.set("order", nextOrder);
-      p.set("page", "1");
-    });
-  }
+  const onSortChange = useCallback(
+    (column: SortColumn) => {
+      // Reads the current state from the URL via the searchParams snapshot —
+      // each click writes back an explicit `sort=...&order=...` so the backend
+      // sees a user-chosen sort going forward.
+      const currentSort = searchParams.get("sort") as SortColumn | null;
+      const currentOrder = searchParams.get("order") as SortOrder | null;
+      const nextOrder: SortOrder =
+        currentSort === column
+          ? currentOrder === "asc"
+            ? "desc"
+            : "asc"
+          : "desc";
+      updateSearchParams((p) => {
+        p.set("sort", column);
+        p.set("order", nextOrder);
+        p.set("page", "1");
+      });
+    },
+    [searchParams, updateSearchParams],
+  );
 
-  function onPageChange(nextPage: number) {
-    updateSearchParams((p) => {
-      p.set("page", String(nextPage));
-    });
-  }
+  const onPageChange = useCallback(
+    (nextPage: number) => {
+      updateSearchParams((p) => {
+        p.set("page", String(nextPage));
+      });
+    },
+    [updateSearchParams],
+  );
 
-  function onPageSizeChange(size: PageSize) {
-    setStoredPageSize(size);
-    updateSearchParams((p) => {
-      p.set("page_size", String(size));
-      p.set("page", "1"); // req 2.7b
-    });
-  }
+  const onPageSizeChange = useCallback(
+    (size: PageSize) => {
+      setStoredPageSize(size);
+      updateSearchParams((p) => {
+        p.set("page_size", String(size));
+        p.set("page", "1"); // req 2.7b
+      });
+    },
+    [setStoredPageSize, updateSearchParams],
+  );
 
-  function onFilterChange(next: FilterState) {
-    updateSearchParams((p) => {
-      applyFilterToUrl(p, next);
-      p.set("page", "1");
-    });
-  }
+  const onFilterChange = useCallback(
+    (next: FilterState) => {
+      updateSearchParams((p) => {
+        applyFilterToUrl(p, next);
+        p.set("page", "1");
+      });
+    },
+    [updateSearchParams],
+  );
 
-  function onClearFilters() {
-    updateSearchParams((p) => {
-      applyFilterToUrl(p, EMPTY_FILTERS);
-      p.set("page", "1");
-    });
-  }
+  // Clear ALL filter-like state in one go — FilterBar fields, active tab,
+  // search query, sort/order, and page. page_size stays put (lives in
+  // localStorage per req 2.7a).
+  const onClearFilters = useCallback(() => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams();
+        // Preserve page_size only — everything else clears.
+        const pageSizeParam = prev.get("page_size");
+        if (pageSizeParam) next.set("page_size", pageSizeParam);
+        return next;
+      },
+      { replace: false },
+    );
+  }, [setSearchParams]);
 
-  function onSearchChange(query: string) {
-    updateSearchParams((p) => {
-      if (query) p.set("q", query);
-      else p.delete("q");
-      p.set("page", "1");
-    });
-  }
+  // Stabilised so SearchBar's debounce effect doesn't reset on every parent
+  // re-render — protects the 300ms guarantee in req 2.6.
+  const onSearchChange = useCallback(
+    (query: string) => {
+      updateSearchParams((p) => {
+        if (query) p.set("q", query);
+        else p.delete("q");
+        p.set("page", "1");
+      });
+    },
+    [updateSearchParams],
+  );
 
-  function toggleColumn(key: ColumnKey) {
+  const toggleColumn = useCallback((key: ColumnKey) => {
     setVisibleColumns((prev) => {
       const set = new Set(prev);
       if (set.has(key)) set.delete(key);
@@ -232,7 +294,7 @@ export function ArticlesPage() {
       // Preserve the canonical column order from ALL_COLUMNS.
       return [...set] as ColumnKey[];
     });
-  }
+  }, [setVisibleColumns]);
 
   const articles = data?.articles ?? [];
   const totalPages = data?.total_pages ?? 0;
@@ -279,8 +341,8 @@ export function ArticlesPage() {
         visibleColumns={
           visibleColumns.length ? visibleColumns : DEFAULT_VISIBLE_COLUMNS
         }
-        sort={sort}
-        order={order}
+        sort={displaySort}
+        order={displayOrder}
         onSortChange={onSortChange}
       />
 
@@ -323,5 +385,8 @@ function applyFilterToUrl(target: URLSearchParams, next: FilterState) {
   else target.delete("has_alert");
 }
 
-// Re-export so jamming a stray import won't break in tests.
-export { ALLOWED_PAGE_SIZES };
+function errorMessage(error: unknown): string {
+  if (error instanceof ApiError) return error.message;
+  if (error instanceof Error) return error.message;
+  return "Unknown error";
+}

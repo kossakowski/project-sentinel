@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import type { Article, SortColumn, SortOrder } from "../types";
 import { ALL_COLUMNS, type ColumnKey } from "./columns";
 import { pipelineStatusBadge, urgencyClass } from "./badges";
+import { safeHref } from "../utils/safeHref";
 
 interface ArticleTableProps {
   articles: Article[];
@@ -194,14 +195,26 @@ function ArticleRowDetail({ article }: { article: Article }) {
         </>
       )}
       <p>
-        <a
-          className="article-source-link"
-          href={article.source_url}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Open source ↗
-        </a>
+        {(() => {
+          const href = safeHref(article.source_url);
+          return href ? (
+            <a
+              className="article-source-link"
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Open source ↗
+            </a>
+          ) : (
+            <span
+              className="article-source-link article-source-link-disabled"
+              data-testid="article-source-link-unsafe"
+            >
+              {article.source_url}
+            </span>
+          );
+        })()}
       </p>
     </div>
   );
@@ -235,12 +248,16 @@ function renderCell(key: ColumnKey, article: Article) {
       return article.source_name;
     case "source_type":
       return article.source_type;
-    case "source_url":
-      return (
-        <a href={article.source_url} target="_blank" rel="noopener noreferrer">
+    case "source_url": {
+      const href = safeHref(article.source_url);
+      return href ? (
+        <a href={href} target="_blank" rel="noopener noreferrer">
           link
         </a>
+      ) : (
+        <span data-testid="source-url-unsafe">{article.source_url}</span>
       );
+    }
     case "language":
       return article.language.toUpperCase();
     case "urgency_score":
@@ -283,6 +300,5 @@ function formatDate(iso: string): string {
 }
 
 function formatConfidence(value: number): string {
-  if (Number.isNaN(value)) return "—";
   return `${Math.round(value * 100)}%`;
 }

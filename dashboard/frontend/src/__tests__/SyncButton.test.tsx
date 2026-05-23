@@ -29,6 +29,41 @@ function deferred<T>(): Deferred<T> {
 }
 
 describe("SyncButton", () => {
+  // F10 — tunnel mode must disable the button so clicks don't bounce against
+  // the backend's 409 response.
+  it("disables the button in tunnel mode", async () => {
+    const fetchSpy = vi
+      .spyOn(global, "fetch")
+      .mockImplementation(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url === "/api/sync/status") {
+          return jsonResponse({ last_sync: null, tunnel_mode: true });
+        }
+        throw new Error(`Unexpected fetch call to ${url}`);
+      });
+
+    try {
+      render(
+        <ToastProvider>
+          <SyncButton />
+        </ToastProvider>,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId("sync-meta").textContent).toBe(
+          "Tunnel mode — fresh data on each startup",
+        );
+      });
+      expect(screen.getByTestId("sync-button")).toBeDisabled();
+      expect(screen.getByTestId("sync-button")).toHaveAttribute(
+        "title",
+        "Disabled in tunnel mode",
+      );
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   // covers 2.8, 2.8a
   it("test_sync_button_flow", async () => {
     const onSyncComplete = vi.fn();

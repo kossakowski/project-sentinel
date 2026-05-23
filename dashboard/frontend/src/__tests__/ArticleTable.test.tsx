@@ -164,6 +164,42 @@ describe("ArticleTable", () => {
     expect(urgencyCells[2].textContent).toBe("—");
   });
 
+  // Defense-in-depth against XSS via untrusted source_url (F7 from review).
+  it("renders unsafe source URLs as plain text", async () => {
+    const user = userEvent.setup();
+    const malicious = makeArticle({
+      id: "art-evil",
+      title: "Suspicious article",
+      source_url: "javascript:alert(1)",
+    });
+
+    render(
+      <MemoryRouter>
+        <ArticleTable
+          articles={[malicious]}
+          visibleColumns={["title", "source_url"]}
+          sort="published_at"
+          order="desc"
+          onSortChange={() => {}}
+        />
+      </MemoryRouter>,
+    );
+
+    // The source_url column renders the raw value as plain text (no anchor)
+    // when the scheme is not http(s).
+    const unsafeSpan = screen.getByTestId("source-url-unsafe");
+    expect(unsafeSpan.tagName.toLowerCase()).toBe("span");
+    expect(unsafeSpan).toHaveTextContent("javascript:alert(1)");
+
+    // Expand row — the detail's "Open source" link must also fall back to a
+    // plain-text span instead of a real <a>.
+    await user.click(screen.getByRole("button", { name: /expand row/i }));
+    expect(
+      screen.getByTestId("article-source-link-unsafe"),
+    ).toHaveTextContent("javascript:alert(1)");
+    expect(screen.queryByText(/open source/i)).not.toBeInTheDocument();
+  });
+
   // covers 2.2e
   it("test_pipeline_status_badges", () => {
     expect(pipelineStatusBadge("unclassified")).toEqual({

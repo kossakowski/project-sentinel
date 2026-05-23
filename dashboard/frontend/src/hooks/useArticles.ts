@@ -51,7 +51,10 @@ export function useArticles(
         if (controller.signal.aborted) return;
         if (requestIdRef.current !== requestId) return;
         const apiError = toApiError(error);
-        setState({ data: null, loading: false, error: apiError });
+        // Keep the previously-loaded page visible so a transient error doesn't
+        // blow away the table — the parent component renders an error banner
+        // alongside the stale data so the failure is still visible.
+        setState((prev) => ({ ...prev, loading: false, error: apiError }));
         notify(`Failed to load articles: ${apiError.message}`, "error");
       });
 

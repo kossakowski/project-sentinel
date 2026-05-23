@@ -75,16 +75,22 @@ export function SyncButton({ onSyncComplete }: SyncButtonProps) {
   }, [notify, onSyncComplete]);
 
   const description = describe(state);
+  // Tunnel mode does a fresh SCP fetch at startup and the /api/sync endpoint
+  // returns 409 — disable the button so the user doesn't bounce against a
+  // server-side rejection that toasts an error every click.
+  const tunnelMode = state.status?.tunnel_mode === true;
+  const buttonDisabled = state.loading || tunnelMode;
 
   return (
     <div className="sync-button-wrap">
       <button
         type="button"
         className="sync-button"
-        disabled={state.loading}
+        disabled={buttonDisabled}
         onClick={onClick}
         data-testid="sync-button"
         aria-busy={state.loading}
+        title={tunnelMode ? "Disabled in tunnel mode" : undefined}
       >
         {state.loading ? "Syncing…" : "Sync database"}
       </button>
