@@ -300,23 +300,29 @@ Multi-source filter: `GET /api/articles` accepts `source_name` as a repeated que
 
 `raw_metadata` is always returned as a `dict` from `dashboard/db.py:get_article_detail` — non-object JSON values (string, array, null) are coerced to `{}` so the frontend can render without runtime checks.
 
+`dashboard/db.py:get_stats()` returns both `articles_per_day` and `classified_per_day` (added in Phase 3). Both series share the same 30-day calendar and are keyed by the article's `published_at` (not the classifier-run timestamp), so the overview `TimeSeriesChart` can render a point-aligned filtering-ratio comparison. Backfilled classifications for articles published outside the 30-day window appear in neither series — the two share the same filter so the displayed ratio is honest.
+
 Data files (`dashboard/data/sentinel.db`, `dashboard/data/sentinel_fts.db`, planned `annotations.db`) are dashboard-owned and separate from production.
 
 ### 10.2 Frontend (React/Vite/TypeScript at `dashboard/frontend/`)
 
-Stack: React 18.3 + react-router-dom 6 + Vite 5.4 + TypeScript 5.5 (strict) + vitest 2 + @testing-library/react + jsdom.
+Stack: React 18.3 + react-router-dom 6 + Vite 5.4 + TypeScript 5.5 (strict) + recharts 2.15 (Phase 3) + vitest 2 + @testing-library/react + jsdom.
 
 | Path | Responsibility |
 |---|---|
 | `vite.config.ts` | Dev server on `:5173`; `/api/*` proxied to `http://localhost:5001` (Flask). Production build → `dist/`, served by Flask at `/` |
 | `src/main.tsx` | React entry; mounts `BrowserRouter` with v7 future flags from `utils/routerFutureFlags.ts` |
-| `src/App.tsx` | Root routes — `/` → `pages/ArticlesPage`; `/articles/:id` → Phase 3 placeholder |
-| `src/types.ts` | TypeScript interfaces field-for-field mirror of Phase 1 Python API (`Article`, `Classification`, `EventRecord`, `AlertRecord`, `StatsResponse`, `SyncResult`, `SyncStatus`, `ArticleDetail`, `ArticleQueryParams`). Enum-like unions widened with `\| string` to tolerate stale DB rows / backend drift; `event_type` is `string \| null` |
+| `src/App.tsx` | Root routes — `/` → `pages/OverviewPage` (Phase 3); `/articles` → `pages/ArticlesPage`; `/articles/:id` → `pages/ArticleDetailPage` (Phase 3). Persistent nav with `NavLink` to Overview + Articles |
+| `src/types.ts` | TypeScript interfaces field-for-field mirror of Python API (`Article`, `Classification`, `EventRecord`, `AlertRecord`, `StatsResponse`, `SyncResult`, `SyncStatus`, `ArticleDetail`, `ArticleQueryParams`). `StatsResponse` carries both `articles_per_day` and `classified_per_day` (Phase 3). Enum-like unions widened with `\| string` to tolerate stale DB rows / backend drift; `event_type` is `string \| null` |
 | `src/api/client.ts` | Typed fetch client (`fetchArticles`, `fetchArticleDetail`, `fetchStats`, `triggerSync`, `fetchSyncStatus`); `ApiError` carries `status`/`body`/`url`; `buildSearchParams` emits repeated params for array values |
 | `src/hooks/useArticles.ts` | Data-fetching hook; `AbortController` + `requestIdRef` race guard; `refreshKey`-driven refetch; errors → toast |
+| `src/hooks/useStats.ts` | Phase 3 — data-fetching hook for `GET /api/stats`. Same pattern as `useArticles` (`AbortController` + `requestIdRef` + `notify()` toast); one round-trip drives the whole overview |
+| `src/hooks/useArticleDetail.ts` | Phase 3 — data-fetching hook for `GET /api/articles/:id`. Same pattern as `useStats`. Resets `data:null` on error since each id is a distinct resource |
 | `src/hooks/useLocalStorage.ts` | Persistent state hook with optional validator; corrupted or wrong-shape values fall back to `initialValue` AND clear the bad key (validator wrapped in try/catch) |
+| `src/pages/OverviewPage.tsx` | Phase 3 — landing route `/`. Composes `StatsCards`, `ViewToggle`, `PipelineFunnel`, `TimeSeriesChart`, `UrgencyHistogram`, `SourceBreakdown`. Reads URL `?view=analytics\|pipeline` (default `pipeline`). Owns the single `useStats()` call for the page |
 | `src/pages/ArticlesPage.tsx` | Orchestrator — owns URL ↔ state mapping via `useSearchParams`; drives `useArticles`, parallel tab-count fetches, `fetchStats`; wires `SyncButton.refreshTick`; conditional sort param; broad clear-all |
-| `src/components/ArticleTable.tsx` | Main table; lazy-fetches `ArticleDetail` on row expand for `raw_metadata`; per-row `AbortController`; sort headers with `aria-pressed` indicator (shown only when explicit sort active); `safeHref` scheme validation for `source_url` |
+| `src/pages/ArticleDetailPage.tsx` | Phase 3 — article detail at `/articles/:id`. Header (title, source link, dates, language/pipeline badges) + `ClassifierView` + `EventTimeline`. Back link preserves filter/sort/page state via `location.state.from` |
+| `src/components/ArticleTable.tsx` | Main table; lazy-fetches `ArticleDetail` on row expand for `raw_metadata`; per-row `AbortController`; sort headers with `aria-pressed` indicator (shown only when explicit sort active); `safeHref` scheme validation for `source_url`. Title cell wraps article title in a `<Link>` that passes `location.state.from = pathname+search` so the detail page can reconstruct the correct "Back to articles" URL (Phase 3) |
 | `src/components/ColumnPicker.tsx` | Popover checkbox list for column visibility; localStorage-persisted; Escape-key dismiss |
 | `src/components/FilterBar.tsx` | Filter controls including `SourceMultiSelect` popover; URL state via `useSearchParams`; whitespace-trimmed values |
 | `src/components/FilterTabs.tsx` | All / Classified / Unclassified tabs with per-tab counts |
@@ -324,24 +330,46 @@ Stack: React 18.3 + react-router-dom 6 + Vite 5.4 + TypeScript 5.5 (strict) + vi
 | `src/components/Pagination.tsx` | Page navigation + page-size selector (25/50/100, localStorage-persisted, resets to page 1 on size change) |
 | `src/components/SyncButton.tsx` | `POST /api/sync`; disabled in tunnel mode (tooltip explains); refreshes view via `refreshTick` callback |
 | `src/components/Toast.tsx` | Toast notification context + tray; `notify(message, variant)` API; React-stable via `useCallback` |
+| `src/components/StatsCards.tsx` | Phase 3 — four KPI cards: Total Articles (with 30-day avg), Total Classified (with %), Total Events (with article-reach), Total Alerts (with article-reach) |
+| `src/components/ViewToggle.tsx` | Phase 3 — two-mode toggle (Pipeline / Analytics). Persists selection in `?view=` URL param via `setSearchParams` |
+| `src/components/PipelineFunnel.tsx` | Phase 3 — 4-stage horizontal funnel (Collected → Classified → Events → Alerts). Bar list with width proportional to `stage/collected`. Each stage is a `<Link>` to filtered `/articles`. Implemented as a styled bar list (not recharts `FunnelChart`) so each stage is a real focusable anchor with screen-reader access — justification in the file header comment |
+| `src/components/TimeSeriesChart.tsx` | Phase 3 — recharts `LineChart` of `articles_per_day` and `classified_per_day` (both keyed by publication date) over the last 30 days |
+| `src/components/UrgencyHistogram.tsx` | Phase 3 — recharts `BarChart` of `urgency_distribution` (1-10). Bar fill colours come from `badges.urgencyColor` (1-4 gray / 5-6 yellow / 7-8 orange / 9-10 red) |
+| `src/components/SourceBreakdown.tsx` | Phase 3 — recharts horizontal `BarChart` of top-15 sources by article count (sorted desc) + small language distribution chip row from `stats.language_distribution` |
+| `src/components/ClassifierView.tsx` | Phase 3 — side-by-side input/output panes for a classified article + Raw JSON toggle. Renders a gray-background notice (`data-testid="classifier-view-unclassified"`) when the article was filtered out before classification |
+| `src/components/EventTimeline.tsx` | Phase 3 — vertical timeline of events linked to an article + their alert records (emoji icons for phone/SMS/WhatsApp). Verbatim empty-state: "No events — article did not trigger event creation." |
 | `src/components/columns.ts` | Column metadata (key, label, default visibility, localStorage key, `isColumnKeyList` validator) |
-| `src/components/badges.ts` | `urgencyClassFor` + `pipelineStatusBadge` helpers |
+| `src/components/badges.ts` | `urgencyClass` + `urgencyTier` + `urgencyColor` (Phase 3) + `pipelineStatusBadge` helpers. `urgencyColor` returns the literal hex fill that the urgency histogram passes to recharts |
 | `src/utils/safeHref.ts` | Validates URL scheme (http/https only) before rendering as href — blocks `javascript:` / `data:` XSS |
 | `src/utils/routerFutureFlags.ts` | Shared v7 future flags (`v7_startTransition`, `v7_relativeSplatPath`) for `BrowserRouter` and test `MemoryRouter` rigs |
-| `src/styles/index.css` | Global styles — table, badges, urgency colors, popovers, toasts |
+| `src/styles/index.css` | Global styles — table, badges, urgency colours, popovers, toasts, plus Phase 3 selectors (`.stats-cards`, `.pipeline-funnel`, `.urgency-histogram`, `.source-breakdown`, `.classifier-view`, `.event-timeline`, `.view-toggle`) |
 
 ### 10.3 Frontend Conventions
 
-- **URL is the canonical state surface** for filters, search (`q`), `sort`, `order`, `page`, and `tab` — managed via `react-router-dom` `useSearchParams`. Bookmarkable and shareable.
+- **URL is the canonical state surface** for filters, search (`q`), `sort`, `order`, `page`, `tab`, and the overview view mode (`view`) — managed via `react-router-dom` `useSearchParams`. Bookmarkable and shareable.
 - **localStorage** is used **only** for column visibility and `page_size` (user preferences, not filters).
 - **Conditional sort**: the `sort` param is sent to the backend only when the user has explicitly clicked a column header (URL has `sort=...`). With no explicit sort, the backend default ordering applies — FTS rank when a search `q` is present, recency otherwise. This preserves Phase 1's FTS rank behaviour. The UI shows the directional indicator (▲/▼) only when explicit sort is active; the first click of an unsorted column sorts descending, subsequent clicks alternate.
 - **Multi-source filter**: frontend repeats `?source_name=A&source_name=B` URL params; backend collapses with whitespace strip + empty drop into `None | str | list[str]` and emits a parameterized `IN (?, ?, ...)` clause. Single-value form (one source) preserved for backward compatibility.
 - **Lazy `raw_metadata` fetch**: row-detail data is **not** included in `/api/articles` (list response stays lean over ~37K articles). On row expand, `ArticleTable` calls `fetchArticleDetail(id)` with a per-row `AbortController`; results cached in a `Map<articleId, DetailEntry>`. Errors surface inline within the expanded row (intentionally not via global toast — too noisy for per-row fetches).
 - **Broad clear-all-filters**: resets tab, search, sort, order, page, and every `FilterBar` field. Only `page_size` is preserved (preference, not filter).
 - **Global error surfacing**: all non-row-level API errors go through the global Toast tray (`useToasts().notify`); `notify` is memoized stable so dependent effects don't refire spuriously.
-- **AbortController** is used consistently in `useArticles`, `ArticleTable.loadDetail`, and `ArticlesPage`'s stats/tab-count effects. Stale-response guards via `requestIdRef` in `useArticles`.
+- **Data hooks pattern (Phase 2 + 3)**: `useArticles` / `useStats` / `useArticleDetail` all use the same `AbortController` + `requestIdRef` race guard + `notify()` toast surfacing for errors (req 2.9a). Previously-loaded payloads stay visible on transient failure (`useStats`); `useArticleDetail` resets to `data:null` on error because each id is a distinct resource.
+- **AbortController** is used consistently in `useArticles`, `useStats`, `useArticleDetail`, `ArticleTable.loadDetail`, and `ArticlesPage`'s stats/tab-count effects. Stale-response guards via `requestIdRef`.
+- **Charts use recharts (project-wide).** The single explicit exception is `PipelineFunnel`, which is a styled horizontal-bar list (not recharts `FunnelChart`) so each stage is an individually clickable, keyboard-focusable, screen-reader-accessible `<Link>` to a filtered `/articles` view.
+- **One `useStats()` call per page** (not per chart). All Phase 3 charts on the overview receive their data via props from the page-level hook — a single network round-trip drives the whole overview.
+- **Centralized urgency colour mapping** (`components/badges.ts`): `urgencyClass` returns the CSS class for the article table; `urgencyColor` returns the literal hex fill for recharts SVG bars. Both use the same 1-4 / 5-6 / 7-8 / 9-10 thresholds so the histogram and the table stay visually in lockstep.
+- **Back-link state preservation (Phase 3)**: pages link to detail via `<Link state={{from: pathname+search}}>`. The detail page reads `location.state.from` with a safe fallback to `/articles`. No global router state, no localStorage — purely router-state-driven.
+- **`TimeSeriesChart` "classified" series is keyed by article publication date** (not classifier-run timestamp) so the chart shows an apples-to-apples filtering ratio. Backend extension in `dashboard/db.py:get_stats()` computes both series with the same 30-day cutoff.
+- **`ClassifierView` has two distinct DOM trees + testids** — `data-testid="classifier-view"` for the side-by-side panes (classified articles); `data-testid="classifier-view-unclassified"` for the gray-background notice (unclassified articles). Tests can assert presence/absence cleanly.
 - **XSS / scheme safety**: `source_url` is rendered as `<a href={...}>` only when the URL parses as `http`/`https`; otherwise rendered as plain text via `safeHref`. Article `id` is `encodeURIComponent`'d in router `<Link>`s.
 - **SQL injection guard (backend)**: every dashboard query is parameterized, including the dynamic `IN` clause for multi-source filter (placeholders generated to match the value count).
 - **Tunnel-mode surfacing**: `SyncButton` polls `/api/sync/status` and disables itself with an explanatory tooltip when `tunnel_mode: true`.
 
-Status: Phase 1 (backend) and Phase 2 (React frontend foundation) complete. Phase 3 (analytics + article detail), Phase 4 (annotations), and later phases are spec'd but not yet implemented. Phase 3 routes (`/articles/:id`) currently render a placeholder.
+### 10.4 Known Frontend Limitations (Phase 3)
+
+- **Production bundle size**: ~596 kB / ~172 kB gzipped — recharts pulls in d3 transitively. Vite emits a chunk-size warning but does not fail the build. The dashboard is desktop-only / local-only (per SPEC.md Non-Goals), so this is acceptable.
+- **`SourceBreakdown` truncates to top-15**: production has 37 sources; the long tail is currently not surfaced. A "Show all sources" affordance is a candidate future enhancement.
+- **`PipelineFunnel` "Collected" stage navigates to bare `/articles`** (no filter). The backend's `pipeline_status` values do not include `"collected"` — every article in the DB is collected by definition.
+- **`classified_per_day` filters by `published_at`**, not `classified_at`. Backfilled classifications for articles published outside the 30-day window do not appear in either series; the two series share the same filter so the displayed ratio is honest.
+
+Status: Phase 1 (backend), Phase 2 (React frontend foundation), and Phase 3 (analytics overview + article detail pages) complete. Phase 4 (annotations) and later phases are spec'd in [`SPEC.md`](../SPEC.md) but not yet implemented.

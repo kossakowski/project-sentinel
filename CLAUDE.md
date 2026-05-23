@@ -15,7 +15,7 @@ A separate read-only **Article Dashboard** subsystem lives under `dashboard/` (l
 - [API Setup Guide](docs/api-setup.md) -- Anthropic, Twilio, Telegram account setup
 - [Media Sources Reference](docs/sources.md) -- all monitored sources with URLs/RSS
 - [Server Runbook](docs/server-runbook.md) -- production server access, file layout, service management, deployment, troubleshooting. **Read this first for anything server-related.**
-- [Dashboard Spec](SPEC.md) -- source of truth for the `dashboard/` subsystem (Phases 1 backend + 2 frontend foundation complete; analytics and annotations spec'd but not yet implemented)
+- [Dashboard Spec](SPEC.md) -- source of truth for the `dashboard/` subsystem (Phases 1 backend + 2 frontend foundation + 3 analytics/detail pages complete; annotations and later phases spec'd but not yet implemented)
 
 ## Quick Reference
 - Config: `config/config.yaml` (see `config/config.example.yaml`)
@@ -51,6 +51,8 @@ Read-only Flask API + React/Vite/TypeScript frontend over the production SQLite 
 - Production build into `dashboard/frontend/dist/` (served by Flask when present): `cd dashboard/frontend && npm run build`
 - Type-check only: `cd dashboard/frontend && npx tsc --noEmit`
 - Frontend tests (vitest + jsdom): `cd dashboard/frontend && npx vitest run`
+
+Routes: `/` Overview (analytics landing — KPI cards, pipeline funnel, time-series, urgency histogram, source breakdown), `/articles` (filterable article list, Phase 2), `/articles/:id` (article detail with side-by-side classifier view + event timeline). Charts use `recharts`; full route + component map in [docs/architecture.md §10](docs/architecture.md).
 
 Typical local workflow: run Flask backend in one terminal (`./dashboard/run-dashboard.sh`), Vite dev server in another (`npm run dev`), and open `http://localhost:5173`. For a single-process production-style run, `npm run build` first, then start the Flask backend — it serves `dist/` at `/`.
 

@@ -117,24 +117,35 @@ cd dashboard/frontend && npx tsc --noEmit
 cd dashboard/frontend && npm run build
 ```
 
-Test stack: `vitest@^2`, `@testing-library/react`, `@testing-library/user-event`, `@testing-library/jest-dom`, `jsdom`. Setup file at `src/test-setup.ts` wires jest-dom matchers. Shared fixtures live in `src/__tests__/fixtures.ts`.
+Test stack: `vitest@^2`, `@testing-library/react`, `@testing-library/user-event`, `@testing-library/jest-dom`, `jsdom`. Setup file at `src/test-setup.ts` wires jest-dom matchers. Shared fixtures live in `src/__tests__/fixtures.ts` (extended in Phase 3 with stats, article-detail, and classification fixtures).
 
 What's covered:
 
-| Test file | Focus |
-|---|---|
-| `src/__tests__/ArticleTable.test.tsx` | Rendering, sorting, expandable row + lazy `raw_metadata` fetch + error path, urgency colors, badges, sort-indicator visibility, `safeHref` plain-text fallback |
-| `src/__tests__/ArticlesPage.test.tsx` | Stats error toast, tab-count error toast, conditional sort param omission, broad clear-all (URL fully cleared), sync → stats refresh |
-| `src/__tests__/ColumnPicker.test.tsx` | Toggles + `localStorage` persistence |
-| `src/__tests__/FilterBar.test.tsx` | Filter → URL updates, clear-all, source multi-select round-trip |
-| `src/__tests__/FilterTabs.test.tsx` | Tab selection filters by `pipeline_status` |
-| `src/__tests__/SearchBar.test.tsx` | 300 ms debounce via `vi.useFakeTimers` |
-| `src/__tests__/Pagination.test.tsx` | Page-size change resets to page 1; `localStorage` persistence |
-| `src/__tests__/SyncButton.test.tsx` | Sync flow + tunnel-mode disabled state |
-| `src/__tests__/client.test.ts` | `ApiError` carries `status`/`body`/`url`/`message` correctly |
-| `src/__tests__/safeHref.test.ts` | http/https accept; javascript/data/ftp/malformed reject |
-| `src/__tests__/useLocalStorage.test.ts` | Hydration, malformed JSON fallback + clear, validator rejection |
+| Test file | Focus | Phase |
+|---|---|---|
+| `src/__tests__/ArticleTable.test.tsx` | Rendering, sorting, expandable row + lazy `raw_metadata` fetch + error path, urgency colors, badges, sort-indicator visibility, `safeHref` plain-text fallback | 2 |
+| `src/__tests__/ArticlesPage.test.tsx` | Stats error toast, tab-count error toast, conditional sort param omission, broad clear-all (URL fully cleared), sync → stats refresh + one Phase 3 cross-cutting assertion | 2 + 3 |
+| `src/__tests__/ColumnPicker.test.tsx` | Toggles + `localStorage` persistence | 2 |
+| `src/__tests__/FilterBar.test.tsx` | Filter → URL updates, clear-all, source multi-select round-trip | 2 |
+| `src/__tests__/FilterTabs.test.tsx` | Tab selection filters by `pipeline_status` | 2 |
+| `src/__tests__/SearchBar.test.tsx` | 300 ms debounce via `vi.useFakeTimers` | 2 |
+| `src/__tests__/Pagination.test.tsx` | Page-size change resets to page 1; `localStorage` persistence | 2 |
+| `src/__tests__/SyncButton.test.tsx` | Sync flow + tunnel-mode disabled state | 2 |
+| `src/__tests__/client.test.ts` | `ApiError` carries `status`/`body`/`url`/`message` correctly | 2 |
+| `src/__tests__/safeHref.test.ts` | http/https accept; javascript/data/ftp/malformed reject | 2 |
+| `src/__tests__/useLocalStorage.test.ts` | Hydration, malformed JSON fallback + clear, validator rejection | 2 |
+| `src/__tests__/OverviewPage.test.tsx` | Overview renders, view toggle switches Pipeline ↔ Analytics, stats cards display, pipeline funnel counts, funnel stage navigation | 3 |
+| `src/__tests__/TimeSeriesChart.test.tsx` | Dual-series legend assertion (`articles_per_day` + `classified_per_day`) | 3 |
+| `src/__tests__/UrgencyHistogram.test.tsx` | Histogram bar colors per urgency tier (gray / yellow / orange / red) | 3 |
+| `src/__tests__/SourceBreakdown.test.tsx` | Sources sorted by count descending | 3 |
+| `src/__tests__/ArticleDetailPage.test.tsx` | Detail header + back-link state preservation | 3 |
+| `src/__tests__/ClassifierView.test.tsx` | Side-by-side rendering, Raw JSON toggle, unclassified notice | 3 |
+| `src/__tests__/EventTimeline.test.tsx` | Events with alerts + empty-events message | 3 |
 
-Phase 2 gate commands (from SPEC.md): `npm install`, `npm run build`, `npx tsc --noEmit`, `npx vitest run` — all must pass.
+Phase 3 gate commands (from SPEC.md): `npm install`, `npm run build`, `npx tsc --noEmit`, `npx vitest run` — all must pass.
+
+**Recharts under jsdom (Phase 3 quirk).** Recharts uses `ResponsiveContainer` which measures its parent's `clientWidth/clientHeight`. jsdom returns `0` for layout dimensions, so the chart's SVG paints nothing and the test sees an empty chart. Phase 3 chart tests (`OverviewPage.test.tsx`, `TimeSeriesChart.test.tsx`, `UrgencyHistogram.test.tsx`, `SourceBreakdown.test.tsx`) work around this by `vi.mock("recharts", ...)`-ing `ResponsiveContainer` with a stub that renders its children at deterministic dimensions (e.g. 600×280). The rest of recharts (`LineChart`, `BarChart`, `XAxis`, etc.) is left untouched.
 
 **Backend coordination note.** The Phase 1 backend test `test_app_factory_frontend_placeholder` (in `tests/test_dashboard_api.py`) checks that `/` returns the bundled placeholder HTML when no built frontend is present. Phase 2 added a real `dashboard/frontend/dist/` so this test now monkeypatches `dashboard.app.config.FRONTEND_DIST_DIR` to a temporary empty directory — making it pass regardless of whether the developer has run `npm run build` locally.
+
+**Backend Phase 3 extension.** `tests/test_dashboard_db.py` asserts that `get_stats()` returns `classified_per_day` with 30 entries sharing dates with `articles_per_day`. `tests/test_dashboard_api.py` asserts the same key surfaces in the `/api/stats` response.
