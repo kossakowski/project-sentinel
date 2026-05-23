@@ -1,7 +1,7 @@
 import logging
 import random
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sentinel.alerts.twilio_client import TwilioClient
 from sentinel.config import SentinelConfig
@@ -91,9 +91,7 @@ def _format_sms_message(event: Event, db: Database, config: SentinelConfig) -> s
     )
 
 
-def _format_update_sms(
-    event: Event, db: Database, config: SentinelConfig
-) -> str:
+def _format_update_sms(event: Event, db: Database, config: SentinelConfig) -> str:
     """Format SMS update for an already-acknowledged event.
 
     Includes the name of the most recent source.
@@ -139,9 +137,7 @@ def _format_article_links_message(event: Event, db: Database) -> str:
 class AlertStateMachine:
     """Manages the lifecycle of event alerts."""
 
-    def __init__(
-        self, db: Database, twilio_client: TwilioClient, config: SentinelConfig
-    ) -> None:
+    def __init__(self, db: Database, twilio_client: TwilioClient, config: SentinelConfig) -> None:
         self.db = db
         self.twilio = twilio_client
         self.config = config
@@ -150,9 +146,7 @@ class AlertStateMachine:
     def process_event(self, event: Event) -> None:
         """Determine and execute the appropriate alert action for an event."""
         if self._is_in_cooldown(event):
-            self.logger.debug(
-                "Event %s in cooldown, skipping", event.id
-            )
+            self.logger.debug("Event %s in cooldown, skipping", event.id)
             return
 
         existing_alerts = self.db.get_alert_records(event.id)
@@ -164,13 +158,8 @@ class AlertStateMachine:
 
         # If there are pending call records (initiated but not yet resolved),
         # don't send another alert — the call check cycle will handle it
-        if any(
-            a.alert_type == "phone_call" and a.status in ("initiated", "ringing")
-            for a in existing_alerts
-        ):
-            self.logger.debug(
-                "Event %s has a pending call, skipping", event.id
-            )
+        if any(a.alert_type == "phone_call" and a.status in ("initiated", "ringing") for a in existing_alerts):
+            self.logger.debug("Event %s has a pending call, skipping", event.id)
             return
 
         action = self._determine_action(event)
@@ -181,6 +170,13 @@ class AlertStateMachine:
             event.source_count,
             action,
         )
+
+        if action in ("sms", "whatsapp") and self._user_already_notified(existing_alerts):
+            self.logger.debug(
+                "Event %s already has prior alert; suppressing re-alert",
+                event.id,
+            )
+            return
 
         if action == "phone_call":
             self._execute_phone_call(event, existing_alerts)
@@ -224,7 +220,7 @@ class AlertStateMachine:
             reverse=True,
         )
 
-        for level_name, level in sorted_levels:
+        for _level_name, level in sorted_levels:
             if score >= level.min_score:
                 if level.action == "phone_call":
                     if source_count >= level.corroboration_required:
@@ -242,7 +238,19 @@ class AlertStateMachine:
 
         cooldown_hours = self.config.alerts.acknowledgment.cooldown_hours
         cooldown_end = event.acknowledged_at + timedelta(hours=cooldown_hours)
-        return datetime.now(timezone.utc) < cooldown_end
+        return datetime.now(UTC) < cooldown_end
+
+    # Alert types that, once recorded, mean we have already notified the user
+    # for this event and a further SMS/WhatsApp would be a redundant ping.
+    # A phone call counts because it ships its own confirmation SMS.
+    # SMS→phone_call ESCALATION is still allowed: phone_call action skips
+    # this suppression (its own retry-interval logic in _execute_phone_call
+    # governs re-firing).
+    _USER_NOTIFIED_ALERT_TYPES = ("sms", "whatsapp", "phone_call")
+
+    def _user_already_notified(self, alerts: list[AlertRecord]) -> bool:
+        """True if any prior alert that the user can perceive exists."""
+        return any(a.alert_type in self._USER_NOTIFIED_ALERT_TYPES for a in alerts)
 
     def _is_acknowledged(self, alerts: list[AlertRecord]) -> bool:
         """Check if any alert for this event was acknowledged."""
@@ -251,12 +259,10 @@ class AlertStateMachine:
     def _last_alert_time(self, alerts: list[AlertRecord]) -> datetime:
         """Return the sent_at time of the most recent alert."""
         if not alerts:
-            return datetime.min.replace(tzinfo=timezone.utc)
+            return datetime.min.replace(tzinfo=UTC)
         return max(a.sent_at for a in alerts)
 
-    def _execute_phone_call(
-        self, event: Event, existing_alerts: list[AlertRecord] | None = None
-    ) -> None:
+    def _execute_phone_call(self, event: Event, existing_alerts: list[AlertRecord] | None = None) -> None:
         """Place a phone call alert with aggressive immediate retries.
 
         Calls up to max_call_retries times in a tight loop, polling Twilio
@@ -269,15 +275,11 @@ class AlertStateMachine:
 
         # Enforce retry interval: if there was a previous call from a prior
         # cycle, check that enough time has elapsed
-        call_records = [
-            a for a in existing_alerts if a.alert_type == "phone_call"
-        ]
+        call_records = [a for a in existing_alerts if a.alert_type == "phone_call"]
         if call_records:
             last_call_time = max(a.sent_at for a in call_records)
-            retry_interval = timedelta(
-                minutes=self.config.alerts.acknowledgment.retry_interval_minutes
-            )
-            if datetime.now(timezone.utc) < last_call_time + retry_interval:
+            retry_interval = timedelta(minutes=self.config.alerts.acknowledgment.retry_interval_minutes)
+            if datetime.now(UTC) < last_call_time + retry_interval:
                 self.logger.debug(
                     "Event %s: retry interval not elapsed, skipping call",
                     event.id,
@@ -288,7 +290,7 @@ class AlertStateMachine:
         message = _format_call_message(event, self.config)
         max_per_round = self.config.alerts.acknowledgment.max_call_retries
         total_attempts = len(call_records)
-        call_placed_at = datetime.now(timezone.utc)
+        call_placed_at = datetime.now(UTC)
 
         # Send SMS confirmation code — this is the ONLY confirmation mechanism
         self._send_confirmation_sms(event)
@@ -350,7 +352,7 @@ class AlertStateMachine:
         self.db.update_event(
             event.id,
             alert_status="acknowledged",
-            acknowledged_at=datetime.now(timezone.utc).isoformat(),
+            acknowledged_at=datetime.now(UTC).isoformat(),
         )
         self.logger.info(
             "Event %s: confirmed via SMS after %d call attempts",
@@ -427,7 +429,9 @@ class AlertStateMachine:
             if msg.status in ("failed", "undelivered"):
                 self.logger.warning(
                     "Confirmation SMS %s status: %s (error=%s)",
-                    sid, msg.status, msg.error_code,
+                    sid,
+                    msg.status,
+                    msg.error_code,
                 )
                 return False
             return None  # still queued/sending/sent
@@ -435,9 +439,7 @@ class AlertStateMachine:
             self.logger.warning("Failed to check SMS delivery status: %s", exc)
             return None
 
-    def _wait_for_call_and_check_sms(
-        self, record: AlertRecord, sms_since: datetime
-    ) -> None:
+    def _wait_for_call_and_check_sms(self, record: AlertRecord, sms_since: datetime) -> None:
         """Wait for a call to finish, checking SMS confirmation in the meantime."""
         max_wait = 90
         poll_interval = 5
@@ -460,7 +462,8 @@ class AlertStateMachine:
             if call_status not in ("queued", "ringing", "in-progress"):
                 # Call finished
                 self._update_alert_record(
-                    record, status=call_status,
+                    record,
+                    status=call_status,
                     duration_seconds=status.get("duration", 0),
                 )
                 return
@@ -485,9 +488,7 @@ class AlertStateMachine:
             self.db.insert_alert_record(record)
             self.db.update_event(event.id, alert_status="whatsapp_sent")
 
-    def _handle_call_result(
-        self, record: AlertRecord, status: dict
-    ) -> None:
+    def _handle_call_result(self, record: AlertRecord, status: dict) -> None:
         """Handle the result of a previously placed phone call.
 
         If the call was answered (duration > threshold), mark as acknowledged.
@@ -495,20 +496,15 @@ class AlertStateMachine:
         """
         call_status = status["status"]
         duration = status["duration"]
-        threshold = (
-            self.config.alerts.acknowledgment.call_duration_threshold_seconds
-        )
         if False:  # Confirmation is now via WhatsApp only, not call duration
             # Call was answered — acknowledged
             self.db.update_event(
                 record.event_id,
                 alert_status="acknowledged",
-                acknowledged_at=datetime.now(timezone.utc).isoformat(),
+                acknowledged_at=datetime.now(UTC).isoformat(),
             )
             # Update the alert record
-            self._update_alert_record(
-                record, status="acknowledged", duration_seconds=duration
-            )
+            self._update_alert_record(record, status="acknowledged", duration_seconds=duration)
             self.logger.info(
                 "Event %s acknowledged via call (duration=%ds)",
                 record.event_id,
@@ -518,13 +514,10 @@ class AlertStateMachine:
             self._send_followup_sms(record.event_id)
         elif call_status in ("completed", "busy", "no-answer", "canceled", "failed"):
             # Call was not properly answered
-            self._update_alert_record(
-                record, status=call_status, duration_seconds=duration
-            )
+            self._update_alert_record(record, status=call_status, duration_seconds=duration)
             if call_status in ("failed", "canceled"):
                 self.logger.warning(
-                    "Event %s call %s (duration=%ds), "
-                    "terminal status — moving to retry/fallback",
+                    "Event %s call %s (duration=%ds), terminal status — moving to retry/fallback",
                     record.event_id,
                     call_status,
                     duration,
@@ -538,9 +531,7 @@ class AlertStateMachine:
                 )
             # Retry logic is handled by process_event on next cycle
             # The alert_status remains "call_placed" so it will be retried
-            self.db.update_event(
-                record.event_id, alert_status="retry_pending"
-            )
+            self.db.update_event(record.event_id, alert_status="retry_pending")
         # If still in-progress/queued/ringing, leave as-is
 
     def _send_followup_sms(self, event_id: str) -> None:
@@ -562,9 +553,7 @@ class AlertStateMachine:
         record = self.twilio.send_sms(phone_number, message, event.id)
         if record is not None:
             self.db.insert_alert_record(record)
-            self.logger.info(
-                "Update SMS sent for acknowledged event %s", event.id
-            )
+            self.logger.info("Update SMS sent for acknowledged event %s", event.id)
 
     def _update_alert_record(
         self,
@@ -573,6 +562,4 @@ class AlertStateMachine:
         duration_seconds: int | None = None,
     ) -> None:
         """Update an existing alert record's status and duration in the DB."""
-        self.db.update_alert_record(
-            record.id, status=status, duration_seconds=duration_seconds
-        )
+        self.db.update_alert_record(record.id, status=status, duration_seconds=duration_seconds)
