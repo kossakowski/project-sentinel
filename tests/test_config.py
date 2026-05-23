@@ -221,6 +221,11 @@ def test_disabled_source_loadable(tmp_path):
     assert len(disabled) == 1
     assert disabled[0].name == "Disabled"
     assert config.sources.gdelt.enabled is False
+    # Spec 1.6b: YAML with empty `classification: {}` must populate the new
+    # threshold defaults so existing production configs keep working.
+    assert config.classification.corroboration_window_minutes == 360
+    assert config.classification.summary_similarity_threshold == 40
+    assert config.classification.syndication_similarity_threshold == 90
 
 
 def test_corroboration_window_default_is_360():

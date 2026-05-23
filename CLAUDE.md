@@ -76,4 +76,5 @@ This project was renamed twice (`twilio-playground` → `sentinel` → `project-
 - **No quiet hours.** This is a critical alert system -- call at any hour.
 - **Don't spam.** Call once per event, then switch to SMS for updates. WhatsApp is plumbed but disabled in production (see `state_machine.py:190`).
 - **Corroboration required.** Phone calls require independent source corroboration (configured via `classification.corroboration_required`; live value is `1`).
+- **Corroboration window: 6h default.** Configurable via `classification.corroboration_window_minutes` (default 360 in code, live config still `60`). Similarity thresholds also tunable: `classification.summary_similarity_threshold` (default 40) and `classification.syndication_similarity_threshold` (default 90).
 - Config format: YAML. Database: SQLite. Scheduler: APScheduler (dual-lane: fast lane every 3 min for Telegram + priority-1 RSS + Google News, slow lane every 15 min for all sources including GDELT).

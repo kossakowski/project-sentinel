@@ -611,12 +611,20 @@ class TestCorroborator:
         rows = db.conn.execute("SELECT * FROM events").fetchall()
         assert len(rows) == 1
         final_event = Event.from_row(rows[0])
+        # Indirect signal: identical summaries force the two articles to merge
+        # into one event; source_count stays at 1 (rather than incrementing
+        # to 2) only when _is_independent_source returns False under the
+        # lowered syndication threshold. The private method is not asserted
+        # directly.
         assert final_event.source_count == 1
 
     def test_country_isolation_under_lowered_threshold(self, db, config):
         """Identical summaries on the SAME event_type but DIFFERENT affected
         countries stay as two separate events even under the default 40% threshold.
         """
+        # Spec 1.5a: lock the threshold at 40 so the test name stays meaningful
+        # if the conftest fixture ever pins a different value.
+        config.classification.summary_similarity_threshold = 40
         corroborator = Corroborator(db, config)
 
         article1 = _make_article(
@@ -655,6 +663,9 @@ class TestCorroborator:
         """Same event_type and country but summaries with token_sort_ratio < 30
         stay as two separate events under the default 40% threshold.
         """
+        # Spec 1.5b: lock the threshold at 40 so the test name stays meaningful
+        # if the conftest fixture ever pins a different value.
+        config.classification.summary_similarity_threshold = 40
         corroborator = Corroborator(db, config)
 
         article1 = _make_article(
