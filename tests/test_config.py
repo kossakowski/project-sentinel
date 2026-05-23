@@ -5,7 +5,7 @@ import os
 import pytest
 import yaml
 
-from sentinel.config import ConfigError, SentinelConfig, load_config
+from sentinel.config import ClassificationConfig, ConfigError, SentinelConfig, load_config
 
 
 def test_load_valid_config(monkeypatch):
@@ -221,3 +221,21 @@ def test_disabled_source_loadable(tmp_path):
     assert len(disabled) == 1
     assert disabled[0].name == "Disabled"
     assert config.sources.gdelt.enabled is False
+
+
+def test_corroboration_window_default_is_360():
+    """ClassificationConfig built without corroboration_window_minutes defaults to 360."""
+    cfg = ClassificationConfig()
+    assert cfg.corroboration_window_minutes == 360
+
+
+def test_summary_threshold_default_is_40():
+    """ClassificationConfig built without summary_similarity_threshold defaults to 40."""
+    cfg = ClassificationConfig()
+    assert cfg.summary_similarity_threshold == 40
+
+
+def test_syndication_threshold_default_is_90():
+    """ClassificationConfig built without syndication_similarity_threshold defaults to 90."""
+    cfg = ClassificationConfig()
+    assert cfg.syndication_similarity_threshold == 90

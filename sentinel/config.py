@@ -14,6 +14,7 @@ class ConfigError(Exception):
 # Source models
 # ---------------------------------------------------------------------------
 
+
 class RSSSource(BaseModel):
     name: str
     url: HttpUrl
@@ -58,11 +59,8 @@ class TelegramConfig(BaseModel):
 
     @model_validator(mode="after")
     def _require_credentials_when_enabled(self) -> "TelegramConfig":
-        if self.enabled:
-            if self.api_id is None or self.api_hash is None:
-                raise ValueError(
-                    "telegram.api_id and telegram.api_hash are required when telegram is enabled"
-                )
+        if self.enabled and (self.api_id is None or self.api_hash is None):
+            raise ValueError("telegram.api_id and telegram.api_hash are required when telegram is enabled")
         return self
 
 
@@ -76,6 +74,7 @@ class SourcesConfig(BaseModel):
 # ---------------------------------------------------------------------------
 # Monitoring models
 # ---------------------------------------------------------------------------
+
 
 class KeywordSet(BaseModel):
     critical: list[str] = []
@@ -92,6 +91,7 @@ class MonitoringConfig(BaseModel):
 # ---------------------------------------------------------------------------
 # Alert models
 # ---------------------------------------------------------------------------
+
 
 class UrgencyLevel(BaseModel):
     min_score: int
@@ -111,9 +111,7 @@ class AcknowledgmentConfig(BaseModel):
 
 class AlertTemplates(BaseModel):
     call: str = (
-        "{event_type_pl} wykryte. {summary_pl}. "
-        "Źródła potwierdzające: {source_count}. "
-        "Pilność: {urgency_score} na 10."
+        "{event_type_pl} wykryte. {summary_pl}. Źródła potwierdzające: {source_count}. Pilność: {urgency_score} na 10."
     )
     sms: str = (
         "\U0001f6a8 PROJECT SENTINEL: {event_type_pl}\n"
@@ -150,12 +148,15 @@ class AlertsConfig(BaseModel):
 # Other models
 # ---------------------------------------------------------------------------
 
+
 class ClassificationConfig(BaseModel):
     model: str = "claude-haiku-4-5-20251001"
     max_tokens: int = 512
     temperature: float = 0.0
     corroboration_required: int = 2
-    corroboration_window_minutes: int = 60
+    corroboration_window_minutes: int = 360
+    summary_similarity_threshold: int = 40
+    syndication_similarity_threshold: int = 90
 
 
 class SchedulerConfig(BaseModel):
@@ -198,6 +199,7 @@ class ProcessingConfig(BaseModel):
 # Top-level config
 # ---------------------------------------------------------------------------
 
+
 class SentinelConfig(BaseModel):
     monitoring: MonitoringConfig
     sources: SourcesConfig
@@ -219,13 +221,13 @@ _ENV_VAR_PATTERN = re.compile(r"\$\{([^}]+)\}")
 
 def _substitute_env_vars(data: Any) -> Any:
     if isinstance(data, str):
+
         def _replacer(match: re.Match) -> str:
             var_name = match.group(1)
             value = os.environ.get(var_name)
             if value is None:
                 raise ConfigError(
-                    f"Environment variable '{var_name}' is not set "
-                    f"(referenced as ${{{var_name}}} in config)"
+                    f"Environment variable '{var_name}' is not set (referenced as ${{{var_name}}} in config)"
                 )
             return value
 
@@ -241,20 +243,22 @@ def _substitute_env_vars(data: Any) -> Any:
 # Config loader
 # ---------------------------------------------------------------------------
 
+
 def load_config(config_path: str) -> SentinelConfig:
     try:
         from dotenv import load_dotenv
+
         load_dotenv()
     except ImportError:
         pass
 
     try:
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, encoding="utf-8") as f:
             raw = yaml.safe_load(f)
-    except FileNotFoundError:
-        raise ConfigError(f"Config file not found: {config_path}")
+    except FileNotFoundError as e:
+        raise ConfigError(f"Config file not found: {config_path}") from e
     except yaml.YAMLError as e:
-        raise ConfigError(f"Invalid YAML in {config_path}: {e}")
+        raise ConfigError(f"Invalid YAML in {config_path}: {e}") from e
 
     if raw is None:
         raise ConfigError(f"Config file is empty: {config_path}")

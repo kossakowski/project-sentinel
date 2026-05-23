@@ -1,7 +1,7 @@
 """Corroborator -- groups classified articles into events and determines alert levels."""
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 from rapidfuzz import fuzz
@@ -27,12 +27,6 @@ EVENT_COMPATIBILITY: dict[str, set[str]] = {
 # Minimum urgency to create an event
 _MIN_EVENT_URGENCY = 5
 
-# Title similarity threshold for detecting syndicated content (same underlying source)
-_SYNDICATION_SIMILARITY_THRESHOLD = 90
-
-# Minimum summary_pl similarity (fuzzy) to consider two classifications as the same event
-_SUMMARY_SIMILARITY_THRESHOLD = 55
-
 
 class Corroborator:
     """Groups classifications into events and determines alert levels."""
@@ -43,9 +37,7 @@ class Corroborator:
         self.dry_run = dry_run or config.testing.dry_run
         self.logger = logging.getLogger("sentinel.corroborator")
 
-    def process_classifications(
-        self, results: list[ClassificationResult]
-    ) -> list[Event]:
+    def process_classifications(self, results: list[ClassificationResult]) -> list[Event]:
         """Group classifications into events.
 
         Returns list of events that need alerting (new or updated).
@@ -71,12 +63,8 @@ class Corroborator:
 
             if matching_event is not None:
                 # Check source independence before incrementing source_count
-                is_independent = self._is_independent_source(
-                    result, matching_event
-                )
-                updated_event = self._update_event(
-                    matching_event, result, is_independent
-                )
+                is_independent = self._is_independent_source(result, matching_event)
+                updated_event = self._update_event(matching_event, result, is_independent)
                 alertable_events.append(updated_event)
             else:
                 new_event = self._create_event(result)
@@ -84,11 +72,10 @@ class Corroborator:
 
         return alertable_events
 
-    def _find_matching_event(
-        self, result: ClassificationResult
-    ) -> Event | None:
+    def _find_matching_event(self, result: ClassificationResult) -> Event | None:
         """Find an existing active event that matches this classification."""
         window_minutes = self.config.classification.corroboration_window_minutes
+        summary_threshold = self.config.classification.summary_similarity_threshold
         # Convert window to hours (round up) for the DB query
         window_hours = max(1, (window_minutes + 59) // 60)
         active_events = self.db.get_active_events(within_hours=window_hours)
@@ -103,21 +90,17 @@ class Corroborator:
                 continue
 
             # Check time window
-            time_diff = abs(
-                (result.classified_at - event.first_seen_at).total_seconds()
-            )
+            time_diff = abs((result.classified_at - event.first_seen_at).total_seconds())
             if time_diff > window_minutes * 60:
                 continue
 
             # Check summary_pl semantic similarity (fuzzy match)
-            summary_similarity = fuzz.token_sort_ratio(
-                result.summary_pl, event.summary_pl
-            )
-            if summary_similarity < _SUMMARY_SIMILARITY_THRESHOLD:
+            summary_similarity = fuzz.token_sort_ratio(result.summary_pl, event.summary_pl)
+            if summary_similarity < summary_threshold:
                 self.logger.debug(
                     "Summary mismatch (%.0f%% < %d%%): '%s' vs '%s'",
                     summary_similarity,
-                    _SUMMARY_SIMILARITY_THRESHOLD,
+                    summary_threshold,
                     result.summary_pl[:60],
                     event.summary_pl[:60],
                 )
@@ -137,26 +120,21 @@ class Corroborator:
             return True
 
         compatible_set = EVENT_COMPATIBILITY.get(type2)
-        if compatible_set is not None and type1 in compatible_set:
-            return True
+        return compatible_set is not None and type1 in compatible_set
 
-        return False
-
-    def _is_independent_source(
-        self, result: ClassificationResult, event: Event
-    ) -> bool:
+    def _is_independent_source(self, result: ClassificationResult, event: Event) -> bool:
         """Determine if the new classification comes from an independent source.
 
         Two articles from the same underlying source don't count as independent:
         - Same domain -> not independent (regardless of source_type)
-        - High title similarity (>= 90%) -> syndicated content, not independent
-          (checked across ALL source types to catch e.g. an RSS article quoting
-          a Telegram post verbatim)
+        - High title similarity (>= syndication threshold) -> syndicated content,
+          not independent (checked across ALL source types to catch e.g. an RSS
+          article quoting a Telegram post verbatim)
         """
+        syndication_threshold = self.config.classification.syndication_similarity_threshold
+
         # Retrieve the article for this classification
-        article_row = self.db.conn.execute(
-            "SELECT * FROM articles WHERE id = ?", (result.article_id,)
-        ).fetchone()
+        article_row = self.db.conn.execute("SELECT * FROM articles WHERE id = ?", (result.article_id,)).fetchone()
         if article_row is None:
             return True
 
@@ -182,13 +160,10 @@ class Corroborator:
             # Check for syndication across ALL source types.
             # Catches: RSS article quoting a Telegram post, GDELT picking up
             # the same wire story, Google News linking to an already-seen article.
-            title_similarity = fuzz.ratio(
-                new_article.title_normalized, existing_article.title_normalized
-            )
-            if title_similarity >= _SYNDICATION_SIMILARITY_THRESHOLD:
+            title_similarity = fuzz.ratio(new_article.title_normalized, existing_article.title_normalized)
+            if title_similarity >= syndication_threshold:
                 self.logger.debug(
-                    "Syndicated content detected (%.0f%% similarity, %s vs %s): "
-                    "'%s' vs '%s'",
+                    "Syndicated content detected (%.0f%% similarity, %s vs %s): '%s' vs '%s'",
                     title_similarity,
                     new_article.source_type,
                     existing_article.source_type,
@@ -201,10 +176,8 @@ class Corroborator:
 
     def _create_event(self, result: ClassificationResult) -> Event:
         """Create a new event from a classification."""
-        now = datetime.now(timezone.utc)
-        alert_status = self._determine_alert_status(
-            urgency=result.urgency_score, source_count=1
-        )
+        now = datetime.now(UTC)
+        alert_status = self._determine_alert_status(urgency=result.urgency_score, source_count=1)
 
         event = Event(
             event_type=result.event_type,
@@ -239,21 +212,17 @@ class Corroborator:
         # Update in-memory event
         event.article_ids.append(result.article_id)
         event.urgency_score = max(event.urgency_score, result.urgency_score)
-        event.last_updated_at = datetime.now(timezone.utc)
+        event.last_updated_at = datetime.now(UTC)
 
         if is_independent:
             event.source_count += 1
 
         # Merge affected countries
-        merged_countries = list(
-            set(event.affected_countries) | set(result.affected_countries)
-        )
+        merged_countries = list(set(event.affected_countries) | set(result.affected_countries))
         event.affected_countries = merged_countries
 
         # Re-evaluate alert status
-        event.alert_status = self._determine_alert_status(
-            urgency=event.urgency_score, source_count=event.source_count
-        )
+        event.alert_status = self._determine_alert_status(urgency=event.urgency_score, source_count=event.source_count)
 
         # Persist changes
         self.db.update_event(

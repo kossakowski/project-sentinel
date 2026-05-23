@@ -1,6 +1,6 @@
 """Tests for sentinel.classification.corroborator."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sentinel.classification.corroborator import Corroborator
 from sentinel.models import Article, ClassificationResult, Event
@@ -15,8 +15,8 @@ def _make_article(**overrides) -> Article:
         "title": "Russia launches military operation near Polish border",
         "summary": "Russian forces have begun operations.",
         "language": "en",
-        "published_at": datetime.now(timezone.utc),
-        "fetched_at": datetime.now(timezone.utc),
+        "published_at": datetime.now(UTC),
+        "fetched_at": datetime.now(UTC),
     }
     defaults.update(overrides)
     return Article(**defaults)
@@ -34,7 +34,7 @@ def _make_classification(article: Article, **overrides) -> ClassificationResult:
         "is_new_event": True,
         "confidence": 0.9,
         "summary_pl": "Rosja dokonala inwazji na Polske.",
-        "classified_at": datetime.now(timezone.utc),
+        "classified_at": datetime.now(UTC),
         "model_used": "claude-haiku-4-5-20251001",
         "input_tokens": 287,
         "output_tokens": 94,
@@ -174,7 +174,7 @@ class TestCorroborator:
         """Same event type but 2 hours apart -> separate events."""
         corroborator = Corroborator(db, config)
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         two_hours_ago = now - timedelta(hours=2)
 
         article1 = _make_article(
@@ -458,16 +458,232 @@ class TestCorroborator:
         article = _make_article()
         db.insert_article(article)
 
-        classification = _make_classification(
-            article, urgency_score=2, is_military_event=False
-        )
+        classification = _make_classification(article, urgency_score=2, is_military_event=False)
         events = corroborator.process_classifications([classification])
 
         assert len(events) == 0
 
         # The classification should still be in the database
-        row = db.conn.execute(
-            "SELECT * FROM classifications WHERE id = ?", (classification.id,)
-        ).fetchone()
+        row = db.conn.execute("SELECT * FROM classifications WHERE id = ?", (classification.id,)).fetchone()
         assert row is not None
         assert row["urgency_score"] == 2
+
+    def test_latvia_six_hour_window_merges(self, db, config):
+        """Three Latvia-airspace classifications spaced over ~2h with ~50% summary
+        similarity merge into one event under the default 6h window + 40% threshold.
+        """
+        # The conftest fixture pins the legacy 60-minute window to preserve older
+        # window-related tests; explicitly use the new defaults here.
+        config.classification.corroboration_window_minutes = 360
+        config.classification.summary_similarity_threshold = 40
+        corroborator = Corroborator(db, config)
+
+        now = datetime.now(UTC)
+        t0 = now
+        t1 = now + timedelta(minutes=35)
+        t2 = now + timedelta(minutes=115)
+
+        article1 = _make_article(
+            source_name="LSM",
+            source_url="https://lsm.lv/news/article/1",
+            title="Russian drones violated Latvian airspace near Rezekne",
+        )
+        article2 = _make_article(
+            source_name="Delfi",
+            source_url="https://delfi.lv/article/2",
+            title="Drone hits Latvian territory near Rezekne city",
+        )
+        article3 = _make_article(
+            source_name="LRT",
+            source_url="https://lrt.lt/article/3",
+            title="Another drone over Latvia - new airspace incident",
+        )
+        db.insert_article(article1)
+        db.insert_article(article2)
+        db.insert_article(article3)
+
+        c1 = _make_classification(
+            article1,
+            event_type="airspace_violation",
+            affected_countries=["LV"],
+            summary_pl="Rosyjskie drony naruszyły przestrzeń powietrzną Łotwy nad Rezekne wieczorem.",
+            classified_at=t0,
+        )
+        c2 = _make_classification(
+            article2,
+            event_type="airspace_violation",
+            affected_countries=["LV"],
+            summary_pl="Dron uderzył nad terytorium Łotwy w okolicach miasta Rezekne.",
+            classified_at=t1,
+        )
+        c3 = _make_classification(
+            article3,
+            event_type="airspace_violation",
+            affected_countries=["LV"],
+            summary_pl="Kolejny dron nad terytorium Łotwy - kolejne naruszenie strefy.",
+            classified_at=t2,
+        )
+
+        corroborator.process_classifications([c1, c2, c3])
+
+        # Exactly one event row exists in the DB
+        rows = db.conn.execute("SELECT * FROM events").fetchall()
+        assert len(rows) == 1
+        final_event = Event.from_row(rows[0])
+        assert final_event.source_count >= 2
+        assert len(final_event.article_ids) == 3
+
+    def test_summary_threshold_configurable(self, db, config):
+        """Overriding summary_similarity_threshold=80 prevents merging of two
+        summaries at ~45% token_sort_ratio (proving the threshold is config-driven).
+        """
+        config.classification.summary_similarity_threshold = 80
+        corroborator = Corroborator(db, config)
+
+        article1 = _make_article(
+            source_name="SourceA",
+            source_url="https://source-a.com/article/1",
+            title="Russian drones violated Latvian airspace near Rezekne",
+        )
+        article2 = _make_article(
+            source_name="SourceB",
+            source_url="https://source-b.com/article/2",
+            title="Drone hits Latvian territory near Rezekne city",
+        )
+        db.insert_article(article1)
+        db.insert_article(article2)
+
+        c1 = _make_classification(
+            article1,
+            event_type="airspace_violation",
+            affected_countries=["LV"],
+            summary_pl="Rosyjskie drony naruszyły przestrzeń powietrzną Łotwy nad Rezekne wieczorem.",
+        )
+        c2 = _make_classification(
+            article2,
+            event_type="airspace_violation",
+            affected_countries=["LV"],
+            summary_pl="Dron uderzył nad terytorium Łotwy w okolicach miasta Rezekne.",
+        )
+
+        corroborator.process_classifications([c1, c2])
+
+        rows = db.conn.execute("SELECT * FROM events").fetchall()
+        assert len(rows) == 2
+
+    def test_syndication_threshold_configurable(self, db, config):
+        """Overriding syndication_similarity_threshold=50 causes two cross-domain
+        articles with ~68% title fuzz.ratio to be flagged as syndicated, leaving
+        source_count at 1 instead of 2.
+        """
+        config.classification.syndication_similarity_threshold = 50
+        corroborator = Corroborator(db, config)
+
+        # Different domains, titles at fuzz.ratio ~68%, same summary so they merge.
+        article1 = _make_article(
+            source_name="SourceA",
+            source_url="https://source-a.com/article/1",
+            title="Russia launches missile strike on Warsaw overnight",
+        )
+        article2 = _make_article(
+            source_name="SourceB",
+            source_url="https://source-b.com/article/2",
+            title="Russia launches major attack on Warsaw early today",
+        )
+        db.insert_article(article1)
+        db.insert_article(article2)
+
+        c1 = _make_classification(
+            article1,
+            event_type="missile_strike",
+            affected_countries=["PL"],
+            summary_pl="Rosyjska rakieta uderzyła w stolicę Polski Warszawę.",
+        )
+        c2 = _make_classification(
+            article2,
+            event_type="missile_strike",
+            affected_countries=["PL"],
+            summary_pl="Rosyjska rakieta uderzyła w stolicę Polski Warszawę.",
+        )
+
+        corroborator.process_classifications([c1, c2])
+
+        rows = db.conn.execute("SELECT * FROM events").fetchall()
+        assert len(rows) == 1
+        final_event = Event.from_row(rows[0])
+        assert final_event.source_count == 1
+
+    def test_country_isolation_under_lowered_threshold(self, db, config):
+        """Identical summaries on the SAME event_type but DIFFERENT affected
+        countries stay as two separate events even under the default 40% threshold.
+        """
+        corroborator = Corroborator(db, config)
+
+        article1 = _make_article(
+            source_name="SourceA",
+            source_url="https://source-a.com/article/1",
+            title="Drone reported over Baltic territory near border",
+        )
+        article2 = _make_article(
+            source_name="SourceB",
+            source_url="https://source-b.com/article/2",
+            title="Baltic country reports unidentified aerial object",
+        )
+        db.insert_article(article1)
+        db.insert_article(article2)
+
+        shared_summary = "Drony nad terytorium nadbałtyckim wczesnym rankiem."
+        c1 = _make_classification(
+            article1,
+            event_type="airspace_violation",
+            affected_countries=["LV"],
+            summary_pl=shared_summary,
+        )
+        c2 = _make_classification(
+            article2,
+            event_type="airspace_violation",
+            affected_countries=["LT"],
+            summary_pl=shared_summary,
+        )
+
+        corroborator.process_classifications([c1, c2])
+
+        rows = db.conn.execute("SELECT * FROM events").fetchall()
+        assert len(rows) == 2
+
+    def test_very_different_summaries_not_merged(self, db, config):
+        """Same event_type and country but summaries with token_sort_ratio < 30
+        stay as two separate events under the default 40% threshold.
+        """
+        corroborator = Corroborator(db, config)
+
+        article1 = _make_article(
+            source_name="SourceA",
+            source_url="https://source-a.com/article/1",
+            title="Forest fire spreading north quickly",
+        )
+        article2 = _make_article(
+            source_name="SourceB",
+            source_url="https://source-b.com/article/2",
+            title="Church building collapses in Krakow",
+        )
+        db.insert_article(article1)
+        db.insert_article(article2)
+
+        c1 = _make_classification(
+            article1,
+            event_type="airspace_violation",
+            affected_countries=["PL"],
+            summary_pl="Pożar lasu szybko przesuwa się na północ.",
+        )
+        c2 = _make_classification(
+            article2,
+            event_type="airspace_violation",
+            affected_countries=["PL"],
+            summary_pl="Zawalił budynek kościoła parafialnego w Krakowie.",
+        )
+
+        corroborator.process_classifications([c1, c2])
+
+        rows = db.conn.execute("SELECT * FROM events").fetchall()
+        assert len(rows) == 2

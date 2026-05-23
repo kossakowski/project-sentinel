@@ -506,7 +506,15 @@ classification:
   max_tokens: 512
   temperature: 0.0
   corroboration_required: 1
-  corroboration_window_minutes: 60
+  # Wider than the 1h corroboration default to absorb multi-hour incident reporting
+  # windows; lowering this risks fragmenting one real incident into multiple Event rows.
+  corroboration_window_minutes: 360
+  # Fuzzy token_sort_ratio for matching two summaries to the same event; lower =
+  # more aggressive grouping; range 0-100.
+  summary_similarity_threshold: 40
+  # Title similarity threshold above which two articles are treated as syndicated
+  # copies of one source (range 0-100).
+  syndication_similarity_threshold: 90
 
 # -----------------------------------------------------------------------------
 # ALERTS -- Notification settings
