@@ -46,6 +46,11 @@ All commands use `./run.sh` (auto-activates `.venv`, forwards args to `sentinel.
 
 # Dashboard subsystem (separate from monitoring runtime; see SPEC.md)
 .venv/bin/pytest tests/test_dashboard_api.py tests/test_dashboard_db.py tests/test_dashboard_annotations.py -v
+
+# /sentinel-audit skill structural tests (SPEC_ALERT_GROUPING.md Phase 3 — asserts event-grouped
+# report layout, ordering, JSON-array parsing strategy, and preserved Step 2 / Step 4 sections in
+# .claude/skills/sentinel-audit/SKILL.md)
+.venv/bin/pytest tests/test_sentinel_audit_skill.py -v
 ```
 
 pytest config in `pyproject.toml` (`[tool.pytest.ini_options]`): `testpaths = ["tests"]`, `asyncio_mode = "auto"`, marker `integration` for tests requiring network/API access.
@@ -155,3 +160,5 @@ Phase 4 gate commands (from SPEC.md): `.venv/bin/pytest tests/test_dashboard_ann
 **Backend Phase 3 extension.** `tests/test_dashboard_db.py` asserts that `get_stats()` returns `classified_per_day` with 30 entries sharing dates with `articles_per_day`. `tests/test_dashboard_api.py` asserts the same key surfaces in the `/api/stats` response.
 
 **Backend Phase 4 extension.** `tests/test_dashboard_annotations.py` (22 tests) covers the `AnnotationDB` layer, every `/api/annotations*` endpoint, the `has_annotation` / `annotation_label` filters on `/api/articles`, the `annotation_stats` block on `/api/stats`, and edge cases (upsert with null fields, bool rejection on `expected_urgency`, missing `article_id` rejection, behaviour when the annotations DB file is absent, persistence across `DashboardDB` reopen, and search + annotation-filter composition via the LIKE branch). Each test isolates BOTH the sentinel DB and the annotations DB under `tmp_path` so parallel test runs stay safe.
+
+**`/sentinel-audit` skill structural tests (SPEC_ALERT_GROUPING.md Phase 3).** `tests/test_sentinel_audit_skill.py` (4 module-level pytest functions, module-scoped fixture reading `SKILL.md` once via pathlib) is the structural acceptance suite for the `/sentinel-audit` skill prompt. The audit skill is a markdown-driven LLM prompt rather than executable Python, so its tests are string-presence checks against `.claude/skills/sentinel-audit/SKILL.md`: `test_skill_md_documents_event_grouping` (event_id + events.article_ids + "Standalone classified articles" + per-event-block layout terms), `test_skill_md_documents_ordering` (urgency_score desc → first_seen_at desc, validated via 400-char sliding window), `test_skill_md_preserves_unchanged_sections` (Step 2 keyword filter + Step 4 source health + `.last-audit-timestamp` + `data/audit-reports/audit-` output path all survive Phase 3 changes), and `test_skill_md_documents_json_array_format` (either `json_each` or `json.loads` is documented for parsing `events.article_ids`). Runtime audit-report behaviour is verified manually per the Manual Verification checklist in SPEC_ALERT_GROUPING.md Phase 3, not by pytest.
