@@ -113,7 +113,10 @@ def list_articles():
     # one value is set so the DB layer takes the fast equality path; pass the
     # full list otherwise so the DB layer emits ``IN (?, ?, ...)``. Empty list
     # ==> filter is omitted.
-    source_names = [s for s in args.getlist("source_name") if s]
+    # Strip whitespace and drop empty/whitespace-only values so a query like
+    # ``?source_name=%20%20%20`` doesn't reach the DB as a literal three-space
+    # source name and silently match nothing.
+    source_names = [s.strip() for s in args.getlist("source_name") if s and s.strip()]
     if not source_names:
         source_name_filter: str | list[str] | None = None
     elif len(source_names) == 1:

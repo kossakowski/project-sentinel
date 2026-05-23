@@ -18,6 +18,8 @@ export function ColumnPicker({ visible, onToggle }: ColumnPickerProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   // Close on outside click so the popover behaves like a native dropdown.
+  // Also close on Escape so the popover follows the standard keyboard pattern
+  // for menus / dialogs (matches how native ``<select>`` dropdowns dismiss).
   useEffect(() => {
     if (!open) return;
     function onDocMouseDown(event: MouseEvent) {
@@ -27,8 +29,15 @@ export function ColumnPicker({ visible, onToggle }: ColumnPickerProps) {
         setOpen(false);
       }
     }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
     document.addEventListener("mousedown", onDocMouseDown);
-    return () => document.removeEventListener("mousedown", onDocMouseDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onDocMouseDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [open]);
 
   const visibleSet = new Set(visible);

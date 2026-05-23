@@ -73,10 +73,21 @@ function readFromStorage<T>(
     removeKey(key);
     return fallback;
   }
-  if (validator && !validator(parsed)) {
-    // Valid JSON but wrong shape — same hostile state as bad JSON; clear it.
-    removeKey(key);
-    return fallback;
+  if (validator) {
+    let ok = false;
+    try {
+      ok = validator(parsed);
+    } catch {
+      // A throwing validator (a downstream bug, not malicious input) shouldn't
+      // crash the consumer — treat it the same as a rejection: clear the bad
+      // key and fall back to the initial value.
+      ok = false;
+    }
+    if (!ok) {
+      // Valid JSON but wrong shape — same hostile state as bad JSON; clear it.
+      removeKey(key);
+      return fallback;
+    }
   }
   return parsed as T;
 }

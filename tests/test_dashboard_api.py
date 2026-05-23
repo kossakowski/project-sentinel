@@ -78,9 +78,32 @@ def test_app_factory_creates_app(app):
     assert "/api/sync" in rules
 
 
-def test_app_factory_frontend_placeholder(client):
-    """[1.1] With no built frontend, `/` returns the JSON status placeholder."""
-    resp = client.get("/")
+def test_app_factory_frontend_placeholder(sentinel_db_path, fts_db_path, monkeypatch, tmp_path):
+    """[1.1] With no built frontend, `/` returns the JSON status placeholder.
+
+    Independent of whether ``dashboard/frontend/dist/`` happens to exist on
+    disk: Phase 2's ``npm run build`` deliverable creates that directory, so a
+    test that asserts the placeholder behavior must NOT rely on its absence.
+    We monkeypatch ``config.FRONTEND_DIST_DIR`` to a guaranteed-nonexistent
+    path BEFORE calling ``create_app`` (the route closes over the constant at
+    registration time -- see ``_register_frontend_routes``).
+    """
+    from dashboard import config as dashboard_config
+
+    nonexistent_dist = str(tmp_path / "no-such-frontend-dist")
+    monkeypatch.setattr(dashboard_config, "FRONTEND_DIST_DIR", nonexistent_dist)
+    assert not os.path.exists(nonexistent_dist)
+
+    build_fts_index(sentinel_db_path, fts_db_path)
+    placeholder_app = create_app(
+        db_path=sentinel_db_path,
+        fts_db_path=fts_db_path,
+        dev_cors=True,
+    )
+    placeholder_app.config.update(TESTING=True)
+    placeholder_client = placeholder_app.test_client()
+
+    resp = placeholder_client.get("/")
     assert resp.status_code == 200
     assert resp.get_json() == {"status": "frontend not built"}
 
@@ -223,6 +246,43 @@ def test_api_articles_source_name_multi_select(client):
     resp = client.get("/api/articles")
     body = resp.get_json()
     assert body["total"] == 9
+
+
+def test_api_articles_source_name_whitespace_only_dropped(client):
+    """[1.4, 2.4] Whitespace-only ``source_name`` values are filtered out.
+
+    ``[s for s in getlist(...) if s]`` only drops empty strings -- a
+    whitespace-only value like ``"   "`` is truthy and survives, then reaches
+    the DB and produces a silent no-match query. The API must strip whitespace
+    and drop any value that's empty after stripping, so the request behaves
+    identically to "no source_name filter applied".
+    """
+    # Baseline: no source_name filter at all -- full 9-article fixture.
+    baseline = client.get("/api/articles").get_json()
+    assert baseline["total"] == 9
+
+    # Single whitespace-only value: filter must be omitted (same as baseline).
+    resp = client.get("/api/articles?source_name=%20%20%20")
+    body = resp.get_json()
+    assert resp.status_code == 200
+    assert body["total"] == baseline["total"]
+    assert {a["id"] for a in body["articles"]} == {a["id"] for a in baseline["articles"]}
+
+    # Two whitespace-only values: same behavior (filter omitted entirely).
+    resp = client.get("/api/articles?source_name=%20%20%20&source_name=%09")
+    body = resp.get_json()
+    assert body["total"] == baseline["total"]
+
+    # Mixed: one whitespace-only + one real value -- only the real value applies.
+    resp = client.get("/api/articles?source_name=%20%20%20&source_name=TVN24")
+    body = resp.get_json()
+    assert {a["id"] for a in body["articles"]} == {"a2"}
+    assert body["total"] == 1
+
+    # Whitespace padding around a real value is trimmed -- "  TVN24  " matches TVN24.
+    resp = client.get("/api/articles?source_name=%20%20TVN24%20%20")
+    body = resp.get_json()
+    assert {a["id"] for a in body["articles"]} == {"a2"}
 
 
 def test_api_articles_search(client):

@@ -395,7 +395,7 @@ function renderCell(key: ColumnKey, article: Article) {
     case "title":
       return (
         <Link
-          to={`/articles/${article.id}`}
+          to={`/articles/${encodeURIComponent(article.id)}`}
           className="article-title-link"
           data-testid="article-title-link"
         >
@@ -453,8 +453,10 @@ function renderCell(key: ColumnKey, article: Article) {
 function formatDate(iso: string): string {
   if (!iso) return "—";
   // Render only the YYYY-MM-DD HH:MM portion to keep the table compact.
+  // Suffix " UTC" so users don't misread these ISO timestamps as their own
+  // local time — every value in the DB is stored as UTC.
   const trimmed = iso.replace("T", " ").slice(0, 16);
-  return trimmed || iso;
+  return trimmed ? `${trimmed} UTC` : iso;
 }
 
 function formatConfidence(value: number): string {
