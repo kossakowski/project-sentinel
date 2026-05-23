@@ -122,12 +122,12 @@ An Event is created when the first classification with urgency 5 or higher arriv
 
 1. The event types must be compatible. For example, a drone_attack classification is compatible with an airstrike Event; a cyber_attack is only compatible with other cyber_attack classifications.
 2. At least one affected country must overlap.
-3. The classification must fall within the 60-minute corroboration window of the Event.
-4. The Polish summaries must have at least 55% semantic similarity (measured by token sort ratio).
+3. The classification must fall within the corroboration window of the Event — `classification.corroboration_window_minutes` (Pydantic default 360 = 6h; live production config still 60).
+4. The Polish summaries must have at least `classification.summary_similarity_threshold` semantic similarity (Pydantic default 40, measured by `rapidfuzz.fuzz.token_sort_ratio`).
 
 If no existing Event satisfies all four conditions, a new Event is created.
 
-A classification counts as a new independent source only if it comes from a different domain than sources already in the Event, and its title is less than 90% similar to any existing source title. This second check prevents wire service syndication from being mistaken for independent confirmation.
+A classification counts as a new independent source only if it comes from a different domain than sources already in the Event, and its title is less than `classification.syndication_similarity_threshold` similar (Pydantic default 90, measured by `rapidfuzz.fuzz.ratio`) to any existing source title. This second check prevents wire service syndication from being mistaken for independent confirmation.
 
 The alert level assigned to an Event is determined by `alerts/state_machine.py:_determine_action`:
 
