@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { ArticleTable } from "../components/ArticleTable";
 import { ColumnPicker } from "../components/ColumnPicker";
 import {
+  ALL_COLUMNS,
   COLUMN_STORAGE_KEY,
   DEFAULT_VISIBLE_COLUMNS,
   PAGE_SIZE_STORAGE_KEY,
@@ -29,13 +30,22 @@ import { ApiError, fetchArticles, fetchStats } from "../api/client";
 import type { ArticleQueryParams, SortColumn, SortOrder } from "../types";
 
 const DEFAULT_PAGE_SIZE: PageSize = 50;
-// Visual fallback used by the table when the URL has no explicit `sort` param.
-// We intentionally do NOT send `sort=` to the backend in that case so that
-// /api/articles' FTS rank ordering (req 1.4c) stays reachable while the user
-// is searching. Clicking a column header writes an explicit `sort=` into the
-// URL and re-engages the backend's column-sorting path.
-const DEFAULT_DISPLAY_SORT: SortColumn = "published_at";
-const DEFAULT_DISPLAY_ORDER: SortOrder = "desc";
+
+// Canonical set of column keys — used by the localStorage shape validator
+// below to reject any persisted column list that contains stale or invalid
+// keys (e.g. a column renamed in a later release).
+const VALID_COLUMN_KEYS = new Set<string>(ALL_COLUMNS.map((c) => c.key));
+
+function isColumnKeyList(value: unknown): value is ColumnKey[] {
+  return (
+    Array.isArray(value) &&
+    value.every((v) => typeof v === "string" && VALID_COLUMN_KEYS.has(v))
+  );
+}
+
+function isStoredPageSize(value: unknown): value is PageSize {
+  return typeof value === "number" && isValidPageSize(value);
+}
 
 /** Whole articles page, composed of FilterTabs / FilterBar / SearchBar /
  *  ColumnPicker / SyncButton / ArticleTable / Pagination (req 2.x). */
@@ -43,26 +53,30 @@ export function ArticlesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { notify } = useToasts();
 
-  // Persistent UI preferences.
+  // Persistent UI preferences. The validators reject any corrupted shape (a
+  // stray devtools edit, a stale value from a prior release) AND clear the
+  // bad key so downstream consumers (ArticleTable.visibleColumns.includes)
+  // never see non-array data.
   const [visibleColumns, setVisibleColumns] = useLocalStorage<ColumnKey[]>(
     COLUMN_STORAGE_KEY,
     [...DEFAULT_VISIBLE_COLUMNS],
+    isColumnKeyList,
   );
   const [storedPageSize, setStoredPageSize] = useLocalStorage<PageSize>(
     PAGE_SIZE_STORAGE_KEY,
     DEFAULT_PAGE_SIZE,
+    isStoredPageSize,
   );
 
   // Read state straight from the URL so reloads restore everything (req 2.4a, 2.6a).
   const tab = (searchParams.get("tab") as FilterTabValue) || "all";
   const search = searchParams.get("q") ?? "";
   // User-chosen sort is detected by the literal presence of `sort=` in the URL.
-  // When absent, the table still renders a default visual indicator but we do
-  // NOT send `sort` to the backend (preserves req 1.4c).
+  // When absent we pass `null` down so the header indicator stays blank (req
+  // 2.2: indicator appears only when a column IS sorted) AND we do NOT send
+  // `sort=` to the backend (preserves FTS rank ordering, req 1.4c).
   const userSort = searchParams.get("sort") as SortColumn | null;
   const userOrder = searchParams.get("order") as SortOrder | null;
-  const displaySort: SortColumn = userSort ?? DEFAULT_DISPLAY_SORT;
-  const displayOrder: SortOrder = userOrder ?? DEFAULT_DISPLAY_ORDER;
   const page = Math.max(1, Number(searchParams.get("page") ?? "1") || 1);
   const pageSizeFromUrl = Number(searchParams.get("page_size") ?? "");
   const pageSize: PageSize = isValidPageSize(pageSizeFromUrl)
@@ -72,7 +86,7 @@ export function ArticlesPage() {
   // Filter state pulled from URL (so it survives reload).
   const filters: FilterState = useMemo(
     () => ({
-      source_name: searchParams.get("source_name") ?? "",
+      source_names: searchParams.getAll("source_name").filter(Boolean),
       source_type: searchParams.get("source_type") ?? "",
       language: searchParams.get("language") ?? "",
       urgency_min: searchParams.get("urgency_min") ?? "",
@@ -93,17 +107,20 @@ export function ArticlesPage() {
   const [sourceOptions, setSourceOptions] = useState<string[]>([]);
   const [eventTypeOptions, setEventTypeOptions] = useState<string[]>([]);
   useEffect(() => {
-    let cancelled = false;
-    fetchStats()
+    // Use AbortController so a fast refreshTick bump or unmount cancels the
+    // in-flight request rather than just discarding its result (req 2.9
+    // consistency with useArticles).
+    const controller = new AbortController();
+    fetchStats({ signal: controller.signal })
       .then((stats) => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         setSourceOptions(stats.source_distribution.map((s) => s.source_name));
         setEventTypeOptions(
           stats.event_type_distribution.map((s) => s.event_type),
         );
       })
       .catch((error: unknown) => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         const message = errorMessage(error);
         // Spec req 2.9a — API errors MUST be surfaced to the user.
         notify(
@@ -111,20 +128,22 @@ export function ArticlesPage() {
           "error",
         );
       });
-    return () => {
-      cancelled = true;
-    };
+    return () => controller.abort();
     // refreshTick re-runs the effect after a successful sync — picks up new
     // sources/event_types that didn't exist at first mount.
   }, [refreshTick, notify]);
 
   // Build the API query from URL state. `sort`/`order` are added only when
-  // the user has explicitly clicked a column header (see comments on
-  // DEFAULT_DISPLAY_SORT above for the FTS-rank rationale).
+  // the user has explicitly clicked a column header (preserves FTS rank
+  // ordering, req 1.4c).
   const baseFilters = filterStateToQuery(filters);
   const pipelineStatus = tabToPipelineStatus(tab);
   const params: ArticleQueryParams = {
     ...baseFilters,
+    // Multi-select source_name -> repeated ?source_name= params (req 2.4).
+    ...(filters.source_names.length > 0
+      ? { source_name: filters.source_names }
+      : {}),
     page,
     page_size: pageSize,
     ...(userSort ? { sort: userSort } : {}),
@@ -144,23 +163,44 @@ export function ArticlesPage() {
     classified: 0,
     unclassified: 0,
   });
+  // Stable JSON snapshot of the dependencies the tab-counts effect actually
+  // needs (filters + search + source_names). Sort/order are intentionally
+  // excluded — totals are pipeline_status-only counts and sort doesn't affect
+  // them. Including source_names here so a multi-select change invalidates.
+  const sourceNamesKey = filters.source_names.join("");
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
     async function loadCounts() {
       try {
+        const baseParams: ArticleQueryParams = {
+          ...baseFilters,
+          ...(filters.source_names.length > 0
+            ? { source_name: filters.source_names }
+            : {}),
+          ...(search ? { q: search } : {}),
+        };
         const [allRes, classifiedRes, unclassifiedRes] = await Promise.all([
-          fetchTabCount({ ...params, page: 1, page_size: 25, pipeline_status: undefined }),
-          fetchTabCount({ ...params, page: 1, page_size: 25, pipeline_status: "classified" }),
-          fetchTabCount({ ...params, page: 1, page_size: 25, pipeline_status: "unclassified" }),
+          fetchTabCount(
+            { ...baseParams, page: 1, page_size: 25 },
+            controller.signal,
+          ),
+          fetchTabCount(
+            { ...baseParams, page: 1, page_size: 25, pipeline_status: "classified" },
+            controller.signal,
+          ),
+          fetchTabCount(
+            { ...baseParams, page: 1, page_size: 25, pipeline_status: "unclassified" },
+            controller.signal,
+          ),
         ]);
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         setTabCounts({
           all: allRes,
           classified: classifiedRes,
           unclassified: unclassifiedRes,
         });
       } catch (caught: unknown) {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         // One toast per failed loadCounts run — even though three /api/articles
         // calls fire in parallel, the user only needs to know counts are stale.
         // Spec req 2.9a forbids silently swallowing the failure.
@@ -168,14 +208,13 @@ export function ArticlesPage() {
       }
     }
     loadCounts();
-    return () => {
-      cancelled = true;
-    };
+    return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     search,
     refreshTick,
     JSON.stringify(baseFilters),
+    sourceNamesKey,
   ]);
 
   // --- URL-mutating handlers -------------------------------------------------
@@ -341,8 +380,8 @@ export function ArticlesPage() {
         visibleColumns={
           visibleColumns.length ? visibleColumns : DEFAULT_VISIBLE_COLUMNS
         }
-        sort={displaySort}
-        order={displayOrder}
+        sort={userSort}
+        order={userOrder}
         onSortChange={onSortChange}
       />
 
@@ -360,14 +399,24 @@ export function ArticlesPage() {
 
 // --- Helpers -----------------------------------------------------------------
 
-async function fetchTabCount(params: ArticleQueryParams): Promise<number> {
-  const result = await fetchArticles(params);
+async function fetchTabCount(
+  params: ArticleQueryParams,
+  signal?: AbortSignal,
+): Promise<number> {
+  const result = await fetchArticles(params, signal ? { signal } : undefined);
   return result.total;
 }
 
 function applyFilterToUrl(target: URLSearchParams, next: FilterState) {
-  const map: Array<[keyof FilterState, string]> = [
-    ["source_name", "source_name"],
+  // Multi-valued source_names is handled separately (delete + append per
+  // value) since URLSearchParams cannot express a repeated param via set().
+  target.delete("source_name");
+  for (const source of next.source_names) {
+    const trimmed = source.trim();
+    if (trimmed) target.append("source_name", trimmed);
+  }
+
+  const map: Array<[Exclude<keyof FilterState, "source_names" | "has_alert">, string]> = [
     ["source_type", "source_type"],
     ["language", "language"],
     ["urgency_min", "urgency_min"],
@@ -378,7 +427,9 @@ function applyFilterToUrl(target: URLSearchParams, next: FilterState) {
   ];
   for (const [key, name] of map) {
     const value = next[key];
-    if (typeof value === "string" && value) target.set(name, value);
+    // Trim string filters so leading/trailing whitespace doesn't show up in
+    // shared URLs or get round-tripped to the backend (req 2.4a polish).
+    if (typeof value === "string" && value.trim()) target.set(name, value.trim());
     else target.delete(name);
   }
   if (next.has_alert) target.set("has_alert", "true");

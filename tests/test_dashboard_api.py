@@ -194,6 +194,37 @@ def test_api_articles_filter_and_sort(client):
     assert body["articles"][0]["source_type"] == "telegram"
 
 
+def test_api_articles_source_name_multi_select(client):
+    """[1.4, 2.4] Repeated ``?source_name=`` params return articles from ANY listed source.
+
+    The dashboard's multi-select source filter (spec 2.4) serialises each
+    selected source as a repeated query param. The API must collect them via
+    ``getlist`` and pass to the DB layer as a list so an ``IN`` clause is
+    used; a single value path still works (backwards compatible).
+    """
+    # Single source -- equality path.
+    resp = client.get("/api/articles?source_name=TVN24")
+    body = resp.get_json()
+    assert {a["id"] for a in body["articles"]} == {"a2"}
+    assert body["total"] == 1
+
+    # Multi-select via repeated params -- IN(...) path.
+    resp = client.get("/api/articles?source_name=TVN24&source_name=TASS")
+    body = resp.get_json()
+    assert {a["id"] for a in body["articles"]} == {"a1", "a2"}
+    assert body["total"] == 2
+
+    # Three sources -- proves the IN list scales beyond two.
+    resp = client.get("/api/articles?source_name=TVN24&source_name=TASS&source_name=Onet")
+    body = resp.get_json()
+    assert {a["id"] for a in body["articles"]} == {"a1", "a2", "a3", "a5"}
+
+    # No source_name parameter at all -- filter omitted, full set returned.
+    resp = client.get("/api/articles")
+    body = resp.get_json()
+    assert body["total"] == 9
+
+
 def test_api_articles_search(client):
     """[1.4, 1.2d] GET /api/articles?q=drone returns matching articles."""
     resp = client.get("/api/articles?q=drone")

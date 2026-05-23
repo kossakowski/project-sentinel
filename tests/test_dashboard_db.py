@@ -407,6 +407,83 @@ def test_db_get_articles_filters(db_no_fts):
     assert result["articles"][0]["id"] == "a4"
 
 
+def test_db_source_name_filter_multi_select(db_no_fts):
+    """[1.2b, 2.4] A list of source_names yields IN(...) matching ANY listed.
+
+    The dashboard's multi-select source picker (spec 2.4) sends multiple
+    ``?source_name=A&source_name=B`` query params; the DB layer must emit a
+    SQL ``IN`` clause so the response includes articles from EITHER source.
+    A single string still works (backwards compatible with the legacy
+    single-select behaviour).
+    """
+    # Single string still works.
+    one = db_no_fts.get_articles(filters={"source_name": "TVN24"})
+    assert {a["id"] for a in one["articles"]} == {"a2"}
+
+    # Multi-select: list of two sources -> the union of their articles.
+    multi = db_no_fts.get_articles(filters={"source_name": ["TVN24", "TASS"]})
+    assert {a["id"] for a in multi["articles"]} == {"a1", "a2"}
+    assert multi["total"] == 2
+
+    # Single-element list collapses to the equality fast-path internally,
+    # but the result must be the same as the single-string call.
+    single_list = db_no_fts.get_articles(filters={"source_name": ["TVN24"]})
+    assert {a["id"] for a in single_list["articles"]} == {"a2"}
+
+    # An empty list is treated as "no filter".
+    empty = db_no_fts.get_articles(filters={"source_name": []})
+    assert empty["total"] == 9
+
+
+def test_db_get_article_detail_raw_metadata_coerced(sentinel_db_path, fts_db_path):
+    """[1.5, 2.1b] Non-dict raw_metadata JSON values coerce to an empty dict.
+
+    The frontend ``ArticleDetail.raw_metadata`` contract is
+    ``Record<string, unknown>``. A corrupted row containing a JSON array,
+    scalar, or null would otherwise leak a non-dict through the API and
+    crash the React renderer. The DB layer normalises everything to dict.
+    """
+    import sqlite3 as sql
+
+    # Patch a row in place so we don't depend on running INSERT against the
+    # production schema. The fixture's raw_metadata for ``a1`` is set by
+    # `_article_row` to a small dict; override it to a JSON array.
+    conn = sql.connect(sentinel_db_path)
+    try:
+        conn.execute(
+            "UPDATE articles SET raw_metadata = ? WHERE id = ?",
+            ("[1, 2, 3]", "a1"),
+        )
+        conn.execute(
+            "UPDATE articles SET raw_metadata = ? WHERE id = ?",
+            ('"a-scalar"', "a2"),
+        )
+        conn.execute(
+            "UPDATE articles SET raw_metadata = ? WHERE id = ?",
+            ("not-json-at-all", "a3"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    db = DashboardDB(db_path=sentinel_db_path, fts_db_path=fts_db_path)
+    try:
+        # JSON array -> {}
+        a1 = db.get_article_detail("a1")
+        assert a1 is not None
+        assert a1["raw_metadata"] == {}
+        # JSON scalar -> {}
+        a2 = db.get_article_detail("a2")
+        assert a2 is not None
+        assert a2["raw_metadata"] == {}
+        # Garbage (json.JSONDecodeError) -> {}
+        a3 = db.get_article_detail("a3")
+        assert a3 is not None
+        assert a3["raw_metadata"] == {}
+    finally:
+        db.close()
+
+
 def test_db_get_articles_filters_more(db_no_fts):
     """[1.2b] Additional filters: language, urgency range, event_type."""
     # language filter -- a2, a3, a5, a7, a9 are all Polish.

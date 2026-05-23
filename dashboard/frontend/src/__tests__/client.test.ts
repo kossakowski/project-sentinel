@@ -62,6 +62,9 @@ describe("API client", () => {
       expect(err.status).toBe(500);
       expect(err.body).toEqual({ error: "boom" });
       expect(err.message).toContain("boom");
+      // F28: the failing URL is preserved on the error so the toast layer
+      // can surface "which endpoint failed?" without parsing the message.
+      expect(err.url).toBe("/api/stats");
     }
     spy.mockRestore();
 

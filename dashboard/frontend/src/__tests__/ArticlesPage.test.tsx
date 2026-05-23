@@ -10,7 +10,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
 
 import { ApiError } from "../api/client";
@@ -22,6 +22,15 @@ import type {
   StatsResponse,
   SyncStatus,
 } from "../types";
+import { routerFutureFlags } from "../utils/routerFutureFlags";
+
+/** Tiny in-tree probe that surfaces the MemoryRouter's current location.search
+ *  via a hidden DOM node, so URL-reset assertions can read the URL without
+ *  needing window.location (MemoryRouter doesn't drive window.location). */
+function LocationProbe() {
+  const location = useLocation();
+  return <span data-testid="location-search">{location.search}</span>;
+}
 
 function emptyArticles(overrides: Partial<ArticleListResponse> = {}): ArticleListResponse {
   return {
@@ -64,9 +73,10 @@ function emptySyncStatus(overrides: Partial<SyncStatus> = {}): SyncStatus {
 
 function renderPage(initialEntries: string[] = ["/articles"]): ReactNode {
   return render(
-    <MemoryRouter initialEntries={initialEntries}>
+    <MemoryRouter initialEntries={initialEntries} future={routerFutureFlags}>
       <ToastProvider>
         <ArticlesPage />
+        <LocationProbe />
       </ToastProvider>
     </MemoryRouter>,
   ) as unknown as ReactNode;
@@ -167,8 +177,9 @@ describe("ArticlesPage", () => {
     expect(sortedParams.order).toBe("asc");
   });
 
-  // covers F4 — Clear all filters must reset FilterBar fields + active tab +
-  // search query + sort/order + page. page_size persists (req 2.7a).
+  // covers F4 / spec test_filter_clear_all (req 2.4b) — Clear all filters must
+  // reset every URL-backed filter param plus the visible state. ``page_size``
+  // is the ONLY param allowed to survive (req 2.7a).
   it("test_clear_filters_resets_all_state", async () => {
     vi.spyOn(client, "fetchStats").mockResolvedValue(emptyStats());
     vi.spyOn(client, "fetchSyncStatus").mockResolvedValue(emptySyncStatus());
@@ -176,7 +187,7 @@ describe("ArticlesPage", () => {
 
     const user = userEvent.setup();
     renderPage([
-      "/articles?q=drone&tab=classified&sort=urgency_score&order=asc&page=3&source_name=TVN24&urgency_min=5&page_size=25",
+      "/articles?q=drone&tab=classified&sort=urgency_score&order=asc&page=3&source_name=TVN24&source_name=TASS&urgency_min=5&urgency_max=10&date_from=2026-05-01&date_to=2026-05-22&source_type=rss&language=pl&event_type=drone_attack&has_alert=true&page_size=25",
     ]);
 
     // Active tab indicator should reflect "classified" before clearing.
@@ -189,6 +200,9 @@ describe("ArticlesPage", () => {
     expect(
       (screen.getByTestId("search-input") as HTMLInputElement).value,
     ).toBe("drone");
+
+    // The source multi-select trigger reflects two selected sources.
+    expect(screen.getByTestId("filter-source").textContent).toBe("2 sources");
 
     await user.click(screen.getByTestId("filter-clear"));
 
@@ -203,14 +217,33 @@ describe("ArticlesPage", () => {
       (screen.getByTestId("search-input") as HTMLInputElement).value,
     ).toBe("");
 
-    // page_size SHOULD survive (lives in localStorage / URL per req 2.7a).
     // FilterBar fields cleared.
-    expect(
-      (screen.getByTestId("filter-source") as HTMLSelectElement).value,
-    ).toBe("");
+    expect(screen.getByTestId("filter-source").textContent).toBe("All sources");
     expect(
       (screen.getByTestId("filter-urgency-min") as HTMLInputElement).value,
     ).toBe("");
+
+    // URL is the source of truth — assert every filter/search/sort/order/page
+    // query param is gone. page_size is the only allowed survivor (req 2.7a).
+    await waitFor(() => {
+      const url = screen.getByTestId("location-search").textContent ?? "";
+      const lookup = `?${url.startsWith("?") ? url.slice(1) : url}`;
+      expect(lookup).not.toMatch(/[?&]q=/);
+      expect(lookup).not.toMatch(/[?&]tab=/);
+      expect(lookup).not.toMatch(/[?&]sort=/);
+      expect(lookup).not.toMatch(/[?&]order=/);
+      expect(lookup).not.toMatch(/[?&]page=/);
+      expect(lookup).not.toMatch(/[?&]source_name=/);
+      expect(lookup).not.toMatch(/[?&]source_type=/);
+      expect(lookup).not.toMatch(/[?&]language=/);
+      expect(lookup).not.toMatch(/[?&]urgency_min=/);
+      expect(lookup).not.toMatch(/[?&]urgency_max=/);
+      expect(lookup).not.toMatch(/[?&]date_from=/);
+      expect(lookup).not.toMatch(/[?&]date_to=/);
+      expect(lookup).not.toMatch(/[?&]event_type=/);
+      expect(lookup).not.toMatch(/[?&]has_alert=/);
+      // page_size MAY survive (allowed by spec req 2.7a).
+    });
   });
 
   // covers F6 (req 2.8) — Sync must trigger a fresh /api/stats call so

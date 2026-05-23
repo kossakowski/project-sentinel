@@ -357,9 +357,25 @@ class DashboardDB:
         clauses: list[str] = []
         params: list = []
 
-        if filters.get("source_name"):
-            clauses.append("a.source_name = ?")
-            params.append(filters["source_name"])
+        source_name = filters.get("source_name")
+        if source_name:
+            # The dashboard's multi-select UI sends an IN-list of sources via
+            # repeated ``?source_name=A&source_name=B`` query params (the API
+            # layer collapses those into a list). A single string is still
+            # accepted for backwards compatibility -- the equality clause is
+            # cheaper and matches every legacy caller.
+            if isinstance(source_name, (list, tuple, set)):
+                values = [s for s in source_name if s]
+                if len(values) == 1:
+                    clauses.append("a.source_name = ?")
+                    params.append(values[0])
+                elif len(values) > 1:
+                    placeholders = ",".join("?" * len(values))
+                    clauses.append(f"a.source_name IN ({placeholders})")
+                    params.extend(values)
+            else:
+                clauses.append("a.source_name = ?")
+                params.append(source_name)
 
         if filters.get("source_type"):
             clauses.append("a.source_type = ?")
@@ -568,9 +584,13 @@ class DashboardDB:
 
         article = self._article_from_row(row)
         try:
-            article["raw_metadata"] = json.loads(row["raw_metadata"] or "{}")
+            parsed = json.loads(row["raw_metadata"] or "{}")
         except (json.JSONDecodeError, TypeError):
-            article["raw_metadata"] = {}
+            parsed = {}
+        # Defensively coerce non-dict JSON payloads (arrays, scalars) to an
+        # empty dict so the frontend ``ArticleDetail.raw_metadata`` contract
+        # (Record<string, unknown>) holds for every row, even corrupted ones.
+        article["raw_metadata"] = parsed if isinstance(parsed, dict) else {}
         article["events"] = self._events_for_article(article_id)
         return article
 

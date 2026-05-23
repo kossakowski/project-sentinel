@@ -84,14 +84,23 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 /**
  * Build a `URLSearchParams` instance from a partial params object, skipping
  * undefined / null / empty-string values so the backend sees only filters the
- * user actually set.
+ * user actually set. Array values are serialised as repeated params, which
+ * matches Flask's ``request.args.getlist`` contract — required by the
+ * multi-select source filter (req 2.4).
  */
-function buildSearchParams(
-  params: Record<string, string | number | boolean | undefined | null>,
-): URLSearchParams {
+type ParamValue = string | number | boolean | string[] | undefined | null;
+
+function buildSearchParams(params: Record<string, ParamValue>): URLSearchParams {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value === undefined || value === null || value === "") continue;
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (item === undefined || item === null || item === "") continue;
+        search.append(key, String(item));
+      }
+      continue;
+    }
     search.set(key, String(value));
   }
   return search;
@@ -102,9 +111,7 @@ export function fetchArticles(
   params: ArticleQueryParams = {},
   init?: RequestInit,
 ): Promise<ArticleListResponse> {
-  const search = buildSearchParams(
-    params as Record<string, string | number | boolean | undefined | null>,
-  );
+  const search = buildSearchParams(params as Record<string, ParamValue>);
   const qs = search.toString();
   const url = qs ? `/api/articles?${qs}` : "/api/articles";
   return request<ArticleListResponse>(url, init);

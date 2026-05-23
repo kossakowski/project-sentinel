@@ -34,7 +34,10 @@ export type SortColumn =
 export interface Classification {
   id: string;
   is_military_event: boolean;
-  event_type: string;
+  // sentinel/database.py:54 declares `event_type TEXT` (nullable). The
+  // dashboard mirrors that — an unclassified-but-row-present edge case
+  // would leave this NULL, so the frontend must handle it.
+  event_type: string | null;
   urgency_score: number;
   affected_countries: string[];
   aggressor: string | null;
@@ -115,7 +118,9 @@ export interface ArticleQueryParams {
   page_size?: number;
   sort?: SortColumn;
   order?: SortOrder;
-  source_name?: string;
+  // Multi-select (req 2.4): a list emits repeated ``?source_name=`` URL
+  // params; a single string keeps the legacy single-source behaviour.
+  source_name?: string | string[];
   source_type?: string;
   language?: string;
   urgency_min?: number;

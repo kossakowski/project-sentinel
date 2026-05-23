@@ -108,9 +108,22 @@ def list_articles():
             400,
         )
 
+    # ``source_name`` may be sent as a multi-select via repeated query params
+    # (``?source_name=A&source_name=B``). Collapse to a single string when only
+    # one value is set so the DB layer takes the fast equality path; pass the
+    # full list otherwise so the DB layer emits ``IN (?, ?, ...)``. Empty list
+    # ==> filter is omitted.
+    source_names = [s for s in args.getlist("source_name") if s]
+    if not source_names:
+        source_name_filter: str | list[str] | None = None
+    elif len(source_names) == 1:
+        source_name_filter = source_names[0]
+    else:
+        source_name_filter = source_names
+
     # Build the filters dict from query params -- used by both search and list.
     filters = {
-        "source_name": args.get("source_name"),
+        "source_name": source_name_filter,
         "source_type": args.get("source_type"),
         "language": args.get("language"),
         "urgency_min": _parse_int(args.get("urgency_min")),
