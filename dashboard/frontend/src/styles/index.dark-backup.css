@@ -4,40 +4,38 @@
  */
 
 :root {
-  --bg: #faf7f2;
-  --bg-elevated: #ffffff;
-  --bg-table: #ffffff;
-  --bg-table-stripe: #f6f1e6;
-  --bg-input: #ffffff;
-  --bg-code: #f6f1e6;
-  --border: #e8e1d1;
-  --border-strong: #cfc6b3;
-  --text: #1a1a1a;
-  --text-muted: #6b6357;
-  --text-dim: #9a9183;
-  --link: #b8390a;
-  --link-hover: #8a2b07;
+  --bg: #0f172a;
+  --bg-elevated: #1e293b;
+  --bg-table: #111827;
+  --bg-table-stripe: #131a2b;
+  --bg-input: #1e293b;
+  --border: #334155;
+  --border-strong: #475569;
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+  --link: #60a5fa;
+  --link-hover: #93c5fd;
 
-  --urgency-low-bg: #f0ebe0;
-  --urgency-low-fg: #6b6357;
-  --urgency-medium-bg: #fbe199;
-  --urgency-medium-fg: #5d3211;
-  --urgency-high-bg: #ea8a3e;
-  --urgency-high-fg: #ffffff;
-  --urgency-critical-bg: #9c1d1d;
-  --urgency-critical-fg: #ffffff;
+  --urgency-low-bg: #1e293b;
+  --urgency-low-fg: #94a3b8;
+  --urgency-medium-bg: #78350f;
+  --urgency-medium-fg: #fde68a;
+  --urgency-high-bg: #9a3412;
+  --urgency-high-fg: #fed7aa;
+  --urgency-critical-bg: #991b1b;
+  --urgency-critical-fg: #fecaca;
 
-  --badge-unclassified-bg: #ede5d1;
-  --badge-unclassified-fg: #5d544a;
-  --badge-classified-bg: #e6ecf5;
-  --badge-classified-fg: #1e3a8a;
-  --badge-event-bg: #fbe199;
-  --badge-event-fg: #5d3211;
-  --badge-alert-bg: #9c1d1d;
-  --badge-alert-fg: #ffffff;
+  --badge-unclassified-bg: #334155;
+  --badge-unclassified-fg: #cbd5e1;
+  --badge-classified-bg: #1e3a8a;
+  --badge-classified-fg: #bfdbfe;
+  --badge-event-bg: #9a3412;
+  --badge-event-fg: #fed7aa;
+  --badge-alert-bg: #991b1b;
+  --badge-alert-fg: #fecaca;
 
-  --shadow-popover: 0 6px 20px rgba(15, 23, 42, 0.10),
-                    0 2px 4px rgba(15, 23, 42, 0.05);
+  --shadow-popover: 0 10px 25px rgba(0, 0, 0, 0.5);
 
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -143,7 +141,7 @@ input[type="checkbox"] {
   color: var(--text-muted);
 }
 .articles-page-error {
-  color: #b91c1c;
+  color: #fca5a5;
 }
 
 /* Search bar ------------------------------------------------------------- */
@@ -404,7 +402,7 @@ input[type="checkbox"] {
   margin: 0 0 12px;
 }
 .article-raw-metadata-error {
-  color: #b91c1c;
+  color: var(--urgency-high-fg, #c00);
 }
 
 /* Source multi-select dropdown ----------------------------------------- */
@@ -585,14 +583,14 @@ input[type="checkbox"] {
   box-shadow: var(--shadow-popover);
 }
 .toast-error {
-  border-color: #fca5a5;
-  background: #fef2f2;
-  color: #991b1b;
+  border-color: #ef4444;
+  background: #2a1010;
+  color: #fecaca;
 }
 .toast-success {
-  border-color: #6ee7b7;
-  background: #ecfdf5;
-  color: #065f46;
+  border-color: #22c55e;
+  background: #102a15;
+  color: #bbf7d0;
 }
 .toast-info {
   border-color: var(--border-strong);
@@ -617,7 +615,7 @@ input[type="checkbox"] {
 
 /* Overview page (Phase 3) ----------------------------------------------- */
 .app-nav-link-active {
-  color: var(--link);
+  color: var(--link-hover);
   text-decoration: underline;
 }
 
@@ -639,7 +637,7 @@ input[type="checkbox"] {
   color: var(--text-muted);
 }
 .overview-page-error {
-  color: #b91c1c;
+  color: #fca5a5;
 }
 
 .overview-section-heading {
@@ -781,16 +779,16 @@ input[type="checkbox"] {
   border-radius: 5px;
 }
 .pipeline-funnel-bar-collected {
-  background: #8a7b62;
+  background: #2563eb;
 }
 .pipeline-funnel-bar-classified {
-  background: #5e6f8a;
+  background: #0ea5e9;
 }
 .pipeline-funnel-bar-events_created {
-  background: #ea8a3e;
+  background: #f97316;
 }
 .pipeline-funnel-bar-alerts_sent {
-  background: #9c1d1d;
+  background: #dc2626;
 }
 
 /* Time series + urgency histogram + source breakdown ------------------- */
@@ -883,7 +881,7 @@ input[type="checkbox"] {
   color: var(--text);
 }
 .article-detail-error-message {
-  color: #b91c1c;
+  color: #fca5a5;
 }
 
 /* Classifier view ------------------------------------------------------- */
@@ -931,7 +929,7 @@ input[type="checkbox"] {
 }
 .classifier-view-input-body,
 .classifier-view-output-raw {
-  background: var(--bg-code);
+  background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 8px 10px;
@@ -1178,250 +1176,20 @@ input[type="checkbox"] {
   border: 1px solid var(--border);
 }
 .annotation-panel-save {
-  background: #1e3a8a;
-  color: #ffffff;
-  border-color: #1e3a8a;
+  background: var(--badge-event-bg, #1e40af);
+  color: var(--badge-event-fg, #dbeafe);
 }
 .annotation-panel-delete {
-  background: #9c1d1d;
-  color: #ffffff;
-  border-color: #9c1d1d;
+  background: var(--badge-alert-bg, #7f1d1d);
+  color: var(--badge-alert-fg, #fecaca);
 }
 .annotation-panel-error {
   margin: 0;
   font-size: 12px;
-  color: #b91c1c;
+  color: #fca5a5;
 }
 .annotation-panel-success {
   margin: 0;
   font-size: 12px;
-  color: #047857;
-}
-
-/* Light-theme polish: subtle card shadows + accessible focus rings ----- */
-.app-nav {
-  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
-}
-.article-table-wrapper,
-.filter-bar,
-.pipeline-funnel,
-.time-series-chart,
-.urgency-histogram,
-.source-breakdown,
-.stats-card,
-.article-detail-header,
-.classifier-view,
-.event-timeline,
-.annotation-panel {
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
-}
-button:focus-visible,
-input:focus,
-select:focus,
-textarea:focus {
-  outline: 2px solid var(--link);
-  outline-offset: 1px;
-}
-
-/* Event-grouping styles ------------------------------------------------- */
-/* Spec SPEC_ALERT_GROUPING.md req 2.3a — first row of an event group:
- * a clickable indicator (chevron + count) navigates to /events/<id>. */
-.article-row-event-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  margin-left: 4px;
-  padding: 1px 4px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--badge-event-fg, #fed7aa);
-  background: var(--badge-event-bg, #9a3412);
-  border-radius: 3px;
-  text-decoration: none;
-}
-.article-row-event-indicator:hover {
-  filter: brightness(1.15);
-}
-.article-row-event-indicator-chevron {
-  font-size: 9px;
-}
-.article-row-event-indicator-count {
-  font-size: 10px;
-}
-/* Spec 2.3b — continuation rows are visually distinguished from fresh rows
- * via TWO independent cues (coloured left border + faded background) so the
- * grouping reads correctly to colour-blind users. */
-.article-table tbody tr.article-row.article-row-in-group {
-  /* Faded terracotta wash, matching the event-grouping border + funnel bar;
-   * the alternating stripe remains the dominant rhythm cue. */
-  background: rgba(234, 138, 62, 0.10);
-}
-.article-table tbody tr.article-row.article-row-in-group > td:first-child {
-  /* Coloured left border on the first cell — second of the two visual
-   * cues required by spec 2.3b. */
-  border-left: 3px solid #ea8a3e;
-  padding-left: 7px;
-}
-.article-row-expanded.article-row-expanded-in-group > td {
-  border-left: 3px solid #ea8a3e;
-  padding-left: 21px;
-}
-
-/* Event detail page styles --------------------------------------------- */
-.event-detail-page {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  padding: 20px;
-}
-.event-detail-back-link {
-  align-self: flex-start;
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--link);
-  padding: 4px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 13px;
-}
-.event-detail-back-link:hover {
-  background: var(--bg-elevated);
-}
-.event-detail-header {
-  background: var(--bg-elevated);
-  padding: 16px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-}
-.event-detail-title {
-  margin: 0 0 12px;
-  font-size: 20px;
-}
-.event-detail-meta {
-  display: grid;
-  grid-template-columns: 160px 1fr;
-  gap: 6px 12px;
-  margin: 0;
-}
-.event-detail-meta dt {
-  color: var(--text-muted);
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-.event-detail-meta dd {
-  margin: 0;
-}
-.event-detail-urgency-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 3px;
-  font-size: 12px;
-  font-weight: 600;
-}
-.event-detail-country-chips {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-.event-detail-country-chip {
-  display: inline-block;
-  background: var(--bg-table-stripe, #1e293b);
-  color: var(--text);
-  padding: 1px 8px;
-  border-radius: 10px;
-  font-size: 11px;
-}
-.event-detail-alert-status {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 3px;
-  font-size: 12px;
-  background: var(--badge-event-bg, #9a3412);
-  color: var(--badge-event-fg, #fed7aa);
-}
-.event-detail-articles,
-.event-detail-alert-timeline {
-  background: var(--bg-elevated);
-  padding: 16px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-}
-.event-detail-articles-list,
-.event-detail-alert-timeline-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.event-detail-article {
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 12px;
-}
-.event-detail-article-title {
-  display: inline-block;
-  margin-bottom: 6px;
-  font-weight: 600;
-  color: var(--link);
-}
-.event-detail-article-title:hover {
-  color: var(--link-hover);
-}
-.event-detail-article-meta {
-  display: grid;
-  grid-template-columns: 100px 1fr;
-  gap: 2px 8px;
-  margin: 0;
-  font-size: 12px;
-}
-.event-detail-article-meta dt {
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.event-detail-article-meta dd {
-  margin: 0;
-}
-.event-detail-article-urgency {
-  display: inline-block;
-  padding: 1px 6px;
-  border-radius: 3px;
-  font-size: 11px;
-  font-weight: 600;
-}
-.event-detail-alert-timeline-item {
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 10px;
-}
-.event-detail-alert-timeline-header {
-  display: flex;
-  gap: 12px;
-  font-size: 12px;
-  margin-bottom: 6px;
-}
-.event-detail-alert-timeline-type {
-  font-weight: 600;
-}
-.event-detail-alert-timeline-body {
-  margin: 0;
-  white-space: pre-wrap;
-  font-size: 13px;
-  line-height: 1.4;
-}
-.event-detail-alert-timeline-expand {
-  margin-top: 4px;
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--link);
-  padding: 2px 8px;
-  border-radius: 3px;
-  cursor: pointer;
-  font-size: 11px;
-}
-.event-detail-error-message {
-  color: #b91c1c;
+  color: #86efac;
 }
