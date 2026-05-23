@@ -45,7 +45,7 @@ All commands use `./run.sh` (auto-activates `.venv`, forwards args to `sentinel.
 .venv/bin/pytest tests/test_scheduler.py tests/test_integration.py tests/test_cli.py -v                         # Phase 6
 
 # Dashboard subsystem (separate from monitoring runtime; see SPEC.md)
-.venv/bin/pytest tests/test_dashboard_api.py tests/test_dashboard_db.py -v
+.venv/bin/pytest tests/test_dashboard_api.py tests/test_dashboard_db.py tests/test_dashboard_annotations.py -v
 ```
 
 pytest config in `pyproject.toml` (`[tool.pytest.ini_options]`): `testpaths = ["tests"]`, `asyncio_mode = "auto"`, marker `integration` for tests requiring network/API access.
@@ -117,14 +117,14 @@ cd dashboard/frontend && npx tsc --noEmit
 cd dashboard/frontend && npm run build
 ```
 
-Test stack: `vitest@^2`, `@testing-library/react`, `@testing-library/user-event`, `@testing-library/jest-dom`, `jsdom`. Setup file at `src/test-setup.ts` wires jest-dom matchers. Shared fixtures live in `src/__tests__/fixtures.ts` (extended in Phase 3 with stats, article-detail, and classification fixtures).
+Test stack: `vitest@^2`, `@testing-library/react`, `@testing-library/user-event`, `@testing-library/jest-dom`, `jsdom`. Setup file at `src/test-setup.ts` wires jest-dom matchers. Shared fixtures live in `src/__tests__/fixtures.ts` (extended in Phase 3 with stats, article-detail, and classification fixtures; extended again in Phase 4 with `makeAnnotation` / `makeArticleAnnotation` helpers and `annotation_stats` defaults).
 
 What's covered:
 
 | Test file | Focus | Phase |
 |---|---|---|
-| `src/__tests__/ArticleTable.test.tsx` | Rendering, sorting, expandable row + lazy `raw_metadata` fetch + error path, urgency colors, badges, sort-indicator visibility, `safeHref` plain-text fallback | 2 |
-| `src/__tests__/ArticlesPage.test.tsx` | Stats error toast, tab-count error toast, conditional sort param omission, broad clear-all (URL fully cleared), sync → stats refresh + one Phase 3 cross-cutting assertion | 2 + 3 |
+| `src/__tests__/ArticleTable.test.tsx` | Rendering, sorting, expandable row + lazy `raw_metadata` fetch + error path, urgency colors, badges, sort-indicator visibility, `safeHref` plain-text fallback. Phase 4: `test_default_columns` now asserts the `annotation` / `Note` column is in the default visible set | 2 + 4 |
+| `src/__tests__/ArticlesPage.test.tsx` | Stats error toast, tab-count error toast, conditional sort param omission, broad clear-all (URL fully cleared), sync → stats refresh + one Phase 3 cross-cutting assertion. Phase 4: stats stub carries `annotation_stats` so the page renders without crashing | 2 + 3 + 4 |
 | `src/__tests__/ColumnPicker.test.tsx` | Toggles + `localStorage` persistence | 2 |
 | `src/__tests__/FilterBar.test.tsx` | Filter → URL updates, clear-all, source multi-select round-trip | 2 |
 | `src/__tests__/FilterTabs.test.tsx` | Tab selection filters by `pipeline_status` | 2 |
@@ -141,11 +141,17 @@ What's covered:
 | `src/__tests__/ArticleDetailPage.test.tsx` | Detail header + back-link state preservation | 3 |
 | `src/__tests__/ClassifierView.test.tsx` | Side-by-side rendering, Raw JSON toggle, unclassified notice | 3 |
 | `src/__tests__/EventTimeline.test.tsx` | Events with alerts + empty-events message | 3 |
+| `src/__tests__/AnnotationPanel.test.tsx` | 6 tests — `test_annotation_panel_prefill` (req 4.3a), empty-form initial state + no delete button, save flow with inline success indicator and form-stays-mounted (req 4.3b), client-side urgency rejection without API call, delete confirmation reject + accept paths (req 4.3c), server-error surfacing | 4 |
+| `src/__tests__/AnnotationBadge.test.tsx` | 3 tests — `test_annotation_badge_colors` (req 4.4) verifies green/red/yellow per label via `annotationBadge` helper; em-dash placeholder when annotation is null; label text in `compact={false}` mode | 4 |
 
 Phase 3 gate commands (from SPEC.md): `npm install`, `npm run build`, `npx tsc --noEmit`, `npx vitest run` — all must pass.
+
+Phase 4 gate commands (from SPEC.md): `.venv/bin/pytest tests/test_dashboard_annotations.py -v` (22 tests covering all 12 named spec acceptance tests plus 10 edge cases), full backend regression via `.venv/bin/pytest tests/test_dashboard_api.py tests/test_dashboard_db.py tests/test_dashboard_annotations.py -v`, plus `npm run build` / `npx tsc --noEmit` / `npx vitest run` on the frontend.
 
 **Recharts under jsdom (Phase 3 quirk).** Recharts uses `ResponsiveContainer` which measures its parent's `clientWidth/clientHeight`. jsdom returns `0` for layout dimensions, so the chart's SVG paints nothing and the test sees an empty chart. Phase 3 chart tests (`OverviewPage.test.tsx`, `TimeSeriesChart.test.tsx`, `UrgencyHistogram.test.tsx`, `SourceBreakdown.test.tsx`) work around this by `vi.mock("recharts", ...)`-ing `ResponsiveContainer` with a stub that renders its children at deterministic dimensions (e.g. 600×280). The rest of recharts (`LineChart`, `BarChart`, `XAxis`, etc.) is left untouched.
 
 **Backend coordination note.** The Phase 1 backend test `test_app_factory_frontend_placeholder` (in `tests/test_dashboard_api.py`) checks that `/` returns the bundled placeholder HTML when no built frontend is present. Phase 2 added a real `dashboard/frontend/dist/` so this test now monkeypatches `dashboard.app.config.FRONTEND_DIST_DIR` to a temporary empty directory — making it pass regardless of whether the developer has run `npm run build` locally.
 
 **Backend Phase 3 extension.** `tests/test_dashboard_db.py` asserts that `get_stats()` returns `classified_per_day` with 30 entries sharing dates with `articles_per_day`. `tests/test_dashboard_api.py` asserts the same key surfaces in the `/api/stats` response.
+
+**Backend Phase 4 extension.** `tests/test_dashboard_annotations.py` (22 tests) covers the `AnnotationDB` layer, every `/api/annotations*` endpoint, the `has_annotation` / `annotation_label` filters on `/api/articles`, the `annotation_stats` block on `/api/stats`, and edge cases (upsert with null fields, bool rejection on `expected_urgency`, missing `article_id` rejection, behaviour when the annotations DB file is absent, persistence across `DashboardDB` reopen, and search + annotation-filter composition via the LIKE branch). Each test isolates BOTH the sentinel DB and the annotations DB under `tmp_path` so parallel test runs stay safe.

@@ -18,3 +18,4 @@ node_modules/
 dashboard/frontend/dist/
 dashboard/frontend/node_modules/
 .code-refiner-state-phase2/
+.code-refiner-state-phase3/
