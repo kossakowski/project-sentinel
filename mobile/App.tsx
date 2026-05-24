@@ -22,7 +22,7 @@ const DESIGNS: Design[] = [
 ];
 
 export default function App() {
-  const [i, setI] = useState(0);
+  const [i, setI] = useState(DESIGNS.findIndex((d) => d.name === 'Tactical'));
   const current = DESIGNS[i];
   const { Component, dark } = current;
 
