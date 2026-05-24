@@ -11,6 +11,7 @@ import { useState } from "react";
 
 import type { ArticleDetail } from "../types";
 import { urgencyClass } from "./badges";
+import { formatWarsaw } from "../utils/datetime";
 
 interface ClassifierViewProps {
   article: ArticleDetail;
@@ -132,7 +133,7 @@ export function ClassifierView({ article }: ClassifierViewProps) {
               </dd>
 
               <dt>Classified at</dt>
-              <dd>{classification.classified_at}</dd>
+              <dd>{formatWarsaw(classification.classified_at)}</dd>
             </dl>
           )}
         </div>

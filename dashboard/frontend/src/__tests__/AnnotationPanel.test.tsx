@@ -69,7 +69,8 @@ describe("AnnotationPanel", () => {
 
     // "Last updated" timestamp visible (req 4.3a).
     const lastUpdated = screen.getByTestId("annotation-panel-updated");
-    expect(lastUpdated.textContent).toMatch(/2026-05-22T11:30:00/);
+    // updated_at (UTC 11:30 on May 22) → Europe/Warsaw is UTC+2 (CEST) → 13:30.
+    expect(lastUpdated.textContent).toMatch(/2026-05-22 13:30/);
 
     // The save button label reads "Update annotation" when an annotation
     // already exists — small but pins the edit-vs-create UX state.

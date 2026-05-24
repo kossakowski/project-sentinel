@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from sentinel.models import Article, ClassificationResult, Event
+from sentinel.utils.datetime import format_warsaw, to_warsaw
 
 logger = logging.getLogger("sentinel.diagnostic")
 
@@ -85,15 +86,11 @@ def _render_keyword_cell(item: DiagnosticArticle) -> str:
     if kw["critical"]:
         kws = ", ".join(kw["critical"][:4])
         extra = f" (+{len(kw['critical']) - 4})" if len(kw["critical"]) > 4 else ""
-        parts.append(
-            f'<span class="kw-badge kw-crit">CRITICAL</span> {_esc(kws)}{extra}'
-        )
+        parts.append(f'<span class="kw-badge kw-crit">CRITICAL</span> {_esc(kws)}{extra}')
     if kw["high"]:
         kws = ", ".join(kw["high"][:4])
         extra = f" (+{len(kw['high']) - 4})" if len(kw["high"]) > 4 else ""
-        parts.append(
-            f'<span class="kw-badge kw-high">HIGH</span> {_esc(kws)}{extra}'
-        )
+        parts.append(f'<span class="kw-badge kw-high">HIGH</span> {_esc(kws)}{extra}')
 
     if kw.get("excluded_by"):
         exc = ", ".join(kw["excluded_by"][:3])
@@ -102,11 +99,7 @@ def _render_keyword_cell(item: DiagnosticArticle) -> str:
     if not parts:
         return '<span class="fail">&#10007; No match</span>'
 
-    if kw["passed"]:
-        prefix = '<span class="pass">&#10003;</span> '
-    else:
-        prefix = '<span class="fail">&#10007;</span> '
-
+    prefix = '<span class="pass">&#10003;</span> ' if kw["passed"] else '<span class="fail">&#10007;</span> '
     return prefix + "<br>".join(parts)
 
 
@@ -157,7 +150,6 @@ def _render_corroboration_cell(item: DiagnosticArticle) -> str:
         return '<span class="skip">No event match</span>'
 
     e = item.event
-    corr_req = 2  # default
     lines = []
 
     status_map = {
@@ -201,7 +193,7 @@ def _build_rows(items: list[DiagnosticArticle]) -> str:
             row_cls = "row-dup"
 
         src_type = a.source_type.replace("_", " ").title()
-        pub_time = a.published_at.strftime("%H:%M") if a.published_at else ""
+        pub_time = to_warsaw(a.published_at).strftime("%H:%M") if a.published_at else ""
 
         row = f"""<tr class="{row_cls}">
 <td class="c-num">{i}</td>
@@ -209,7 +201,7 @@ def _build_rows(items: list[DiagnosticArticle]) -> str:
 <span class="src-name">{_esc(a.source_name)}</span></td>
 <td class="c-title">
 <a href="{_esc(a.source_url)}" target="_blank" rel="noopener">{_esc(title_display)}</a>
-{f'<div class="snippet">{_esc(summary_snippet)}</div>' if summary_snippet else ''}
+{f'<div class="snippet">{_esc(summary_snippet)}</div>' if summary_snippet else ""}
 </td>
 <td class="c-lang">{_esc(a.language.upper())}</td>
 <td class="c-time">{pub_time}</td>
@@ -228,19 +220,11 @@ def generate_html(data: DiagnosticData, output_path: str) -> str:
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
     n_dup = sum(1 for it in data.items if not it.dedup_passed)
-    n_no_kw = sum(
-        1
-        for it in data.items
-        if it.dedup_passed and it.keyword_info and not it.keyword_info.get("passed")
-    )
+    n_no_kw = sum(1 for it in data.items if it.dedup_passed and it.keyword_info and not it.keyword_info.get("passed"))
     n_classified = data.total_classified
-    n_mil = sum(
-        1
-        for it in data.items
-        if it.classification and it.classification.is_military_event
-    )
+    n_mil = sum(1 for it in data.items if it.classification and it.classification.is_military_event)
 
-    report_time = data.cycle_start.strftime("%Y-%m-%d %H:%M:%S UTC")
+    report_time = format_warsaw(data.cycle_start, "%Y-%m-%d %H:%M:%S")
     rows_html = _build_rows(data.items)
 
     page = f"""<!DOCTYPE html>
@@ -480,7 +464,7 @@ tr.row-dup td {{ color: #aaa; }}
     <div class="n">{n_classified}</div>
     <div class="l">Classified</div>
   </div>
-  <div class="stat {'a' if n_mil > 0 else ''}">
+  <div class="stat {"a" if n_mil > 0 else ""}">
     <div class="n">{n_mil}</div>
     <div class="l">Military Events</div>
   </div>

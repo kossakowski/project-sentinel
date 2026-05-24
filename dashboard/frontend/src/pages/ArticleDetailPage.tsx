@@ -14,6 +14,7 @@ import { EventTimeline } from "../components/EventTimeline";
 import { pipelineStatusBadge } from "../components/badges";
 import { useArticleDetail } from "../hooks/useArticleDetail";
 import { safeHref } from "../utils/safeHref";
+import { formatWarsaw } from "../utils/datetime";
 
 interface LocationStateFrom {
   from?: string;
@@ -120,9 +121,9 @@ export function ArticleDetailPage() {
             )}
           </dd>
           <dt>Published</dt>
-          <dd data-testid="article-detail-published">{data.published_at}</dd>
+          <dd data-testid="article-detail-published">{formatWarsaw(data.published_at)}</dd>
           <dt>Fetched</dt>
-          <dd data-testid="article-detail-fetched">{data.fetched_at}</dd>
+          <dd data-testid="article-detail-fetched">{formatWarsaw(data.fetched_at)}</dd>
           <dt>Language</dt>
           <dd>
             <span

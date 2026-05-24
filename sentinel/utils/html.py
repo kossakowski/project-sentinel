@@ -1,5 +1,3 @@
-"""Shared utilities for Project Sentinel."""
-
 import html.parser
 
 

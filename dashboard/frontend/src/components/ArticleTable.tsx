@@ -6,6 +6,7 @@ import { ALL_COLUMNS, type ColumnKey } from "./columns";
 import { pipelineStatusBadge, urgencyClass } from "./badges";
 import { AnnotationBadge } from "./AnnotationBadge";
 import { safeHref } from "../utils/safeHref";
+import { formatWarsaw } from "../utils/datetime";
 import { ApiError, fetchArticleDetail } from "../api/client";
 
 /** Event-grouping pass result for a single row (spec 2.3a/b/c).
@@ -600,12 +601,7 @@ function renderCell(
 }
 
 function formatDate(iso: string): string {
-  if (!iso) return "—";
-  // Render only the YYYY-MM-DD HH:MM portion to keep the table compact.
-  // Suffix " UTC" so users don't misread these ISO timestamps as their own
-  // local time — every value in the DB is stored as UTC.
-  const trimmed = iso.replace("T", " ").slice(0, 16);
-  return trimmed ? `${trimmed} UTC` : iso;
+  return formatWarsaw(iso);
 }
 
 function formatConfidence(value: number): string {

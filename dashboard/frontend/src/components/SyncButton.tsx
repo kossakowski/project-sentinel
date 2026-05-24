@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { ApiError, fetchSyncStatus, triggerSync } from "../api/client";
 import type { SyncStatus, SyncTriggerResponse } from "../types";
+import { formatWarsawSeconds } from "../utils/datetime";
 import { useToasts } from "./Toast";
 
 interface SyncButtonProps {
@@ -123,11 +124,5 @@ function describe(state: SyncDisplayState): string {
 }
 
 function formatTimestamp(iso: string): string {
-  try {
-    const parsed = new Date(iso);
-    if (Number.isNaN(parsed.getTime())) return iso;
-    return parsed.toLocaleString();
-  } catch {
-    return iso;
-  }
+  return formatWarsawSeconds(iso);
 }

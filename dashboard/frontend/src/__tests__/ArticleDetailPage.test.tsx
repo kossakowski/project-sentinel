@@ -109,12 +109,12 @@ describe("ArticleDetailPage", () => {
       "https://example.test/drone-attack",
     );
     expect(sourceLink.getAttribute("target")).toBe("_blank");
-    // Dates rendered verbatim.
+    // Dates rendered in Europe/Warsaw (UTC+2 CEST on 2026-05-22).
     expect(screen.getByTestId("article-detail-published").textContent).toBe(
-      "2026-05-22T10:00:00+00:00",
+      "2026-05-22 12:00",
     );
     expect(screen.getByTestId("article-detail-fetched").textContent).toBe(
-      "2026-05-22T10:03:00+00:00",
+      "2026-05-22 12:03",
     );
     // Language badge displays uppercase code.
     expect(

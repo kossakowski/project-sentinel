@@ -7,6 +7,7 @@ from sentinel.alerts.twilio_client import TwilioClient
 from sentinel.config import SentinelConfig
 from sentinel.database import Database
 from sentinel.models import AlertRecord, Event
+from sentinel.utils.datetime import format_warsaw
 
 # Event type translations for Polish alert messages
 EVENT_TYPE_PL = {
@@ -75,7 +76,7 @@ def _format_sms_message(event: Event, db: Database, config: SentinelConfig) -> s
     """
     event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
     countries_str = ", ".join(event.affected_countries)
-    first_seen_local = event.first_seen_at.strftime("%Y-%m-%d %H:%M UTC")
+    first_seen_local = format_warsaw(event.first_seen_at)
     sources_list = _build_sources_list(event, db)
 
     template = config.alerts.templates.sms

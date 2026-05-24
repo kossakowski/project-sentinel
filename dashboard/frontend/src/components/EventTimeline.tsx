@@ -6,6 +6,7 @@
 
 import type { AlertRecord, EventRecord } from "../types";
 import { urgencyClass } from "./badges";
+import { formatWarsaw } from "../utils/datetime";
 
 interface EventTimelineProps {
   events: EventRecord[];
@@ -78,9 +79,9 @@ export function EventTimeline({ events }: EventTimelineProps) {
               <dt>Sources</dt>
               <dd>{event.source_count}</dd>
               <dt>First seen</dt>
-              <dd>{event.first_seen_at}</dd>
+              <dd>{formatWarsaw(event.first_seen_at)}</dd>
               <dt>Last updated</dt>
-              <dd>{event.last_updated_at}</dd>
+              <dd>{formatWarsaw(event.last_updated_at)}</dd>
             </dl>
             {event.alert_records.length === 0 ? (
               <p
@@ -112,7 +113,7 @@ export function EventTimeline({ events }: EventTimelineProps) {
                       {ALERT_TYPE_LABEL[alert.alert_type] ?? alert.alert_type}
                     </span>
                     <span className="event-timeline-alert-status">{alert.status}</span>
-                    <span className="event-timeline-alert-sent">{alert.sent_at}</span>
+                    <span className="event-timeline-alert-sent">{formatWarsaw(alert.sent_at)}</span>
                     <span className="event-timeline-alert-attempt">
                       Attempt {alert.attempt_number}
                     </span>

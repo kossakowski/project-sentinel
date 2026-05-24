@@ -151,11 +151,12 @@ describe("EventDetailPage", () => {
     expect(screen.getByTestId("event-detail-summary").textContent).toBe(
       "Polskie podsumowanie zdarzenia.",
     );
+    // Times rendered in Europe/Warsaw (UTC+2 CEST on 2026-05-23).
     expect(screen.getByTestId("event-detail-first-seen").textContent).toBe(
-      "2026-05-23T11:01:28+00:00",
+      "2026-05-23 13:01",
     );
     expect(screen.getByTestId("event-detail-last-updated").textContent).toBe(
-      "2026-05-23T11:23:46+00:00",
+      "2026-05-23 13:23",
     );
     expect(screen.getByTestId("event-detail-source-count").textContent).toBe("4");
     expect(screen.getByTestId("event-detail-alert-status").textContent).toBe(

@@ -266,6 +266,12 @@ echo "{current_utc_iso_timestamp}" > data/audit-reports/.last-audit-timestamp
 
 ---
 
+## Time formatting in the report
+
+The database stores all timestamps as UTC ISO 8601 strings. When rendering any time value into the report — `{start_timestamp}`, `{end_timestamp}`, `{published_at}`, `{fetched_at}`, `{first_seen_at}`, `{last_updated_at}`, or any `{datetime}` placeholder — convert it to **Europe/Warsaw** and format as `YYYY-MM-DD HH:MM` (no timezone suffix). The reader is in Warsaw; UTC values would force mental conversion on every line. This is presentation-only — the `{since}` value used in SQL `WHERE` clauses and stored in `.last-audit-timestamp` MUST remain UTC ISO so internal comparisons stay correct.
+
+---
+
 ## Report Format
 
 ```markdown

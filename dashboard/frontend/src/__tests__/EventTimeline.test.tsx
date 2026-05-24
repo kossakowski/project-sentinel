@@ -56,7 +56,8 @@ describe("EventTimeline", () => {
     expect(item.textContent).toContain("Urgency 8");
     expect(item.textContent).toContain("sms_sent");
     expect(item.textContent).toContain("3");
-    expect(item.textContent).toContain("2026-05-22T10:04:00+00:00");
+    // first_seen_at (UTC 10:04 on May 22) → Europe/Warsaw is UTC+2 (CEST) → 12:04.
+    expect(item.textContent).toContain("2026-05-22 12:04");
 
     // Alert records visible, one per type.
     const alerts = screen.getByTestId("event-timeline-alerts-ev-1");

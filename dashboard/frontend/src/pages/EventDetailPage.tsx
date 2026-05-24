@@ -21,6 +21,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { urgencyClass } from "../components/badges";
 import { useEventDetail } from "../hooks/useEventDetail";
 import type { AlertRecord, Article } from "../types";
+import { formatWarsaw } from "../utils/datetime";
 
 /** Max characters of message_body shown before the "expand" toggle (spec 2.5c). */
 const MESSAGE_BODY_PREVIEW_LIMIT = 200;
@@ -120,9 +121,9 @@ export function EventDetailPage() {
           <dt>Summary (PL)</dt>
           <dd data-testid="event-detail-summary">{data.summary_pl}</dd>
           <dt>First seen</dt>
-          <dd data-testid="event-detail-first-seen">{data.first_seen_at}</dd>
+          <dd data-testid="event-detail-first-seen">{formatWarsaw(data.first_seen_at)}</dd>
           <dt>Last updated</dt>
-          <dd data-testid="event-detail-last-updated">{data.last_updated_at}</dd>
+          <dd data-testid="event-detail-last-updated">{formatWarsaw(data.last_updated_at)}</dd>
           <dt>Source count</dt>
           <dd data-testid="event-detail-source-count">{data.source_count}</dd>
           <dt>Alert status</dt>
@@ -201,7 +202,7 @@ function EventArticlesList({ articles }: { articles: Article[] }) {
                 <dt>Source</dt>
                 <dd>{article.source_name}</dd>
                 <dt>Published</dt>
-                <dd>{article.published_at}</dd>
+                <dd>{formatWarsaw(article.published_at)}</dd>
                 <dt>Language</dt>
                 <dd>{article.language.toUpperCase()}</dd>
                 {urgency != null && (
@@ -272,7 +273,7 @@ function AlertTimelineRow({ record }: { record: AlertRecord }) {
       data-testid={`event-detail-alert-${record.id}`}
     >
       <header className="event-detail-alert-timeline-header">
-        <span className="event-detail-alert-timeline-sent">{record.sent_at}</span>
+        <span className="event-detail-alert-timeline-sent">{formatWarsaw(record.sent_at)}</span>
         <span className="event-detail-alert-timeline-type">{record.alert_type}</span>
         <span className="event-detail-alert-timeline-status">{record.status}</span>
       </header>

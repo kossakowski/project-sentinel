@@ -17,6 +17,7 @@ import { useEffect, useState } from "react";
 import type { Annotation, AnnotationLabel } from "../types";
 import { useAnnotation } from "../hooks/useAnnotations";
 import { annotationBadge } from "./badges";
+import { formatWarsaw } from "../utils/datetime";
 
 interface AnnotationPanelProps {
   articleId: string;
@@ -144,7 +145,7 @@ export function AnnotationPanel({
             className="annotation-panel-updated"
             data-testid="annotation-panel-updated"
           >
-            Last updated {annotation.updated_at}
+            Last updated {formatWarsaw(annotation.updated_at)}
           </span>
         )}
       </header>
