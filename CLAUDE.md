@@ -17,6 +17,7 @@ A separate read-only **Article Dashboard** subsystem lives under `dashboard/` (l
 - [Server Runbook](docs/server-runbook.md) -- production server access, file layout, service management, deployment, troubleshooting. **Read this first for anything server-related.**
 - [Dashboard Spec](SPEC.md) -- source of truth for the `dashboard/` subsystem (Phases 1 backend + 2 frontend foundation + 3 analytics/detail pages + 4 annotations complete; later phases spec'd but not yet implemented)
 - [Alert Grouping Spec](SPEC_ALERT_GROUPING.md) -- 3-phase widen-window + dashboard event-grouping + audit-grouping spec (Phase 1 corroborator widening + Phase 2 dashboard event grouping + Phase 3 audit-skill event grouping complete). The `/sentinel-audit` daily report now partitions classified articles into per-event blocks (ordered `urgency_score` desc then `first_seen_at` desc) + a flat "Standalone classified articles" section, computed via SQL `json_each` over `events.article_ids` filtered by `e.last_updated_at` so events updated during the audit window are captured even when first-seen earlier.
+- [TODO List](TODO.md) -- backlog: classification improvements, source analysis, mobile app / PWA, productization roadmap, pipeline refinement, code & ops debt trackers
 
 ## Quick Reference
 - Config: `config/config.yaml` (see `config/config.example.yaml`)
