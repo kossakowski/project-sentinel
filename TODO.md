@@ -208,19 +208,19 @@ Build or plan metrics that track classification quality over time:
 
 ## Tracked Code Debt
 
-1. **WhatsApp action plumbed but routed to SMS.** `state_machine.py:190-191` overrides `whatsapp` action to `_execute_sms`. `_execute_whatsapp` (`state_machine.py:478`) and `TwilioClient.send_whatsapp` are unreachable from the production flow. 17 historical successful WhatsApp alerts in DB suggest the channel worked at some point. Decision needed: enable, remove entirely, or keep as a fallback.
+1. **WhatsApp action plumbed but routed to SMS.** `state_machine.py:186-188` overrides `whatsapp` action to `_execute_sms`. `_execute_whatsapp` and `TwilioClient.send_whatsapp` are unreachable from the production flow. Decision needed: enable, remove entirely, or keep as a fallback.
 
-2. **Dead `_check_confirmation_sms_delivered`.** Defined at `state_machine.py:415`, never called. Either delete the method or wire it into the SMS-confirmation flow.
+2. ~~**Dead `_check_confirmation_sms_delivered`.**~~ **DONE (2026-05-25).** Wired into the call loop: after the first call attempt, checks outbound SMS delivery status and resends if carrier delivery failed. Commit `aa0cba8`.
 
-3. **Unread `testing.test_mode` field.** `config.py:182` defines this field; nothing in the codebase reads it. Either delete or implement.
+3. ~~**Unread `testing.test_mode` field.**~~ **DONE (2026-05-25).** Removed from config dataclass, both YAML files, and test fixtures. Commit `cf84c96`.
 
 4. **Synchronous Anthropic SDK call inside async pipeline.** `Classifier._call_api` (`classifier.py`) calls the synchronous Anthropic SDK from inside `async run_cycle`. Same issue with blocking `time.sleep()` in `_execute_phone_call` — blocks the asyncio event loop for up to ~500s per call round. Wrap with `asyncio.to_thread()` or switch to an async-native client.
 
-5. **Empty `tests/fixtures/`.** `config.testing.test_headlines_file` defaults to `tests/fixtures/test_headlines.yaml` but the file does not exist. Either create the fixture or fix the default.
+5. ~~**Empty `tests/fixtures/`.**~~ **DONE (2026-05-25).** Removed dead `test_headlines_file` config field — `--test-file` CLI takes path directly, never consults config. Commit `cf84c96`.
 
-6. **Dead config: GDELT `cameo_codes` and `goldstein_threshold`.** Parsed by `GDELTConfig` in `config.py` but `GDELTFetcher.build_query()` only uses `themes` and `target_countries`. These fields do nothing.
+6. ~~**Dead config: GDELT `cameo_codes` and `goldstein_threshold`.**~~ **DONE (2026-05-25).** Removed from config dataclass, both YAML files, test fixtures, and docs. Commit `cf84c96`.
 
-7. **Dead code in `state_machine.py:501-518`.** An `if False:` block containing the call-duration-based acknowledgment path. Replaced by SMS-code confirmation. Delete.
+7. ~~**Dead code in `state_machine.py` `if False:` block.**~~ **DONE (2026-05-25).** Deleted unreachable call-duration acknowledgment path. Commit `cf84c96`.
 
 ---
 
