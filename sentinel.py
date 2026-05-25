@@ -7,7 +7,7 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import yaml
@@ -68,10 +68,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--test-alert",
         nargs="?",
         const="phone_call",
-        choices=["phone_call", "sms", "whatsapp"],
+        choices=["phone_call", "sms"],
         metavar="TYPE",
         help="Fire a real test alert through Twilio (default: phone_call). "
-        "Choices: phone_call, sms, whatsapp. Bypasses fetching, classification, "
+        "Choices: phone_call, sms. Bypasses fetching, classification, "
         "and corroboration — injects a synthetic event directly into the alert system.",
     )
     parser.add_argument(
@@ -88,14 +88,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def print_health(config) -> None:
     """Read and print health.json."""
-    health_path = os.path.join(
-        os.path.dirname(config.database.path) or "data", "health.json"
-    )
+    health_path = os.path.join(os.path.dirname(config.database.path) or "data", "health.json")
     if not os.path.exists(health_path):
         print("No health data found. Has the pipeline run yet?")
         return
 
-    with open(health_path, "r", encoding="utf-8") as f:
+    with open(health_path, encoding="utf-8") as f:
         health = json.load(f)
 
     print(json.dumps(health, indent=2))
@@ -158,9 +156,7 @@ async def run_continuous(config) -> None:
     try:
         await pipeline.startup()
     except Exception as e:
-        logging.getLogger("sentinel").error(
-            "Pipeline startup failed: %s", e, exc_info=True
-        )
+        logging.getLogger("sentinel").error("Pipeline startup failed: %s", e, exc_info=True)
         await pipeline.shutdown()
         raise
 
@@ -171,9 +167,7 @@ async def run_continuous(config) -> None:
     try:
         await pipeline.run_cycle()
     except Exception as e:
-        logging.getLogger("sentinel").error(
-            "Initial cycle failed: %s", e, exc_info=True
-        )
+        logging.getLogger("sentinel").error("Initial cycle failed: %s", e, exc_info=True)
 
     print("Project Sentinel started. Press Ctrl+C to stop.")
 
@@ -247,9 +241,7 @@ def main() -> None:
 
     # Eval mode — run classifier against labeled eval set
     if args.eval is not None:
-        eval_path = (
-            args.eval if args.eval != "DEFAULT" else config.testing.eval_set_file
-        )
+        eval_path = args.eval if args.eval != "DEFAULT" else config.testing.eval_set_file
         _run_eval(eval_path, config, logger)
         # _run_eval handles its own exit code
 
@@ -278,7 +270,7 @@ def main() -> None:
 
 def _make_synthetic_article(headline: str, source_name: str = "test-headline") -> Article:
     """Create a synthetic Article from a headline for testing."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return Article(
         source_name=source_name,
         source_url=f"https://test.sentinel/{uuid4().hex[:8]}",
@@ -329,7 +321,7 @@ def _run_test_file(filepath: str, config, logger) -> None:
     logger.info("Test file mode: %s", filepath)
 
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             data = yaml.safe_load(f)
     except FileNotFoundError:
         print(f"Error: file not found: {filepath}", file=sys.stderr)
@@ -421,7 +413,7 @@ def _run_test_alert(alert_type: str, config, logger) -> None:
     twilio_client = TwilioClient(config)
     state_machine = AlertStateMachine(db, twilio_client, config)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Create and persist a synthetic article so DB lookups in the alert
     # formatter don't fail
@@ -437,7 +429,6 @@ def _run_test_alert(alert_type: str, config, logger) -> None:
     alert_status_map = {
         "phone_call": "phone_call",
         "sms": "sms",
-        "whatsapp": "whatsapp",
     }
 
     event = Event(
@@ -466,8 +457,6 @@ def _run_test_alert(alert_type: str, config, logger) -> None:
         state_machine._execute_phone_call(event)
     elif alert_type == "sms":
         state_machine._execute_sms(event)
-    elif alert_type == "whatsapp":
-        state_machine._execute_whatsapp(event)
 
     print(f"Test alert dispatched. Check your phone ({config.alerts.phone_number}).")
 

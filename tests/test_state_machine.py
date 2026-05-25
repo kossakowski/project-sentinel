@@ -76,12 +76,8 @@ def mock_twilio():
     def _make_sms_record(phone, message, event_id):
         return _make_alert_record(event_id, alert_type="sms", status="sent")
 
-    def _make_wa_record(phone, message, event_id):
-        return _make_alert_record(event_id, alert_type="whatsapp", status="sent")
-
     twilio.make_alert_call.side_effect = _make_call_record
     twilio.send_sms.side_effect = _make_sms_record
-    twilio.send_whatsapp.side_effect = _make_wa_record
     # Default: calls are not answered (no-answer on first poll)
     twilio.get_call_status.return_value = {"status": "no-answer", "duration": 0}
     # SMS confirmation check reads inbound messages — default to empty
@@ -137,10 +133,10 @@ def test_high_urgency_triggers_sms(state_machine, mock_twilio):
 
 
 # --------------------------------------------------------------------------
-# 4. test_medium_urgency_triggers_whatsapp
+# 4. test_medium_urgency_triggers_sms
 # --------------------------------------------------------------------------
 def test_medium_urgency_triggers_sms(state_machine, mock_twilio, config):
-    """Urgency 6 -> SMS (WhatsApp disabled, routed to SMS)."""
+    """Urgency 6 -> SMS."""
     from sentinel.config import UrgencyLevel
 
     config.alerts.urgency_levels["medium"] = UrgencyLevel(min_score=5, action="sms", corroboration_required=1)
@@ -150,7 +146,6 @@ def test_medium_urgency_triggers_sms(state_machine, mock_twilio, config):
 
     mock_twilio.send_sms.assert_called_once()
     mock_twilio.make_alert_call.assert_not_called()
-    mock_twilio.send_whatsapp.assert_not_called()
 
 
 # --------------------------------------------------------------------------
@@ -167,7 +162,6 @@ def test_low_urgency_logs_only(state_machine, mock_twilio, config):
 
     mock_twilio.make_alert_call.assert_not_called()
     mock_twilio.send_sms.assert_not_called()
-    mock_twilio.send_whatsapp.assert_not_called()
 
 
 # --------------------------------------------------------------------------
@@ -278,7 +272,6 @@ def test_cooldown_prevents_recall(state_machine, mock_twilio):
 
     mock_twilio.make_alert_call.assert_not_called()
     mock_twilio.send_sms.assert_not_called()
-    mock_twilio.send_whatsapp.assert_not_called()
 
 
 # --------------------------------------------------------------------------

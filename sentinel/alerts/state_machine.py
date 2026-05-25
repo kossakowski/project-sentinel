@@ -110,31 +110,6 @@ def _format_update_sms(event: Event, db: Database, config: SentinelConfig) -> st
     )
 
 
-def _format_article_links_message(event: Event, db: Database) -> str:
-    """Format a WhatsApp message with clickable links to source articles."""
-    event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
-    lines = [
-        f"🔗 PROJECT SENTINEL — Źródła: {event_type_pl}",
-        "",
-        f"{event.summary_pl}",
-        "",
-        f"Artykuły źródłowe ({event.source_count}):",
-    ]
-
-    for article_id in event.article_ids:
-        article = db.get_article_by_id(article_id)
-        if article is not None:
-            lines.append(f"• {article.source_name}: {article.title}")
-            if article.source_url:
-                lines.append(f"  {article.source_url}")
-            lines.append("")
-        else:
-            lines.append(f"• (źródło {article_id[:8]})")
-            lines.append("")
-
-    return "\n".join(lines).strip()
-
-
 class AlertStateMachine:
     """Manages the lifecycle of event alerts."""
 
@@ -172,7 +147,7 @@ class AlertStateMachine:
             action,
         )
 
-        if action in ("sms", "whatsapp") and self._user_already_notified(existing_alerts):
+        if action == "sms" and self._user_already_notified(existing_alerts):
             self.logger.debug(
                 "Event %s already has prior alert; suppressing re-alert",
                 event.id,
@@ -182,9 +157,6 @@ class AlertStateMachine:
         if action == "phone_call":
             self._execute_phone_call(event, existing_alerts)
         elif action == "sms":
-            self._execute_sms(event)
-        elif action == "whatsapp":
-            # WhatsApp disabled — route to SMS instead
             self._execute_sms(event)
         # action == "log_only" -> do nothing beyond the log above
 
@@ -206,7 +178,7 @@ class AlertStateMachine:
           9-10 + 2+ sources -> phone_call
           9-10 + 1 source   -> sms
           7-8               -> sms
-          5-6               -> whatsapp
+          5-6               -> sms
           1-4               -> log_only
 
         Urgency levels are sorted by min_score descending to avoid
@@ -242,7 +214,7 @@ class AlertStateMachine:
         return datetime.now(UTC) < cooldown_end
 
     # Alert types that, once recorded, mean we have already notified the user
-    # for this event and a further SMS/WhatsApp would be a redundant ping.
+    # for this event and a further SMS would be a redundant ping.
     # A phone call counts because it ships its own confirmation SMS.
     # SMS→phone_call ESCALATION is still allowed: phone_call action skips
     # this suppression (its own retry-interval logic in _execute_phone_call
@@ -488,16 +460,6 @@ class AlertStateMachine:
         if record is not None:
             self.db.insert_alert_record(record)
             self.db.update_event(event.id, alert_status="sms_sent")
-
-    def _execute_whatsapp(self, event: Event) -> None:
-        """Send a WhatsApp alert."""
-        phone_number = self.config.alerts.phone_number
-        message = _format_sms_message(event, self.db, self.config)
-
-        record = self.twilio.send_whatsapp(phone_number, message, event.id)
-        if record is not None:
-            self.db.insert_alert_record(record)
-            self.db.update_event(event.id, alert_status="whatsapp_sent")
 
     def _handle_call_result(self, record: AlertRecord, status: dict) -> None:
         """Handle the result of a previously placed phone call.

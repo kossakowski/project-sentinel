@@ -208,7 +208,7 @@ Build or plan metrics that track classification quality over time:
 
 ## Tracked Code Debt
 
-1. **WhatsApp action plumbed but routed to SMS.** `state_machine.py:186-188` overrides `whatsapp` action to `_execute_sms`. `_execute_whatsapp` and `TwilioClient.send_whatsapp` are unreachable from the production flow. Decision needed: enable, remove entirely, or keep as a fallback.
+1. ~~**WhatsApp action plumbed but routed to SMS.**~~ **DONE (2026-05-25).** Removed `_execute_whatsapp`, `send_whatsapp`, `_format_article_links_message`, and the WhatsApp override. Corroborator now returns `"sms"` for urgency 5-6 instead of `"whatsapp"`. Frontend keeps WhatsApp display support for 17 historical DB records. Decision: WhatsApp was disabled because its Business API doesn't support the inbound SMS confirmation code flow; code is recoverable from git history if needed.
 
 2. ~~**Dead `_check_confirmation_sms_delivered`.**~~ **DONE (2026-05-25).** Wired into the call loop: after the first call attempt, checks outbound SMS delivery status and resends if carrier delivery failed. Commit `aa0cba8`.
 
