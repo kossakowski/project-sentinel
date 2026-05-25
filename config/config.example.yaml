@@ -542,6 +542,13 @@ alerts:
     max_call_retries: 5
     retry_interval_minutes: 5
     cooldown_hours: 6
+    # Phone-call poll/pause durations (seconds). Defaults preserve the original
+    # hardcoded behavior. During a call the state machine polls Twilio for call
+    # status every call_poll_interval_seconds for up to call_poll_timeout_seconds,
+    # and pauses call_retry_pause_seconds between retry attempts in a round.
+    call_poll_timeout_seconds: 90
+    call_poll_interval_seconds: 5
+    call_retry_pause_seconds: 10
 
 # -----------------------------------------------------------------------------
 # SCHEDULER

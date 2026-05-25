@@ -1,7 +1,16 @@
-"""Tests for sentinel.alerts.state_machine."""
+"""Tests for sentinel.alerts.state_machine.
+
+The alert-execution path is async (SPEC_ASYNC_REFACTOR.md Phase 3): the
+state-machine methods are coroutines, internal sleeps are ``await
+asyncio.sleep`` (patched here so tests don't really sleep), and every Twilio
+SDK call is offloaded via ``asyncio.to_thread``. Because ``asyncio.to_thread``
+actually runs the wrapped callable in a worker thread, the synchronous
+``mock_twilio`` MagicMock still records calls and returns its configured values
+unchanged — so the Twilio wrapper mocks stay plain MagicMocks (NOT AsyncMocks).
+"""
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -11,6 +20,7 @@ from sentinel.alerts.state_machine import (
     _format_sms_message,
     _format_update_sms,
 )
+from sentinel.database import Database
 from sentinel.models import AlertRecord, Article, Event
 
 # --------------------------------------------------------------------------
@@ -95,11 +105,12 @@ def state_machine(db, mock_twilio, config):
 # --------------------------------------------------------------------------
 # 1. test_new_critical_event_triggers_call
 # --------------------------------------------------------------------------
-@patch("sentinel.alerts.state_machine.time.sleep")
-def test_new_critical_event_triggers_call(_sleep, state_machine, mock_twilio):
+@pytest.mark.asyncio
+@patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
+async def test_new_critical_event_triggers_call(_sleep, state_machine, mock_twilio):
     """Urgency 10 + 2 sources -> phone call (retries, SMS confirmation)."""
     event = _make_event(urgency_score=10, source_count=2)
-    state_machine.process_event(event)
+    await state_machine.process_event(event)
 
     # 5 call attempts (no SMS reply in mock)
     assert mock_twilio.make_alert_call.call_count == 5
@@ -111,10 +122,11 @@ def test_new_critical_event_triggers_call(_sleep, state_machine, mock_twilio):
 # --------------------------------------------------------------------------
 # 2. test_single_source_critical_triggers_sms
 # --------------------------------------------------------------------------
-def test_single_source_critical_triggers_sms(state_machine, mock_twilio):
+@pytest.mark.asyncio
+async def test_single_source_critical_triggers_sms(state_machine, mock_twilio):
     """Urgency 10 + 1 source -> SMS only (wait for corroboration)."""
     event = _make_event(urgency_score=10, source_count=1)
-    state_machine.process_event(event)
+    await state_machine.process_event(event)
 
     mock_twilio.send_sms.assert_called_once()
     mock_twilio.make_alert_call.assert_not_called()
@@ -123,10 +135,11 @@ def test_single_source_critical_triggers_sms(state_machine, mock_twilio):
 # --------------------------------------------------------------------------
 # 3. test_high_urgency_triggers_sms
 # --------------------------------------------------------------------------
-def test_high_urgency_triggers_sms(state_machine, mock_twilio):
+@pytest.mark.asyncio
+async def test_high_urgency_triggers_sms(state_machine, mock_twilio):
     """Urgency 8 -> SMS."""
     event = _make_event(urgency_score=8, source_count=1)
-    state_machine.process_event(event)
+    await state_machine.process_event(event)
 
     mock_twilio.send_sms.assert_called_once()
     mock_twilio.make_alert_call.assert_not_called()
@@ -135,14 +148,15 @@ def test_high_urgency_triggers_sms(state_machine, mock_twilio):
 # --------------------------------------------------------------------------
 # 4. test_medium_urgency_triggers_sms
 # --------------------------------------------------------------------------
-def test_medium_urgency_triggers_sms(state_machine, mock_twilio, config):
+@pytest.mark.asyncio
+async def test_medium_urgency_triggers_sms(state_machine, mock_twilio, config):
     """Urgency 6 -> SMS."""
     from sentinel.config import UrgencyLevel
 
     config.alerts.urgency_levels["medium"] = UrgencyLevel(min_score=5, action="sms", corroboration_required=1)
 
     event = _make_event(urgency_score=6, source_count=1)
-    state_machine.process_event(event)
+    await state_machine.process_event(event)
 
     mock_twilio.send_sms.assert_called_once()
     mock_twilio.make_alert_call.assert_not_called()
@@ -151,14 +165,15 @@ def test_medium_urgency_triggers_sms(state_machine, mock_twilio, config):
 # --------------------------------------------------------------------------
 # 5. test_low_urgency_logs_only
 # --------------------------------------------------------------------------
-def test_low_urgency_logs_only(state_machine, mock_twilio, config):
+@pytest.mark.asyncio
+async def test_low_urgency_logs_only(state_machine, mock_twilio, config):
     """Urgency 3 -> no alert sent (log only)."""
     from sentinel.config import UrgencyLevel
 
     config.alerts.urgency_levels["low"] = UrgencyLevel(min_score=1, action="log_only")
 
     event = _make_event(urgency_score=3, source_count=1)
-    state_machine.process_event(event)
+    await state_machine.process_event(event)
 
     mock_twilio.make_alert_call.assert_not_called()
     mock_twilio.send_sms.assert_not_called()
@@ -167,7 +182,8 @@ def test_low_urgency_logs_only(state_machine, mock_twilio, config):
 # --------------------------------------------------------------------------
 # 6. test_answered_call_acknowledged
 # --------------------------------------------------------------------------
-def test_call_completed_sets_retry_pending(state_machine, db, mock_twilio):
+@pytest.mark.asyncio
+async def test_call_completed_sets_retry_pending(state_machine, db, mock_twilio):
     """Call completed -> retry_pending (confirmation is via SMS reply, not call)."""
     event = _make_event(urgency_score=10, source_count=2)
     db.insert_event(event)
@@ -180,7 +196,7 @@ def test_call_completed_sets_retry_pending(state_machine, db, mock_twilio):
         "duration": 30,
     }
 
-    state_machine.check_pending_calls()
+    await state_machine.check_pending_calls()
 
     # Call completion alone doesn't acknowledge — SMS reply needed
     updated_events = db.get_active_events(within_hours=24)
@@ -191,7 +207,8 @@ def test_call_completed_sets_retry_pending(state_machine, db, mock_twilio):
 # --------------------------------------------------------------------------
 # 7. test_short_call_not_acknowledged
 # --------------------------------------------------------------------------
-def test_instant_rejection_not_acknowledged(state_machine, db, mock_twilio):
+@pytest.mark.asyncio
+async def test_instant_rejection_not_acknowledged(state_machine, db, mock_twilio):
     """Call completed, duration 1s (instant rejection) -> not acknowledged."""
     event = _make_event(urgency_score=10, source_count=2)
     db.insert_event(event)
@@ -204,7 +221,7 @@ def test_instant_rejection_not_acknowledged(state_machine, db, mock_twilio):
         "duration": 1,
     }
 
-    state_machine.check_pending_calls()
+    await state_machine.check_pending_calls()
 
     updated_events = db.get_active_events(within_hours=24)
     updated = next(e for e in updated_events if e.id == event.id)
@@ -215,7 +232,8 @@ def test_instant_rejection_not_acknowledged(state_machine, db, mock_twilio):
 # --------------------------------------------------------------------------
 # 8. test_no_answer_retry
 # --------------------------------------------------------------------------
-def test_no_answer_retry(state_machine, db, mock_twilio):
+@pytest.mark.asyncio
+async def test_no_answer_retry(state_machine, db, mock_twilio):
     """Call no-answer -> retry pending."""
     event = _make_event(urgency_score=10, source_count=2)
     db.insert_event(event)
@@ -228,7 +246,7 @@ def test_no_answer_retry(state_machine, db, mock_twilio):
         "duration": 0,
     }
 
-    state_machine.check_pending_calls()
+    await state_machine.check_pending_calls()
 
     updated_events = db.get_active_events(within_hours=24)
     updated = next(e for e in updated_events if e.id == event.id)
@@ -238,14 +256,15 @@ def test_no_answer_retry(state_machine, db, mock_twilio):
 # --------------------------------------------------------------------------
 # 9. test_max_retries_sms_fallback
 # --------------------------------------------------------------------------
-@patch("sentinel.alerts.state_machine.time.sleep")
-def test_round_exhausted_sends_sms_and_retries(_sleep, state_machine, db, mock_twilio):
+@pytest.mark.asyncio
+@patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
+async def test_round_exhausted_sends_sms_and_retries(_sleep, state_machine, db, mock_twilio):
     """5 failed calls in a round -> SMS sent, status retry_pending (will retry next cycle)."""
     event = _make_event(urgency_score=10, source_count=2)
     db.insert_event(event)
 
     # Process the event — all 5 attempts fail (mock returns no-answer)
-    state_machine.process_event(event)
+    await state_machine.process_event(event)
 
     # 5 call attempts made, no SMS reply
     assert mock_twilio.make_alert_call.call_count == 5
@@ -260,7 +279,8 @@ def test_round_exhausted_sends_sms_and_retries(_sleep, state_machine, db, mock_t
 # --------------------------------------------------------------------------
 # 10. test_cooldown_prevents_recall
 # --------------------------------------------------------------------------
-def test_cooldown_prevents_recall(state_machine, mock_twilio):
+@pytest.mark.asyncio
+async def test_cooldown_prevents_recall(state_machine, mock_twilio):
     """Acknowledged event within cooldown -> no call."""
     event = _make_event(
         urgency_score=10,
@@ -268,7 +288,7 @@ def test_cooldown_prevents_recall(state_machine, mock_twilio):
         acknowledged_at=datetime.now(UTC) - timedelta(hours=1),
     )
 
-    state_machine.process_event(event)
+    await state_machine.process_event(event)
 
     mock_twilio.make_alert_call.assert_not_called()
     mock_twilio.send_sms.assert_not_called()
@@ -277,8 +297,9 @@ def test_cooldown_prevents_recall(state_machine, mock_twilio):
 # --------------------------------------------------------------------------
 # 11. test_cooldown_expired_allows_call
 # --------------------------------------------------------------------------
-@patch("sentinel.alerts.state_machine.time.sleep")
-def test_cooldown_expired_allows_call(_sleep, state_machine, mock_twilio, config):
+@pytest.mark.asyncio
+@patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
+async def test_cooldown_expired_allows_call(_sleep, state_machine, mock_twilio, config):
     """Acknowledged event after cooldown -> can call again."""
     cooldown_hours = config.alerts.acknowledgment.cooldown_hours
     event = _make_event(
@@ -287,7 +308,7 @@ def test_cooldown_expired_allows_call(_sleep, state_machine, mock_twilio, config
         acknowledged_at=datetime.now(UTC) - timedelta(hours=cooldown_hours + 1),
     )
 
-    state_machine.process_event(event)
+    await state_machine.process_event(event)
 
     # The cooldown has expired — calls are attempted
     assert mock_twilio.make_alert_call.call_count >= 1
@@ -296,8 +317,9 @@ def test_cooldown_expired_allows_call(_sleep, state_machine, mock_twilio, config
 # --------------------------------------------------------------------------
 # 12. test_new_event_bypasses_cooldown
 # --------------------------------------------------------------------------
-@patch("sentinel.alerts.state_machine.time.sleep")
-def test_new_event_bypasses_cooldown(_sleep, state_machine, mock_twilio):
+@pytest.mark.asyncio
+@patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
+async def test_new_event_bypasses_cooldown(_sleep, state_machine, mock_twilio):
     """Different event during cooldown -> calls normally."""
     # Event 1: acknowledged, in cooldown
     event1 = _make_event(
@@ -305,7 +327,7 @@ def test_new_event_bypasses_cooldown(_sleep, state_machine, mock_twilio):
         source_count=2,
         acknowledged_at=datetime.now(UTC) - timedelta(hours=1),
     )
-    state_machine.process_event(event1)
+    await state_machine.process_event(event1)
     mock_twilio.make_alert_call.assert_not_called()
 
     # Event 2: completely new event, different ID
@@ -314,14 +336,15 @@ def test_new_event_bypasses_cooldown(_sleep, state_machine, mock_twilio):
         source_count=2,
         event_type="invasion",
     )
-    state_machine.process_event(event2)
+    await state_machine.process_event(event2)
     assert mock_twilio.make_alert_call.call_count >= 1
 
 
 # --------------------------------------------------------------------------
 # 13. test_acknowledged_event_gets_sms_update
 # --------------------------------------------------------------------------
-def test_acknowledged_event_gets_sms_update(state_machine, db, mock_twilio):
+@pytest.mark.asyncio
+async def test_acknowledged_event_gets_sms_update(state_machine, db, mock_twilio):
     """Event updated after acknowledgment -> SMS update sent."""
     event = _make_event(urgency_score=10, source_count=2)
 
@@ -338,7 +361,7 @@ def test_acknowledged_event_gets_sms_update(state_machine, db, mock_twilio):
     # The event was updated after the last alert
     event.last_updated_at = datetime.now(UTC)
 
-    state_machine.process_event(event)
+    await state_machine.process_event(event)
 
     # Should have sent an update SMS
     mock_twilio.send_sms.assert_called_once()
@@ -348,25 +371,27 @@ def test_acknowledged_event_gets_sms_update(state_machine, db, mock_twilio):
 # --------------------------------------------------------------------------
 # 14. test_duplicate_alert_prevented
 # --------------------------------------------------------------------------
-@patch("sentinel.alerts.state_machine.time.sleep")
-def test_duplicate_alert_prevented(_sleep, state_machine, db, mock_twilio):
+@pytest.mark.asyncio
+@patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
+async def test_duplicate_alert_prevented(_sleep, state_machine, db, mock_twilio):
     """Same event processed twice in same cycle -> second call respects retry interval."""
     event = _make_event(urgency_score=10, source_count=2)
 
     # First call — triggers the full retry loop (5 attempts + SMS)
-    state_machine.process_event(event)
+    await state_machine.process_event(event)
     first_call_count = mock_twilio.make_alert_call.call_count
     assert first_call_count == 5  # all retries exhausted
 
     # Second call — retry interval not elapsed, skips
-    state_machine.process_event(event)
+    await state_machine.process_event(event)
     assert mock_twilio.make_alert_call.call_count == first_call_count
 
 
 # --------------------------------------------------------------------------
 # 14a. test_sms_not_resent_when_new_article_added
 # --------------------------------------------------------------------------
-def test_sms_not_resent_when_new_article_added(state_machine, db, mock_twilio):
+@pytest.mark.asyncio
+async def test_sms_not_resent_when_new_article_added(state_machine, db, mock_twilio):
     """Reproduces the 2026-05-23 Latvia drone-lake bug: a non-acknowledged
     SMS-status event was re-dispatched on every new article, firing one extra
     SMS per article. Cooldown only engaged on acknowledged_at, so SMS events
@@ -374,7 +399,7 @@ def test_sms_not_resent_when_new_article_added(state_machine, db, mock_twilio):
     """
     event = _make_event(urgency_score=7, source_count=1, event_type="airspace_violation")
 
-    state_machine.process_event(event)
+    await state_machine.process_event(event)
     assert mock_twilio.send_sms.call_count == 1
 
     # Simulate corroborator adding a new article: same event id, source_count
@@ -384,21 +409,22 @@ def test_sms_not_resent_when_new_article_added(state_machine, db, mock_twilio):
     event.last_updated_at = datetime.now(UTC) + timedelta(minutes=5)
     event.alert_status = "pending"
 
-    state_machine.process_event(event)
+    await state_machine.process_event(event)
     assert mock_twilio.send_sms.call_count == 1, "SMS must not be re-sent for the same event when a new article arrives"
 
     # Third article — still no extra SMS.
     event.article_ids.append(str(uuid4()))
     event.last_updated_at = datetime.now(UTC) + timedelta(minutes=10)
-    state_machine.process_event(event)
+    await state_machine.process_event(event)
     assert mock_twilio.send_sms.call_count == 1
 
 
 # --------------------------------------------------------------------------
 # 15. test_corroboration_upgrade_triggers_call
 # --------------------------------------------------------------------------
-@patch("sentinel.alerts.state_machine.time.sleep")
-def test_corroboration_upgrade_triggers_call(_sleep, state_machine, db, mock_twilio):
+@pytest.mark.asyncio
+@patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
+async def test_corroboration_upgrade_triggers_call(_sleep, state_machine, db, mock_twilio):
     """Event starts with 1 source -> SMS, updated to 2 sources -> phone call."""
     event_id = str(uuid4())
     article_id_1 = str(uuid4())
@@ -417,7 +443,7 @@ def test_corroboration_upgrade_triggers_call(_sleep, state_machine, db, mock_twi
         article_ids=[article_id_1],
         alert_status="pending",
     )
-    state_machine.process_event(event)
+    await state_machine.process_event(event)
     mock_twilio.send_sms.assert_called_once()
     mock_twilio.make_alert_call.assert_not_called()
 
@@ -429,14 +455,15 @@ def test_corroboration_upgrade_triggers_call(_sleep, state_machine, db, mock_twi
     event.article_ids = [article_id_1, article_id_2]
     event.alert_status = "pending"
 
-    state_machine.process_event(event)
+    await state_machine.process_event(event)
     assert mock_twilio.make_alert_call.call_count >= 1
 
 
 # --------------------------------------------------------------------------
 # 16. test_retry_interval_enforced
 # --------------------------------------------------------------------------
-def test_retry_interval_enforced(state_machine, db, mock_twilio, config):
+@pytest.mark.asyncio
+async def test_retry_interval_enforced(state_machine, db, mock_twilio, config):
     """Retry is not attempted before the configured retry interval has elapsed."""
     event = _make_event(urgency_score=10, source_count=2)
     db.insert_event(event)
@@ -452,15 +479,16 @@ def test_retry_interval_enforced(state_machine, db, mock_twilio, config):
     db.insert_alert_record(recent_call)
 
     # Process the event — should NOT retry because the interval hasn't elapsed
-    state_machine.process_event(event)
+    await state_machine.process_event(event)
     mock_twilio.make_alert_call.assert_not_called()
 
 
 # --------------------------------------------------------------------------
 # 17. test_retry_interval_elapsed_allows_call
 # --------------------------------------------------------------------------
-@patch("sentinel.alerts.state_machine.time.sleep")
-def test_retry_interval_elapsed_allows_call(_sleep, state_machine, db, mock_twilio, config):
+@pytest.mark.asyncio
+@patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
+async def test_retry_interval_elapsed_allows_call(_sleep, state_machine, db, mock_twilio, config):
     """Retry is allowed after the retry interval has elapsed."""
     event = _make_event(urgency_score=10, source_count=2)
     db.insert_event(event)
@@ -478,7 +506,7 @@ def test_retry_interval_elapsed_allows_call(_sleep, state_machine, db, mock_twil
     db.insert_alert_record(old_call)
 
     # Process the event — should retry because interval has elapsed
-    state_machine.process_event(event)
+    await state_machine.process_event(event)
     assert mock_twilio.make_alert_call.call_count >= 1
 
 
@@ -566,3 +594,115 @@ def test_update_sms_includes_source_name(db, config):
 
     assert "Defence24" in message
     assert "Nowe informacje (Defence24):" in message
+
+
+# --------------------------------------------------------------------------
+# 20. test_api_call_retry_pause_is_awaited  [3.1c]
+# --------------------------------------------------------------------------
+@pytest.mark.asyncio
+@patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
+async def test_api_call_retry_pause_is_awaited(mock_sleep, state_machine, db, mock_twilio):
+    """In a multi-retry round the inter-retry pause is `await asyncio.sleep`, not time.sleep.
+
+    All 5 call attempts fail (mock returns no-answer), so the loop pauses
+    between attempts. The patched asyncio.sleep must have been awaited.
+    """
+    event = _make_event(urgency_score=10, source_count=2)
+    db.insert_event(event)
+
+    await state_machine.process_event(event)
+
+    # 5 attempts -> 4 inter-retry pauses at minimum (poll waits also use sleep,
+    # but the key assertion is that the async sleep was used at all).
+    assert mock_sleep.await_count >= 1
+    # The inter-retry pause uses the configured retry-pause value (default 10).
+    retry_pause = state_machine.config.alerts.acknowledgment.call_retry_pause_seconds
+    assert any(call.args == (retry_pause,) for call in mock_sleep.await_args_list)
+
+
+# --------------------------------------------------------------------------
+# 21. test_twilio_calls_routed_through_to_thread  [3.2a]
+# --------------------------------------------------------------------------
+@pytest.mark.asyncio
+@patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
+async def test_twilio_calls_routed_through_to_thread(mock_sleep, state_machine, db, mock_twilio):
+    """Every Twilio SDK call on the alert path goes through asyncio.to_thread."""
+    event = _make_event(urgency_score=10, source_count=2)
+    db.insert_event(event)
+
+    recorded = []
+
+    async def fake_to_thread(func, *args, **kwargs):
+        recorded.append(func)
+        return func(*args, **kwargs)
+
+    with patch("sentinel.alerts.state_machine.asyncio.to_thread", side_effect=fake_to_thread) as mock_tt:
+        await state_machine.process_event(event)
+
+    assert mock_tt.await_count >= 1
+    # The two wrapper methods used on the phone-call path must have been offloaded.
+    assert mock_twilio.make_alert_call in recorded
+    assert mock_twilio.get_call_status in recorded
+    # send_sms (confirmation SMS) is also offloaded.
+    assert mock_twilio.send_sms in recorded
+
+
+# --------------------------------------------------------------------------
+# 22. test_db_calls_not_offloaded_to_thread  [3.2c]
+# --------------------------------------------------------------------------
+@pytest.mark.asyncio
+@patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
+async def test_db_calls_not_offloaded_to_thread(mock_sleep, state_machine, db, mock_twilio):
+    """No Database method is ever placed inside asyncio.to_thread.
+
+    All SQLite access must stay on the event-loop thread (shared connection,
+    no application-level lock).
+    """
+    event = _make_event(urgency_score=10, source_count=2)
+    db.insert_event(event)
+
+    recorded = []
+
+    async def fake_to_thread(func, *args, **kwargs):
+        recorded.append(func)
+        return func(*args, **kwargs)
+
+    with patch("sentinel.alerts.state_machine.asyncio.to_thread", side_effect=fake_to_thread):
+        await state_machine.process_event(event)
+        # Also exercise the pending-call path, which polls Twilio per record.
+        record = _make_alert_record(event.id, status="initiated")
+        db.insert_alert_record(record)
+        await state_machine.check_pending_calls()
+
+    assert recorded, "expected at least one offloaded Twilio call"
+    for func in recorded:
+        # A bound method of Database would have __self__ that is a Database.
+        owner = getattr(func, "__self__", None)
+        assert not isinstance(owner, Database), f"Database call {func!r} must not be offloaded to a thread"
+
+
+# --------------------------------------------------------------------------
+# 23. test_poll_durations_from_config  [3.6a]
+# --------------------------------------------------------------------------
+@pytest.mark.asyncio
+@patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
+async def test_poll_durations_from_config(mock_sleep, state_machine, db, mock_twilio, config):
+    """_wait_for_call_and_check_sms reads poll timeout/interval from config (defaults 90/5)."""
+    # Defaults preserve the original hardcoded behavior.
+    assert config.alerts.acknowledgment.call_poll_timeout_seconds == 90
+    assert config.alerts.acknowledgment.call_poll_interval_seconds == 5
+
+    # Drive the wait loop directly with a tiny custom config so it polls a few
+    # times and then the call "finishes". With timeout=20, interval=5 and the
+    # call finishing after the first poll, exactly one sleep(5) is awaited.
+    config.alerts.acknowledgment.call_poll_timeout_seconds = 20
+    config.alerts.acknowledgment.call_poll_interval_seconds = 5
+    mock_twilio.get_call_status.return_value = {"status": "completed", "duration": 30}
+
+    record = _make_alert_record(str(uuid4()), status="initiated")
+    sms_since = datetime.now(UTC)
+
+    await state_machine._wait_for_call_and_check_sms(record, sms_since)
+
+    # First poll: sleep(5) awaited once, then the call is "completed" so we return.
+    mock_sleep.assert_awaited_once_with(5)

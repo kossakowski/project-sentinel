@@ -259,10 +259,10 @@ class SentinelPipeline:
 
             if not diagnostic:
                 # Step 7: Dispatch alerts
-                self.dispatcher.dispatch(alertable_events)
+                await self.dispatcher.dispatch(alertable_events)
 
                 # Step 8: Check pending call statuses from previous cycles
-                self.state_machine.check_pending_calls()
+                await self.state_machine.check_pending_calls()
 
             # Build diagnostic data if requested (after corroboration so we capture events)
             if diagnostic:

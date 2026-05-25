@@ -105,6 +105,9 @@ class AcknowledgmentConfig(BaseModel):
     max_call_retries: int = 3
     retry_interval_minutes: int = 5
     cooldown_hours: int = 6
+    call_poll_timeout_seconds: int = 90
+    call_poll_interval_seconds: int = 5
+    call_retry_pause_seconds: int = 10
 
 
 class AlertTemplates(BaseModel):

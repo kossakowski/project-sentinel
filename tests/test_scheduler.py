@@ -3,7 +3,9 @@
 import asyncio
 import json
 import os
+import warnings
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -251,8 +253,10 @@ def real_cycle_pipeline(scheduler_config):
     pipeline.deduplicator.deduplicate_batch = MagicMock(return_value=[])
     pipeline.keyword_filter.filter_batch = MagicMock(return_value=[])
     pipeline.corroborator.process_classifications = MagicMock(return_value=[])
-    pipeline.dispatcher.dispatch = MagicMock()
-    pipeline.state_machine.check_pending_calls = MagicMock()
+    # dispatch / check_pending_calls are now awaited by run_cycle, so they must
+    # be AsyncMocks (a plain MagicMock is not awaitable).
+    pipeline.dispatcher.dispatch = AsyncMock()
+    pipeline.state_machine.check_pending_calls = AsyncMock()
     pipeline.db.cleanup_old_records = MagicMock()
     return pipeline
 
@@ -330,3 +334,37 @@ async def test_shutdown_awaits_classifier_aclose(real_cycle_pipeline):
     await real_cycle_pipeline.shutdown()
 
     real_cycle_pipeline.classifier.aclose.assert_awaited_once()
+
+
+# --------------------------------------------------------------------------
+# Alert-path await wiring (SPEC_ASYNC_REFACTOR.md Phase 3, req 3.4a)
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_cycle_awaits_dispatch_and_check_pending(real_cycle_pipeline):
+    """Non-diagnostic run_cycle awaits dispatcher.dispatch and state_machine.check_pending_calls.
+
+    Both are AsyncMocks; the cycle must await both exactly once and complete
+    without raising an un-awaited-coroutine RuntimeWarning.
+    """
+    pipeline = real_cycle_pipeline
+
+    # Produce one alertable event so dispatch is driven with real data
+    # (alert_status != "pending" => included in alertable_events).
+    event = SimpleNamespace(alert_status="phone_call")
+    pipeline.corroborator.process_classifications = MagicMock(return_value=[event])
+
+    dispatch = AsyncMock()
+    check_pending = AsyncMock()
+    pipeline.dispatcher.dispatch = dispatch
+    pipeline.state_machine.check_pending_calls = check_pending
+
+    # Turn an un-awaited-coroutine warning into an error so it fails the test.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        result = await pipeline.run_cycle()
+
+    dispatch.assert_awaited_once_with([event])
+    check_pending.assert_awaited_once_with()
+    assert isinstance(result, CycleResult)

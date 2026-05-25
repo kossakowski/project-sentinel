@@ -457,11 +457,12 @@ def _run_test_alert(alert_type: str, config, logger) -> None:
     print()
 
     # Bypass state machine routing — call the requested method directly
-    # (process_event would ignore alert_type and route based on urgency/sources)
+    # (process_event would ignore alert_type and route based on urgency/sources).
+    # The alert methods are coroutines, so drive them under a single asyncio.run.
     if alert_type == "phone_call":
-        state_machine._execute_phone_call(event)
+        asyncio.run(state_machine._execute_phone_call(event))
     elif alert_type == "sms":
-        state_machine._execute_sms(event)
+        asyncio.run(state_machine._execute_sms(event))
 
     print(f"Test alert dispatched. Check your phone ({config.alerts.phone_number}).")
 

@@ -221,11 +221,65 @@ async def test_run_cycle_awaits_classifier(_cycle_pipeline):
     pipeline.classifier.classify_batch = classify_batch
 
     pipeline.corroborator.process_classifications = MagicMock(return_value=[])
-    pipeline.dispatcher.dispatch = MagicMock()
-    pipeline.state_machine.check_pending_calls = MagicMock()
+    # dispatch / check_pending_calls are awaited by run_cycle (Phase 3), so they
+    # must be AsyncMocks (a plain MagicMock is not awaitable).
+    pipeline.dispatcher.dispatch = AsyncMock()
+    pipeline.state_machine.check_pending_calls = AsyncMock()
     pipeline.db.cleanup_old_records = MagicMock()
 
     result = await pipeline.run_cycle()
 
     classify_batch.assert_awaited_once_with([article])
     assert isinstance(result, CycleResult)
+
+
+# ---------------------------------------------------------------------------
+# Acceptance test #9 [3.5a] -- _run_test_alert bridges the now-async
+# _execute_phone_call / _execute_sms via asyncio.run.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("alert_type", ["phone_call", "sms"])
+def test_run_test_alert_bridges_async(config, alert_type):
+    """_run_test_alert drives the async alert method under asyncio.run and awaits it."""
+    logger = MagicMock()
+
+    # The state machine instance whose async alert methods we assert were awaited.
+    state_machine_instance = MagicMock()
+    state_machine_instance._execute_phone_call = AsyncMock()
+    state_machine_instance._execute_sms = AsyncMock()
+
+    # Database is constructed and used to persist a synthetic article/event;
+    # stub it so no real SQLite file is touched.
+    db_instance = MagicMock()
+
+    # Wrap asyncio.run so it still actually drives the coroutine (no leaked
+    # coroutine warnings) while letting us confirm exactly one event loop runs.
+    real_run = asyncio.run
+    run_calls = []
+
+    def counting_run(coro):
+        run_calls.append(coro)
+        return real_run(coro)
+
+    try:
+        with (
+            patch("sentinel.database.Database", return_value=db_instance),
+            patch("sentinel.alerts.twilio_client.TwilioClient", return_value=MagicMock()),
+            patch("sentinel.alerts.state_machine.AlertStateMachine", return_value=state_machine_instance),
+            patch.object(sentinel_cli.asyncio, "run", side_effect=counting_run),
+        ):
+            sentinel_cli._run_test_alert(alert_type, config, logger)
+
+        # Exactly one asyncio.run for the single alert method.
+        assert len(run_calls) == 1
+        if alert_type == "phone_call":
+            state_machine_instance._execute_phone_call.assert_awaited_once()
+            state_machine_instance._execute_sms.assert_not_awaited()
+        else:
+            state_machine_instance._execute_sms.assert_awaited_once()
+            state_machine_instance._execute_phone_call.assert_not_awaited()
+    finally:
+        # asyncio.run closes/clears the current loop on exit; restore a fresh one
+        # so this test never pollutes global event-loop state for the session.
+        asyncio.set_event_loop(asyncio.new_event_loop())
