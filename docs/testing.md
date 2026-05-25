@@ -40,7 +40,7 @@ All commands use `./run.sh` (auto-activates `.venv`, forwards args to `sentinel.
 .venv/bin/pytest tests/test_config.py tests/test_database.py tests/test_models.py tests/test_cli.py -v           # Phase 1
 .venv/bin/pytest tests/test_rss.py tests/test_gdelt.py tests/test_google_news.py tests/test_telegram.py -v      # Phase 2
 .venv/bin/pytest tests/test_normalizer.py tests/test_deduplicator.py tests/test_keyword_filter.py -v            # Phase 3
-.venv/bin/pytest tests/test_classifier.py tests/test_corroborator.py -v                                         # Phase 4
+.venv/bin/pytest tests/test_classifier.py tests/test_corroborator.py tests/test_cli_bridges.py -v               # Phase 4
 .venv/bin/pytest tests/test_twilio_client.py tests/test_state_machine.py tests/test_dispatcher.py -v           # Phase 5
 .venv/bin/pytest tests/test_scheduler.py tests/test_integration.py tests/test_cli.py -v                         # Phase 6
 
@@ -53,9 +53,17 @@ All commands use `./run.sh` (auto-activates `.venv`, forwards args to `sentinel.
 .venv/bin/pytest tests/test_sentinel_audit_skill.py -v
 ```
 
-pytest config in `pyproject.toml` (`[tool.pytest.ini_options]`): `testpaths = ["tests"]`, `asyncio_mode = "auto"`, marker `integration` for tests requiring network/API access.
+pytest config in `pyproject.toml` (`[tool.pytest.ini_options]`): `testpaths = ["tests"]` and marker `integration` for tests requiring network/API access. `asyncio_mode` is **not** set, so pytest-asyncio runs in its default **strict** mode: every async test (and async fixture) MUST carry an explicit `@pytest.mark.asyncio` marker — an unmarked `async def test_...` is silently skipped. All async test files (`test_classifier.py`, `test_cli_bridges.py`, `test_scheduler.py`, `test_integration.py`, the fetcher tests) follow this convention.
 
 Test dependencies: `pytest>=8.0`, `pytest-asyncio>=0.23`, `pytest-mock>=3.12`, `pytest-cov>=5.0`.
+
+### Async classifier & CLI-bridge tests
+
+The classifier's Anthropic API path is async (`anthropic.AsyncAnthropic`; `classify` / `classify_batch` / `aclose` are coroutines). Tests reflect this:
+
+- `tests/test_classifier.py` — patches `sentinel.classification.classifier.anthropic.AsyncAnthropic` and stubs `messages.create` with an `AsyncMock`. The retry test patches `sentinel.classification.classifier.asyncio.sleep` (asserting it is awaited once with `5`) rather than sleeping for real. Dedicated cases assert `classify_batch` is strictly sequential (concurrency never exceeds 1, input order preserved), skips per-article failures, and that `aclose()` awaits the underlying client close exactly once.
+- `tests/test_cli_bridges.py` — smoke tests that the sync CLI/eval entry points bridge to the async classifier correctly: `_run_test_file` drives all headlines under a **single** `asyncio.run` (not one event loop per headline), `run_eval` is a coroutine, and `run_cycle` awaits the classifier (verified under `-W error::RuntimeWarning` to catch un-awaited coroutines). The module is loaded via `importlib` to work around package-name shadowing of `sentinel.py`.
+- `tests/test_integration.py` and `tests/test_scheduler.py` — pipeline mocks set `classify_batch` and `aclose` as `AsyncMock`s so the awaited call sites (in `run_cycle` and `shutdown`) succeed without raising or logging a spurious error. `test_scheduler.py` also asserts `shutdown` awaits `classifier.aclose()` once.
 
 ---
 

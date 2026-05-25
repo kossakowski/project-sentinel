@@ -24,7 +24,7 @@
 | `sentinel/processing/normalizer.py` | `Normalizer` | Strips/coerces fields to `Article` schema |
 | `sentinel/processing/deduplicator.py` | `Deduplicator` | URL-hash exact match + rapidfuzz fuzzy title match against DB |
 | `sentinel/processing/keyword_filter.py` | `KeywordFilter` | Multilingual keyword match; `diagnose()` for diagnostic mode |
-| `sentinel/classification/classifier.py` | `Classifier` | Sends articles to Claude Haiku 4.5; returns `ClassificationResult` list |
+| `sentinel/classification/classifier.py` | `Classifier` | Sends articles to Claude Haiku 4.5 via `anthropic.AsyncAnthropic`; `classify` / `classify_batch` / `_call_api` / `_send_request` / `aclose` are `async`; returns `ClassificationResult` list. `classify_batch` is sequential (one awaited `classify` per article). |
 | `sentinel/classification/corroborator.py` | `Corroborator` | Groups classifications into `Event` objects; checks source count |
 | `sentinel/alerts/dispatcher.py` | `AlertDispatcher` | Sorts events by urgency; routes to `AlertStateMachine` or dry-run log |
 | `sentinel/alerts/state_machine.py` | `AlertStateMachine` | Urgency → action decision; call/SMS/WhatsApp execution; cooldown; call polling |
@@ -131,9 +131,13 @@ Stage 4 — KeywordFilter.filter_batch(list[Article]) → list[Article]
           SKIPPED for articles from keyword_bypass sources (Telegram channels
           or RSS sources with keyword_bypass: true in config).
 
-Stage 5 — Classifier.classify_batch(list[Article]) → list[ClassificationResult]
+Stage 5 — await Classifier.classify_batch(list[Article]) → list[ClassificationResult]
           [classification/classifier.py]
-          Calls Claude Haiku 4.5 (claude-haiku-4-5-20251001) via Anthropic API.
+          async; awaited by run_cycle inside the cycle lock (scheduler.py:245).
+          Calls Claude Haiku 4.5 (claude-haiku-4-5-20251001) via anthropic.AsyncAnthropic.
+          Sequential: awaits one classify() per article (no asyncio.gather/Semaphore);
+          the loop-unblocking comes from await, not parallelism. Per-article
+          json.JSONDecodeError / anthropic.APIError are logged and the article skipped.
           Stores ClassificationResult to DB.
           On exception: logs error, returns []. Pipeline continues.
 
@@ -251,7 +255,10 @@ SQLite WAL mode enabled. `check_same_thread=False` (single-process, async-safe v
 | `--diagnostic` | One cycle + generate `data/diagnostic.html`; skips alert dispatch |
 | `--test-headline "TEXT"` | Feed single headline through classifier only; print result |
 | `--test-file FILE` | Feed YAML file of headlines through classifier; print results |
+| `--eval [PATH]` | Run classification eval against a YAML eval set (default: `testing.eval_set_file`); hits the live API; saves a JSON report to `data/eval/`; exits 0 only if all cases pass |
 | `--test-alert [phone_call\|sms\|whatsapp]` | Fire real Twilio alert with synthetic event; bypasses fetch/classify/corroborate |
+
+The classifier is async, so the synchronous classification/eval entry points bridge to it via `asyncio.run(...)`: `--test-headline` (`_run_test_headline`) runs one `classify`; `--test-file` (`_run_test_file`) runs **one** `asyncio.run` wrapping an inner loop over all headlines (not one event loop per headline); `--eval` (`_run_eval`) runs `asyncio.run(run_eval(...))`. `--test-alert` is still synchronous (the alert/Twilio path is not yet async — see §9).
 
 Config loading: `sentinel/config.py:load_config()`. Env vars substituted via `${VAR}` syntax. `.env` loaded via python-dotenv if available.
 
@@ -270,6 +277,7 @@ Config loading: `sentinel/config.py:load_config()`. Env vars substituted via `${
 - **`TelegramFetcher` channel matching falls back to first channel if id mismatches** (`telegram.py:100-108`).
 - **`BaseFetcher.is_enabled()` raises `NotImplementedError` but is NOT `@abstractmethod`.** Silent failure mode if a subclass forgets to override. All four current subclasses do override it; the silent-failure risk only applies to future fetcher additions.
 - **Classifier daily token cost logged with hardcoded prices** `$0.80/M input, $4.00/M output` at UTC date rollover (`classifier.py:246-248`); not configurable.
+- **Classifier is async; the alert/Twilio path is not (yet).** `Classifier` uses `anthropic.AsyncAnthropic`; `classify` / `classify_batch` / `aclose` are coroutines. `run_cycle` awaits `classify_batch` inside the cycle lock, and `SentinelPipeline.shutdown` awaits `classifier.aclose()` (in a `try/except` that logs failures) before `db.close()`. `classify_batch` is **deliberately sequential** — one awaited `classify` per article, no `asyncio.gather`/`Semaphore`/`TaskGroup` — because the event-loop unblocking comes from `await` alone; this preserves the Anthropic rate-limit profile and per-article error isolation. In contrast, `AlertDispatcher.dispatch`, `AlertStateMachine`, and `TwilioClient` are still synchronous (the alert path's blocking Twilio calls and `time.sleep` polls have not been converted). `_run_test_alert` therefore calls `_execute_phone_call` / `_execute_sms` synchronously.
 - **`config.testing.test_mode` field exists but is never read anywhere** (`config.py:181`).
 - **Production `corroboration_required=1`** (single source triggers call). Code default is `2`. Check live `config/config.yaml` before assuming corroboration behavior.
 - **`TelegramFetcher` lifecycle not in `BaseFetcher` contract.** `SentinelPipeline.startup()`/`shutdown()` use `hasattr(fetcher, "start")` duck-typing. Telegram `start()` failure is logged and skipped; other fetchers unaffected.
