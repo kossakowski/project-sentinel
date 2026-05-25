@@ -298,7 +298,7 @@ class AlertStateMachine:
 
         # Call loop — calls are alarms only, not confirmation
         for attempt in range(1, max_per_round + 1):
-            # Check WhatsApp reply before each call
+            # Check SMS reply before each call
             if self._check_sms_confirmation(call_placed_at):
                 self._acknowledge_event(event, total_attempts)
                 return
@@ -325,10 +325,20 @@ class AlertStateMachine:
             # Wait for call to finish, polling SMS in the meantime
             self._wait_for_call_and_check_sms(record, call_placed_at)
 
-            # Check WhatsApp after call ends
+            # Check SMS reply after call ends
             if self._check_sms_confirmation(call_placed_at):
                 self._acknowledge_event(event, total_attempts)
                 return
+
+            # After first call, verify confirmation SMS was delivered; resend if failed
+            if attempt == 1:
+                delivery = self._check_confirmation_sms_delivered()
+                if delivery is False:
+                    self.logger.warning(
+                        "Event %s: confirmation SMS failed to deliver, resending",
+                        event.id[:8],
+                    )
+                    self._send_confirmation_sms(event)
 
             # Brief pause between retries (10 seconds)
             if attempt < max_per_round:
