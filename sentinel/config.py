@@ -28,8 +28,6 @@ class GDELTConfig(BaseModel):
     enabled: bool = True
     update_interval_minutes: int = 15
     themes: list[str]
-    cameo_codes: list[str]
-    goldstein_threshold: float = -7.0
 
 
 class GoogleNewsQuery(BaseModel):
@@ -180,8 +178,6 @@ class LoggingConfig(BaseModel):
 
 class TestingConfig(BaseModel):
     dry_run: bool = False
-    test_mode: bool = False
-    test_headlines_file: str = "tests/fixtures/test_headlines.yaml"
     eval_set_file: str = "tests/fixtures/eval_set.yaml"
 
 

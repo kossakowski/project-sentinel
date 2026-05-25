@@ -42,7 +42,7 @@ def test_dry_run_flag(tmp_path):
         },
         "sources": {
             "rss": [{"name": "T", "url": "https://example.com/rss", "language": "en", "enabled": False}],
-            "gdelt": {"enabled": False, "themes": ["A"], "cameo_codes": ["19"]},
+            "gdelt": {"enabled": False, "themes": ["A"]},
             "google_news": {"enabled": False, "queries": [{"query": "test", "language": "en"}]},
             "telegram": {"enabled": False},
         },
@@ -92,7 +92,7 @@ def test_custom_config_path(tmp_path):
         },
         "sources": {
             "rss": [{"name": "T", "url": "https://example.com/rss", "language": "en"}],
-            "gdelt": {"themes": ["A"], "cameo_codes": ["19"]},
+            "gdelt": {"themes": ["A"]},
             "google_news": {"queries": [{"query": "test", "language": "en"}]},
             "telegram": {"enabled": False},
         },

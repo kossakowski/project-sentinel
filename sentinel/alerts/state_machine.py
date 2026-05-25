@@ -507,23 +507,7 @@ class AlertStateMachine:
         """
         call_status = status["status"]
         duration = status["duration"]
-        if False:  # Confirmation is now via WhatsApp only, not call duration
-            # Call was answered — acknowledged
-            self.db.update_event(
-                record.event_id,
-                alert_status="acknowledged",
-                acknowledged_at=datetime.now(UTC).isoformat(),
-            )
-            # Update the alert record
-            self._update_alert_record(record, status="acknowledged", duration_seconds=duration)
-            self.logger.info(
-                "Event %s acknowledged via call (duration=%ds)",
-                record.event_id,
-                duration,
-            )
-            # Send follow-up SMS with details
-            self._send_followup_sms(record.event_id)
-        elif call_status in ("completed", "busy", "no-answer", "canceled", "failed"):
+        if call_status in ("completed", "busy", "no-answer", "canceled", "failed"):
             # Call was not properly answered
             self._update_alert_record(record, status=call_status, duration_seconds=duration)
             if call_status in ("failed", "canceled"):

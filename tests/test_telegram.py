@@ -1,6 +1,6 @@
 """Tests for the Telegram fetcher."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -21,14 +21,18 @@ def _make_telegram_config(enabled: bool = False) -> dict:
         },
         "sources": {
             "rss": [
-                {"name": "TestFeed", "url": "https://example.com/rss.xml", "language": "en", "enabled": True, "priority": 2},
+                {
+                    "name": "TestFeed",
+                    "url": "https://example.com/rss.xml",
+                    "language": "en",
+                    "enabled": True,
+                    "priority": 2,
+                },
             ],
             "gdelt": {
                 "enabled": True,
                 "update_interval_minutes": 15,
                 "themes": ["ARMEDCONFLICT"],
-                "cameo_codes": ["19"],
-                "goldstein_threshold": -7.0,
             },
             "google_news": {
                 "enabled": True,
@@ -46,7 +50,9 @@ def _make_telegram_config(enabled: bool = False) -> dict:
                         "language": "uk",
                         "priority": 1,
                     },
-                ] if enabled else [],
+                ]
+                if enabled
+                else [],
             },
         },
         "processing": {
@@ -86,17 +92,19 @@ def _make_telegram_config(enabled: bool = False) -> dict:
         "scheduler": {"interval_minutes": 15, "jitter_seconds": 30},
         "database": {"path": "data/sentinel.db", "article_retention_days": 30, "event_retention_days": 90},
         "logging": {"level": "INFO", "file": "logs/sentinel.log", "max_size_mb": 50, "backup_count": 5},
-        "testing": {"dry_run": False, "test_mode": False, "test_headlines_file": "tests/fixtures/test_headlines.yaml"},
+        "testing": {"dry_run": False},
     }
 
 
-def _make_mock_message(text: str, chat_id: int = 123, msg_id: int = 456, views: int = 100, forwards: int = 5) -> MagicMock:
+def _make_mock_message(
+    text: str, chat_id: int = 123, msg_id: int = 456, views: int = 100, forwards: int = 5
+) -> MagicMock:
     """Create a mock Telegram message."""
     msg = MagicMock()
     msg.text = text
     msg.chat_id = chat_id
     msg.id = msg_id
-    msg.date = datetime(2025, 3, 10, 12, 0, 0, tzinfo=timezone.utc)
+    msg.date = datetime(2025, 3, 10, 12, 0, 0, tzinfo=UTC)
     msg.views = views
     msg.forwards = forwards
     return msg
@@ -114,9 +122,7 @@ def test_message_to_article():
         msg_id=789,
     )
 
-    channel_map = {
-        ch.channel_id: ch for ch in config.sources.telegram.channels
-    }
+    channel_map = {ch.channel_id: ch for ch in config.sources.telegram.channels}
     article = fetcher._message_to_article(message, channel_map)
 
     assert article is not None
@@ -147,8 +153,8 @@ async def test_buffer_cleared_on_fetch():
         title="Test message",
         summary="Test message",
         language="uk",
-        published_at=datetime.now(timezone.utc),
-        fetched_at=datetime.now(timezone.utc),
+        published_at=datetime.now(UTC),
+        fetched_at=datetime.now(UTC),
     )
     fetcher.buffer.append(article)
     fetcher.buffer.append(article)
@@ -184,9 +190,7 @@ def test_long_message_truncated():
     long_text = "A" * 700
     message = _make_mock_message(text=long_text)
 
-    channel_map = {
-        ch.channel_id: ch for ch in config.sources.telegram.channels
-    }
+    channel_map = {ch.channel_id: ch for ch in config.sources.telegram.channels}
     article = fetcher._message_to_article(message, channel_map)
 
     assert article is not None

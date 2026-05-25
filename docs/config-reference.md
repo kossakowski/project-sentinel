@@ -55,8 +55,6 @@ Consumed by: `sentinel/fetchers/gdelt.py`
 | `enabled` | bool | `true` | `true` | Enable GDELT DOC 2.0 fetcher |
 | `update_interval_minutes` | int | `15` | `15` | TIMESPAN window for GDELT query |
 | `themes` | list[str] | `[ARMEDCONFLICT, WB_2462_POLITICAL_VIOLENCE_AND_WAR, CRISISLEX_C03_WELLBEING_HEALTH, TAX_FNCACT_MILITARY]` | required | GKG theme codes |
-| `cameo_codes` | list[str] | `[18,19,190–195,20]` | required | CAMEO event codes (assault/fight/force/blockade/occupy/arms/artillery/aerial/mass violence) |
-| `goldstein_threshold` | float | `-7.0` | `-7.0` | Include only events with Goldstein score ≤ this |
 
 ### `sources.google_news` — `GoogleNewsConfig`
 

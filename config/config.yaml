@@ -400,17 +400,6 @@ sources:
     - WB_2462_POLITICAL_VIOLENCE_AND_WAR
     - CRISISLEX_C03_WELLBEING_HEALTH
     - TAX_FNCACT_MILITARY
-    cameo_codes:
-    - '18'
-    - '19'
-    - '190'
-    - '191'
-    - '192'
-    - '193'
-    - '194'
-    - '195'
-    - '20'
-    goldstein_threshold: -7.0
   google_news:
     enabled: true
     queries:
@@ -558,5 +547,3 @@ logging:
   backup_count: 5
 testing:
   dry_run: false
-  test_mode: false
-  test_headlines_file: tests/fixtures/test_headlines.yaml

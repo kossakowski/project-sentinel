@@ -1,12 +1,12 @@
 import os
+from datetime import UTC, datetime
 
 import pytest
 import yaml
 
-from sentinel.config import SentinelConfig, load_config
+from sentinel.config import load_config
 from sentinel.database import Database
 from sentinel.models import AlertRecord, Article, ClassificationResult, Event
-from datetime import datetime, timezone
 
 
 @pytest.fixture
@@ -40,8 +40,6 @@ def sample_config_dict():
                 "enabled": True,
                 "update_interval_minutes": 15,
                 "themes": ["ARMEDCONFLICT"],
-                "cameo_codes": ["19"],
-                "goldstein_threshold": -7.0,
             },
             "google_news": {
                 "enabled": True,
@@ -110,8 +108,6 @@ def sample_config_dict():
         },
         "testing": {
             "dry_run": False,
-            "test_mode": False,
-            "test_headlines_file": "tests/fixtures/test_headlines.yaml",
         },
     }
 
@@ -153,8 +149,8 @@ def sample_article():
         title="Russia launches military operation near Polish border",
         summary="Russian forces have begun a large-scale military operation...",
         language="en",
-        published_at=datetime.now(timezone.utc),
-        fetched_at=datetime.now(timezone.utc),
+        published_at=datetime.now(UTC),
+        fetched_at=datetime.now(UTC),
         raw_metadata={"key": "value"},
     )
 
@@ -172,7 +168,7 @@ def sample_classification(sample_article):
         is_new_event=True,
         confidence=0.85,
         summary_pl="Rosja rozpoczęła operację wojskową w pobliżu polskiej granicy.",
-        classified_at=datetime.now(timezone.utc),
+        classified_at=datetime.now(UTC),
         model_used="claude-haiku-4-5-20251001",
         input_tokens=287,
         output_tokens=94,
@@ -188,8 +184,8 @@ def sample_event(sample_article):
         affected_countries=["PL"],
         aggressor="RU",
         summary_pl="Rosja rozpoczęła operację wojskową w pobliżu polskiej granicy.",
-        first_seen_at=datetime.now(timezone.utc),
-        last_updated_at=datetime.now(timezone.utc),
+        first_seen_at=datetime.now(UTC),
+        last_updated_at=datetime.now(UTC),
         source_count=1,
         article_ids=[sample_article.id],
         alert_status="pending",
@@ -207,6 +203,6 @@ def sample_alert_record(sample_event):
         status="initiated",
         duration_seconds=None,
         attempt_number=1,
-        sent_at=datetime.now(timezone.utc),
+        sent_at=datetime.now(UTC),
         message_body="Alert test message",
     )
