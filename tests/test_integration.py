@@ -115,6 +115,7 @@ async def test_full_pipeline_with_fixtures(pipeline_config):
         # Set up mock classifier
         mock_classifier_instance = MagicMock()
         mock_classifier_instance.classify_batch = AsyncMock()
+        mock_classifier_instance.aclose = AsyncMock()
         classifications = [_make_classification(a.id, urgency=8) for a in articles]
         mock_classifier_instance.classify_batch.return_value = classifications
         MockClassifier.return_value = mock_classifier_instance
@@ -159,6 +160,7 @@ async def test_full_pipeline_dry_run(dry_run_config):
 
         mock_classifier_instance = MagicMock()
         mock_classifier_instance.classify_batch = AsyncMock()
+        mock_classifier_instance.aclose = AsyncMock()
         classifications = [_make_classification(articles[0].id, urgency=10)]
         mock_classifier_instance.classify_batch.return_value = classifications
         MockClassifier.return_value = mock_classifier_instance
@@ -205,6 +207,7 @@ async def test_pipeline_survives_fetcher_failure(pipeline_config):
 
         mock_classifier_instance = MagicMock()
         mock_classifier_instance.classify_batch = AsyncMock()
+        mock_classifier_instance.aclose = AsyncMock()
         mock_classifier_instance.classify_batch.return_value = []
         MockClassifier.return_value = mock_classifier_instance
 
@@ -243,6 +246,7 @@ async def test_pipeline_survives_classifier_failure(pipeline_config):
         # Classifier raises exception
         mock_classifier_instance = MagicMock()
         mock_classifier_instance.classify_batch = AsyncMock()
+        mock_classifier_instance.aclose = AsyncMock()
         mock_classifier_instance.classify_batch.side_effect = RuntimeError("API down")
         MockClassifier.return_value = mock_classifier_instance
 
@@ -296,6 +300,7 @@ async def test_pipeline_survives_twilio_failure(pipeline_config):
 
         mock_classifier_instance = MagicMock()
         mock_classifier_instance.classify_batch = AsyncMock()
+        mock_classifier_instance.aclose = AsyncMock()
         classifications = [_make_classification(articles[0].id, urgency=9)]
         mock_classifier_instance.classify_batch.return_value = classifications
         MockClassifier.return_value = mock_classifier_instance
@@ -341,6 +346,7 @@ async def test_dedup_across_cycles(pipeline_config):
 
         mock_classifier_instance = MagicMock()
         mock_classifier_instance.classify_batch = AsyncMock()
+        mock_classifier_instance.aclose = AsyncMock()
         mock_classifier_instance.classify_batch.return_value = []
         MockClassifier.return_value = mock_classifier_instance
 
@@ -394,6 +400,7 @@ async def test_corroboration_across_cycles(pipeline_config):
 
         mock_classifier_instance = MagicMock()
         mock_classifier_instance.classify_batch = AsyncMock()
+        mock_classifier_instance.aclose = AsyncMock()
         MockClassifier.return_value = mock_classifier_instance
 
         mock_twilio = MagicMock()
@@ -445,6 +452,7 @@ async def test_once_mode(pipeline_config):
 
         mock_classifier_instance = MagicMock()
         mock_classifier_instance.classify_batch = AsyncMock()
+        mock_classifier_instance.aclose = AsyncMock()
         mock_classifier_instance.classify_batch.return_value = []
         MockClassifier.return_value = mock_classifier_instance
 
@@ -486,6 +494,7 @@ async def test_health_status_updated(pipeline_config, tmp_path):
 
         mock_classifier_instance = MagicMock()
         mock_classifier_instance.classify_batch = AsyncMock()
+        mock_classifier_instance.aclose = AsyncMock()
         mock_classifier_instance.classify_batch.return_value = []
         MockClassifier.return_value = mock_classifier_instance
 

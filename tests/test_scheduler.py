@@ -315,3 +315,18 @@ async def test_run_cycle_returns_result(real_cycle_pipeline):
 def test_cycle_lock_is_asyncio_lock(real_cycle_pipeline):
     """The pipeline's _cycle_lock attribute is an asyncio.Lock instance."""
     assert isinstance(real_cycle_pipeline._cycle_lock, asyncio.Lock)
+
+
+# --------------------------------------------------------------------------
+# Classifier client cleanup on shutdown (SPEC_ASYNC_REFACTOR.md req 2.5b)
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_shutdown_awaits_classifier_aclose(real_cycle_pipeline):
+    """shutdown() awaits the classifier's aclose() exactly once (req 2.5b)."""
+    real_cycle_pipeline.classifier.aclose = AsyncMock()
+
+    await real_cycle_pipeline.shutdown()
+
+    real_cycle_pipeline.classifier.aclose.assert_awaited_once()
