@@ -198,6 +198,10 @@ class SentinelPipeline:
                     await fetcher.stop()
                 except Exception as e:
                     self.logger.error("Failed to stop %s: %s", fetcher.name, e, exc_info=True)
+        try:
+            await self.classifier.aclose()
+        except Exception as e:
+            self.logger.error("Failed to close classifier client: %s", e, exc_info=True)
         self.db.close()
 
     async def run_cycle(self, *, fast_only: bool = False, diagnostic: bool = False) -> CycleResult:
@@ -238,7 +242,7 @@ class SentinelPipeline:
             classifications = []
             if relevant:
                 try:
-                    classifications = self.classifier.classify_batch(relevant)
+                    classifications = await self.classifier.classify_batch(relevant)
                     self.logger.info("Classified %d articles", len(classifications))
                 except Exception as e:
                     self.logger.error(

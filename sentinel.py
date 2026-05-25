@@ -307,7 +307,7 @@ def _run_test_headline(headline: str, config, logger) -> None:
     article = _make_synthetic_article(headline)
 
     try:
-        result = classifier.classify(article)
+        result = asyncio.run(classifier.classify(article))
         _print_classification_result(result, headline)
     except Exception as e:
         print(f"Classification failed: {e}", file=sys.stderr)
@@ -340,35 +340,40 @@ def _run_test_file(filepath: str, config, logger) -> None:
     print(f"\nClassifying {len(headlines)} headlines from {filepath}\n")
     print("-" * 80)
 
-    for entry in headlines:
-        if isinstance(entry, str):
-            headline_text = entry
-            expected = None
-        elif isinstance(entry, dict):
-            headline_text = entry.get("text", entry.get("headline", ""))
-            expected = entry.get("expected", None)
-        else:
-            continue
+    async def _classify_all() -> None:
+        # All classify calls run under a single event loop (one asyncio.run),
+        # not one event loop per headline.
+        for entry in headlines:
+            if isinstance(entry, str):
+                headline_text = entry
+                expected = None
+            elif isinstance(entry, dict):
+                headline_text = entry.get("text", entry.get("headline", ""))
+                expected = entry.get("expected", None)
+            else:
+                continue
 
-        article = _make_synthetic_article(headline_text)
-        try:
-            result = classifier.classify(article)
-            _print_classification_result(result, headline_text)
+            article = _make_synthetic_article(headline_text)
+            try:
+                result = await classifier.classify(article)
+                _print_classification_result(result, headline_text)
 
-            # Compare against expected values if provided
-            if expected:
-                mismatches = []
-                for key, exp_val in expected.items():
-                    actual_val = getattr(result, key, None)
-                    if actual_val != exp_val:
-                        mismatches.append(f"  {key}: expected={exp_val}, got={actual_val}")
-                if mismatches:
-                    print("  MISMATCHES:")
-                    for m in mismatches:
-                        print(m)
-                    print()
-        except Exception as e:
-            print(f"  FAILED: {e}\n")
+                # Compare against expected values if provided
+                if expected:
+                    mismatches = []
+                    for key, exp_val in expected.items():
+                        actual_val = getattr(result, key, None)
+                        if actual_val != exp_val:
+                            mismatches.append(f"  {key}: expected={exp_val}, got={actual_val}")
+                    if mismatches:
+                        print("  MISMATCHES:")
+                        for m in mismatches:
+                            print(m)
+                        print()
+            except Exception as e:
+                print(f"  FAILED: {e}\n")
+
+    asyncio.run(_classify_all())
 
     print("-" * 80)
 
@@ -382,7 +387,7 @@ def _run_eval(eval_set_path: str, config, logger) -> None:
         sys.exit(1)
 
     logger.info("Eval mode: %s", eval_set_path)
-    report = run_eval(eval_set_path, config)
+    report = asyncio.run(run_eval(eval_set_path, config))
 
     print(format_report(report))
 

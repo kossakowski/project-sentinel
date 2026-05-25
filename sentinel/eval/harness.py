@@ -10,12 +10,10 @@ Eval-set schema: see tests/fixtures/eval_set.yaml.
 """
 
 import json
-import logging
 import os
 import sys
-from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
-from typing import Any
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import yaml
@@ -23,7 +21,6 @@ import yaml
 from sentinel.classification.classifier import Classifier
 from sentinel.config import SentinelConfig
 from sentinel.models import Article, ClassificationResult
-
 
 MONITORED_COUNTRIES = {"PL", "LT", "LV", "EE"}
 
@@ -103,7 +100,7 @@ def load_eval_set(path: str) -> list[EvalCase]:
       flat:    top-level list, each case has headline/source/language at root
       nested:  top-level dict with 'cases', each case has input/expected nested
     """
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
 
     if data is None:
@@ -114,9 +111,7 @@ def load_eval_set(path: str) -> list[EvalCase]:
     elif isinstance(data, dict):
         raw_cases = data.get("cases", [])
     else:
-        raise ValueError(
-            f"Unexpected YAML root type in {path}: {type(data).__name__}"
-        )
+        raise ValueError(f"Unexpected YAML root type in {path}: {type(data).__name__}")
 
     if not raw_cases:
         raise ValueError(f"No cases found in {path}")
@@ -161,9 +156,7 @@ def _parse_case(raw: dict) -> EvalCase:
         expected_urgency_max=exp["urgency_max"],
         expected_action=exp["expected_action"],
         expected_affected_countries=exp.get("affected_countries"),
-        expected_affected_countries_must_not_contain=exp.get(
-            "affected_countries_must_not_contain"
-        ),
+        expected_affected_countries_must_not_contain=exp.get("affected_countries_must_not_contain"),
         expected_aggressor=exp.get("aggressor"),
         expected_aggressor_any_of=exp.get("aggressor_any_of"),
         expected_event_type_any_of=event_type_any_of,
@@ -175,7 +168,7 @@ def _parse_case(raw: dict) -> EvalCase:
 
 
 def _make_article(case: EvalCase) -> Article:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return Article(
         source_name=case.input_source_name,
         source_url=f"https://eval.sentinel/{uuid4().hex[:8]}",
@@ -191,23 +184,16 @@ def _make_article(case: EvalCase) -> Article:
 def _check_case(case: EvalCase, result: ClassificationResult) -> CaseResult:
     checks: dict[str, bool] = {}
 
-    checks["is_military_event"] = (
-        result.is_military_event == case.expected_is_military_event
-    )
-    checks["urgency_in_range"] = (
-        case.expected_urgency_min <= result.urgency_score <= case.expected_urgency_max
-    )
+    checks["is_military_event"] = result.is_military_event == case.expected_is_military_event
+    checks["urgency_in_range"] = case.expected_urgency_min <= result.urgency_score <= case.expected_urgency_max
 
     if case.expected_affected_countries is not None:
-        checks["affected_countries_match"] = (
-            sorted(result.affected_countries)
-            == sorted(case.expected_affected_countries)
+        checks["affected_countries_match"] = sorted(result.affected_countries) == sorted(
+            case.expected_affected_countries
         )
     if case.expected_affected_countries_must_not_contain is not None:
         forbidden = set(case.expected_affected_countries_must_not_contain)
-        checks["affected_countries_no_forbidden"] = not (
-            forbidden & set(result.affected_countries)
-        )
+        checks["affected_countries_no_forbidden"] = not (forbidden & set(result.affected_countries))
 
     if case.expected_aggressor is not None:
         checks["aggressor_match"] = result.aggressor == case.expected_aggressor
@@ -215,9 +201,7 @@ def _check_case(case: EvalCase, result: ClassificationResult) -> CaseResult:
         checks["aggressor_in_set"] = result.aggressor in case.expected_aggressor_any_of
 
     if case.expected_event_type_any_of is not None:
-        checks["event_type_in_set"] = (
-            result.event_type in case.expected_event_type_any_of
-        )
+        checks["event_type_in_set"] = result.event_type in case.expected_event_type_any_of
 
     has_monitored = bool(set(result.affected_countries) & MONITORED_COUNTRIES)
     actual_action = _action_for_urgency(result.urgency_score, has_monitored)
@@ -244,9 +228,9 @@ def _check_case(case: EvalCase, result: ClassificationResult) -> CaseResult:
     )
 
 
-def run_eval(eval_set_path: str, config: SentinelConfig) -> EvalReport:
+async def run_eval(eval_set_path: str, config: SentinelConfig) -> EvalReport:
     """Load eval set, run classifier on each case, return a structured report."""
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(UTC)
 
     cases = load_eval_set(eval_set_path)
     classifier = Classifier(config)
@@ -256,21 +240,23 @@ def run_eval(eval_set_path: str, config: SentinelConfig) -> EvalReport:
         print(f"[{i}/{len(cases)}] {case.id}", file=sys.stderr)
         article = _make_article(case)
         try:
-            result = classifier.classify(article)
+            result = await classifier.classify(article)
             case_results.append(_check_case(case, result))
         except Exception as e:
-            case_results.append(CaseResult(
-                case_id=case.id,
-                failure_mode=case.failure_mode,
-                actual={},
-                expected_action=case.expected_action,
-                actual_action="error",
-                checks={},
-                overall_pass=False,
-                error=str(e),
-            ))
+            case_results.append(
+                CaseResult(
+                    case_id=case.id,
+                    failure_mode=case.failure_mode,
+                    actual={},
+                    expected_action=case.expected_action,
+                    actual_action="error",
+                    checks={},
+                    overall_pass=False,
+                    error=str(e),
+                )
+            )
 
-    finished_at = datetime.now(timezone.utc)
+    finished_at = datetime.now(UTC)
     metrics = compute_metrics(case_results)
     cost = compute_cost(case_results)
 
@@ -312,9 +298,7 @@ def compute_metrics(results: list[CaseResult]) -> dict:
     overall_passed = sum(1 for r in results if r.overall_pass)
 
     actions = ["phone_call", "sms", "log_only"]
-    confusion: dict[str, dict[str, int]] = {
-        a: {b: 0 for b in actions + ["error"]} for a in actions
-    }
+    confusion: dict[str, dict[str, int]] = {a: {b: 0 for b in actions + ["error"]} for a in actions}
     for r in results:
         if r.expected_action in confusion:
             target = r.actual_action if r.actual_action in actions else "error"
@@ -343,10 +327,7 @@ def compute_metrics(results: list[CaseResult]) -> dict:
 def compute_cost(results: list[CaseResult]) -> float:
     total_input = sum(r.actual.get("input_tokens", 0) or 0 for r in results)
     total_output = sum(r.actual.get("output_tokens", 0) or 0 for r in results)
-    return (
-        total_input * HAIKU_INPUT_PRICE_PER_M
-        + total_output * HAIKU_OUTPUT_PRICE_PER_M
-    ) / 1_000_000
+    return (total_input * HAIKU_INPUT_PRICE_PER_M + total_output * HAIKU_OUTPUT_PRICE_PER_M) / 1_000_000
 
 
 def format_report(report: EvalReport) -> str:
@@ -363,39 +344,25 @@ def format_report(report: EvalReport) -> str:
     lines.append("")
 
     m = report.metrics
-    lines.append(
-        f"Overall:     {m['overall_passed']}/{m['total_cases']} passed "
-        f"({m['overall_pass_rate'] * 100:.1f}%)"
-    )
+    lines.append(f"Overall:     {m['overall_passed']}/{m['total_cases']} passed ({m['overall_pass_rate'] * 100:.1f}%)")
     lines.append("")
 
     actions = ["phone_call", "sms", "log_only", "error"]
     lines.append("Action confusion matrix (rows=expected, cols=actual):")
-    lines.append(
-        "  expected\\actual  " + "  ".join(f"{a:>11}" for a in actions)
-    )
+    lines.append("  expected\\actual  " + "  ".join(f"{a:>11}" for a in actions))
     for exp_action in ["phone_call", "sms", "log_only"]:
         row = m["action_confusion"][exp_action]
-        lines.append(
-            f"  {exp_action:>16}  "
-            + "  ".join(f"{row[a]:>11}" for a in actions)
-        )
+        lines.append(f"  {exp_action:>16}  " + "  ".join(f"{row[a]:>11}" for a in actions))
     lines.append("")
 
     lines.append("Per-check pass rates:")
     for key, d in m["per_check"].items():
-        lines.append(
-            f"  {key:<40}  {d['passed']:>3}/{d['total']:>3}  "
-            f"{d['rate'] * 100:>5.1f}%"
-        )
+        lines.append(f"  {key:<40}  {d['passed']:>3}/{d['total']:>3}  {d['rate'] * 100:>5.1f}%")
     lines.append("")
 
     lines.append("Per failure-mode pass rates:")
     for mode, d in sorted(m["per_failure_mode"].items()):
-        lines.append(
-            f"  {mode:<40}  {d['passed']:>3}/{d['total']:>3}  "
-            f"{d['rate'] * 100:>5.1f}%"
-        )
+        lines.append(f"  {mode:<40}  {d['passed']:>3}/{d['total']:>3}  {d['rate'] * 100:>5.1f}%")
     lines.append("")
 
     failures = [r for r in report.case_results if not r.overall_pass]
@@ -405,10 +372,7 @@ def format_report(report: EvalReport) -> str:
             failed_checks = [k for k, v in r.checks.items() if not v]
             lines.append(f"  {r.case_id}")
             lines.append(f"    failure_mode: {r.failure_mode}")
-            lines.append(
-                f"    expected_action: {r.expected_action} | "
-                f"actual: {r.actual_action}"
-            )
+            lines.append(f"    expected_action: {r.expected_action} | actual: {r.actual_action}")
             if r.error:
                 lines.append(f"    ERROR: {r.error}")
             else:
