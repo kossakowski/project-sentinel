@@ -4,11 +4,12 @@ Contains the SentinelPipeline (fetch -> process -> classify -> alert cycle)
 and SentinelScheduler (APScheduler wrapper with jitter, coalesce, health monitoring).
 """
 
+import asyncio
 import json
 import logging
 import os
-from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -20,6 +21,7 @@ from sentinel.classification.classifier import Classifier
 from sentinel.classification.corroborator import Corroborator
 from sentinel.config import SentinelConfig
 from sentinel.database import Database
+from sentinel.diagnostic import DiagnosticArticle, DiagnosticData
 from sentinel.fetchers import (
     GDELTFetcher,
     GoogleNewsFetcher,
@@ -27,17 +29,16 @@ from sentinel.fetchers import (
     TelegramFetcher,
 )
 from sentinel.fetchers.base import BaseFetcher
-from sentinel.diagnostic import DiagnosticArticle, DiagnosticData
 from sentinel.models import Article
 from sentinel.processing.deduplicator import Deduplicator
-from sentinel.processing.keyword_filter import KeywordFilter
 from sentinel.processing.enricher import ArticleEnricher
+from sentinel.processing.keyword_filter import KeywordFilter
 from sentinel.processing.normalizer import Normalizer
-
 
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class CycleResult:
@@ -79,7 +80,7 @@ class PipelineStats:
         self.total_alerts_sent: int = 0
         self.consecutive_failures: int = 0
         self.fetcher_consecutive_failures: dict[str, int] = {}
-        self.started_at: datetime = datetime.now(timezone.utc)
+        self.started_at: datetime = datetime.now(UTC)
         self._daily_date: str | None = None
         self._daily_cycles: int = 0
         self._daily_articles: int = 0
@@ -95,7 +96,7 @@ class PipelineStats:
         self.consecutive_failures = 0
 
         # Daily tracking
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
         if self._daily_date != today:
             self._daily_date = today
             self._daily_cycles = 0
@@ -132,12 +133,13 @@ class PipelineStats:
 
     @property
     def uptime_seconds(self) -> float:
-        return (datetime.now(timezone.utc) - self.started_at).total_seconds()
+        return (datetime.now(UTC) - self.started_at).total_seconds()
 
 
 # ---------------------------------------------------------------------------
 # Pipeline
 # ---------------------------------------------------------------------------
+
 
 class SentinelPipeline:
     """Orchestrates the full fetch -> process -> classify -> alert pipeline."""
@@ -158,6 +160,7 @@ class SentinelPipeline:
         self.logger = logging.getLogger("sentinel.pipeline")
         self.stats = PipelineStats()
         self.diagnostic_data: DiagnosticData | None = None
+        self._cycle_lock = asyncio.Lock()
 
     def _init_fetchers(self) -> list[BaseFetcher]:
         """Initialize all fetchers based on config."""
@@ -185,9 +188,7 @@ class SentinelPipeline:
                 try:
                     await fetcher.start()
                 except Exception as e:
-                    self.logger.error(
-                        "Failed to start %s: %s", fetcher.name, e, exc_info=True
-                    )
+                    self.logger.error("Failed to start %s: %s", fetcher.name, e, exc_info=True)
 
     async def shutdown(self) -> None:
         """Clean up components that need async shutdown."""
@@ -196,14 +197,10 @@ class SentinelPipeline:
                 try:
                     await fetcher.stop()
                 except Exception as e:
-                    self.logger.error(
-                        "Failed to stop %s: %s", fetcher.name, e, exc_info=True
-                    )
+                    self.logger.error("Failed to stop %s: %s", fetcher.name, e, exc_info=True)
         self.db.close()
 
-    async def run_cycle(
-        self, *, fast_only: bool = False, diagnostic: bool = False
-    ) -> CycleResult:
+    async def run_cycle(self, *, fast_only: bool = False, diagnostic: bool = False) -> CycleResult:
         """Execute one full pipeline cycle. Returns stats about the run.
 
         Args:
@@ -213,103 +210,100 @@ class SentinelPipeline:
             diagnostic: If True, capture intermediate data for HTML report
                         generation and skip alert dispatch.
         """
-        cycle_start = datetime.now(timezone.utc)
-        lane = "DIAG" if diagnostic else ("FAST" if fast_only else "FULL")
-        self.logger.info("=== Pipeline cycle starting [%s] ===", lane)
+        async with self._cycle_lock:
+            cycle_start = datetime.now(UTC)
+            lane = "DIAG" if diagnostic else ("FAST" if fast_only else "FULL")
+            self.logger.info("=== Pipeline cycle starting [%s] ===", lane)
 
-        # Step 1: Fetch from sources (filtered by lane)
-        raw_articles = await self._fetch_all(fast_only=fast_only)
-        self.logger.info("[%s] Fetched %d raw articles", lane, len(raw_articles))
+            # Step 1: Fetch from sources (filtered by lane)
+            raw_articles = await self._fetch_all(fast_only=fast_only)
+            self.logger.info("[%s] Fetched %d raw articles", lane, len(raw_articles))
 
-        # Step 2: Normalize
-        normalized = self.normalizer.normalize_batch(raw_articles)
+            # Step 2: Normalize
+            normalized = self.normalizer.normalize_batch(raw_articles)
 
-        # Step 3: Deduplicate
-        unique = self.deduplicator.deduplicate_batch(
-            normalized, diagnostic=diagnostic
-        )
-        self.logger.info("After dedup: %d unique articles", len(unique))
+            # Step 3: Deduplicate
+            unique = self.deduplicator.deduplicate_batch(normalized, diagnostic=diagnostic)
+            self.logger.info("After dedup: %d unique articles", len(unique))
 
-        # Step 4: Keyword filter
-        relevant = self.keyword_filter.filter_batch(unique)
-        self.logger.info("After keyword filter: %d relevant articles", len(relevant))
+            # Step 4: Keyword filter
+            relevant = self.keyword_filter.filter_batch(unique)
+            self.logger.info("After keyword filter: %d relevant articles", len(relevant))
 
-        # Step 5: Enrich articles with insufficient summaries
-        if relevant:
-            relevant = await self.enricher.enrich_batch(relevant)
+            # Step 5: Enrich articles with insufficient summaries
+            if relevant:
+                relevant = await self.enricher.enrich_batch(relevant)
 
-        # Step 6: Classify (only if there are relevant articles)
-        classifications = []
-        if relevant:
-            try:
-                classifications = self.classifier.classify_batch(relevant)
-                self.logger.info("Classified %d articles", len(classifications))
-            except Exception as e:
-                self.logger.error(
-                    "Classifier failed, continuing with empty classifications: %s",
-                    e,
-                    exc_info=True,
-                )
-                classifications = []
+            # Step 6: Classify (only if there are relevant articles)
+            classifications = []
+            if relevant:
+                try:
+                    classifications = self.classifier.classify_batch(relevant)
+                    self.logger.info("Classified %d articles", len(classifications))
+                except Exception as e:
+                    self.logger.error(
+                        "Classifier failed, continuing with empty classifications: %s",
+                        e,
+                        exc_info=True,
+                    )
+                    classifications = []
 
-        # Step 6: Corroborate (group into events)
-        events = self.corroborator.process_classifications(classifications)
-        alertable_events = [e for e in events if e.alert_status != "pending"]
-        self.logger.info("Events needing alerts: %d", len(alertable_events))
+            # Step 6: Corroborate (group into events)
+            events = self.corroborator.process_classifications(classifications)
+            alertable_events = [e for e in events if e.alert_status != "pending"]
+            self.logger.info("Events needing alerts: %d", len(alertable_events))
 
-        if not diagnostic:
-            # Step 7: Dispatch alerts
-            self.dispatcher.dispatch(alertable_events)
+            if not diagnostic:
+                # Step 7: Dispatch alerts
+                self.dispatcher.dispatch(alertable_events)
 
-            # Step 8: Check pending call statuses from previous cycles
-            self.state_machine.check_pending_calls()
+                # Step 8: Check pending call statuses from previous cycles
+                self.state_machine.check_pending_calls()
 
-        # Build diagnostic data if requested (after corroboration so we capture events)
-        if diagnostic:
-            self._build_diagnostic_data(
-                cycle_start, normalized, unique, relevant, classifications, events
+            # Build diagnostic data if requested (after corroboration so we capture events)
+            if diagnostic:
+                self._build_diagnostic_data(cycle_start, normalized, unique, relevant, classifications, events)
+
+            # Step 9: Cleanup old records
+            self.db.cleanup_old_records(
+                article_days=self.config.database.article_retention_days,
+                event_days=self.config.database.event_retention_days,
             )
 
-        # Step 9: Cleanup old records
-        self.db.cleanup_old_records(
-            article_days=self.config.database.article_retention_days,
-            event_days=self.config.database.event_retention_days,
-        )
+            # Stats
+            cycle_duration = (datetime.now(UTC) - cycle_start).total_seconds()
 
-        # Stats
-        cycle_duration = (datetime.now(timezone.utc) - cycle_start).total_seconds()
+            # Update diagnostic duration now that cycle is complete
+            if diagnostic and self.diagnostic_data is not None:
+                self.diagnostic_data.duration_seconds = cycle_duration
 
-        # Update diagnostic duration now that cycle is complete
-        if diagnostic and self.diagnostic_data is not None:
-            self.diagnostic_data.duration_seconds = cycle_duration
+            result = CycleResult(
+                cycle_start=cycle_start,
+                duration_seconds=cycle_duration,
+                articles_fetched=len(raw_articles),
+                articles_unique=len(unique),
+                articles_relevant=len(relevant),
+                articles_classified=len(classifications),
+                events_created=len(events),
+                alerts_sent=len(alertable_events),
+            )
 
-        result = CycleResult(
-            cycle_start=cycle_start,
-            duration_seconds=cycle_duration,
-            articles_fetched=len(raw_articles),
-            articles_unique=len(unique),
-            articles_relevant=len(relevant),
-            articles_classified=len(classifications),
-            events_created=len(events),
-            alerts_sent=len(alertable_events),
-        )
+            self.stats.record_cycle(result)
 
-        self.stats.record_cycle(result)
+            self.logger.info(
+                "=== Cycle complete in %.1fs: "
+                "fetched=%d, unique=%d, relevant=%d, classified=%d, "
+                "events=%d, alerts=%d ===",
+                cycle_duration,
+                result.articles_fetched,
+                result.articles_unique,
+                result.articles_relevant,
+                result.articles_classified,
+                result.events_created,
+                result.alerts_sent,
+            )
 
-        self.logger.info(
-            "=== Cycle complete in %.1fs: "
-            "fetched=%d, unique=%d, relevant=%d, classified=%d, "
-            "events=%d, alerts=%d ===",
-            cycle_duration,
-            result.articles_fetched,
-            result.articles_unique,
-            result.articles_relevant,
-            result.articles_classified,
-            result.events_created,
-            result.alerts_sent,
-        )
-
-        return result
+            return result
 
     def _build_diagnostic_data(
         self,
@@ -336,12 +330,7 @@ class SentinelPipeline:
             is_dup = article.id not in unique_ids
 
             # Dedup stage
-            if is_dup:
-                dedup_reason = self.deduplicator.diagnostic_reasons.get(
-                    article.id, "Duplicate"
-                )
-            else:
-                dedup_reason = ""
+            dedup_reason = self.deduplicator.diagnostic_reasons.get(article.id, "Duplicate") if is_dup else ""
 
             # Keyword filter stage (only for non-duplicates)
             kw_info = None
@@ -400,14 +389,10 @@ class SentinelPipeline:
                 else:
                     articles = await fetcher.fetch()
                 all_articles.extend(articles)
-                self.logger.debug(
-                    "%s: fetched %d articles", fetcher.name, len(articles)
-                )
+                self.logger.debug("%s: fetched %d articles", fetcher.name, len(articles))
                 self.stats.record_fetcher_success(fetcher.name)
             except Exception as e:
-                self.logger.error(
-                    "%s: fetch failed: %s", fetcher.name, e, exc_info=True
-                )
+                self.logger.error("%s: fetch failed: %s", fetcher.name, e, exc_info=True)
                 self.stats.record_fetcher_failure(fetcher.name)
                 self._check_fetcher_health(fetcher.name)
         return all_articles
@@ -447,6 +432,7 @@ class SentinelPipeline:
 # ---------------------------------------------------------------------------
 # Scheduler
 # ---------------------------------------------------------------------------
+
 
 class SentinelScheduler:
     """APScheduler wrapper with jitter, max_instances=1, coalesce=True."""
@@ -508,9 +494,7 @@ class SentinelScheduler:
             self._maybe_log_daily_summary()
         except Exception as e:
             lane = "fast" if fast_only else "slow"
-            self.logger.critical(
-                "Pipeline %s-lane cycle failed: %s", lane, e, exc_info=True
-            )
+            self.logger.critical("Pipeline %s-lane cycle failed: %s", lane, e, exc_info=True)
             self.pipeline.stats.record_failure()
             self._update_health(healthy=False, error=str(e))
             self._check_pipeline_health()
@@ -519,9 +503,7 @@ class SentinelScheduler:
         """Send SMS if the pipeline has failed too many consecutive times."""
         failures = self.pipeline.stats.consecutive_failures
         if failures == 3:
-            self.pipeline._send_system_sms(
-                "Project Sentinel: system napotkał krytyczny błąd. Sprawdź logi."
-            )
+            self.pipeline._send_system_sms("Project Sentinel: system napotkał krytyczny błąd. Sprawdź logi.")
 
     def _update_health(
         self,
@@ -558,9 +540,7 @@ class SentinelScheduler:
             fetcher_status=fetcher_status,
         )
 
-        health_path = os.path.join(
-            os.path.dirname(self.config.database.path) or "data", "health.json"
-        )
+        health_path = os.path.join(os.path.dirname(self.config.database.path) or "data", "health.json")
         os.makedirs(os.path.dirname(health_path) or ".", exist_ok=True)
 
         try:
@@ -571,13 +551,12 @@ class SentinelScheduler:
 
     def _maybe_log_daily_summary(self) -> None:
         """Log a daily summary at date rollover."""
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
         if self._last_daily_summary != today:
             if self._last_daily_summary is not None:
                 summary = self.pipeline.stats.get_daily_summary()
                 self.logger.info(
-                    "=== Daily summary: cycles=%d, articles_processed=%d, "
-                    "events_detected=%d, alerts_sent=%d ===",
+                    "=== Daily summary: cycles=%d, articles_processed=%d, events_detected=%d, alerts_sent=%d ===",
                     summary["cycles"],
                     summary["articles_processed"],
                     summary["events_detected"],
