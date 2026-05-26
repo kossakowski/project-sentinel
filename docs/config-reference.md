@@ -20,7 +20,6 @@
 | `TWILIO_ACCOUNT_SID` | Alert dispatcher (`sentinel/alerts/dispatcher.py`) | yes |
 | `TWILIO_AUTH_TOKEN` | Alert dispatcher | yes |
 | `TWILIO_PHONE_NUMBER` | Outbound caller ID | yes |
-| `TWILIO_WHATSAPP_NUMBER` | WhatsApp channel (format: `whatsapp:+…`); defaults to `whatsapp:{TWILIO_PHONE_NUMBER}` if not set | no |
 | `ALERT_PHONE_NUMBER` | Destination for all alerts (`alerts.phone_number`) | yes |
 | `TELEGRAM_API_ID` | Telegram fetcher (`sentinel/fetchers/telegram.py`) | yes if telegram enabled |
 | `TELEGRAM_API_HASH` | Telegram fetcher | yes if telegram enabled |
@@ -148,10 +147,10 @@ Consumed by: `sentinel/alerts/`
 |---|---|---|---|---|---|---|
 | `critical` | 9 | `phone_call` | 1 | 3 | 5 | `sms` |
 | `high` | 7 | `sms` | 1 | 0 | 5 | — |
-| `medium` | 5 | `whatsapp` (routed to `sms` in code) | 1 | 0 | 5 | — |
+| `medium` | 5 | `sms` | 1 | 0 | 5 | — |
 | `low` | 1 | `log_only` | 1 | 0 | 5 | — |
 
-`action` values: `phone_call`, `sms`, `whatsapp`, `log_only`.
+`action` values: `phone_call`, `sms`, `log_only`.
 
 ### `alerts.acknowledgment` — `AcknowledgmentConfig`
 
@@ -159,7 +158,7 @@ Acknowledgment via SMS 6-digit code reply. An SMS with the code is sent before t
 
 | YAML key | Type | Live value | Pydantic default | Description |
 |---|---|---|---|---|
-| `call_duration_threshold_seconds` | int | `15` | `15` | Call shorter than this = voicemail → retry |
+| `call_duration_threshold_seconds` | int | `15` | `15` | **Dead** — still defined but no longer read (the `if False:` block that used it was removed); superseded by SMS-code confirmation |
 | `max_call_retries` | int | `5` | `3` | Max call attempts before marking `retry_pending` |
 | `retry_interval_minutes` | int | `5` | `5` | Wait between retry cycles |
 | `cooldown_hours` | int | `6` | `6` | No re-call for same event within this window |
@@ -240,7 +239,6 @@ Consumed by: `sentinel/scheduler.py`, `sentinel/alerts/`
 | YAML key | Type | Live value | Pydantic default | Description |
 |---|---|---|---|---|
 | `dry_run` | bool | `false` | `false` | Run full pipeline but suppress all Twilio calls/SMS; also set by `--dry-run` CLI flag |
-| `test_mode` | bool | `false` | `false` | Use fixture headlines instead of live sources — currently unread by the codebase — see TODO.md |
-| `test_headlines_file` | str | `tests/fixtures/test_headlines.yaml` | same | Path to test headlines YAML for `--test-file` |
+| `eval_set_file` | str | `tests/fixtures/eval_set.yaml` | same | YAML eval set used by `--eval` for classification-accuracy checks |
 
 `dry_run` runs the complete classification pipeline — only the Twilio dispatch step is skipped. Safe for development and continuous testing.

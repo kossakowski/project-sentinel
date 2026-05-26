@@ -82,6 +82,10 @@ The configured keyword lists cover English (20 critical, 38+ high, 24 exclude), 
 
 ---
 
+## Stage 4.5: Summary Enrichment
+
+Before classification, articles whose summary adds little beyond the title are enriched by `ArticleEnricher.enrich_batch` (`sentinel/processing/enricher.py`, awaited at `scheduler.py:239`). A free heuristic gate flags articles where the summary is essentially the title (common for Google News and GDELT), and a cheap LLM gate flags vague or clickbait titles whose summary is technically different but uninformative. Flagged articles have their full body fetched over HTTP and merged in, giving the classifier better input. No articles are dropped here; the stage runs only when relevant articles remain after keyword filtering.
+
 ## Stage 5: AI Classification
 
 Every article that reaches this stage is sent individually to Claude Haiku 4.5 for classification. The model evaluates the article as a military intelligence analyst and returns a structured assessment covering six dimensions.
@@ -135,7 +139,7 @@ The alert level assigned to an Event is determined by `alerts/state_machine.py:_
 |--------------------------------|-------------|-----------|
 | `urgency >= 9 AND source_count >= 1` | Phone call | live `classification.corroboration_required = 1` |
 | `urgency >= 7` (no source_count check) | SMS | `state_machine.py:_determine_action` |
-| `urgency >= 5` | WhatsApp decided — but routed to `_execute_sms` in `process_event` (`state_machine.py:190`) | |
+| `urgency >= 5` | SMS | `state_machine.py:_determine_action` |
 | Below threshold | Pending — no alert | |
 
 Note: two parallel urgency decision paths exist (corroborator and state_machine) and can disagree. Live `corroboration_required` is `1`; any prior documentation citing `2` is stale.
