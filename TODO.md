@@ -214,7 +214,7 @@ Build or plan metrics that track classification quality over time:
 
 3. ~~**Unread `testing.test_mode` field.**~~ **DONE (2026-05-25).** Removed from config dataclass, both YAML files, and test fixtures. Commit `cf84c96`.
 
-4. **Synchronous Anthropic SDK call inside async pipeline.** `Classifier._call_api` (`classifier.py`) calls the synchronous Anthropic SDK from inside `async run_cycle`. Same issue with blocking `time.sleep()` in `_execute_phone_call` — blocks the asyncio event loop for up to ~500s per call round. Wrap with `asyncio.to_thread()` or switch to an async-native client.
+4. ~~**Synchronous Anthropic SDK call inside async pipeline.**~~ **DONE (2026-05-26).** Full async refactor (`SPEC_ASYNC_REFACTOR.md`, 3 phases). Phase 1: added an `asyncio.Lock` serializing `run_cycle` across both scheduler lanes (commit `5a54988`). Phase 2: switched the classifier to `anthropic.AsyncAnthropic` with awaited calls and `asyncio.sleep` retries, bridging the CLI/eval entry points via `asyncio.run` (commits `d6b7751`, `dd87f0f`). Phase 3: made the alert state machine + dispatcher async, replaced `time.sleep` with `await asyncio.sleep`, and offloaded every Twilio HTTP call via `asyncio.to_thread` while keeping all DB access on the event-loop thread; poll/pause durations de-hardcoded to `alerts.acknowledgment` config (commit `cfd7f9d`, docs `fa74659`). The event loop no longer freezes anywhere in the pipeline.
 
 5. ~~**Empty `tests/fixtures/`.**~~ **DONE (2026-05-25).** Removed dead `test_headlines_file` config field — `--test-file` CLI takes path directly, never consults config. Commit `cf84c96`.
 
