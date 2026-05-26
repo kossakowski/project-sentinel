@@ -1,16 +1,8 @@
 # Project Sentinel — TODO
 
-## 1. Differentiate Ukraine-targeted vs Poland-targeted attacks in alert messages
+## ~~1. Differentiate Ukraine-targeted vs Poland-targeted attacks in alert messages~~
 
-**Problem:** Russia attacks Ukraine constantly. The classifier correctly picks these up but the alert messages look identical to alerts about direct attacks on Poland/Baltics, causing alarm fatigue and confusion (e.g., "Poland scrambles jets in response to Russian strike on Ukraine" gets classified as urgency 9 missile_strike on PL).
-
-**Constraint:** Do NOT suppress or deprioritize Ukraine-related alerts. It's better to have many false positives than to miss a real positive. The risk of filtering too aggressively is that we miss a genuine escalation.
-
-**Ideas to explore:**
-- Prefix the alert message to clearly distinguish: e.g., `⚠️ ATAK NA UKRAINĘ` vs `🚨 ATAK NA POLSKĘ` — so the recipient immediately knows the context before reading the details.
-- Possibly adjust the classification prompt to better distinguish between "Poland is under direct attack" vs "Poland is activating defenses in response to a nearby attack on Ukraine." The urgency score for the latter should be lower (e.g., 4-5 instead of 9).
-- Consider a separate `target_country` field in classification to distinguish who is actually being attacked vs who is responding defensively.
-- The goal: when you glance at the WhatsApp message, you instantly know whether Poland itself is hit or whether it's a defensive response to an attack on a neighbor.
+**DONE (2026-05-26).** The classification prompt now has four overlapping rules that prevent this misclassification: R9 (Ukraine-only = urgency 1-3), PRECAUTIONARY SCRAMBLE RULE (defensive response = 5-6), R6 (political reactions = 2-4 max), and CRITICAL RULES (9-10 exclusively for direct attacks on PL/LT/LV/EE). Tested with 9 edge-case headlines (including the exact "Poland scrambles jets in response to Russian strike on Ukraine" example) — all scored correctly. Production DB confirms: zero Ukraine-only events scored above 5 in live data. The three sub-ideas from the original TODO are resolved: (1) alert message prefixes are moot since Ukraine-only events never reach any alert channel; (2) the prompt distinction is implemented; (3) `affected_countries` already serves as the target-country field and is correctly empty for non-monitored-country events.
 
 ## 2. Smarter multi-tier classification to reduce false positives
 
