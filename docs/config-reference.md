@@ -163,6 +163,11 @@ Acknowledgment via SMS 6-digit code reply. An SMS with the code is sent before t
 | `max_call_retries` | int | `5` | `3` | Max call attempts before marking `retry_pending` |
 | `retry_interval_minutes` | int | `5` | `5` | Wait between retry cycles |
 | `cooldown_hours` | int | `6` | `6` | No re-call for same event within this window |
+| `call_poll_timeout_seconds` | int | `90` | `90` | Max seconds to wait for a placed call to finish (and for an SMS reply) before moving to the next attempt; read by `_wait_for_call_and_check_sms` |
+| `call_poll_interval_seconds` | int | `5` | `5` | Seconds between Twilio call-status / inbound-SMS polls during the wait loop |
+| `call_retry_pause_seconds` | int | `10` | `10` | Seconds to pause between call attempts within a single retry round |
+
+The three poll/pause durations above were previously hardcoded; they are now config-driven (added with the alert-path async conversion). Configs that omit these keys still load and fall back to the defaults shown.
 
 ### `alerts.templates` — `AlertTemplates`
 

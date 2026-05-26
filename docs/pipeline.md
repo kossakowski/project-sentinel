@@ -154,9 +154,9 @@ A phone call is the highest alert level and requires both a very high urgency sc
 
 2. The Twilio call is placed. A Polish text-to-speech voice (Amazon Polly, voice: Ewa) speaks the alert text twice: the event type, the Polish summary, the number of confirming sources, and the urgency score out of 10. The call ends by instructing the operator to reply to the SMS with the confirmation code.
 
-3. Per call attempt: poll for SMS reply containing the 6-digit code every 5 seconds, for up to 90 seconds (`alerts/state_machine.py:446`).
+3. Per call attempt: poll for SMS reply containing the 6-digit code every `alerts.acknowledgment.call_poll_interval_seconds` (default 5s), for up to `alerts.acknowledgment.call_poll_timeout_seconds` (default 90s) — `_wait_for_call_and_check_sms` in `alerts/state_machine.py`. The poll is a non-blocking `await asyncio.sleep`, and the Twilio status / inbound-SMS lookups it makes are offloaded with `asyncio.to_thread`, so the wait never blocks the event loop.
 
-4. Between attempts within a round: 10s sleep (`state_machine.py:331`).
+4. Between attempts within a round: `alerts.acknowledgment.call_retry_pause_seconds` (default 10s) via `await asyncio.sleep` (`alerts/state_machine.py`, `_execute_phone_call`).
 
 5. Attempts per round: `alerts.max_call_retries` from config — live value `5`, code default `3`.
 
