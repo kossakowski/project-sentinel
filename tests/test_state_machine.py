@@ -626,25 +626,101 @@ async def test_api_call_retry_pause_is_awaited(mock_sleep, state_machine, db, mo
 @pytest.mark.asyncio
 @patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
 async def test_twilio_calls_routed_through_to_thread(mock_sleep, state_machine, db, mock_twilio):
-    """Every Twilio SDK call on the alert path goes through asyncio.to_thread."""
+    """Every Twilio SDK call on the alert path goes through asyncio.to_thread.
+
+    There are five Twilio touch points the state machine offloads:
+      1. ``self.twilio.make_alert_call`` (bound wrapper)
+      2. ``self.twilio.send_sms`` (bound wrapper)
+      3. ``self.twilio.get_call_status`` (bound wrapper)
+      4. a lambda wrapping ``self.twilio.client.messages.list(...)``
+         (``_check_sms_confirmation``)
+      5. a lambda wrapping ``self.twilio.client.messages(sid).fetch()``
+         (``_check_confirmation_sms_delivered``)
+
+    The three bound wrappers can be asserted by identity, but #4 and #5 are
+    anonymous lambdas, so identity can't catch them. Instead we prove the
+    *direct-SDK* calls are reached ONLY through ``to_thread`` by a count
+    argument: re-running the recorded callables in isolation must reproduce
+    EXACTLY the number of ``messages.list`` / ``messages(sid).fetch``
+    invocations that the live run produced. If a regression un-offloaded
+    either direct-SDK call (calling ``messages.list`` / ``.fetch`` directly
+    instead of via ``to_thread``), that invocation would still happen during
+    the live run but would NOT be among the recorded callables — so the
+    reproduced count would fall short of the live count and this test fails.
+
+    The no-answer phone-call path reaches all five touch points: each retry
+    polls inbound SMS (#4) and call status (#3), the round opens with a
+    confirmation SMS (#2) and the calls themselves (#1), and after the first
+    attempt the confirmation-SMS delivery is checked (#5) because the
+    confirmation SID was set.
+    """
     event = _make_event(urgency_score=10, source_count=2)
     db.insert_event(event)
 
+    # The fetch mock for touch point #5: messages(sid).fetch() always returns
+    # twilio.client.messages.return_value (regardless of sid), and .fetch is a
+    # child mock on it. Capture it so we can count fetch() invocations.
+    fetch_mock = mock_twilio.client.messages.return_value.fetch
+    list_mock = mock_twilio.client.messages.list
+
     recorded = []
 
+    # AsyncMock whose side effect both RECORDS func and CALLS THROUGH, so the
+    # real lambdas execute their wrapped SDK calls against the MagicMock.
     async def fake_to_thread(func, *args, **kwargs):
         recorded.append(func)
         return func(*args, **kwargs)
 
-    with patch("sentinel.alerts.state_machine.asyncio.to_thread", side_effect=fake_to_thread) as mock_tt:
+    with patch(
+        "sentinel.alerts.state_machine.asyncio.to_thread",
+        new_callable=AsyncMock,
+        side_effect=fake_to_thread,
+    ) as mock_tt:
         await state_machine.process_event(event)
 
     assert mock_tt.await_count >= 1
-    # The two wrapper methods used on the phone-call path must have been offloaded.
+
+    # (a) The three bound wrappers used on the phone-call path were offloaded
+    #     (assertable by identity).
     assert mock_twilio.make_alert_call in recorded
     assert mock_twilio.get_call_status in recorded
-    # send_sms (confirmation SMS) is also offloaded.
-    assert mock_twilio.send_sms in recorded
+    assert mock_twilio.send_sms in recorded  # confirmation SMS
+
+    # (b) The two direct-SDK lambdas were actually exercised during the live
+    #     run — the path really did reach messages.list (#4) and the
+    #     confirmation-SMS delivery fetch (#5).
+    live_list_calls = list_mock.call_count
+    live_fetch_calls = fetch_mock.call_count
+    assert live_list_calls >= 1, "expected _check_sms_confirmation to call messages.list"
+    assert live_fetch_calls >= 1, "expected _check_confirmation_sms_delivered to call messages(sid).fetch()"
+
+    # (c) Linchpin: the direct-SDK calls were reached ONLY through to_thread.
+    #     Reset the two SDK mocks, re-execute the recorded callables in
+    #     isolation, and require the reproduced counts to equal the live
+    #     counts exactly. A direct (un-offloaded) call would not be recorded,
+    #     so its touch could not be reproduced -> counts diverge -> failure.
+    bound_wrappers = {
+        mock_twilio.make_alert_call,
+        mock_twilio.send_sms,
+        mock_twilio.get_call_status,
+    }
+    list_mock.reset_mock()
+    fetch_mock.reset_mock()
+    for func in recorded:
+        if func in bound_wrappers:
+            # Bound wrappers expect positional args (phone, message, event_id /
+            # sid); skip executing them here — they're already proven by
+            # identity in (a) and don't touch the direct-SDK mocks.
+            continue
+        func()  # a recorded lambda -> re-touches messages.list or fetch
+    assert list_mock.call_count == live_list_calls, (
+        "messages.list reached outside to_thread: "
+        f"live={live_list_calls} but only {list_mock.call_count} reproduced from recorded offloads"
+    )
+    assert fetch_mock.call_count == live_fetch_calls, (
+        "messages(sid).fetch reached outside to_thread: "
+        f"live={live_fetch_calls} but only {fetch_mock.call_count} reproduced from recorded offloads"
+    )
 
 
 # --------------------------------------------------------------------------
@@ -657,6 +733,16 @@ async def test_db_calls_not_offloaded_to_thread(mock_sleep, state_machine, db, m
 
     All SQLite access must stay on the event-loop thread (shared connection,
     no application-level lock).
+
+    This is a POSITIVE allowlist rather than a single negative check, because a
+    ``lambda: self.db.something()`` has ``__self__ is None`` and would silently
+    slip past an ``isinstance(func.__self__, Database)`` test. Every offloaded
+    callable must be either one of the known bound Twilio wrappers (by
+    identity), OR a lambda that, when executed, touches ONLY
+    ``self.twilio.client...`` and never ``self.db`` / ``Database``. A future
+    ``to_thread(lambda: self.db.update_event(...))`` regression would therefore
+    fail here: the lambda is not a known wrapper and, when re-executed against a
+    tripwire DB, would raise.
     """
     event = _make_event(urgency_score=10, source_count=2)
     db.insert_event(event)
@@ -675,10 +761,46 @@ async def test_db_calls_not_offloaded_to_thread(mock_sleep, state_machine, db, m
         await state_machine.check_pending_calls()
 
     assert recorded, "expected at least one offloaded Twilio call"
+
+    # Defense in depth: the original negative check. A bound Database method
+    # would carry __self__ that is a Database instance.
     for func in recorded:
-        # A bound method of Database would have __self__ that is a Database.
         owner = getattr(func, "__self__", None)
         assert not isinstance(owner, Database), f"Database call {func!r} must not be offloaded to a thread"
+
+    # Positive allowlist. The three bound Twilio wrappers are accepted by
+    # identity; everything else must be a lambda that touches only
+    # self.twilio.client and never the DB. We prove the latter by re-executing
+    # each non-wrapper callable with self.db swapped for a tripwire that raises
+    # on ANY attribute access. The real lambdas close over `self`, so they see
+    # the swapped db; a hypothetical `lambda: self.db.update_event(...)` would
+    # trip it.
+    bound_wrappers = {
+        mock_twilio.make_alert_call,
+        mock_twilio.send_sms,
+        mock_twilio.get_call_status,
+    }
+
+    class _DBTripwire:
+        """Stand-in for the Database that explodes if anything touches it."""
+
+        def __getattribute__(self, name):  # noqa: D401 - tripwire
+            raise AssertionError(
+                f"offloaded callable touched the Database (attr {name!r}); DB access must not be offloaded to a thread"
+            )
+
+    saved_db = state_machine.db
+    state_machine.db = _DBTripwire()
+    try:
+        for func in recorded:
+            if func in bound_wrappers:
+                continue  # known-good Twilio wrapper, asserted by identity
+            # A non-wrapper offload must be a Twilio-client lambda. Re-running
+            # it must not touch the DB tripwire. (It re-touches messages.list /
+            # messages(sid).fetch, which is fine — those are Twilio, not DB.)
+            func()
+    finally:
+        state_machine.db = saved_db
 
 
 # --------------------------------------------------------------------------
