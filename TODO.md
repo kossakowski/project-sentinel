@@ -1,10 +1,6 @@
 # Project Sentinel — TODO
 
-## ~~1. Differentiate Ukraine-targeted vs Poland-targeted attacks in alert messages~~
-
-**DONE (2026-05-26).** The classification prompt now has four overlapping rules that prevent this misclassification: R9 (Ukraine-only = urgency 1-3), PRECAUTIONARY SCRAMBLE RULE (defensive response = 5-6), R6 (political reactions = 2-4 max), and CRITICAL RULES (9-10 exclusively for direct attacks on PL/LT/LV/EE). Tested with 9 edge-case headlines (including the exact "Poland scrambles jets in response to Russian strike on Ukraine" example) — all scored correctly. Production DB confirms: zero Ukraine-only events scored above 5 in live data. The three sub-ideas from the original TODO are resolved: (1) alert message prefixes are moot since Ukraine-only events never reach any alert channel; (2) the prompt distinction is implemented; (3) `affected_countries` already serves as the target-country field and is correctly empty for non-monitored-country events.
-
-## 2. Smarter multi-tier classification to reduce false positives
+## 1. Smarter multi-tier classification to reduce false positives
 
 **Problem:** Haiku misclassifies headlines like "Poland scrambles jets in response to Russian strike on Ukraine" as a direct attack on Poland (urgency 9). Using Opus for all classifications would fix accuracy but is prohibitively expensive at 688+ articles per cycle.
 
@@ -45,13 +41,13 @@ Every classification step must be saved to the database — not just the final r
 
 ---
 
-## 3. Audit & resolve existing TODO items
+## 2. Audit & resolve existing TODO items
 
 Go through every item in this file (problems, code debt, ops debt) and verify whether each is still relevant. Fix or close them one by one. Some may have been resolved by recent work; others may have rotted further. The goal is to get to a clean, accurate backlog before adding major new features.
 
 ---
 
-## 4. Source health analysis & expansion
+## 3. Source health analysis & expansion
 
 **Problem:** Some article sources are nearly dead (consistently 403, low yield), while others are very active and fruitful. We haven't re-evaluated sources since initial setup.
 
@@ -64,7 +60,7 @@ Go through every item in this file (problems, code debt, ops debt) and verify wh
 
 ---
 
-## 5. Mobile app — replace SMS notifications
+## 4. Mobile app — replace SMS notifications
 
 **Problem:** SMS notifications are inadequate for several reasons:
 1. **No differentiation** — an alert SMS looks identical to a work text from France; no custom sound/chime to signal urgency.
@@ -85,11 +81,11 @@ Go through every item in this file (problems, code debt, ops debt) and verify wh
 
 ---
 
-## 6. Productize Sentinel — strategy & roadmap
+## 5. Productize Sentinel — strategy & roadmap
 
 The long-term goal is to turn Sentinel from a personal tool into a multi-user product. This requires both technical and business work, and the two influence each other — feature decisions depend on pricing strategy, and pricing depends on what's technically feasible.
 
-### 6.1 Technical requirements for multi-user
+### 5.1 Technical requirements for multi-user
 
 1. **Account system.** Currently the entire app is single-user, hardcoded for one person's preferences. Need: user registration/auth, per-user notification preferences, per-user alert history.
 
@@ -102,7 +98,7 @@ The long-term goal is to turn Sentinel from a personal tool into a multi-user pr
 
 3. **Cost-aware feature design.** Calls and SMS cost real money per user. Push notifications are free. Configurable call thresholds must be paired with cost analysis — if a user sets calls on urgency 5+, that could mean dozens of calls/month. This needs to be reflected in pricing tiers or hard limits.
 
-### 6.2 Business decisions (open)
+### 5.2 Business decisions (open)
 
 1. **Go-to-market timing.** Two strategies, undecided:
    - **Polish first:** Make the product excellent for personal use → add accounts → add billing → launch. Risk: takes a long time before any market feedback.
@@ -120,7 +116,7 @@ The long-term goal is to turn Sentinel from a personal tool into a multi-user pr
 
 4. **Overall roadmap.** We need a real plan with goals and timelines instead of working on whatever feels interesting. What order do we build things in? What are the milestones? What's the MVP for launch? All of this needs to be decided and written down.
 
-### 6.3 What's configurable vs fixed
+### 5.3 What's configurable vs fixed
 
 Before building multi-user, decide what users can change and what we control:
 - Call threshold (urgency level that triggers a call)
@@ -133,27 +129,27 @@ Each configurable parameter adds complexity. Default to fixed unless there's a s
 
 ---
 
-## 7. Pipeline analysis & classifier refinement
+## 6. Pipeline analysis & classifier refinement
 
 **Goal:** Develop a continuous, systematic process for evaluating and improving the entire pipeline — from source ingestion to classification to alerting.
 
-### 7.1 End-to-end pipeline review
+### 6.1 End-to-end pipeline review
 
 Do a full audit of the data flow:
 - **Source → keyword filter:** What articles does keyword filtering catch? What does it miss? Is simple keyword matching sufficient, or should we add semantic analysis or AI-based pre-filtering? What would AI-based filtering cost at our article volume?
 - **Keyword filter → classifier:** Are there articles that pass keyword filtering but never reach classification? Are there articles filtered out too early that should have been classified? We need visibility into the pre-classification funnel.
 - **Classifier → dashboard:** Everything classified is visible on the dashboard. But the annotation system exists precisely to evaluate classification quality — we should actively use it.
 
-### 7.2 Annotation-driven classifier improvement
+### 6.2 Annotation-driven classifier improvement
 
 The annotation system (Phase 4 of the dashboard) was built exactly for this: manual labelling of classifier output to create ground truth. The workflow should be:
 - Do regular annotation sessions — review recent classifications, label as correct/incorrect/uncertain, set expected urgency scores.
 - Aggregate annotation data to identify systematic classifier errors (e.g., consistently over-rating Ukraine-response articles).
-- Use annotation data to refine the classification prompt and potentially fine-tune the tiered pipeline (TODO item #2).
+- Use annotation data to refine the classification prompt and potentially fine-tune the tiered pipeline (TODO item #1).
 
 **I need to learn how the annotation system works in practice** — open the dashboard, go through the annotation flow, and understand what it offers before designing the improvement loop.
 
-### 7.3 Continuous quality metrics
+### 6.3 Continuous quality metrics
 
 Build or plan metrics that track classification quality over time:
 - Accuracy rate (annotations vs classifier output)
@@ -163,7 +159,7 @@ Build or plan metrics that track classification quality over time:
 
 ---
 
-## 8. Codebase refactoring plan
+## 7. Codebase refactoring plan
 
 **Problem:** The codebase has grown organically. Before introducing major changes (accounts, mobile app, multi-user), we should address structural debt — but the timing is a strategic decision.
 
@@ -176,60 +172,28 @@ Build or plan metrics that track classification quality over time:
 2. **Build-then-overhaul:** Keep implementing features, then do a big refactor before launch. Risk: tech debt compounds, bugs multiply.
 3. **Phase-gate refactors:** Before each major phase (mobile app, accounts, billing), do a targeted refactor of the areas that phase will touch. Probably the best balance.
 
-**Decision needed:** Pick a strategy. This ties into the overall product roadmap (TODO #6.4) — refactoring milestones should be part of the timeline.
+**Decision needed:** Pick a strategy. This ties into the overall product roadmap (TODO #5) — refactoring milestones should be part of the timeline.
 
 ---
 
 ## Commentary: Priority & sequencing (Claude's assessment, 2026-05-24)
 
-**The biggest risk is scope explosion.** Items 3–8 above represent 3-4 full-time engineering quarters for a solo side project. Tackling them all in parallel will result in bouncing between fronts and finishing none. Sequencing matters more than any individual item.
+**The biggest risk is scope explosion.** Items 1–7 above represent 3-4 full-time engineering quarters for a solo side project. Tackling them all in parallel will result in bouncing between fronts and finishing none. Sequencing matters more than any individual item.
 
-**Recommended priority order: 3 → 7 → 4 → 5 → 6 → 8**
+**Recommended priority order: 2 → 6 → 3 → 4 → 5 → 7**
 
-1. **Start with #3 (audit existing debt) and #7 (pipeline/classifier).** These are highest-ROI — they directly improve the thing that matters: not missing a real event and not crying wolf. The annotation system is already built and sitting unused. Using it to systematically measure and improve classification quality is the single best investment of time right now.
+1. **Start with #2 (audit existing debt) and #6 (pipeline/classifier).** These are highest-ROI — they directly improve the thing that matters: not missing a real event and not crying wolf. The annotation system is already built and sitting unused. Using it to systematically measure and improve classification quality is the single best investment of time right now.
 
-2. **#4 (sources) is worth a focused analysis sprint.** Twitter/X is the obvious gap — it's where military OSINT breaks first. The official API runs ~$100/mo for basic access, but services like SocialData or Apify offer cheaper scraping. Truth Social is noise for this use case — skip it.
+2. **#3 (sources) is worth a focused analysis sprint.** Twitter/X is the obvious gap — it's where military OSINT breaks first. The official API runs ~$100/mo for basic access, but services like SocialData or Apify offer cheaper scraping. Truth Social is noise for this use case — skip it.
 
-3. **#5 (mobile app) — try PWA first, not a native app.** A progressive web app with web push notifications gets you custom sounds, rich links, and zero delivery cost in 2-3 days of work instead of weeks. The one catch is iOS — Safari push works now but is flakier than native. If PWA proves insufficient, then consider React Native. Building a full native app at this stage is overkill.
+3. **#4 (mobile app) — try PWA first, not a native app.** A progressive web app with web push notifications gets you custom sounds, rich links, and zero delivery cost in 2-3 days of work instead of weeks. The one catch is iOS — Safari push works now but is flakier than native. If PWA proves insufficient, then consider React Native. Building a full native app at this stage is overkill.
 
-4. **#6 (productization) is premature.** The classifier hasn't been systematically validated even for personal use — the annotation system exists but hasn't been used to measure accuracy. Selling a military alert product with unvalidated classification quality is a liability, not a business. The sequencing should be: make the pipeline excellent for yourself → prove it with annotation data → then decide if it's worth productizing. If you do eventually productize, invite-only beta beats big-bang launch for a niche product like this — you won't learn what matters from theory, you need 5 real users telling you what's wrong.
+4. **#5 (productization) is premature.** The classifier hasn't been systematically validated even for personal use — the annotation system exists but hasn't been used to measure accuracy. Selling a military alert product with unvalidated classification quality is a liability, not a business. The sequencing should be: make the pipeline excellent for yourself → prove it with annotation data → then decide if it's worth productizing. If you do eventually productize, invite-only beta beats big-bang launch for a niche product like this — you won't learn what matters from theory, you need 5 real users telling you what's wrong.
 
-5. **#8 (refactoring) — phase-gated is the obvious answer.** Big rewrites kill side projects. Refactor the parts you're about to touch before each major phase, leave the rest alone. Don't do a speculative "clean everything up" pass.
-
----
-
-## Tracked Code Debt
-
-1. ~~**WhatsApp action plumbed but routed to SMS.**~~ **DONE (2026-05-25).** Removed `_execute_whatsapp`, `send_whatsapp`, `_format_article_links_message`, and the WhatsApp override. Corroborator now returns `"sms"` for urgency 5-6 instead of `"whatsapp"`. Frontend keeps WhatsApp display support for 17 historical DB records. Decision: WhatsApp was disabled because its Business API doesn't support the inbound SMS confirmation code flow; code is recoverable from git history if needed.
-
-2. ~~**Dead `_check_confirmation_sms_delivered`.**~~ **DONE (2026-05-25).** Wired into the call loop: after the first call attempt, checks outbound SMS delivery status and resends if carrier delivery failed. Commit `aa0cba8`.
-
-3. ~~**Unread `testing.test_mode` field.**~~ **DONE (2026-05-25).** Removed from config dataclass, both YAML files, and test fixtures. Commit `cf84c96`.
-
-4. ~~**Synchronous Anthropic SDK call inside async pipeline.**~~ **DONE (2026-05-26).** Full async refactor (`SPEC_ASYNC_REFACTOR.md`, 3 phases). Phase 1: added an `asyncio.Lock` serializing `run_cycle` across both scheduler lanes (commit `5a54988`). Phase 2: switched the classifier to `anthropic.AsyncAnthropic` with awaited calls and `asyncio.sleep` retries, bridging the CLI/eval entry points via `asyncio.run` (commits `d6b7751`, `dd87f0f`). Phase 3: made the alert state machine + dispatcher async, replaced `time.sleep` with `await asyncio.sleep`, and offloaded every Twilio HTTP call via `asyncio.to_thread` while keeping all DB access on the event-loop thread; poll/pause durations de-hardcoded to `alerts.acknowledgment` config (commit `cfd7f9d`, docs `fa74659`). The event loop no longer freezes anywhere in the pipeline.
-
-5. ~~**Empty `tests/fixtures/`.**~~ **DONE (2026-05-25).** Removed dead `test_headlines_file` config field — `--test-file` CLI takes path directly, never consults config. Commit `cf84c96`.
-
-6. ~~**Dead config: GDELT `cameo_codes` and `goldstein_threshold`.**~~ **DONE (2026-05-25).** Removed from config dataclass, both YAML files, test fixtures, and docs. Commit `cf84c96`.
-
-7. ~~**Dead code in `state_machine.py` `if False:` block.**~~ **DONE (2026-05-25).** Deleted unreachable call-duration acknowledgment path. Commit `cf84c96`.
+5. **#7 (refactoring) — phase-gated is the obvious answer.** Big rewrites kill side projects. Refactor the parts you're about to touch before each major phase, leave the rest alone. Don't do a speculative "clean everything up" pass.
 
 ---
 
-## Tracked Ops Debt
+## Completed Debt (reference)
 
-1. ~~**Delete `/home/deploy/sentinel.bak-20260324/.env` on production server.**~~ **DONE (2026-05-27).** Removed stale `.env` containing live Twilio/Anthropic/Telegram credentials.
-
-2. ~~**Delete `/home/deploy/sentinel/project-sentinel/` on production server.**~~ **DONE (2026-05-27).** Removed nested untracked clone (contained live credentials, caused `git status` noise).
-
-3. ~~**Re-attach server repo to `master`.**~~ **DONE (2026-05-27).** Server was in detached HEAD at `b19f1ff`; local `master` was 64 commits behind `origin/master` (deploy process never advanced it). Checked out `master` and pulled to align all three (local, server, GitHub).
-
-4. ~~**Deploy current `config/config.yaml` to `/etc/sentinel/config.yaml`.**~~ **DONE (2026-05-27).** Live config was 53 days stale (last modified 2026-04-04), missing 45 keyword lines and carrying 13 dead config fields. Deployed via new config-sync step added to `/deploy` skill (Step 6b). Keyword count: 168 → 213. Deploy tag: `deploy-20260527-112819`.
-
-5. ~~**Add deploy-snapshot pruning.**~~ **DONE (2026-05-27).** Added Step 6e to `/deploy` skill: keeps the 10 most recent snapshots, deletes the rest after each deploy. One-time prune: 21 → 10 snapshots, 2.2 GB → 1.4 GB. Will self-maintain going forward.
-
-6. ~~**Decide TVN24 + LSM Latvia source health.**~~ **DONE (2026-05-27).** TVN24: disabled — Cloudflare blocks Hetzner datacenter IPs regardless of User-Agent; was spamming their server with 403s for months. Polish news covered by 5 other sources. LSM Latvia: fixed — corrected RSS URL to `eng.lsm.lv/rss/?lang=en&catid=318`, now fetching 50 articles reliably. Also changed RSS fetcher User-Agent to browser-compatible `Mozilla/5.0 (compatible; ProjectSentinel/1.0)`. Commit `b464a91`. See `docs/sources.md` for full notes on re-enabling TVN24 if proxy support is added.
-
-7. ~~**Update repo template `deploy/configs/sentinel.service`.**~~ **DONE (2026-05-27).** Changed `venv/` → `.venv/` to match live service file. Commit `b87de83`.
-
-8. ~~**Remove legacy `/home/deploy/sentinel/venv/` on server.**~~ **DONE (2026-05-27).** Freed 142 MB.
+All 7 code debt items and 8 ops debt items were resolved 2026-05-25 through 2026-05-27. See git history for details.
