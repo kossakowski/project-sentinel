@@ -45,16 +45,10 @@ Wait for the line containing `Local:` or `localhost:5173` in the output before p
 
 If it fails to start within 30 seconds → **STOP** and report the error.
 
-### 4. Open Chrome
-
-```bash
-google-chrome http://localhost:5173 2>/dev/null &
-```
-
-### 5. Report
+### 4. Report
 
 Tell the user:
-- Dashboard is running at **http://localhost:5173**
+- Dashboard is running — open **http://localhost:5173** in your browser
 - Flask backend at **http://localhost:5001**
 - To stop: `/dashboard --close`
 
