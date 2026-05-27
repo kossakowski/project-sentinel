@@ -40,7 +40,7 @@ All commands use `./run.sh` (auto-activates `.venv`, forwards args to `sentinel.
 .venv/bin/pytest tests/test_config.py tests/test_database.py tests/test_models.py tests/test_cli.py -v           # Phase 1
 .venv/bin/pytest tests/test_rss.py tests/test_gdelt.py tests/test_google_news.py tests/test_telegram.py -v      # Phase 2
 .venv/bin/pytest tests/test_normalizer.py tests/test_deduplicator.py tests/test_keyword_filter.py -v            # Phase 3
-.venv/bin/pytest tests/test_classifier.py tests/test_corroborator.py -v                                         # Phase 4
+.venv/bin/pytest tests/test_classifier.py tests/test_corroborator.py tests/test_cli_bridges.py -v               # Phase 4
 .venv/bin/pytest tests/test_twilio_client.py tests/test_state_machine.py tests/test_dispatcher.py -v           # Phase 5
 .venv/bin/pytest tests/test_scheduler.py tests/test_integration.py tests/test_cli.py -v                         # Phase 6
 
@@ -53,9 +53,19 @@ All commands use `./run.sh` (auto-activates `.venv`, forwards args to `sentinel.
 .venv/bin/pytest tests/test_sentinel_audit_skill.py -v
 ```
 
-pytest config in `pyproject.toml` (`[tool.pytest.ini_options]`): `testpaths = ["tests"]`, `asyncio_mode = "auto"`, marker `integration` for tests requiring network/API access.
+pytest config in `pyproject.toml` (`[tool.pytest.ini_options]`): `testpaths = ["tests"]` and marker `integration` for tests requiring network/API access. `asyncio_mode` is **not** set, so pytest-asyncio runs in its default **strict** mode: every async test (and async fixture) MUST carry an explicit `@pytest.mark.asyncio` marker — an unmarked `async def test_...` is silently skipped. All async test files (`test_classifier.py`, `test_cli_bridges.py`, `test_scheduler.py`, `test_integration.py`, `test_state_machine.py`, `test_dispatcher.py`, the fetcher tests) follow this convention.
 
 Test dependencies: `pytest>=8.0`, `pytest-asyncio>=0.23`, `pytest-mock>=3.12`, `pytest-cov>=5.0`.
+
+### Async classifier, alert-path & CLI-bridge tests
+
+The classifier's Anthropic API path is async (`anthropic.AsyncAnthropic`; `classify` / `classify_batch` / `aclose` are coroutines), and the alert path (`AlertDispatcher.dispatch`, the `AlertStateMachine` alert-execution methods, `check_pending_calls`) is async as well. Tests reflect this:
+
+- `tests/test_classifier.py` — patches `sentinel.classification.classifier.anthropic.AsyncAnthropic` and stubs `messages.create` with an `AsyncMock`. The retry test patches `sentinel.classification.classifier.asyncio.sleep` (asserting it is awaited once with `5`) rather than sleeping for real. Dedicated cases assert `classify_batch` is strictly sequential (concurrency never exceeds 1, input order preserved), skips per-article failures, and that `aclose()` awaits the underlying client close exactly once.
+- `tests/test_state_machine.py` — the ~20 alert-state-machine tests are async (`@pytest.mark.asyncio`); `asyncio.sleep` is patched as an `AsyncMock` so poll/pause loops don't sleep for real. Dedicated cases assert the API-call retry pause is awaited (`test_api_call_retry_pause_is_awaited`), that the named Twilio calls are routed through `asyncio.to_thread` (`test_twilio_calls_routed_through_to_thread`), that DB calls are **not** offloaded to a thread (`test_db_calls_not_offloaded_to_thread`, a negative guard checking the offloaded callable's `__self__` is not a `Database`), and that the poll/pause durations are read from config (`test_poll_durations_from_config`).
+- `tests/test_dispatcher.py` — dispatch tests are async; `test_dispatch_is_async_and_sequential` asserts events are processed one at a time in urgency-descending order (no concurrent `process_event`).
+- `tests/test_cli_bridges.py` — smoke tests that the sync CLI/eval entry points bridge to the async paths correctly: `_run_test_file` drives all headlines under a **single** `asyncio.run` (not one event loop per headline), `run_eval` is a coroutine, `run_cycle` awaits the classifier (verified under `-W error::RuntimeWarning` to catch un-awaited coroutines), and `test_run_test_alert_bridges_async` (parametrized `phone_call`/`sms`) checks `_run_test_alert` drives the async `_execute_phone_call` / `_execute_sms` under `asyncio.run`. The module is loaded via `importlib` to work around package-name shadowing of `sentinel.py`.
+- `tests/test_integration.py` and `tests/test_scheduler.py` — pipeline mocks set `classify_batch` and `aclose` as `AsyncMock`s so the awaited call sites (in `run_cycle` and `shutdown`) succeed without raising or logging a spurious error. `test_scheduler.py` stubs `dispatch` / `check_pending_calls` as `AsyncMock`s, adds `test_run_cycle_awaits_dispatch_and_check_pending`, and also asserts `shutdown` awaits `classifier.aclose()` once.
 
 ---
 

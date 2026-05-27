@@ -1,7 +1,6 @@
 import asyncio
 import calendar
-import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import feedparser
 import httpx
@@ -36,16 +35,13 @@ class RSSFetcher(BaseFetcher):
                           Used by fast-lane scheduler to poll only high-priority sources.
         """
         sources = [
-            s for s in self.config.sources.rss
-            if s.enabled and (max_priority is None or s.priority <= max_priority)
+            s for s in self.config.sources.rss if s.enabled and (max_priority is None or s.priority <= max_priority)
         ]
 
         if not sources:
             return []
 
-        results = await asyncio.gather(
-            *(self._fetch_source_safe(source) for source in sources)
-        )
+        results = await asyncio.gather(*(self._fetch_source_safe(source) for source in sources))
 
         all_articles: list[Article] = []
         for articles in results:
@@ -57,9 +53,7 @@ class RSSFetcher(BaseFetcher):
         try:
             return await self._fetch_source(source)
         except Exception as exc:
-            self.logger.error(
-                "Failed to fetch RSS source %s: %s", source.name, exc
-            )
+            self.logger.error("Failed to fetch RSS source %s: %s", source.name, exc)
             return []
 
     async def _fetch_source(self, source) -> list[Article]:
@@ -67,7 +61,7 @@ class RSSFetcher(BaseFetcher):
         url = str(source.url)
 
         headers = {
-            "User-Agent": "ProjectSentinel/1.0 (military-alert-monitor)",
+            "User-Agent": "Mozilla/5.0 (compatible; ProjectSentinel/1.0)",
             "Accept": "application/rss+xml, application/xml, text/xml",
         }
 
@@ -86,15 +80,11 @@ class RSSFetcher(BaseFetcher):
             return []
 
         if response.status_code == 429:
-            self.logger.warning(
-                "RSS source %s: rate limited (429)", source.name
-            )
+            self.logger.warning("RSS source %s: rate limited (429)", source.name)
             return []
 
         if response.status_code >= 500:
-            self.logger.warning(
-                "RSS source %s: server error (%d)", source.name, response.status_code
-            )
+            self.logger.warning("RSS source %s: server error (%d)", source.name, response.status_code)
             return []
 
         response.raise_for_status()
@@ -102,11 +92,7 @@ class RSSFetcher(BaseFetcher):
         # Detect WAF/bot-protection interception (e.g. Incapsula returning HTML
         # challenge page with HTTP 200 instead of actual RSS XML).
         content_type = response.headers.get("content-type", "")
-        if (
-            "text/html" in content_type
-            and "xml" not in content_type
-            and len(response.content) < 2000
-        ):
+        if "text/html" in content_type and "xml" not in content_type and len(response.content) < 2000:
             self.logger.warning(
                 "RSS source %s: likely blocked by WAF/bot-protection "
                 "(got text/html, %d bytes instead of XML). "
@@ -133,7 +119,7 @@ class RSSFetcher(BaseFetcher):
             return []
 
         articles: list[Article] = []
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         for entry in feed.entries:
             try:
@@ -146,9 +132,7 @@ class RSSFetcher(BaseFetcher):
                     exc,
                 )
 
-        self.logger.info(
-            "RSS source %s: fetched %d articles", source.name, len(articles)
-        )
+        self.logger.info("RSS source %s: fetched %d articles", source.name, len(articles))
         return articles
 
     def _entry_to_article(self, entry, source, now: datetime) -> Article:
@@ -166,9 +150,7 @@ class RSSFetcher(BaseFetcher):
         # Build raw_metadata from any extra fields
         raw_metadata = {}
         if hasattr(entry, "tags"):
-            raw_metadata["tags"] = [
-                tag.get("term", "") for tag in entry.tags
-            ]
+            raw_metadata["tags"] = [tag.get("term", "") for tag in entry.tags]
 
         return Article(
             source_name=source.name,
@@ -190,7 +172,7 @@ class RSSFetcher(BaseFetcher):
             if parsed:
                 try:
                     ts = calendar.timegm(parsed)
-                    return datetime.fromtimestamp(ts, tz=timezone.utc)
+                    return datetime.fromtimestamp(ts, tz=UTC)
                 except (ValueError, OverflowError, TypeError):
                     continue
         return None

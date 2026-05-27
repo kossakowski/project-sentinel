@@ -348,7 +348,7 @@ sources:
       priority: 2
 
     - name: LSM Latvia
-      url: https://eng.lsm.lv/rss/
+      url: https://eng.lsm.lv/rss/?lang=en&catid=318
       language: en
       enabled: true
       priority: 2
@@ -410,17 +410,6 @@ sources:
       - WB_2462_POLITICAL_VIOLENCE_AND_WAR
       - CRISISLEX_C03_WELLBEING_HEALTH
       - TAX_FNCACT_MILITARY
-    cameo_codes:
-      - "18"
-      - "19"
-      - "190"
-      - "191"
-      - "192"
-      - "193"
-      - "194"
-      - "195"
-      - "20"
-    goldstein_threshold: -7.0
 
   # --- Google News ---
   google_news:
@@ -537,7 +526,7 @@ alerts:
       corroboration_required: 1
     medium:
       min_score: 5
-      action: whatsapp
+      action: sms
       corroboration_required: 1
     low:
       min_score: 1
@@ -553,6 +542,13 @@ alerts:
     max_call_retries: 5
     retry_interval_minutes: 5
     cooldown_hours: 6
+    # Phone-call poll/pause durations (seconds). Defaults preserve the original
+    # hardcoded behavior. During a call the state machine polls Twilio for call
+    # status every call_poll_interval_seconds for up to call_poll_timeout_seconds,
+    # and pauses call_retry_pause_seconds between retry attempts in a round.
+    call_poll_timeout_seconds: 90
+    call_poll_interval_seconds: 5
+    call_retry_pause_seconds: 10
 
   # Push notifications via the Expo Push Service (companion mobile app).
   # Additive channel: fires alongside phone calls / SMS, never replaces them.
@@ -596,6 +592,4 @@ logging:
 # -----------------------------------------------------------------------------
 testing:
   dry_run: false
-  test_mode: false
-  test_headlines_file: tests/fixtures/test_headlines.yaml
   eval_set_file: tests/fixtures/eval_set.yaml

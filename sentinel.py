@@ -68,12 +68,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--test-alert",
         nargs="?",
         const="phone_call",
-        choices=["phone_call", "sms", "whatsapp", "push"],
+        choices=["phone_call", "sms", "push"],
         metavar="TYPE",
         help="Fire a real test alert (default: phone_call). "
-        "Choices: phone_call, sms, whatsapp (via Twilio), push (via Expo). "
-        "Bypasses fetching, classification, and corroboration — injects a "
-        "synthetic event directly into the alert system.",
+        "Choices: phone_call, sms (via Twilio), push (via Expo). Bypasses fetching, "
+        "classification, and corroboration — injects a synthetic event directly into "
+        "the alert system.",
     )
     parser.add_argument(
         "--eval",
@@ -308,7 +308,7 @@ def _run_test_headline(headline: str, config, logger) -> None:
     article = _make_synthetic_article(headline)
 
     try:
-        result = classifier.classify(article)
+        result = asyncio.run(classifier.classify(article))
         _print_classification_result(result, headline)
     except Exception as e:
         print(f"Classification failed: {e}", file=sys.stderr)
@@ -341,35 +341,40 @@ def _run_test_file(filepath: str, config, logger) -> None:
     print(f"\nClassifying {len(headlines)} headlines from {filepath}\n")
     print("-" * 80)
 
-    for entry in headlines:
-        if isinstance(entry, str):
-            headline_text = entry
-            expected = None
-        elif isinstance(entry, dict):
-            headline_text = entry.get("text", entry.get("headline", ""))
-            expected = entry.get("expected", None)
-        else:
-            continue
+    async def _classify_all() -> None:
+        # All classify calls run under a single event loop (one asyncio.run),
+        # not one event loop per headline.
+        for entry in headlines:
+            if isinstance(entry, str):
+                headline_text = entry
+                expected = None
+            elif isinstance(entry, dict):
+                headline_text = entry.get("text", entry.get("headline", ""))
+                expected = entry.get("expected", None)
+            else:
+                continue
 
-        article = _make_synthetic_article(headline_text)
-        try:
-            result = classifier.classify(article)
-            _print_classification_result(result, headline_text)
+            article = _make_synthetic_article(headline_text)
+            try:
+                result = await classifier.classify(article)
+                _print_classification_result(result, headline_text)
 
-            # Compare against expected values if provided
-            if expected:
-                mismatches = []
-                for key, exp_val in expected.items():
-                    actual_val = getattr(result, key, None)
-                    if actual_val != exp_val:
-                        mismatches.append(f"  {key}: expected={exp_val}, got={actual_val}")
-                if mismatches:
-                    print("  MISMATCHES:")
-                    for m in mismatches:
-                        print(m)
-                    print()
-        except Exception as e:
-            print(f"  FAILED: {e}\n")
+                # Compare against expected values if provided
+                if expected:
+                    mismatches = []
+                    for key, exp_val in expected.items():
+                        actual_val = getattr(result, key, None)
+                        if actual_val != exp_val:
+                            mismatches.append(f"  {key}: expected={exp_val}, got={actual_val}")
+                    if mismatches:
+                        print("  MISMATCHES:")
+                        for m in mismatches:
+                            print(m)
+                        print()
+            except Exception as e:
+                print(f"  FAILED: {e}\n")
+
+    asyncio.run(_classify_all())
 
     print("-" * 80)
 
@@ -383,7 +388,7 @@ def _run_eval(eval_set_path: str, config, logger) -> None:
         sys.exit(1)
 
     logger.info("Eval mode: %s", eval_set_path)
-    report = run_eval(eval_set_path, config)
+    report = asyncio.run(run_eval(eval_set_path, config))
 
     print(format_report(report))
 
@@ -430,7 +435,6 @@ def _run_test_alert(alert_type: str, config, logger) -> None:
     alert_status_map = {
         "phone_call": "phone_call",
         "sms": "sms",
-        "whatsapp": "whatsapp",
         "push": "push",
     }
 
@@ -455,13 +459,12 @@ def _run_test_alert(alert_type: str, config, logger) -> None:
     print()
 
     # Bypass state machine routing — call the requested method directly
-    # (process_event would ignore alert_type and route based on urgency/sources)
+    # (process_event would ignore alert_type and route based on urgency/sources).
+    # The alert methods are coroutines, so drive them under a single asyncio.run.
     if alert_type == "phone_call":
-        state_machine._execute_phone_call(event)
+        asyncio.run(state_machine._execute_phone_call(event))
     elif alert_type == "sms":
-        state_machine._execute_sms(event)
-    elif alert_type == "whatsapp":
-        state_machine._execute_whatsapp(event)
+        asyncio.run(state_machine._execute_sms(event))
     elif alert_type == "push":
         if not config.alerts.push.enabled or not config.alerts.push.tokens:
             print(
@@ -469,7 +472,7 @@ def _run_test_alert(alert_type: str, config, logger) -> None:
                 "token (e.g. EXPO_PUSH_TOKEN) before running --test-alert push."
             )
             return
-        state_machine._maybe_send_push(event, [])
+        asyncio.run(state_machine._maybe_send_push(event, []))
 
     print(f"Test alert dispatched. Check your phone ({config.alerts.phone_number}).")
 

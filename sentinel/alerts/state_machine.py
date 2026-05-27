@@ -1,6 +1,6 @@
+import asyncio
 import logging
 import random
-import time
 from datetime import UTC, datetime, timedelta
 
 from sentinel.alerts.push_client import ExpoPushClient
@@ -121,31 +121,6 @@ def _format_push(event: Event, is_update: bool = False) -> tuple[str, str]:
     return title, body
 
 
-def _format_article_links_message(event: Event, db: Database) -> str:
-    """Format a WhatsApp message with clickable links to source articles."""
-    event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
-    lines = [
-        f"🔗 PROJECT SENTINEL — Źródła: {event_type_pl}",
-        "",
-        f"{event.summary_pl}",
-        "",
-        f"Artykuły źródłowe ({event.source_count}):",
-    ]
-
-    for article_id in event.article_ids:
-        article = db.get_article_by_id(article_id)
-        if article is not None:
-            lines.append(f"• {article.source_name}: {article.title}")
-            if article.source_url:
-                lines.append(f"  {article.source_url}")
-            lines.append("")
-        else:
-            lines.append(f"• (źródło {article_id[:8]})")
-            lines.append("")
-
-    return "\n".join(lines).strip()
-
-
 class AlertStateMachine:
     """Manages the lifecycle of event alerts."""
 
@@ -162,7 +137,7 @@ class AlertStateMachine:
         self.push = push_client or ExpoPushClient(config)
         self.logger = logging.getLogger("sentinel.alerts.state_machine")
 
-    def process_event(self, event: Event) -> None:
+    async def process_event(self, event: Event) -> None:
         """Determine and execute the appropriate alert action for an event."""
         if self._is_in_cooldown(event):
             self.logger.debug("Event %s in cooldown, skipping", event.id)
@@ -172,8 +147,8 @@ class AlertStateMachine:
 
         if self._is_acknowledged(existing_alerts):
             if event.last_updated_at > self._last_alert_time(existing_alerts):
-                self._send_update_sms(event)
-                self._maybe_send_push(event, existing_alerts, is_update=True)
+                await self._send_update_sms(event)
+                await self._maybe_send_push(event, existing_alerts, is_update=True)
             return
 
         # If there are pending call records (initiated but not yet resolved),
@@ -191,7 +166,7 @@ class AlertStateMachine:
             action,
         )
 
-        if action in ("sms", "whatsapp") and self._user_already_notified(existing_alerts):
+        if action == "sms" and self._user_already_notified(existing_alerts):
             self.logger.debug(
                 "Event %s already has prior alert; suppressing re-alert",
                 event.id,
@@ -201,27 +176,24 @@ class AlertStateMachine:
         # Additive push fires before the (potentially blocking) Twilio dispatch
         # so it reaches the phone immediately. log_only events get no push.
         if action != "log_only":
-            self._maybe_send_push(event, existing_alerts)
+            await self._maybe_send_push(event, existing_alerts)
 
         if action == "phone_call":
-            self._execute_phone_call(event, existing_alerts)
+            await self._execute_phone_call(event, existing_alerts)
         elif action == "sms":
-            self._execute_sms(event)
-        elif action == "whatsapp":
-            # WhatsApp disabled — route to SMS instead
-            self._execute_sms(event)
+            await self._execute_sms(event)
         # action == "log_only" -> do nothing beyond the log above
 
-    def check_pending_calls(self) -> None:
+    async def check_pending_calls(self) -> None:
         """Check status of calls that were placed but not yet confirmed.
 
         Called on each scheduler cycle.
         """
         pending_calls = self.db.get_pending_call_records()
         for record in pending_calls:
-            status = self.twilio.get_call_status(record.twilio_sid)
+            status = await asyncio.to_thread(self.twilio.get_call_status, record.twilio_sid)
             if status is not None:
-                self._handle_call_result(record, status)
+                await self._handle_call_result(record, status)
 
     def _determine_action(self, event: Event) -> str:
         """Determine the alert action based on urgency score and source count.
@@ -230,7 +202,7 @@ class AlertStateMachine:
           9-10 + 2+ sources -> phone_call
           9-10 + 1 source   -> sms
           7-8               -> sms
-          5-6               -> whatsapp
+          5-6               -> sms
           1-4               -> log_only
 
         Urgency levels are sorted by min_score descending to avoid
@@ -266,7 +238,7 @@ class AlertStateMachine:
         return datetime.now(UTC) < cooldown_end
 
     # Alert types that, once recorded, mean we have already notified the user
-    # for this event and a further SMS/WhatsApp would be a redundant ping.
+    # for this event and a further SMS would be a redundant ping.
     # A phone call counts because it ships its own confirmation SMS.
     # SMS→phone_call ESCALATION is still allowed: phone_call action skips
     # this suppression (its own retry-interval logic in _execute_phone_call
@@ -287,7 +259,7 @@ class AlertStateMachine:
             return datetime.min.replace(tzinfo=UTC)
         return max(a.sent_at for a in alerts)
 
-    def _execute_phone_call(self, event: Event, existing_alerts: list[AlertRecord] | None = None) -> None:
+    async def _execute_phone_call(self, event: Event, existing_alerts: list[AlertRecord] | None = None) -> None:
         """Place a phone call alert with aggressive immediate retries.
 
         Calls up to max_call_retries times in a tight loop, polling Twilio
@@ -318,13 +290,15 @@ class AlertStateMachine:
         call_placed_at = datetime.now(UTC)
 
         # Send SMS confirmation code — this is the ONLY confirmation mechanism
-        self._send_confirmation_sms(event)
+        await self._send_confirmation_sms(event)
+
+        retry_pause = self.config.alerts.acknowledgment.call_retry_pause_seconds
 
         # Call loop — calls are alarms only, not confirmation
         for attempt in range(1, max_per_round + 1):
-            # Check WhatsApp reply before each call
-            if self._check_sms_confirmation(call_placed_at):
-                self._acknowledge_event(event, total_attempts)
+            # Check SMS reply before each call
+            if await self._check_sms_confirmation(call_placed_at):
+                await self._acknowledge_event(event, total_attempts)
                 return
 
             total_attempts += 1
@@ -337,7 +311,7 @@ class AlertStateMachine:
                 total_attempts,
             )
 
-            record = self.twilio.make_alert_call(phone_number, message, event.id)
+            record = await asyncio.to_thread(self.twilio.make_alert_call, phone_number, message, event.id)
             if record is None:
                 self.logger.error("Event %s: Twilio call failed to initiate", event.id[:8])
                 continue
@@ -347,20 +321,30 @@ class AlertStateMachine:
             self.db.update_event(event.id, alert_status="call_placed")
 
             # Wait for call to finish, polling SMS in the meantime
-            self._wait_for_call_and_check_sms(record, call_placed_at)
+            await self._wait_for_call_and_check_sms(record, call_placed_at)
 
-            # Check WhatsApp after call ends
-            if self._check_sms_confirmation(call_placed_at):
-                self._acknowledge_event(event, total_attempts)
+            # Check SMS reply after call ends
+            if await self._check_sms_confirmation(call_placed_at):
+                await self._acknowledge_event(event, total_attempts)
                 return
 
-            # Brief pause between retries (10 seconds)
+            # After first call, verify confirmation SMS was delivered; resend if failed
+            if attempt == 1:
+                delivery = await self._check_confirmation_sms_delivered()
+                if delivery is False:
+                    self.logger.warning(
+                        "Event %s: confirmation SMS failed to deliver, resending",
+                        event.id[:8],
+                    )
+                    await self._send_confirmation_sms(event)
+
+            # Brief pause between retries
             if attempt < max_per_round:
-                time.sleep(10)
+                await asyncio.sleep(retry_pause)
 
         # Round exhausted — check SMS one more time
-        if self._check_sms_confirmation(call_placed_at):
-            self._acknowledge_event(event, total_attempts)
+        if await self._check_sms_confirmation(call_placed_at):
+            await self._acknowledge_event(event, total_attempts)
             return
 
         # Still not confirmed — mark for retry on next cycle
@@ -372,7 +356,7 @@ class AlertStateMachine:
         )
         self.db.update_event(event.id, alert_status="retry_pending")
 
-    def _acknowledge_event(self, event: Event, total_attempts: int) -> None:
+    async def _acknowledge_event(self, event: Event, total_attempts: int) -> None:
         """Mark event as acknowledged and send follow-ups."""
         self.db.update_event(
             event.id,
@@ -384,9 +368,9 @@ class AlertStateMachine:
             event.id[:8],
             total_attempts,
         )
-        self._send_followup_sms(event.id)
+        await self._send_followup_sms(event.id)
 
-    def _send_confirmation_sms(self, event: Event) -> None:
+    async def _send_confirmation_sms(self, event: Event) -> None:
         """Send an SMS with a random 6-digit confirmation code."""
         phone_number = self.config.alerts.phone_number
         event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
@@ -400,7 +384,7 @@ class AlertStateMachine:
             f"Odpowiedz kodem aby potwierdzic odbior alertu: {self._confirmation_code}\n\n"
             f"Telefon bedzie dzwonil dopoki nie potwierdzisz."
         )
-        record = self.twilio.send_sms(phone_number, message, event.id)
+        record = await asyncio.to_thread(self.twilio.send_sms, phone_number, message, event.id)
         if record is not None:
             self._confirmation_sms_sid = record.twilio_sid
             self.db.insert_alert_record(record)
@@ -411,7 +395,7 @@ class AlertStateMachine:
                 record.twilio_sid,
             )
 
-    def _check_sms_confirmation(self, since: datetime) -> bool:
+    async def _check_sms_confirmation(self, since: datetime) -> bool:
         """Check if the user replied with the correct 6-digit code via SMS."""
         phone_number = self.config.alerts.phone_number
         code = getattr(self, "_confirmation_code", None)
@@ -419,12 +403,16 @@ class AlertStateMachine:
             return False
 
         try:
-            # Check inbound SMS from the user's phone to our Twilio number
-            messages = self.twilio.client.messages.list(
-                to=self.twilio.twilio_phone,
-                from_=phone_number,
-                date_sent_after=since,
-                limit=10,
+            # Check inbound SMS from the user's phone to our Twilio number.
+            # The synchronous Twilio SDK call is offloaded to a thread so it does
+            # not block the event loop; the kwargs are passed via a lambda.
+            messages = await asyncio.to_thread(
+                lambda: self.twilio.client.messages.list(
+                    to=self.twilio.twilio_phone,
+                    from_=phone_number,
+                    date_sent_after=since,
+                    limit=10,
+                )
             )
             for msg in messages:
                 body = msg.body.strip() if msg.body else ""
@@ -439,7 +427,7 @@ class AlertStateMachine:
             self.logger.warning("Failed to check SMS confirmations: %s", exc)
         return False
 
-    def _check_confirmation_sms_delivered(self) -> bool | None:
+    async def _check_confirmation_sms_delivered(self) -> bool | None:
         """Check if the confirmation SMS was delivered.
 
         Returns True if delivered, False if failed/undelivered, None if still pending.
@@ -448,7 +436,7 @@ class AlertStateMachine:
         if not sid:
             return None
         try:
-            msg = self.twilio.client.messages(sid).fetch()
+            msg = await asyncio.to_thread(lambda: self.twilio.client.messages(sid).fetch())
             if msg.status == "delivered":
                 return True
             if msg.status in ("failed", "undelivered"):
@@ -464,22 +452,22 @@ class AlertStateMachine:
             self.logger.warning("Failed to check SMS delivery status: %s", exc)
             return None
 
-    def _wait_for_call_and_check_sms(self, record: AlertRecord, sms_since: datetime) -> None:
+    async def _wait_for_call_and_check_sms(self, record: AlertRecord, sms_since: datetime) -> None:
         """Wait for a call to finish, checking SMS confirmation in the meantime."""
-        max_wait = 90
-        poll_interval = 5
+        max_wait = self.config.alerts.acknowledgment.call_poll_timeout_seconds
+        poll_interval = self.config.alerts.acknowledgment.call_poll_interval_seconds
         waited = 0
 
         while waited < max_wait:
-            time.sleep(poll_interval)
+            await asyncio.sleep(poll_interval)
             waited += poll_interval
 
             # Check SMS while call is in progress
-            if self._check_sms_confirmation(sms_since):
+            if await self._check_sms_confirmation(sms_since):
                 return
 
             # Check if call is done
-            status = self.twilio.get_call_status(record.twilio_sid)
+            status = await asyncio.to_thread(self.twilio.get_call_status, record.twilio_sid)
             if status is None:
                 continue
 
@@ -493,27 +481,17 @@ class AlertStateMachine:
                 )
                 return
 
-    def _execute_sms(self, event: Event) -> None:
+    async def _execute_sms(self, event: Event) -> None:
         """Send an SMS alert."""
         phone_number = self.config.alerts.phone_number
         message = _format_sms_message(event, self.db, self.config)
 
-        record = self.twilio.send_sms(phone_number, message, event.id)
+        record = await asyncio.to_thread(self.twilio.send_sms, phone_number, message, event.id)
         if record is not None:
             self.db.insert_alert_record(record)
             self.db.update_event(event.id, alert_status="sms_sent")
 
-    def _execute_whatsapp(self, event: Event) -> None:
-        """Send a WhatsApp alert."""
-        phone_number = self.config.alerts.phone_number
-        message = _format_sms_message(event, self.db, self.config)
-
-        record = self.twilio.send_whatsapp(phone_number, message, event.id)
-        if record is not None:
-            self.db.insert_alert_record(record)
-            self.db.update_event(event.id, alert_status="whatsapp_sent")
-
-    def _handle_call_result(self, record: AlertRecord, status: dict) -> None:
+    async def _handle_call_result(self, record: AlertRecord, status: dict) -> None:
         """Handle the result of a previously placed phone call.
 
         If the call was answered (duration > threshold), mark as acknowledged.
@@ -521,23 +499,7 @@ class AlertStateMachine:
         """
         call_status = status["status"]
         duration = status["duration"]
-        if False:  # Confirmation is now via WhatsApp only, not call duration
-            # Call was answered — acknowledged
-            self.db.update_event(
-                record.event_id,
-                alert_status="acknowledged",
-                acknowledged_at=datetime.now(UTC).isoformat(),
-            )
-            # Update the alert record
-            self._update_alert_record(record, status="acknowledged", duration_seconds=duration)
-            self.logger.info(
-                "Event %s acknowledged via call (duration=%ds)",
-                record.event_id,
-                duration,
-            )
-            # Send follow-up SMS with details
-            self._send_followup_sms(record.event_id)
-        elif call_status in ("completed", "busy", "no-answer", "canceled", "failed"):
+        if call_status in ("completed", "busy", "no-answer", "canceled", "failed"):
             # Call was not properly answered
             self._update_alert_record(record, status=call_status, duration_seconds=duration)
             if call_status in ("failed", "canceled"):
@@ -559,7 +521,7 @@ class AlertStateMachine:
             self.db.update_event(record.event_id, alert_status="retry_pending")
         # If still in-progress/queued/ringing, leave as-is
 
-    def _send_followup_sms(self, event_id: str) -> None:
+    async def _send_followup_sms(self, event_id: str) -> None:
         """Send a follow-up SMS after a call is acknowledged."""
         event = self.db.get_event_by_id(event_id)
         if event is None:
@@ -567,20 +529,20 @@ class AlertStateMachine:
 
         phone_number = self.config.alerts.phone_number
         message = _format_sms_message(event, self.db, self.config)
-        record = self.twilio.send_sms(phone_number, message, event_id)
+        record = await asyncio.to_thread(self.twilio.send_sms, phone_number, message, event_id)
         if record is not None:
             self.db.insert_alert_record(record)
 
-    def _send_update_sms(self, event: Event) -> None:
+    async def _send_update_sms(self, event: Event) -> None:
         """Send an SMS update for an event that was already acknowledged."""
         phone_number = self.config.alerts.phone_number
         message = _format_update_sms(event, self.db, self.config)
-        record = self.twilio.send_sms(phone_number, message, event.id)
+        record = await asyncio.to_thread(self.twilio.send_sms, phone_number, message, event.id)
         if record is not None:
             self.db.insert_alert_record(record)
             self.logger.info("Update SMS sent for acknowledged event %s", event.id)
 
-    def _maybe_send_push(
+    async def _maybe_send_push(
         self,
         event: Event,
         existing_alerts: list[AlertRecord],
@@ -592,7 +554,8 @@ class AlertStateMachine:
         alert is deduped on the presence of a prior 'push' record so a critical
         event's call-retry cycles don't re-push every few minutes. Updates skip
         that dedup — the caller only invokes them when genuinely new corroboration
-        arrived, and the new record's sent_at rate-limits the next one.
+        arrived, and the new record's sent_at rate-limits the next one. The
+        blocking HTTP POST is offloaded to a thread like the Twilio calls.
         """
         push_cfg = self.config.alerts.push
         if not push_cfg.enabled or not push_cfg.tokens:
@@ -601,11 +564,12 @@ class AlertStateMachine:
             return
 
         title, body = _format_push(event, is_update=is_update)
-        record = self.push.send_push(
+        record = await asyncio.to_thread(
+            self.push.send_push,
             title,
             body,
             event.id,
-            data={
+            {
                 "event_id": event.id,
                 "urgency_score": event.urgency_score,
                 "event_type": event.event_type,

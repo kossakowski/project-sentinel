@@ -82,6 +82,10 @@ The configured keyword lists cover English (20 critical, 38+ high, 24 exclude), 
 
 ---
 
+## Stage 4.5: Summary Enrichment
+
+Before classification, articles whose summary adds little beyond the title are enriched by `ArticleEnricher.enrich_batch` (`sentinel/processing/enricher.py`, awaited at `scheduler.py:239`). A free heuristic gate flags articles where the summary is essentially the title (common for Google News and GDELT), and a cheap LLM gate flags vague or clickbait titles whose summary is technically different but uninformative. Flagged articles have their full body fetched over HTTP and merged in, giving the classifier better input. No articles are dropped here; the stage runs only when relevant articles remain after keyword filtering.
+
 ## Stage 5: AI Classification
 
 Every article that reaches this stage is sent individually to Claude Haiku 4.5 for classification. The model evaluates the article as a military intelligence analyst and returns a structured assessment covering six dimensions.
@@ -135,7 +139,7 @@ The alert level assigned to an Event is determined by `alerts/state_machine.py:_
 |--------------------------------|-------------|-----------|
 | `urgency >= 9 AND source_count >= 1` | Phone call | live `classification.corroboration_required = 1` |
 | `urgency >= 7` (no source_count check) | SMS | `state_machine.py:_determine_action` |
-| `urgency >= 5` | WhatsApp decided — but routed to `_execute_sms` in `process_event` (`state_machine.py:190`) | |
+| `urgency >= 5` | SMS | `state_machine.py:_determine_action` |
 | Below threshold | Pending — no alert | |
 
 Note: two parallel urgency decision paths exist (corroborator and state_machine) and can disagree. Live `corroboration_required` is `1`; any prior documentation citing `2` is stale.
@@ -154,9 +158,9 @@ A phone call is the highest alert level and requires both a very high urgency sc
 
 2. The Twilio call is placed. A Polish text-to-speech voice (Amazon Polly, voice: Ewa) speaks the alert text twice: the event type, the Polish summary, the number of confirming sources, and the urgency score out of 10. The call ends by instructing the operator to reply to the SMS with the confirmation code.
 
-3. Per call attempt: poll for SMS reply containing the 6-digit code every 5 seconds, for up to 90 seconds (`alerts/state_machine.py:446`).
+3. Per call attempt: poll for SMS reply containing the 6-digit code every `alerts.acknowledgment.call_poll_interval_seconds` (default 5s), for up to `alerts.acknowledgment.call_poll_timeout_seconds` (default 90s) — `_wait_for_call_and_check_sms` in `alerts/state_machine.py`. The poll is a non-blocking `await asyncio.sleep`, and the Twilio status / inbound-SMS lookups it makes are offloaded with `asyncio.to_thread`, so the wait never blocks the event loop.
 
-4. Between attempts within a round: 10s sleep (`state_machine.py:331`).
+4. Between attempts within a round: `alerts.acknowledgment.call_retry_pause_seconds` (default 10s) via `await asyncio.sleep` (`alerts/state_machine.py`, `_execute_phone_call`).
 
 5. Attempts per round: `alerts.max_call_retries` from config — live value `5`, code default `3`.
 

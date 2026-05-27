@@ -30,7 +30,7 @@ def test_missing_required_field(tmp_path):
     config_dict = {
         "sources": {
             "rss": [{"name": "T", "url": "https://example.com/rss", "language": "en"}],
-            "gdelt": {"themes": ["A"], "cameo_codes": ["19"]},
+            "gdelt": {"themes": ["A"]},
             "google_news": {"queries": [{"query": "test", "language": "en"}]},
             "telegram": {"enabled": False},
         },
@@ -69,7 +69,7 @@ def test_env_var_substitution(monkeypatch, tmp_path):
         },
         "sources": {
             "rss": [{"name": "T", "url": "https://example.com/rss", "language": "en"}],
-            "gdelt": {"themes": ["A"], "cameo_codes": ["19"]},
+            "gdelt": {"themes": ["A"]},
             "google_news": {"queries": [{"query": "test", "language": "en"}]},
             "telegram": {"enabled": False},
         },
@@ -105,7 +105,7 @@ def test_missing_env_var(tmp_path):
         },
         "sources": {
             "rss": [{"name": "T", "url": "https://example.com/rss", "language": "en"}],
-            "gdelt": {"themes": ["A"], "cameo_codes": ["19"]},
+            "gdelt": {"themes": ["A"]},
             "google_news": {"queries": [{"query": "test", "language": "en"}]},
             "telegram": {"enabled": False},
         },
@@ -144,7 +144,7 @@ def test_invalid_url(tmp_path):
         },
         "sources": {
             "rss": [{"name": "Bad", "url": "not_a_url", "language": "en"}],
-            "gdelt": {"themes": ["A"], "cameo_codes": ["19"]},
+            "gdelt": {"themes": ["A"]},
             "google_news": {"queries": [{"query": "test", "language": "en"}]},
             "telegram": {"enabled": False},
         },
@@ -193,7 +193,7 @@ def test_disabled_source_loadable(tmp_path):
                 {"name": "Active", "url": "https://example.com/active", "language": "en", "enabled": True},
                 {"name": "Disabled", "url": "https://example.com/disabled", "language": "en", "enabled": False},
             ],
-            "gdelt": {"enabled": False, "themes": ["A"], "cameo_codes": ["19"]},
+            "gdelt": {"enabled": False, "themes": ["A"]},
             "google_news": {"enabled": False, "queries": [{"query": "test", "language": "en"}]},
             "telegram": {"enabled": False},
         },

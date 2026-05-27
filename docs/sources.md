@@ -13,7 +13,7 @@ Fast lane (every 3 min): priority 1 only. Slow lane (every 15 min): all prioriti
 | Name | URL | Lang | Priority | Enabled | keyword_bypass | Notes |
 |---|---|---|---|---|---|---|
 | PAP | `https://www.pap.pl/rss.xml` | pl | 1 | **false** | — | Blocked by Incapsula/Imperva WAF. Covered via Google News `site:pap.pl` query. |
-| TVN24 | `https://tvn24.pl/najnowsze.xml` | pl | 1 | true | — | Intermittent 403 errors in production. |
+| TVN24 | `https://tvn24.pl/najnowsze.xml` | pl | 1 | **false** | — | Disabled 2026-05-27. Cloudflare blocks Hetzner datacenter IPs (403 Forbidden) regardless of User-Agent. Polish news covered by Onet, RMF24, Gazeta Wyborcza, Polsat News, PAP via Google News. Re-evaluate if we move to a residential IP or add proxy support. |
 | RMF24 | `https://www.rmf24.pl/feed` | pl | 1 | true | — | |
 | Defence24 | `https://defence24.pl/_rss` | pl | 1 | true | **true** | Poland's leading defense portal. |
 | Polsat News | `https://www.polsatnews.pl/rss/wszystkie.xml` | pl | 2 | true | — | |
@@ -21,7 +21,7 @@ Fast lane (every 3 min): priority 1 only. Slow lane (every 15 min): all prioriti
 | Gazeta Wyborcza | `https://rss.gazeta.pl/pub/rss/najnowsze_wyborcza.xml` | pl | 2 | true | — | |
 | ERR Estonia | `https://news.err.ee/rss` | en | 2 | true | — | Estonian public broadcaster. |
 | LRT Lithuania | `https://www.lrt.lt/en/news-in-english?rss` | en | 2 | true | — | Lithuanian public broadcaster. |
-| LSM Latvia | `https://eng.lsm.lv/rss/` | en | 2 | true | — | Latvian public broadcaster. |
+| LSM Latvia | `https://eng.lsm.lv/rss/?lang=en&catid=318` | en | 2 | true | — | Latvian public broadcaster. URL corrected 2026-05-27 to proper English news feed endpoint. |
 | BBC World | `https://feeds.bbci.co.uk/news/world/rss.xml` | en | 3 | true | — | |
 | Al Jazeera | `https://www.aljazeera.com/xml/rss/all.xml` | en | 3 | true | — | |
 | Defence24 EN | `https://defence24.com/_rss` | en | 2 | true | **true** | English edition of Defence24. |
@@ -86,4 +86,4 @@ Config key: `sources.gdelt`. Slow lane only (every 15 min).
 | Source | Issue | Workaround |
 |---|---|---|
 | PAP | Blocked by Incapsula/Imperva WAF since ~2026. All non-browser HTTP requests rejected. | `site:pap.pl` Google News query — indexes PAP articles without hitting the WAF. |
-| TVN24 | Intermittent 403 errors in production. | Monitor logs if coverage seems low. No automated fallback. |
+| TVN24 | Cloudflare blocks Hetzner datacenter IPs (403 Forbidden). Not User-Agent related — tested with browser UA, still blocked. Disabled 2026-05-27 to stop spamming their servers. | Polish news well-covered by 5 other sources. Re-enable if we add proxy support or move to a residential IP. |

@@ -251,7 +251,7 @@ class Corroborator:
 
         - phone_call: urgency >= 9 AND source_count >= corroboration_required
         - sms: urgency >= 7
-        - whatsapp: urgency >= 5
+        - sms: urgency >= 5
         """
         if self.dry_run:
             return "dry_run"
@@ -263,7 +263,7 @@ class Corroborator:
         if urgency >= 7:
             return "sms"
         if urgency >= 5:
-            return "whatsapp"
+            return "sms"
         return "pending"
 
     @staticmethod

@@ -3,7 +3,9 @@
 import asyncio
 import json
 import os
-from datetime import datetime, timezone
+import warnings
+from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -11,12 +13,9 @@ import yaml
 
 from sentinel.scheduler import (
     CycleResult,
-    HealthStatus,
-    PipelineStats,
     SentinelPipeline,
     SentinelScheduler,
 )
-
 
 # --------------------------------------------------------------------------
 # Fixtures
@@ -57,7 +56,7 @@ def mock_pipeline(scheduler_config):
         pipeline = SentinelPipeline(scheduler_config)
         pipeline.run_cycle = AsyncMock(
             return_value=CycleResult(
-                cycle_start=datetime.now(timezone.utc),
+                cycle_start=datetime.now(UTC),
                 duration_seconds=1.0,
                 articles_fetched=10,
                 articles_unique=5,
@@ -193,7 +192,7 @@ async def test_scheduler_continues_after_error(mock_pipeline, scheduler_config, 
     health_path = str(tmp_path / "health.json")
     assert os.path.exists(health_path)
 
-    with open(health_path, "r") as f:
+    with open(health_path) as f:
         health = json.load(f)
 
     assert health["is_healthy"] is False
@@ -224,3 +223,148 @@ async def test_graceful_shutdown(mock_pipeline, scheduler_config):
     from apscheduler.schedulers.base import STATE_STOPPED
 
     assert scheduler.scheduler.state == STATE_STOPPED
+
+
+# --------------------------------------------------------------------------
+# Cycle serialization lock (SPEC_ASYNC_REFACTOR.md Phase 1)
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture
+def real_cycle_pipeline(scheduler_config):
+    """Build a SentinelPipeline whose run_cycle is the real coroutine.
+
+    Unlike ``mock_pipeline`` (which replaces run_cycle with an AsyncMock),
+    this fixture keeps the real run_cycle so the cycle lock is exercised,
+    but stubs out every component the cycle touches so no network/DB-heavy
+    work runs. With no fetchers, _fetch_all returns [], which makes
+    ``relevant`` empty so enrich/classify are skipped; the remaining steps
+    are stubbed for safety.
+    """
+    with (
+        patch.object(SentinelPipeline, "_init_fetchers", return_value=[]),
+        patch("sentinel.scheduler.Classifier"),
+        patch("sentinel.scheduler.TwilioClient"),
+    ):
+        pipeline = SentinelPipeline(scheduler_config)
+
+    # Stub the synchronous tail steps so a cycle completes cleanly.
+    pipeline.normalizer.normalize_batch = MagicMock(return_value=[])
+    pipeline.deduplicator.deduplicate_batch = MagicMock(return_value=[])
+    pipeline.keyword_filter.filter_batch = MagicMock(return_value=[])
+    pipeline.corroborator.process_classifications = MagicMock(return_value=[])
+    # dispatch / check_pending_calls are now awaited by run_cycle, so they must
+    # be AsyncMocks (a plain MagicMock is not awaitable).
+    pipeline.dispatcher.dispatch = AsyncMock()
+    pipeline.state_machine.check_pending_calls = AsyncMock()
+    pipeline.db.cleanup_old_records = MagicMock()
+    return pipeline
+
+
+@pytest.mark.asyncio
+async def test_run_cycle_serializes_concurrent_invocations(real_cycle_pipeline):
+    """Two concurrent run_cycle calls never overlap (cross-lane serialization)."""
+    state = {"current": 0, "max": 0}
+
+    async def tracking_fetch_all(*args, **kwargs):
+        state["current"] += 1
+        state["max"] = max(state["max"], state["current"])
+        # Yield control so a second coroutine could interleave if unlocked.
+        await asyncio.sleep(0)
+        state["current"] -= 1
+        return []
+
+    real_cycle_pipeline._fetch_all = tracking_fetch_all
+
+    await asyncio.gather(
+        real_cycle_pipeline.run_cycle(),
+        real_cycle_pipeline.run_cycle(),
+    )
+
+    # The lock must keep observed concurrency at 1 at all times.
+    assert state["max"] == 1
+
+
+@pytest.mark.asyncio
+async def test_run_cycle_releases_lock_on_error(real_cycle_pipeline):
+    """A failing cycle releases the lock so a later cycle still runs (no deadlock)."""
+    boom = AsyncMock(side_effect=RuntimeError("fetch exploded"))
+    real_cycle_pipeline._fetch_all = boom
+
+    with pytest.raises(RuntimeError, match="fetch exploded"):
+        await real_cycle_pipeline.run_cycle()
+
+    # Lock must have been released by ``async with`` despite the exception.
+    assert not real_cycle_pipeline._cycle_lock.locked()
+
+    # A subsequent cycle must acquire the lock and complete normally.
+    real_cycle_pipeline._fetch_all = AsyncMock(return_value=[])
+    result = await asyncio.wait_for(real_cycle_pipeline.run_cycle(), timeout=5)
+    assert isinstance(result, CycleResult)
+
+
+@pytest.mark.asyncio
+async def test_run_cycle_returns_result(real_cycle_pipeline):
+    """A single run_cycle returns a CycleResult (existing behavior preserved)."""
+    real_cycle_pipeline._fetch_all = AsyncMock(return_value=[])
+
+    result = await real_cycle_pipeline.run_cycle()
+
+    assert isinstance(result, CycleResult)
+    assert result.articles_fetched == 0
+    assert result.articles_classified == 0
+    assert result.alerts_sent == 0
+
+
+def test_cycle_lock_is_asyncio_lock(real_cycle_pipeline):
+    """The pipeline's _cycle_lock attribute is an asyncio.Lock instance."""
+    assert isinstance(real_cycle_pipeline._cycle_lock, asyncio.Lock)
+
+
+# --------------------------------------------------------------------------
+# Classifier client cleanup on shutdown (SPEC_ASYNC_REFACTOR.md req 2.5b)
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_shutdown_awaits_classifier_aclose(real_cycle_pipeline):
+    """shutdown() awaits the classifier's aclose() exactly once (req 2.5b)."""
+    real_cycle_pipeline.classifier.aclose = AsyncMock()
+
+    await real_cycle_pipeline.shutdown()
+
+    real_cycle_pipeline.classifier.aclose.assert_awaited_once()
+
+
+# --------------------------------------------------------------------------
+# Alert-path await wiring (SPEC_ASYNC_REFACTOR.md Phase 3, req 3.4a)
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_cycle_awaits_dispatch_and_check_pending(real_cycle_pipeline):
+    """Non-diagnostic run_cycle awaits dispatcher.dispatch and state_machine.check_pending_calls.
+
+    Both are AsyncMocks; the cycle must await both exactly once and complete
+    without raising an un-awaited-coroutine RuntimeWarning.
+    """
+    pipeline = real_cycle_pipeline
+
+    # Produce one alertable event so dispatch is driven with real data
+    # (alert_status != "pending" => included in alertable_events).
+    event = SimpleNamespace(alert_status="phone_call")
+    pipeline.corroborator.process_classifications = MagicMock(return_value=[event])
+
+    dispatch = AsyncMock()
+    check_pending = AsyncMock()
+    pipeline.dispatcher.dispatch = dispatch
+    pipeline.state_machine.check_pending_calls = check_pending
+
+    # Turn an un-awaited-coroutine warning into an error so it fails the test.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        result = await pipeline.run_cycle()
+
+    dispatch.assert_awaited_once_with([event])
+    check_pending.assert_awaited_once_with()
+    assert isinstance(result, CycleResult)

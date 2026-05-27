@@ -20,7 +20,6 @@
 | `TWILIO_ACCOUNT_SID` | Alert dispatcher (`sentinel/alerts/dispatcher.py`) | yes |
 | `TWILIO_AUTH_TOKEN` | Alert dispatcher | yes |
 | `TWILIO_PHONE_NUMBER` | Outbound caller ID | yes |
-| `TWILIO_WHATSAPP_NUMBER` | WhatsApp channel (format: `whatsapp:+…`); defaults to `whatsapp:{TWILIO_PHONE_NUMBER}` if not set | no |
 | `ALERT_PHONE_NUMBER` | Destination for all alerts (`alerts.phone_number`) | yes |
 | `TELEGRAM_API_ID` | Telegram fetcher (`sentinel/fetchers/telegram.py`) | yes if telegram enabled |
 | `TELEGRAM_API_HASH` | Telegram fetcher | yes if telegram enabled |
@@ -55,8 +54,6 @@ Consumed by: `sentinel/fetchers/gdelt.py`
 | `enabled` | bool | `true` | `true` | Enable GDELT DOC 2.0 fetcher |
 | `update_interval_minutes` | int | `15` | `15` | TIMESPAN window for GDELT query |
 | `themes` | list[str] | `[ARMEDCONFLICT, WB_2462_POLITICAL_VIOLENCE_AND_WAR, CRISISLEX_C03_WELLBEING_HEALTH, TAX_FNCACT_MILITARY]` | required | GKG theme codes |
-| `cameo_codes` | list[str] | `[18,19,190–195,20]` | required | CAMEO event codes (assault/fight/force/blockade/occupy/arms/artillery/aerial/mass violence) |
-| `goldstein_threshold` | float | `-7.0` | `-7.0` | Include only events with Goldstein score ≤ this |
 
 ### `sources.google_news` — `GoogleNewsConfig`
 
@@ -150,10 +147,10 @@ Consumed by: `sentinel/alerts/`
 |---|---|---|---|---|---|---|
 | `critical` | 9 | `phone_call` | 1 | 3 | 5 | `sms` |
 | `high` | 7 | `sms` | 1 | 0 | 5 | — |
-| `medium` | 5 | `whatsapp` (routed to `sms` in code) | 1 | 0 | 5 | — |
+| `medium` | 5 | `sms` | 1 | 0 | 5 | — |
 | `low` | 1 | `log_only` | 1 | 0 | 5 | — |
 
-`action` values: `phone_call`, `sms`, `whatsapp`, `log_only`.
+`action` values: `phone_call`, `sms`, `log_only`.
 
 ### `alerts.acknowledgment` — `AcknowledgmentConfig`
 
@@ -161,10 +158,15 @@ Acknowledgment via SMS 6-digit code reply. An SMS with the code is sent before t
 
 | YAML key | Type | Live value | Pydantic default | Description |
 |---|---|---|---|---|
-| `call_duration_threshold_seconds` | int | `15` | `15` | Call shorter than this = voicemail → retry |
+| `call_duration_threshold_seconds` | int | `15` | `15` | **Dead** — still defined but no longer read (the `if False:` block that used it was removed); superseded by SMS-code confirmation |
 | `max_call_retries` | int | `5` | `3` | Max call attempts before marking `retry_pending` |
 | `retry_interval_minutes` | int | `5` | `5` | Wait between retry cycles |
 | `cooldown_hours` | int | `6` | `6` | No re-call for same event within this window |
+| `call_poll_timeout_seconds` | int | `90` | `90` | Max seconds to wait for a placed call to finish (and for an SMS reply) before moving to the next attempt; read by `_wait_for_call_and_check_sms` |
+| `call_poll_interval_seconds` | int | `5` | `5` | Seconds between Twilio call-status / inbound-SMS polls during the wait loop |
+| `call_retry_pause_seconds` | int | `10` | `10` | Seconds to pause between call attempts within a single retry round |
+
+The three poll/pause durations above were previously hardcoded; they are now config-driven (added with the alert-path async conversion). Configs that omit these keys still load and fall back to the defaults shown.
 
 ### `alerts.templates` — `AlertTemplates`
 
@@ -237,7 +239,6 @@ Consumed by: `sentinel/scheduler.py`, `sentinel/alerts/`
 | YAML key | Type | Live value | Pydantic default | Description |
 |---|---|---|---|---|
 | `dry_run` | bool | `false` | `false` | Run full pipeline but suppress all Twilio calls/SMS; also set by `--dry-run` CLI flag |
-| `test_mode` | bool | `false` | `false` | Use fixture headlines instead of live sources — currently unread by the codebase — see TODO.md |
-| `test_headlines_file` | str | `tests/fixtures/test_headlines.yaml` | same | Path to test headlines YAML for `--test-file` |
+| `eval_set_file` | str | `tests/fixtures/eval_set.yaml` | same | YAML eval set used by `--eval` for classification-accuracy checks |
 
 `dry_run` runs the complete classification pipeline — only the Twilio dispatch step is skipped. Safe for development and continuous testing.

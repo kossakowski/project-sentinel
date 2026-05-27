@@ -24,11 +24,12 @@
 | `sentinel/processing/normalizer.py` | `Normalizer` | Strips/coerces fields to `Article` schema |
 | `sentinel/processing/deduplicator.py` | `Deduplicator` | URL-hash exact match + rapidfuzz fuzzy title match against DB |
 | `sentinel/processing/keyword_filter.py` | `KeywordFilter` | Multilingual keyword match; `diagnose()` for diagnostic mode |
-| `sentinel/classification/classifier.py` | `Classifier` | Sends articles to Claude Haiku 4.5; returns `ClassificationResult` list |
+| `sentinel/processing/enricher.py` | `ArticleEnricher` | Two-gate content enrichment for articles with thin summaries: free heuristic gate (summary ≈ title) + cheap LLM vagueness gate, then fetches the article body via `httpx`; `enrich_batch` is `async` |
+| `sentinel/classification/classifier.py` | `Classifier` | Sends articles to Claude Haiku 4.5 via `anthropic.AsyncAnthropic`; `classify` / `classify_batch` / `_call_api` / `_send_request` / `aclose` are `async`; returns `ClassificationResult` list. `classify_batch` is sequential (one awaited `classify` per article). |
 | `sentinel/classification/corroborator.py` | `Corroborator` | Groups classifications into `Event` objects; checks source count |
 | `sentinel/alerts/dispatcher.py` | `AlertDispatcher` | Sorts events by urgency; routes to `AlertStateMachine` or dry-run log |
-| `sentinel/alerts/state_machine.py` | `AlertStateMachine` | Urgency → action decision; call/SMS/WhatsApp execution; cooldown; call polling |
-| `sentinel/alerts/twilio_client.py` | `TwilioClient` | Twilio REST API wrapper: `make_alert_call(phone, message_pl, event_id)` (`twilio_client.py:43`), `send_sms(phone, message, event_id)`, `send_whatsapp(...)` (defined but unreachable from `process_event`), `get_call_status(twilio_sid)` |
+| `sentinel/alerts/state_machine.py` | `AlertStateMachine` | Urgency → action decision; async call/SMS execution; cooldown; call polling |
+| `sentinel/alerts/twilio_client.py` | `TwilioClient` | Twilio REST API wrapper: `make_alert_call(phone, message_pl, event_id)` (`twilio_client.py:43`), `send_sms(phone, message, event_id)`, `get_call_status(twilio_sid)` |
 
 ---
 
@@ -86,7 +87,7 @@ Produced by: `Corroborator.process_classifications()`. Consumed by: `AlertDispat
 | `last_updated_at` | `datetime` | Latest article in group |
 | `source_count` | `int` | Count of independent sources |
 | `article_ids` | `list[str]` | All contributing article IDs |
-| `alert_status` | `str` | Values actually written by code: `pending`, `call_placed`, `retry_pending`, `sms_sent`, `whatsapp_sent` (unreachable — see quirks), `acknowledged`, `dry_run`. `Corroborator._determine_alert_status` sets a provisional value (`phone_call`/`sms`/`whatsapp`/`pending`) but `AlertStateMachine` overwrites it with the values above. |
+| `alert_status` | `str` | Values written by code: `pending`, `call_placed`, `retry_pending`, `sms_sent`, `acknowledged`, `dry_run` (historical records may also contain `whatsapp_sent` from the removed WhatsApp channel). `Corroborator._determine_alert_status` sets a provisional value (`phone_call`/`sms`/`pending`) but `AlertStateMachine` overwrites it with the values above. |
 | `acknowledged_at` | `datetime\|None` | Set when operator replies to SMS with correct 6-digit confirmation code |
 
 ### `AlertRecord`
@@ -95,7 +96,7 @@ Produced by: `AlertStateMachine`. Consumed by: `AlertStateMachine.check_pending_
 | Field | Type | Notes |
 |---|---|---|
 | `event_id` | `str` | FK → `Event.id` |
-| `alert_type` | `str` | `phone_call` \| `sms` \| `whatsapp` |
+| `alert_type` | `str` | `phone_call` \| `sms` (historical records may also contain `whatsapp` — channel removed) |
 | `twilio_sid` | `str` | Twilio call/message SID |
 | `status` | `str` | Twilio API values: `initiated`, `ringing`, `in-progress`, `completed`, `busy`, `no-answer`, `failed`, `canceled`; plus internal `acknowledged`. `Database.get_pending_call_records()` (`database.py:221`) filters `status IN ('initiated', 'ringing')`. |
 | `attempt_number` | `int` | Retry counter |
@@ -131,9 +132,22 @@ Stage 4 — KeywordFilter.filter_batch(list[Article]) → list[Article]
           SKIPPED for articles from keyword_bypass sources (Telegram channels
           or RSS sources with keyword_bypass: true in config).
 
-Stage 5 — Classifier.classify_batch(list[Article]) → list[ClassificationResult]
+Stage 4.5 — await ArticleEnricher.enrich_batch(list[Article]) → list[Article]
+          [processing/enricher.py]
+          async; awaited by run_cycle inside the cycle lock (scheduler.py:239),
+          only when relevant articles remain after Stage 4.
+          For articles whose summary adds nothing over the title, fetches the
+          article body. Two gates: a free heuristic (summary ≈ title) and a cheap
+          LLM vagueness check; flagged articles get their body fetched via httpx.
+          Improves classifier input quality; does not drop articles.
+
+Stage 5 — await Classifier.classify_batch(list[Article]) → list[ClassificationResult]
           [classification/classifier.py]
-          Calls Claude Haiku 4.5 (claude-haiku-4-5-20251001) via Anthropic API.
+          async; awaited by run_cycle inside the cycle lock (scheduler.py:245).
+          Calls Claude Haiku 4.5 (claude-haiku-4-5-20251001) via anthropic.AsyncAnthropic.
+          Sequential: awaits one classify() per article (no asyncio.gather/Semaphore);
+          the loop-unblocking comes from await, not parallelism. Per-article
+          json.JSONDecodeError / anthropic.APIError are logged and the article skipped.
           Stores ClassificationResult to DB.
           On exception: logs error, returns []. Pipeline continues.
 
@@ -145,14 +159,20 @@ Stage 6 — Corroborator.process_classifications(list[ClassificationResult]) →
           Checks source independence (title similarity + domain).
           Sets Event.alert_status = 'pending' if source_count < corroboration_required.
 
-Stage 7 — AlertDispatcher.dispatch(list[Event])     [diagnostic=False only]
+Stage 7 — await AlertDispatcher.dispatch(list[Event])     [diagnostic=False only]
           [alerts/dispatcher.py]
+          async; awaited by run_cycle inside the cycle lock (scheduler.py:262).
           Receives events returned by Corroborator (new or updated).
-          Sorts by urgency_score desc. Calls AlertStateMachine.process_event().
+          Sorts by urgency_score desc. Awaits AlertStateMachine.process_event()
+          sequentially, one event at a time (no asyncio.gather over events —
+          per-event confirmation state lives on the shared state machine). The
+          dry-run path stays synchronous.
 
-Stage 8 — AlertStateMachine.check_pending_calls()   [diagnostic=False only]
+Stage 8 — await AlertStateMachine.check_pending_calls()   [diagnostic=False only]
           [alerts/state_machine.py]
-          Polls Twilio for call status of initiated/ringing records.
+          async. Polls Twilio for call status of initiated/ringing records.
+          The blocking Twilio HTTP calls are offloaded via asyncio.to_thread;
+          DB reads/writes stay on the event-loop thread.
           On completion: checks duration vs. acknowledgment threshold.
 
 Stage 9 — Database.cleanup_old_records(article_days, event_days)
@@ -187,7 +207,7 @@ Decision matrix driven by `config.alerts.urgency_levels` (sorted by `min_score` 
 | ≥ 9 (CRITICAL) | ≥ corroboration_required | `phone_call` | `phone_call` |
 | ≥ 9 (CRITICAL) | < corroboration_required | `sms` (fallback) | `sms` |
 | ≥ 7 (HIGH) | any | `sms` | `sms` |
-| ≥ 5 (MEDIUM) | any | `whatsapp` → routed to `sms` (WhatsApp disabled) | `whatsapp` |
+| ≥ 5 (MEDIUM) | any | `sms` | `sms` |
 | ≥ 1 (LOW) | any | `log_only` | `pending` |
 
 Post-alert state transitions (managed by `AlertStateMachine`, not corroborator):
@@ -214,7 +234,7 @@ Post-alert state transitions (managed by `AlertStateMachine`, not corroborator):
 | `processing.dedup.cross_source_title_threshold` | `int` | `95` | rapidfuzz score for cross-source dedup |
 | `processing.dedup.lookback_minutes` | `int` | `60` | How far back DB title comparison looks |
 | `alerts.urgency_levels.<name>.corroboration_required` | `int` | `1` | Per-level override for corroboration gate on phone calls |
-| `alerts.acknowledgment.call_duration_threshold_seconds` | `int` | `15` | **Dead** — read only inside an `if False:` block (`state_machine.py:499-501`); superseded by SMS-code confirmation. |
+| `alerts.acknowledgment.call_duration_threshold_seconds` | `int` | `15` | **Dead** — field still defined but read nowhere; the `if False:` block that referenced it was removed. Superseded by SMS-code confirmation. |
 | `alerts.acknowledgment.cooldown_hours` | `int` | `6` | No re-alerts within this window after acknowledgment |
 | `database.article_retention_days` | `int` | `30` | Articles older than this deleted each cycle |
 | `database.event_retention_days` | `int` | `90` | Events older than this deleted each cycle |
@@ -251,7 +271,10 @@ SQLite WAL mode enabled. `check_same_thread=False` (single-process, async-safe v
 | `--diagnostic` | One cycle + generate `data/diagnostic.html`; skips alert dispatch |
 | `--test-headline "TEXT"` | Feed single headline through classifier only; print result |
 | `--test-file FILE` | Feed YAML file of headlines through classifier; print results |
-| `--test-alert [phone_call\|sms\|whatsapp]` | Fire real Twilio alert with synthetic event; bypasses fetch/classify/corroborate |
+| `--eval [PATH]` | Run classification eval against a YAML eval set (default: `testing.eval_set_file`); hits the live API; saves a JSON report to `data/eval/`; exits 0 only if all cases pass |
+| `--test-alert [phone_call\|sms]` | Fire real Twilio alert with synthetic event; bypasses fetch/classify/corroborate (argparse `choices=["phone_call", "sms"]`, default `phone_call`) |
+
+The classifier **and** the alert/Twilio path are async, so the synchronous CLI/eval entry points bridge to them via `asyncio.run(...)`: `--test-headline` (`_run_test_headline`) runs one `classify`; `--test-file` (`_run_test_file`) runs **one** `asyncio.run` wrapping an inner loop over all headlines (not one event loop per headline); `--eval` (`_run_eval`) runs `asyncio.run(run_eval(...))`. `--test-alert` (`_run_test_alert`) drives the now-async `_execute_phone_call` / `_execute_sms` under `asyncio.run(...)` as well (see §9).
 
 Config loading: `sentinel/config.py:load_config()`. Env vars substituted via `${VAR}` syntax. `.env` loaded via python-dotenv if available.
 
@@ -259,18 +282,16 @@ Config loading: `sentinel/config.py:load_config()`. Env vars substituted via `${
 
 ## 9. Known Quirks
 
-- **WhatsApp action disabled.** `AlertStateMachine.process_event` routes `action == "whatsapp"` to `_execute_sms` (`state_machine.py:190`). `_execute_whatsapp` (`state_machine.py:478`) and `TwilioClient.send_whatsapp` are unreachable from the production flow; only `--test-alert whatsapp` reaches them.
 - **Two urgency decision paths can disagree.** `Corroborator._determine_alert_status` uses `config.classification.corroboration_required` and writes `event.alert_status`; `AlertStateMachine._determine_action` re-decides from `config.alerts.urgency_levels` and ignores the stored value.
 - **No DTMF in call TwiML.** Confirmation is via SMS 6-digit code reply, not `<Gather>`. `twilio_client.py:41`.
-- **Call-duration acknowledgment is dead code.** `_handle_call_result` has an `if False:` block at `state_machine.py:501` containing the entire duration-based logic; `alerts.acknowledgment.call_duration_threshold_seconds` is only read inside it.
-- **`_check_confirmation_sms_delivered`** (`state_machine.py:415`) is implemented but never invoked.
+- **Call-duration acknowledgment removed; config field orphaned.** The old duration-based `if False:` block in `_handle_call_result` was deleted; `alerts.acknowledgment.call_duration_threshold_seconds` is still defined in config but now read nowhere.
 - **Confirmation code stored as instance attribute, not reset between events.** `state_machine.py:368`, `state_machine.py:391` — stale-code risk if events overlap.
 - **GDELT articles have empty `summary` always** (`gdelt.py:178`); Stage 4 keyword filter effectively scans GDELT title only.
 - **Google News redirect URLs stored as-is**, not resolved to canonical. Same article surfaced by two queries dedupes only via fuzzy title match.
 - **`TelegramFetcher` channel matching falls back to first channel if id mismatches** (`telegram.py:100-108`).
 - **`BaseFetcher.is_enabled()` raises `NotImplementedError` but is NOT `@abstractmethod`.** Silent failure mode if a subclass forgets to override. All four current subclasses do override it; the silent-failure risk only applies to future fetcher additions.
 - **Classifier daily token cost logged with hardcoded prices** `$0.80/M input, $4.00/M output` at UTC date rollover (`classifier.py:246-248`); not configurable.
-- **`config.testing.test_mode` field exists but is never read anywhere** (`config.py:181`).
+- **The pipeline is fully async (classifier + alert path).** `Classifier` uses `anthropic.AsyncAnthropic`; `classify` / `classify_batch` / `aclose` are coroutines. `run_cycle` awaits `classify_batch` inside the cycle lock, and `SentinelPipeline.shutdown` awaits `classifier.aclose()` (in a `try/except` that logs failures) before `db.close()`. `classify_batch` is **deliberately sequential** — one awaited `classify` per article, no `asyncio.gather`/`Semaphore`/`TaskGroup` — because the event-loop unblocking comes from `await` alone; this preserves the Anthropic rate-limit profile and per-article error isolation. The alert path is now async too: `AlertDispatcher.dispatch` and `AlertStateMachine`'s alert-execution methods (`process_event`, `_execute_phone_call`, `_execute_sms`, the SMS/confirmation helpers, `check_pending_calls`, `_handle_call_result`) are `async def`; `time.sleep` poll/pause loops became `await asyncio.sleep`. The synchronous `TwilioClient` SDK is **not** rewritten — instead every Twilio HTTP touch point is offloaded at the call site with `await asyncio.to_thread(...)` (`make_alert_call`, `send_sms`, `get_call_status`, plus the two direct `messages.list` / `messages(sid).fetch` SDK calls wrapped in lambdas). **DB access stays on the event-loop thread** and is never placed inside an `asyncio.to_thread` callable (the shared `sqlite3` connection has no application-level lock). Dispatch is **sequential** (each event's `process_event` awaited before the next) and an in-flight alert holds the Phase 1 cycle lock for its whole duration — deliberate, to keep per-event confirmation state (`self._confirmation_code` / `self._confirmation_sms_sid`) on the shared instance from being clobbered and to avoid reintroducing alert-path races. `_run_test_alert` drives `_execute_phone_call` / `_execute_sms` under `asyncio.run(...)`. Six pure helpers (`_determine_action`, `_is_in_cooldown`, `_user_already_notified`, `_is_acknowledged`, `_last_alert_time`, `_update_alert_record`) stay synchronous.
 - **Production `corroboration_required=1`** (single source triggers call). Code default is `2`. Check live `config/config.yaml` before assuming corroboration behavior.
 - **`TelegramFetcher` lifecycle not in `BaseFetcher` contract.** `SentinelPipeline.startup()`/`shutdown()` use `hasattr(fetcher, "start")` duck-typing. Telegram `start()` failure is logged and skipped; other fetchers unaffected.
 - **`keyword_bypass` sources skip Stage 4 entirely.** All their articles consume Haiku API quota.

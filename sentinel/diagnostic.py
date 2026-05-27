@@ -155,7 +155,6 @@ def _render_corroboration_cell(item: DiagnosticArticle) -> str:
     status_map = {
         "phone_call": ("corr-call", "PHONE CALL"),
         "sms": ("corr-sms", "SMS"),
-        "whatsapp": ("corr-wa", "WHATSAPP"),
         "pending": ("corr-pending", "PENDING"),
         "dry_run": ("corr-dry", "DRY RUN"),
     }

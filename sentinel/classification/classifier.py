@@ -1,10 +1,10 @@
 """Classifier -- sends articles to Claude Haiku 4.5 for military event classification."""
 
+import asyncio
 import json
 import logging
 import re
-import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import anthropic
 
@@ -155,7 +155,7 @@ class Classifier:
 
     def __init__(self, config: SentinelConfig) -> None:
         self.config = config
-        self.client = anthropic.Anthropic()  # Uses ANTHROPIC_API_KEY env var
+        self.client = anthropic.AsyncAnthropic()  # Uses ANTHROPIC_API_KEY env var
         self.logger = logging.getLogger("sentinel.classifier")
 
         # Daily cost tracking
@@ -163,12 +163,12 @@ class Classifier:
         self._daily_output_tokens = 0
         self._daily_date: str | None = None
 
-    def classify(self, article: Article) -> ClassificationResult:
+    async def classify(self, article: Article) -> ClassificationResult:
         """Classify a single article.
 
         Raises json.JSONDecodeError or anthropic.APIError on failure.
         """
-        response = self._call_api(article)
+        response = await self._call_api(article)
 
         # Parse JSON response
         raw_text = response.content[0].text.strip()
@@ -188,7 +188,7 @@ class Classifier:
             is_new_event=bool(data.get("is_new_event", True)),
             confidence=confidence,
             summary_pl=data.get("summary_pl", ""),
-            classified_at=datetime.now(timezone.utc),
+            classified_at=datetime.now(UTC),
             model_used=self.config.classification.model,
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
@@ -199,12 +199,12 @@ class Classifier:
 
         return result
 
-    def classify_batch(self, articles: list[Article]) -> list[ClassificationResult]:
-        """Classify multiple articles. Skips articles that fail classification."""
+    async def classify_batch(self, articles: list[Article]) -> list[ClassificationResult]:
+        """Classify multiple articles sequentially. Skips articles that fail classification."""
         results = []
         for article in articles:
             try:
-                result = self.classify(article)
+                result = await self.classify(article)
                 results.append(result)
                 self.logger.info(
                     "Classified '%s' -> urgency=%d, type=%s, military=%s",
@@ -226,6 +226,10 @@ class Classifier:
                     e,
                 )
         return results
+
+    async def aclose(self) -> None:
+        """Close the underlying async Anthropic client (releases its HTTP connections)."""
+        await self.client.close()
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -253,30 +257,32 @@ class Classifier:
             )
         return prompt
 
-    def _call_api(self, article: Article) -> anthropic.types.Message:
+    async def _call_api(self, article: Article) -> anthropic.types.Message:
         """Call the Anthropic API with one retry on API errors."""
         try:
-            return self._send_request(article)
+            return await self._send_request(article)
         except anthropic.APIError as e:
             self.logger.warning(
                 "API error (will retry in 5s) for '%s': %s",
                 article.title[:80],
                 e,
             )
-            time.sleep(5)
-            return self._send_request(article)
+            await asyncio.sleep(5)
+            return await self._send_request(article)
 
-    def _send_request(self, article: Article) -> anthropic.types.Message:
+    async def _send_request(self, article: Article) -> anthropic.types.Message:
         """Send a single request to the Anthropic API."""
-        return self.client.messages.create(
+        return await self.client.messages.create(
             model=self.config.classification.model,
             max_tokens=self.config.classification.max_tokens,
             temperature=self.config.classification.temperature,
             system=SYSTEM_PROMPT,
-            messages=[{
-                "role": "user",
-                "content": self._build_user_prompt(article),
-            }],
+            messages=[
+                {
+                    "role": "user",
+                    "content": self._build_user_prompt(article),
+                }
+            ],
         )
 
     @staticmethod
@@ -296,13 +302,11 @@ class Classifier:
         if match:
             return json.loads(match.group(0))
 
-        raise json.JSONDecodeError(
-            "Could not extract JSON from LLM response", raw_text, 0
-        )
+        raise json.JSONDecodeError("Could not extract JSON from LLM response", raw_text, 0)
 
     def _track_tokens(self, input_tokens: int, output_tokens: int) -> None:
         """Accumulate daily token usage and log a summary at day rollover."""
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
 
         if self._daily_date != today:
             # Log previous day's summary if there was one

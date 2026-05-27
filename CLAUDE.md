@@ -29,7 +29,6 @@ A separate read-only **Article Dashboard** subsystem lives under `dashboard/` (l
 - Test headlines file: `./run.sh --test-file tests/fixtures/test_headlines.yaml`
 - Test alert: `./run.sh --test-alert` (fire real phone call via Twilio with fake event)
 - Test alert SMS: `./run.sh --test-alert sms` (fire real SMS instead of phone call)
-- Test alert WhatsApp: `./run.sh --test-alert whatsapp` (fire real WhatsApp instead)
 - Diagnostic: `./run.sh --diagnostic` (single cycle, generates `data/diagnostic.html` with all articles)
 - Custom config: `./run.sh --config path/to/config.yaml`
 - Log level: `./run.sh --log-level DEBUG` (DEBUG, INFO, WARNING, ERROR)
@@ -78,7 +77,7 @@ This project was renamed twice (`twilio-playground` → `sentinel` → `project-
 - **Alerts are in Polish.** Source scanning covers PL, EN, UA, RU.
 - **Use Claude Haiku 4.5** (`claude-haiku-4-5-20251001`) for classification -- cost-efficient.
 - **No quiet hours.** This is a critical alert system -- call at any hour.
-- **Don't spam.** Call once per event, then switch to SMS for updates. WhatsApp is plumbed but disabled in production (see `state_machine.py:190`).
+- **Don't spam.** Call once per event, then switch to SMS for updates. (The WhatsApp channel was removed; phone calls and SMS are the only alert channels.)
 - **Corroboration required.** Phone calls require independent source corroboration (configured via `classification.corroboration_required`; live value is `1`).
 - **Corroboration window: 6h default.** Configurable via `classification.corroboration_window_minutes` (default 360 in code, live config still `60`). Similarity thresholds also tunable: `classification.summary_similarity_threshold` (default 40) and `classification.syndication_similarity_threshold` (default 90).
 - Config format: YAML. Database: SQLite. Scheduler: APScheduler (dual-lane: fast lane every 3 min for Telegram + priority-1 RSS + Google News, slow lane every 15 min for all sources including GDELT).

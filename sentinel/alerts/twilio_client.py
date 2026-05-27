@@ -1,6 +1,6 @@
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 from xml.sax.saxutils import escape as xml_escape
 
@@ -12,7 +12,7 @@ from sentinel.models import AlertRecord
 
 
 class TwilioClient:
-    """Wraps the Twilio SDK for outbound calls, SMS, and WhatsApp."""
+    """Wraps the Twilio SDK for outbound calls and SMS."""
 
     def __init__(self, config: SentinelConfig) -> None:
         self.logger = logging.getLogger("sentinel.alerts.twilio_client")
@@ -21,15 +21,10 @@ class TwilioClient:
         account_sid = os.environ.get("TWILIO_ACCOUNT_SID", "")
         auth_token = os.environ.get("TWILIO_AUTH_TOKEN", "")
         self.twilio_phone = os.environ.get("TWILIO_PHONE_NUMBER", "")
-        self.twilio_whatsapp = os.environ.get(
-            "TWILIO_WHATSAPP_NUMBER", f"whatsapp:{self.twilio_phone}"
-        )
 
         self.client = Client(account_sid, auth_token)
 
-    def make_alert_call(
-        self, phone_number: str, message_pl: str, event_id: str
-    ) -> AlertRecord | None:
+    def make_alert_call(self, phone_number: str, message_pl: str, event_id: str) -> AlertRecord | None:
         """Place an outbound call with Polish TTS message.
 
         The message is spoken twice (for waking the user).
@@ -39,7 +34,7 @@ class TwilioClient:
 
         # Simple alert call — no DTMF, no Gather.
         # The call is just an alarm to wake the user.
-        # Confirmation happens via WhatsApp reply only.
+        # Confirmation happens via SMS reply only.
         twiml = (
             f"<Response>"
             f'<Say language="pl-PL" voice="Polly.Ewa">'
@@ -63,9 +58,7 @@ class TwilioClient:
                 twiml=twiml,
             )
         except TwilioRestException as exc:
-            self.logger.error(
-                "Twilio call failed for event %s: %s", event_id, exc
-            )
+            self.logger.error("Twilio call failed for event %s: %s", event_id, exc)
             return None
 
         record = AlertRecord(
@@ -76,17 +69,13 @@ class TwilioClient:
             status="initiated",
             duration_seconds=None,
             attempt_number=1,
-            sent_at=datetime.now(timezone.utc),
+            sent_at=datetime.now(UTC),
             message_body=message_pl,
         )
-        self.logger.info(
-            "Call placed for event %s, SID=%s", event_id, call.sid
-        )
+        self.logger.info("Call placed for event %s, SID=%s", event_id, call.sid)
         return record
 
-    def send_sms(
-        self, phone_number: str, message: str, event_id: str
-    ) -> AlertRecord | None:
+    def send_sms(self, phone_number: str, message: str, event_id: str) -> AlertRecord | None:
         """Send an SMS alert.
 
         Truncates to 1600 chars if needed.
@@ -102,9 +91,7 @@ class TwilioClient:
                 body=message,
             )
         except TwilioRestException as exc:
-            self.logger.error(
-                "Twilio SMS failed for event %s: %s", event_id, exc
-            )
+            self.logger.error("Twilio SMS failed for event %s: %s", event_id, exc)
             return None
 
         record = AlertRecord(
@@ -115,47 +102,10 @@ class TwilioClient:
             status="sent",
             duration_seconds=None,
             attempt_number=1,
-            sent_at=datetime.now(timezone.utc),
+            sent_at=datetime.now(UTC),
             message_body=message,
         )
-        self.logger.info(
-            "SMS sent for event %s, SID=%s", event_id, msg.sid
-        )
-        return record
-
-    def send_whatsapp(
-        self, phone_number: str, message: str, event_id: str
-    ) -> AlertRecord | None:
-        """Send a WhatsApp message.
-
-        Returns an AlertRecord on success, None on Twilio error.
-        """
-        try:
-            msg = self.client.messages.create(
-                from_=self.twilio_whatsapp,
-                to=f"whatsapp:{phone_number}",
-                body=message,
-            )
-        except TwilioRestException as exc:
-            self.logger.error(
-                "Twilio WhatsApp failed for event %s: %s", event_id, exc
-            )
-            return None
-
-        record = AlertRecord(
-            id=str(uuid4()),
-            event_id=event_id,
-            alert_type="whatsapp",
-            twilio_sid=msg.sid,
-            status="sent",
-            duration_seconds=None,
-            attempt_number=1,
-            sent_at=datetime.now(timezone.utc),
-            message_body=message,
-        )
-        self.logger.info(
-            "WhatsApp sent for event %s, SID=%s", event_id, msg.sid
-        )
+        self.logger.info("SMS sent for event %s, SID=%s", event_id, msg.sid)
         return record
 
     def get_call_status(self, twilio_sid: str) -> dict | None:

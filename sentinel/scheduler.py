@@ -4,6 +4,7 @@ Contains the SentinelPipeline (fetch -> process -> classify -> alert cycle)
 and SentinelScheduler (APScheduler wrapper with jitter, coalesce, health monitoring).
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -161,6 +162,7 @@ class SentinelPipeline:
         self.logger = logging.getLogger("sentinel.pipeline")
         self.stats = PipelineStats()
         self.diagnostic_data: DiagnosticData | None = None
+        self._cycle_lock = asyncio.Lock()
 
     def _init_fetchers(self) -> list[BaseFetcher]:
         """Initialize all fetchers based on config."""
@@ -198,6 +200,10 @@ class SentinelPipeline:
                     await fetcher.stop()
                 except Exception as e:
                     self.logger.error("Failed to stop %s: %s", fetcher.name, e, exc_info=True)
+        try:
+            await self.classifier.aclose()
+        except Exception as e:
+            self.logger.error("Failed to close classifier client: %s", e, exc_info=True)
         self.db.close()
 
     async def run_cycle(self, *, fast_only: bool = False, diagnostic: bool = False) -> CycleResult:
@@ -210,97 +216,100 @@ class SentinelPipeline:
             diagnostic: If True, capture intermediate data for HTML report
                         generation and skip alert dispatch.
         """
-        cycle_start = datetime.now(UTC)
-        lane = "DIAG" if diagnostic else ("FAST" if fast_only else "FULL")
-        self.logger.info("=== Pipeline cycle starting [%s] ===", lane)
+        async with self._cycle_lock:
+            cycle_start = datetime.now(UTC)
+            lane = "DIAG" if diagnostic else ("FAST" if fast_only else "FULL")
+            self.logger.info("=== Pipeline cycle starting [%s] ===", lane)
 
-        # Step 1: Fetch from sources (filtered by lane)
-        raw_articles = await self._fetch_all(fast_only=fast_only)
-        self.logger.info("[%s] Fetched %d raw articles", lane, len(raw_articles))
+            # Step 1: Fetch from sources (filtered by lane)
+            raw_articles = await self._fetch_all(fast_only=fast_only)
+            self.logger.info("[%s] Fetched %d raw articles", lane, len(raw_articles))
 
-        # Step 2: Normalize
-        normalized = self.normalizer.normalize_batch(raw_articles)
+            # Step 2: Normalize
+            normalized = self.normalizer.normalize_batch(raw_articles)
 
-        # Step 3: Deduplicate
-        unique = self.deduplicator.deduplicate_batch(normalized, diagnostic=diagnostic)
-        self.logger.info("After dedup: %d unique articles", len(unique))
+            # Step 3: Deduplicate
+            unique = self.deduplicator.deduplicate_batch(normalized, diagnostic=diagnostic)
+            self.logger.info("After dedup: %d unique articles", len(unique))
 
-        # Step 4: Keyword filter
-        relevant = self.keyword_filter.filter_batch(unique)
-        self.logger.info("After keyword filter: %d relevant articles", len(relevant))
+            # Step 4: Keyword filter
+            relevant = self.keyword_filter.filter_batch(unique)
+            self.logger.info("After keyword filter: %d relevant articles", len(relevant))
 
-        # Step 5: Enrich articles with insufficient summaries
-        if relevant:
-            relevant = await self.enricher.enrich_batch(relevant)
+            # Step 5: Enrich articles with insufficient summaries
+            if relevant:
+                relevant = await self.enricher.enrich_batch(relevant)
 
-        # Step 6: Classify (only if there are relevant articles)
-        classifications = []
-        if relevant:
-            try:
-                classifications = self.classifier.classify_batch(relevant)
-                self.logger.info("Classified %d articles", len(classifications))
-            except Exception as e:
-                self.logger.error(
-                    "Classifier failed, continuing with empty classifications: %s",
-                    e,
-                    exc_info=True,
-                )
-                classifications = []
+            # Step 6: Classify (only if there are relevant articles)
+            classifications = []
+            if relevant:
+                try:
+                    classifications = await self.classifier.classify_batch(relevant)
+                    self.logger.info("Classified %d articles", len(classifications))
+                except Exception as e:
+                    self.logger.error(
+                        "Classifier failed, continuing with empty classifications: %s",
+                        e,
+                        exc_info=True,
+                    )
+                    classifications = []
 
-        # Step 6: Corroborate (group into events)
-        events = self.corroborator.process_classifications(classifications)
-        alertable_events = [e for e in events if e.alert_status != "pending"]
-        self.logger.info("Events needing alerts: %d", len(alertable_events))
+            # Step 6: Corroborate (group into events)
+            events = self.corroborator.process_classifications(classifications)
+            alertable_events = [e for e in events if e.alert_status != "pending"]
+            self.logger.info("Events needing alerts: %d", len(alertable_events))
 
-        if not diagnostic:
-            # Step 7: Dispatch alerts
-            self.dispatcher.dispatch(alertable_events)
+            if not diagnostic:
+                # Step 7: Dispatch alerts
+                await self.dispatcher.dispatch(alertable_events)
 
-            # Step 8: Check pending call statuses from previous cycles
-            self.state_machine.check_pending_calls()
+                # Step 8: Check pending call statuses from previous cycles
+                await self.state_machine.check_pending_calls()
 
-        # Build diagnostic data if requested (after corroboration so we capture events)
-        if diagnostic:
-            self._build_diagnostic_data(cycle_start, normalized, unique, relevant, classifications, events)
+            # Build diagnostic data if requested (after corroboration so we capture events)
+            if diagnostic:
+                self._build_diagnostic_data(cycle_start, normalized, unique, relevant, classifications, events)
 
-        # Step 9: Cleanup old records
-        self.db.cleanup_old_records(
-            article_days=self.config.database.article_retention_days,
-            event_days=self.config.database.event_retention_days,
-        )
+            # Step 9: Cleanup old records
+            self.db.cleanup_old_records(
+                article_days=self.config.database.article_retention_days,
+                event_days=self.config.database.event_retention_days,
+            )
 
-        # Stats
-        cycle_duration = (datetime.now(UTC) - cycle_start).total_seconds()
+            # Stats
+            cycle_duration = (datetime.now(UTC) - cycle_start).total_seconds()
 
-        # Update diagnostic duration now that cycle is complete
-        if diagnostic and self.diagnostic_data is not None:
-            self.diagnostic_data.duration_seconds = cycle_duration
+            # Update diagnostic duration now that cycle is complete
+            if diagnostic and self.diagnostic_data is not None:
+                self.diagnostic_data.duration_seconds = cycle_duration
 
-        result = CycleResult(
-            cycle_start=cycle_start,
-            duration_seconds=cycle_duration,
-            articles_fetched=len(raw_articles),
-            articles_unique=len(unique),
-            articles_relevant=len(relevant),
-            articles_classified=len(classifications),
-            events_created=len(events),
-            alerts_sent=len(alertable_events),
-        )
+            result = CycleResult(
+                cycle_start=cycle_start,
+                duration_seconds=cycle_duration,
+                articles_fetched=len(raw_articles),
+                articles_unique=len(unique),
+                articles_relevant=len(relevant),
+                articles_classified=len(classifications),
+                events_created=len(events),
+                alerts_sent=len(alertable_events),
+            )
 
-        self.stats.record_cycle(result)
+            self.stats.record_cycle(result)
 
-        self.logger.info(
-            "=== Cycle complete in %.1fs: fetched=%d, unique=%d, relevant=%d, classified=%d, events=%d, alerts=%d ===",
-            cycle_duration,
-            result.articles_fetched,
-            result.articles_unique,
-            result.articles_relevant,
-            result.articles_classified,
-            result.events_created,
-            result.alerts_sent,
-        )
+            self.logger.info(
+                "=== Cycle complete in %.1fs: "
+                "fetched=%d, unique=%d, relevant=%d, classified=%d, "
+                "events=%d, alerts=%d ===",
+                cycle_duration,
+                result.articles_fetched,
+                result.articles_unique,
+                result.articles_relevant,
+                result.articles_classified,
+                result.events_created,
+                result.alerts_sent,
+            )
 
-        return result
+            return result
 
     def _build_diagnostic_data(
         self,
