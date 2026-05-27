@@ -218,18 +218,18 @@ Build or plan metrics that track classification quality over time:
 
 ## Tracked Ops Debt
 
-1. **Delete `/home/deploy/sentinel.bak-20260324/.env` on production server** — contains live Twilio/Anthropic/Telegram credentials in a stale clone.
+1. ~~**Delete `/home/deploy/sentinel.bak-20260324/.env` on production server.**~~ **DONE (2026-05-27).** Removed stale `.env` containing live Twilio/Anthropic/Telegram credentials.
 
-2. **Delete `/home/deploy/sentinel/project-sentinel/` on production server** — nested untracked clone inside working tree, also contains live credentials. Causes permanent `git status` noise.
+2. ~~**Delete `/home/deploy/sentinel/project-sentinel/` on production server.**~~ **DONE (2026-05-27).** Removed nested untracked clone (contained live credentials, caused `git status` noise).
 
-3. **Re-attach server repo to `master`.** `/home/deploy/sentinel` is in detached HEAD state; would break `git pull origin master`. Fix: `cd /home/deploy/sentinel && git checkout master`.
+3. ~~**Re-attach server repo to `master`.**~~ **DONE (2026-05-27).** Server was in detached HEAD at `b19f1ff`; local `master` was 64 commits behind `origin/master` (deploy process never advanced it). Checked out `master` and pulled to align all three (local, server, GitHub).
 
-4. **Deploy current `config/config.yaml` to `/etc/sentinel/config.yaml`.** Live config is missing ~35 keywords that commit `d96f4a4` added.
+4. ~~**Deploy current `config/config.yaml` to `/etc/sentinel/config.yaml`.**~~ **DONE (2026-05-27).** Live config was 53 days stale (last modified 2026-04-04), missing 45 keyword lines and carrying 13 dead config fields. Deployed via new config-sync step added to `/deploy` skill (Step 6b). Keyword count: 168 → 213. Deploy tag: `deploy-20260527-112819`.
 
-5. **Add deploy-snapshot pruning.** `/home/deploy/backups/` is at 792 MB and growing; deploy-snapshot directories are not auto-pruned (only DB backups are).
+5. **Add deploy-snapshot pruning.** `/home/deploy/backups/` is at 2.0 GB (18 snapshots) and growing; deploy-snapshot directories are not auto-pruned (only DB backups are). Recommended policy: keep last 5 snapshots, prune as part of deploy script.
 
-6. **Decide TVN24 + LSM Latvia source health.** Both consistently 403 Forbidden — 558 + 93 errors in most recent log respectively. Replace, disable, or accept.
+6. **Decide TVN24 + LSM Latvia source health.** TVN24 returns 403 Forbidden (Cloudflare bot detection on datacenter IPs). LSM Latvia is actually healthy (108 articles/week) despite intermittent 403s. Likely fix for both: set browser-like User-Agent header; for LSM also correct the RSS URL to `eng.lsm.lv/rss/?lang=en&catid=318`.
 
-7. **Update repo template `deploy/configs/sentinel.service`** to use `.venv/` (matches live) instead of legacy `venv/`.
+7. ~~**Update repo template `deploy/configs/sentinel.service`.**~~ **DONE (2026-05-27).** Changed `venv/` → `.venv/` to match live service file. Commit `b87de83`.
 
-8. **Remove legacy `/home/deploy/sentinel/venv/` on server** — only `.venv/` is used by systemd.
+8. ~~**Remove legacy `/home/deploy/sentinel/venv/` on server.**~~ **DONE (2026-05-27).** Freed 142 MB.
