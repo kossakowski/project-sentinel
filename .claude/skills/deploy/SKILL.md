@@ -27,7 +27,7 @@ You are deploying Project Sentinel to its production Hetzner VPS. Invoking /depl
 | Path | Contents | Owner | Notes |
 |------|----------|-------|-------|
 | `/home/deploy/sentinel/` | Application code (git clone) | deploy:deploy | Deployed via git pull from GitHub |
-| `/home/deploy/sentinel/venv/` | Python venv (server-side) | deploy:deploy | Rebuilt on server after deploy |
+| `/home/deploy/sentinel/.venv/` | Python venv (server-side) | deploy:deploy | Rebuilt on server after deploy |
 | `/etc/sentinel/config.yaml` | Live config | root:sentinel 640 | Needs sudo to read |
 | `/etc/sentinel/sentinel.env` | API keys and secrets | root:deploy 640 | NEVER touch — not backed up, not deployed |
 | `/var/lib/sentinel/sentinel.db` | SQLite database | sentinel:sentinel | Hot-backup via sqlite3 .backup |
@@ -183,21 +183,31 @@ On success, report the backup location and its contents.
 ssh -p 2222 deploy@178.104.76.254 "cd /home/deploy/sentinel && git fetch --tags origin && git checkout $DEPLOY_TAG"
 ```
 
-This puts the server on the exact tagged commit (detached HEAD — expected for production). Tracked files are updated to match the tag; untracked server files (`venv/`, `data/`, `logs/`, etc.) are preserved because they're in `.gitignore`.
+This puts the server on the exact tagged commit (detached HEAD — expected for production). Tracked files are updated to match the tag; untracked server files (`.venv/`, `data/`, `logs/`, etc.) are preserved because they're in `.gitignore`.
 
 If `git fetch` fails → **STOP:** "Failed to fetch from GitHub on the server. Check the deploy key and network access."
 
 If `git checkout` fails (e.g., uncommitted changes on the server) → **STOP:** "Server working tree has local modifications. Investigate before deploying." Show the error output. Do NOT run `git checkout --force` — local server edits may be intentional emergency patches.
 
-**6b. Rebuild Python dependencies:**
+**6b. Sync config to live path:**
 
 ```bash
-ssh -p 2222 deploy@178.104.76.254 'cd /home/deploy/sentinel && venv/bin/pip install -r requirements.txt'
+ssh -p 2222 deploy@178.104.76.254 'sudo cp /home/deploy/sentinel/config/config.yaml /etc/sentinel/config.yaml && sudo chown root:sentinel /etc/sentinel/config.yaml && sudo chmod 640 /etc/sentinel/config.yaml'
+```
+
+This copies the repo config (which git just updated) to the live path the service reads. The backup in Step 5 already preserved the previous live config, so this is safe to overwrite. Permissions are restored to `root:sentinel 640` to match the expected ownership.
+
+If the copy fails → **STOP.** Report the error. The service is still running with the old config; no damage done.
+
+**6c. Rebuild Python dependencies:**
+
+```bash
+ssh -p 2222 deploy@178.104.76.254 'cd /home/deploy/sentinel && .venv/bin/pip install -r requirements.txt'
 ```
 
 If pip install fails → **STOP.** Report the error and remind the user that a backup exists.
 
-**6c. Restart the service:**
+**6d. Restart the service:**
 
 ```bash
 ssh -p 2222 deploy@178.104.76.254 'sudo systemctl restart sentinel'
@@ -250,6 +260,7 @@ After all steps succeed, output this summary:
 - Backup location: /home/deploy/backups/deploy-{timestamp}/
 - Backup contents: code.tar.gz, config.yaml, sentinel.db, sentinel_session.session
 - Git checkout: {DEPLOY_TAG} on server
+- Config synced: config/config.yaml → /etc/sentinel/config.yaml
 - pip install: {success/no changes}
 - Service status: active (running)
 - Health: {health.json contents or "awaiting first cycle"}
