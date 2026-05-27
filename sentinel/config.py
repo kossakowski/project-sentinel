@@ -136,12 +136,18 @@ class AlertTemplates(BaseModel):
     )
 
 
+class PushConfig(BaseModel):
+    enabled: bool = False
+    tokens: list[str] = []
+
+
 class AlertsConfig(BaseModel):
     phone_number: str
     language: str = "pl"
     urgency_levels: dict[str, UrgencyLevel]
     acknowledgment: AcknowledgmentConfig
     templates: AlertTemplates = AlertTemplates()
+    push: PushConfig = PushConfig()
 
 
 # ---------------------------------------------------------------------------

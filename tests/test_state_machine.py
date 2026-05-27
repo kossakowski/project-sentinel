@@ -573,3 +573,95 @@ def test_update_sms_includes_source_name(db, config):
 
     assert "Defence24" in message
     assert "Nowe informacje (Defence24):" in message
+
+
+# --------------------------------------------------------------------------
+# Push notification wiring (additive channel)
+# --------------------------------------------------------------------------
+def _make_push_client():
+    """Mock ExpoPushClient that returns a push AlertRecord on send."""
+    push = MagicMock()
+
+    def _send(title, body, event_id, data=None):
+        return _make_alert_record(event_id, alert_type="push", status="sent")
+
+    push.send_push.side_effect = _send
+    return push
+
+
+def _enable_push(config):
+    config.alerts.push.enabled = True
+    config.alerts.push.tokens = ["ExponentPushToken[x]"]
+
+
+def test_push_disabled_sends_no_push(db, mock_twilio, config):
+    """With push disabled (default), no push is sent even when an SMS fires."""
+    push = _make_push_client()
+    sm = AlertStateMachine(db, mock_twilio, config, push_client=push)
+    event = _make_event(urgency_score=8, source_count=1)
+    db.insert_event(event)
+
+    sm.process_event(event)
+
+    push.send_push.assert_not_called()
+    assert not [a for a in db.get_alert_records(event.id) if a.alert_type == "push"]
+
+
+def test_push_enabled_sends_once_per_event(db, mock_twilio, config):
+    """An alertable event pushes once; a second cycle does not re-push."""
+    _enable_push(config)
+    push = _make_push_client()
+    sm = AlertStateMachine(db, mock_twilio, config, push_client=push)
+    event = _make_event(urgency_score=8, source_count=1)
+    db.insert_event(event)
+
+    sm.process_event(event)
+    sm.process_event(event)  # SMS tier is suppressed on re-alert -> no second push
+
+    assert push.send_push.call_count == 1
+    push_records = [a for a in db.get_alert_records(event.id) if a.alert_type == "push"]
+    assert len(push_records) == 1
+
+
+def test_push_dedup_on_existing_push_record(db, mock_twilio, config):
+    """A prior push record suppresses re-pushing the same event's initial alert."""
+    _enable_push(config)
+    push = _make_push_client()
+    sm = AlertStateMachine(db, mock_twilio, config, push_client=push)
+    event = _make_event(urgency_score=10, source_count=2)
+    existing = [_make_alert_record(event.id, alert_type="push", status="sent")]
+
+    sm._maybe_send_push(event, existing)
+
+    push.send_push.assert_not_called()
+
+
+def test_push_update_bypasses_dedup(db, mock_twilio, config):
+    """An update push fires despite an existing push record (caller-gated)."""
+    _enable_push(config)
+    push = _make_push_client()
+    sm = AlertStateMachine(db, mock_twilio, config, push_client=push)
+    event = _make_event(urgency_score=10, source_count=2)
+    db.insert_event(event)
+    existing = [_make_alert_record(event.id, alert_type="push", status="sent")]
+
+    sm._maybe_send_push(event, existing, is_update=True)
+
+    push.send_push.assert_called_once()
+    assert [a for a in db.get_alert_records(event.id) if a.alert_type == "push"]
+
+
+def test_low_urgency_sends_no_push(db, mock_twilio, config):
+    """log_only events never push."""
+    from sentinel.config import UrgencyLevel
+
+    _enable_push(config)
+    config.alerts.urgency_levels["low"] = UrgencyLevel(min_score=1, action="log_only")
+    push = _make_push_client()
+    sm = AlertStateMachine(db, mock_twilio, config, push_client=push)
+    event = _make_event(urgency_score=3, source_count=1)
+    db.insert_event(event)
+
+    sm.process_event(event)
+
+    push.send_push.assert_not_called()

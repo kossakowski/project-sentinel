@@ -554,6 +554,16 @@ alerts:
     retry_interval_minutes: 5
     cooldown_hours: 6
 
+  # Push notifications via the Expo Push Service (companion mobile app).
+  # Additive channel: fires alongside phone calls / SMS, never replaces them.
+  # Read the token off the mobile app's notification panel and add it below
+  # (literal "ExponentPushToken[...]" or "${EXPO_PUSH_TOKEN}" from the env).
+  # Leave tokens empty when disabled — every "${VAR}" here must resolve at load.
+  push:
+    enabled: false
+    tokens: []
+      # - "${EXPO_PUSH_TOKEN}"
+
 # -----------------------------------------------------------------------------
 # SCHEDULER
 # -----------------------------------------------------------------------------

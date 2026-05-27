@@ -3,6 +3,7 @@ import random
 import time
 from datetime import UTC, datetime, timedelta
 
+from sentinel.alerts.push_client import ExpoPushClient
 from sentinel.alerts.twilio_client import TwilioClient
 from sentinel.config import SentinelConfig
 from sentinel.database import Database
@@ -110,6 +111,16 @@ def _format_update_sms(event: Event, db: Database, config: SentinelConfig) -> st
     )
 
 
+def _format_push(event: Event, is_update: bool = False) -> tuple[str, str]:
+    """Format a short push notification title + body in Polish."""
+    event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
+    title = (
+        f"ℹ️ SENTINEL — aktualizacja: {event_type_pl}" if is_update else f"\U0001f6a8 PROJECT SENTINEL: {event_type_pl}"
+    )
+    body = f"{event.summary_pl}\nPilność {event.urgency_score}/10 · źródła: {event.source_count}"
+    return title, body
+
+
 def _format_article_links_message(event: Event, db: Database) -> str:
     """Format a WhatsApp message with clickable links to source articles."""
     event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
@@ -138,10 +149,17 @@ def _format_article_links_message(event: Event, db: Database) -> str:
 class AlertStateMachine:
     """Manages the lifecycle of event alerts."""
 
-    def __init__(self, db: Database, twilio_client: TwilioClient, config: SentinelConfig) -> None:
+    def __init__(
+        self,
+        db: Database,
+        twilio_client: TwilioClient,
+        config: SentinelConfig,
+        push_client: ExpoPushClient | None = None,
+    ) -> None:
         self.db = db
         self.twilio = twilio_client
         self.config = config
+        self.push = push_client or ExpoPushClient(config)
         self.logger = logging.getLogger("sentinel.alerts.state_machine")
 
     def process_event(self, event: Event) -> None:
@@ -155,6 +173,7 @@ class AlertStateMachine:
         if self._is_acknowledged(existing_alerts):
             if event.last_updated_at > self._last_alert_time(existing_alerts):
                 self._send_update_sms(event)
+                self._maybe_send_push(event, existing_alerts, is_update=True)
             return
 
         # If there are pending call records (initiated but not yet resolved),
@@ -178,6 +197,11 @@ class AlertStateMachine:
                 event.id,
             )
             return
+
+        # Additive push fires before the (potentially blocking) Twilio dispatch
+        # so it reaches the phone immediately. log_only events get no push.
+        if action != "log_only":
+            self._maybe_send_push(event, existing_alerts)
 
         if action == "phone_call":
             self._execute_phone_call(event, existing_alerts)
@@ -555,6 +579,41 @@ class AlertStateMachine:
         if record is not None:
             self.db.insert_alert_record(record)
             self.logger.info("Update SMS sent for acknowledged event %s", event.id)
+
+    def _maybe_send_push(
+        self,
+        event: Event,
+        existing_alerts: list[AlertRecord],
+        is_update: bool = False,
+    ) -> None:
+        """Send an additive Expo push, recording it as a 'push' alert.
+
+        No-op when push is disabled or no tokens are configured. The initial
+        alert is deduped on the presence of a prior 'push' record so a critical
+        event's call-retry cycles don't re-push every few minutes. Updates skip
+        that dedup — the caller only invokes them when genuinely new corroboration
+        arrived, and the new record's sent_at rate-limits the next one.
+        """
+        push_cfg = self.config.alerts.push
+        if not push_cfg.enabled or not push_cfg.tokens:
+            return
+        if not is_update and any(a.alert_type == "push" for a in existing_alerts):
+            return
+
+        title, body = _format_push(event, is_update=is_update)
+        record = self.push.send_push(
+            title,
+            body,
+            event.id,
+            data={
+                "event_id": event.id,
+                "urgency_score": event.urgency_score,
+                "event_type": event.event_type,
+            },
+        )
+        if record is not None:
+            self.db.insert_alert_record(record)
+            self.logger.info("Push alert recorded for event %s", event.id[:8])
 
     def _update_alert_record(
         self,

@@ -6,6 +6,7 @@ import Moro from './designs/Moro';
 import MoroActive from './designs/MoroActive';
 import MoroArctic from './designs/MoroArctic';
 import Tactical from './designs/Tactical';
+import PushPanel from './push/PushPanel';
 
 type Design = {
   name: string;
@@ -23,6 +24,7 @@ const DESIGNS: Design[] = [
 
 export default function App() {
   const [i, setI] = useState(DESIGNS.findIndex((d) => d.name === 'Tactical'));
+  const [showPush, setShowPush] = useState(false);
   const current = DESIGNS[i];
   const { Component, dark } = current;
 
@@ -31,6 +33,11 @@ export default function App() {
       <View style={styles.canvas}>
         <Component />
       </View>
+      {showPush && (
+        <View style={styles.overlay}>
+          <PushPanel onClose={() => setShowPush(false)} />
+        </View>
+      )}
       <SafeAreaView style={[styles.pickerSafe, dark && styles.pickerSafeDark]}>
         <View style={[styles.picker, dark && styles.pickerDark]}>
           {DESIGNS.map((d, idx) => {
@@ -56,9 +63,19 @@ export default function App() {
               </Pressable>
             );
           })}
+          <Pressable
+            onPress={() => setShowPush((v) => !v)}
+            style={[styles.pill, styles.pushPill, showPush && styles.pushPillActive]}
+          >
+            <Text
+              style={[styles.pillText, showPush ? styles.pushPillTextActive : styles.pushPillText]}
+            >
+              PUSH
+            </Text>
+          </Pressable>
         </View>
       </SafeAreaView>
-      <StatusBar style={dark ? 'light' : 'dark'} />
+      <StatusBar style={dark || showPush ? 'light' : 'dark'} />
     </View>
   );
 }
@@ -67,6 +84,14 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#fff' },
   rootDark: { backgroundColor: '#0a0a0a' },
   canvas: { flex: 1 },
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#0a0a0a',
+  },
   pickerSafe: { backgroundColor: '#fff' },
   pickerSafeDark: { backgroundColor: '#0a0a0a' },
   picker: {
@@ -92,4 +117,11 @@ const styles = StyleSheet.create({
   pillTextDark: { color: '#777' },
   pillTextActiveLight: { color: '#fff' },
   pillTextActiveDark: { color: '#0a0a0a' },
+  pushPill: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#3dff9a',
+  },
+  pushPillActive: { backgroundColor: '#3dff9a' },
+  pushPillText: { color: '#3dff9a' },
+  pushPillTextActive: { color: '#0a0a0a', fontWeight: '700' },
 });
