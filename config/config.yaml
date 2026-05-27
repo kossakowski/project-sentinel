@@ -298,7 +298,7 @@ sources:
   - name: TVN24
     url: https://tvn24.pl/najnowsze.xml
     language: pl
-    enabled: true
+    enabled: false
     priority: 1
   - name: RMF24
     url: https://www.rmf24.pl/feed
