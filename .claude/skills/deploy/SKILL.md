@@ -215,6 +215,14 @@ ssh -p 2222 deploy@178.104.76.254 'sudo systemctl restart sentinel'
 
 If restart fails → **STOP.** Report the error.
 
+**6e. Prune old deploy snapshots (keep last 10):**
+
+```bash
+ssh -p 2222 deploy@178.104.76.254 'ls -1dt /home/deploy/backups/deploy-* | tail -n +11 | xargs rm -rf && echo "Kept $(ls -1d /home/deploy/backups/deploy-* | wc -l) snapshots, $(du -sh /home/deploy/backups/ | cut -f1) total"'
+```
+
+This deletes all but the 10 most recent deploy snapshots. Non-critical — if it fails, log a warning and continue.
+
 ### Step 7: Verify Deployment
 
 Run ALL verification checks. Collect results, then report them together.

@@ -226,7 +226,7 @@ Build or plan metrics that track classification quality over time:
 
 4. ~~**Deploy current `config/config.yaml` to `/etc/sentinel/config.yaml`.**~~ **DONE (2026-05-27).** Live config was 53 days stale (last modified 2026-04-04), missing 45 keyword lines and carrying 13 dead config fields. Deployed via new config-sync step added to `/deploy` skill (Step 6b). Keyword count: 168 → 213. Deploy tag: `deploy-20260527-112819`.
 
-5. **Add deploy-snapshot pruning.** `/home/deploy/backups/` is at 2.0 GB (18 snapshots) and growing; deploy-snapshot directories are not auto-pruned (only DB backups are). Recommended policy: keep last 5 snapshots, prune as part of deploy script.
+5. ~~**Add deploy-snapshot pruning.**~~ **DONE (2026-05-27).** Added Step 6e to `/deploy` skill: keeps the 10 most recent snapshots, deletes the rest after each deploy. One-time prune: 21 → 10 snapshots, 2.2 GB → 1.4 GB. Will self-maintain going forward.
 
 6. ~~**Decide TVN24 + LSM Latvia source health.**~~ **DONE (2026-05-27).** TVN24: disabled — Cloudflare blocks Hetzner datacenter IPs regardless of User-Agent; was spamming their server with 403s for months. Polish news covered by 5 other sources. LSM Latvia: fixed — corrected RSS URL to `eng.lsm.lv/rss/?lang=en&catid=318`, now fetching 50 articles reliably. Also changed RSS fetcher User-Agent to browser-compatible `Mozilla/5.0 (compatible; ProjectSentinel/1.0)`. Commit `b464a91`. See `docs/sources.md` for full notes on re-enabling TVN24 if proxy support is added.
 
