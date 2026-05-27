@@ -348,7 +348,7 @@ sources:
       priority: 2
 
     - name: LSM Latvia
-      url: https://eng.lsm.lv/rss/
+      url: https://eng.lsm.lv/rss/?lang=en&catid=318
       language: en
       enabled: true
       priority: 2
