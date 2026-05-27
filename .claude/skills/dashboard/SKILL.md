@@ -4,7 +4,7 @@ description: >-
   Start or stop the Sentinel Article Dashboard locally. With no arguments (or /dashboard):
   syncs the production database, launches Flask backend + Vite dev server, opens Chrome.
   With --close or -c: kills all dashboard processes and closes the Chrome tab.
-  Only invoke when the user explicitly calls /dashboard. Do NOT auto-trigger.
+disable-model-invocation: true
 ---
 
 # /dashboard — Article Dashboard
