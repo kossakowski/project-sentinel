@@ -41,13 +41,7 @@ Every classification step must be saved to the database — not just the final r
 
 ---
 
-## 2. Audit & resolve existing TODO items
-
-Go through every item in this file (problems, code debt, ops debt) and verify whether each is still relevant. Fix or close them one by one. Some may have been resolved by recent work; others may have rotted further. The goal is to get to a clean, accurate backlog before adding major new features.
-
----
-
-## 3. Source health analysis & expansion
+## 2. Source health analysis & expansion
 
 **Problem:** Some article sources are nearly dead (consistently 403, low yield), while others are very active and fruitful. We haven't re-evaluated sources since initial setup.
 
@@ -60,7 +54,7 @@ Go through every item in this file (problems, code debt, ops debt) and verify wh
 
 ---
 
-## 4. Mobile app — replace SMS notifications
+## 3. Mobile app — replace SMS notifications
 
 **Problem:** SMS notifications are inadequate for several reasons:
 1. **No differentiation** — an alert SMS looks identical to a work text from France; no custom sound/chime to signal urgency.
@@ -81,11 +75,11 @@ Go through every item in this file (problems, code debt, ops debt) and verify wh
 
 ---
 
-## 5. Productize Sentinel — strategy & roadmap
+## 4. Productize Sentinel — strategy & roadmap
 
 The long-term goal is to turn Sentinel from a personal tool into a multi-user product. This requires both technical and business work, and the two influence each other — feature decisions depend on pricing strategy, and pricing depends on what's technically feasible.
 
-### 5.1 Technical requirements for multi-user
+### 4.1 Technical requirements for multi-user
 
 1. **Account system.** Currently the entire app is single-user, hardcoded for one person's preferences. Need: user registration/auth, per-user notification preferences, per-user alert history.
 
@@ -98,7 +92,7 @@ The long-term goal is to turn Sentinel from a personal tool into a multi-user pr
 
 3. **Cost-aware feature design.** Calls and SMS cost real money per user. Push notifications are free. Configurable call thresholds must be paired with cost analysis — if a user sets calls on urgency 5+, that could mean dozens of calls/month. This needs to be reflected in pricing tiers or hard limits.
 
-### 5.2 Business decisions (open)
+### 4.2 Business decisions (open)
 
 1. **Go-to-market timing.** Two strategies, undecided:
    - **Polish first:** Make the product excellent for personal use → add accounts → add billing → launch. Risk: takes a long time before any market feedback.
@@ -116,7 +110,7 @@ The long-term goal is to turn Sentinel from a personal tool into a multi-user pr
 
 4. **Overall roadmap.** We need a real plan with goals and timelines instead of working on whatever feels interesting. What order do we build things in? What are the milestones? What's the MVP for launch? All of this needs to be decided and written down.
 
-### 5.3 What's configurable vs fixed
+### 4.3 What's configurable vs fixed
 
 Before building multi-user, decide what users can change and what we control:
 - Call threshold (urgency level that triggers a call)
@@ -129,18 +123,18 @@ Each configurable parameter adds complexity. Default to fixed unless there's a s
 
 ---
 
-## 6. Pipeline analysis & classifier refinement
+## 5. Pipeline analysis & classifier refinement
 
 **Goal:** Develop a continuous, systematic process for evaluating and improving the entire pipeline — from source ingestion to classification to alerting.
 
-### 6.1 End-to-end pipeline review
+### 5.1 End-to-end pipeline review
 
 Do a full audit of the data flow:
 - **Source → keyword filter:** What articles does keyword filtering catch? What does it miss? Is simple keyword matching sufficient, or should we add semantic analysis or AI-based pre-filtering? What would AI-based filtering cost at our article volume?
 - **Keyword filter → classifier:** Are there articles that pass keyword filtering but never reach classification? Are there articles filtered out too early that should have been classified? We need visibility into the pre-classification funnel.
 - **Classifier → dashboard:** Everything classified is visible on the dashboard. But the annotation system exists precisely to evaluate classification quality — we should actively use it.
 
-### 6.2 Annotation-driven classifier improvement
+### 5.2 Annotation-driven classifier improvement
 
 The annotation system (Phase 4 of the dashboard) was built exactly for this: manual labelling of classifier output to create ground truth. The workflow should be:
 - Do regular annotation sessions — review recent classifications, label as correct/incorrect/uncertain, set expected urgency scores.
@@ -149,7 +143,7 @@ The annotation system (Phase 4 of the dashboard) was built exactly for this: man
 
 **I need to learn how the annotation system works in practice** — open the dashboard, go through the annotation flow, and understand what it offers before designing the improvement loop.
 
-### 6.3 Continuous quality metrics
+### 5.3 Continuous quality metrics
 
 Build or plan metrics that track classification quality over time:
 - Accuracy rate (annotations vs classifier output)
@@ -159,7 +153,7 @@ Build or plan metrics that track classification quality over time:
 
 ---
 
-## 7. Codebase refactoring plan
+## 6. Codebase refactoring plan
 
 **Problem:** The codebase has grown organically. Before introducing major changes (accounts, mobile app, multi-user), we should address structural debt — but the timing is a strategic decision.
 
@@ -172,25 +166,27 @@ Build or plan metrics that track classification quality over time:
 2. **Build-then-overhaul:** Keep implementing features, then do a big refactor before launch. Risk: tech debt compounds, bugs multiply.
 3. **Phase-gate refactors:** Before each major phase (mobile app, accounts, billing), do a targeted refactor of the areas that phase will touch. Probably the best balance.
 
-**Decision needed:** Pick a strategy. This ties into the overall product roadmap (TODO #5) — refactoring milestones should be part of the timeline.
+**Decision needed:** Pick a strategy. This ties into the overall product roadmap (TODO #4) — refactoring milestones should be part of the timeline.
 
 ---
 
 ## Commentary: Priority & sequencing (Claude's assessment, 2026-05-24)
 
-**The biggest risk is scope explosion.** Items 1–7 above represent 3-4 full-time engineering quarters for a solo side project. Tackling them all in parallel will result in bouncing between fronts and finishing none. Sequencing matters more than any individual item.
+**The biggest risk is scope explosion.** Items 1–6 above represent 3-4 full-time engineering quarters for a solo side project. Tackling them all in parallel will result in bouncing between fronts and finishing none. Sequencing matters more than any individual item.
 
-**Recommended priority order: 2 → 6 → 3 → 4 → 5 → 7**
+**Recommended priority order: 5 → 1 → 2 → 3 → 4 → 6**
 
-1. **Start with #2 (audit existing debt) and #6 (pipeline/classifier).** These are highest-ROI — they directly improve the thing that matters: not missing a real event and not crying wolf. The annotation system is already built and sitting unused. Using it to systematically measure and improve classification quality is the single best investment of time right now.
+1. **Start with #5 (pipeline/classifier).** Highest-ROI — directly improves the thing that matters: not missing a real event and not crying wolf. The annotation system is already built and sitting unused. Using it to systematically measure and improve classification quality is the single best investment of time right now.
 
-2. **#3 (sources) is worth a focused analysis sprint.** Twitter/X is the obvious gap — it's where military OSINT breaks first. The official API runs ~$100/mo for basic access, but services like SocialData or Apify offer cheaper scraping. Truth Social is noise for this use case — skip it.
+2. **#1 (tiered classification) follows naturally from #5.** Once annotation data reveals where Haiku makes systematic errors, the tiered pipeline addresses them with Sonnet/Opus verification. Cost is negligible (+$1.13/mo).
 
-3. **#4 (mobile app) — try PWA first, not a native app.** A progressive web app with web push notifications gets you custom sounds, rich links, and zero delivery cost in 2-3 days of work instead of weeks. The one catch is iOS — Safari push works now but is flakier than native. If PWA proves insufficient, then consider React Native. Building a full native app at this stage is overkill.
+3. **#2 (sources) is worth a focused analysis sprint.** Twitter/X is the obvious gap — it's where military OSINT breaks first. The official API runs ~$100/mo for basic access, but services like SocialData or Apify offer cheaper scraping. Truth Social is noise for this use case — skip it.
 
-4. **#5 (productization) is premature.** The classifier hasn't been systematically validated even for personal use — the annotation system exists but hasn't been used to measure accuracy. Selling a military alert product with unvalidated classification quality is a liability, not a business. The sequencing should be: make the pipeline excellent for yourself → prove it with annotation data → then decide if it's worth productizing. If you do eventually productize, invite-only beta beats big-bang launch for a niche product like this — you won't learn what matters from theory, you need 5 real users telling you what's wrong.
+4. **#3 (mobile app) — try PWA first, not a native app.** A progressive web app with web push notifications gets you custom sounds, rich links, and zero delivery cost in 2-3 days of work instead of weeks. The one catch is iOS — Safari push works now but is flakier than native. If PWA proves insufficient, then consider React Native. Building a full native app at this stage is overkill.
 
-5. **#7 (refactoring) — phase-gated is the obvious answer.** Big rewrites kill side projects. Refactor the parts you're about to touch before each major phase, leave the rest alone. Don't do a speculative "clean everything up" pass.
+5. **#4 (productization) is premature.** The classifier hasn't been systematically validated even for personal use — the annotation system exists but hasn't been used to measure accuracy. Selling a military alert product with unvalidated classification quality is a liability, not a business. The sequencing should be: make the pipeline excellent for yourself → prove it with annotation data → then decide if it's worth productizing. If you do eventually productize, invite-only beta beats big-bang launch for a niche product like this — you won't learn what matters from theory, you need 5 real users telling you what's wrong.
+
+6. **#6 (refactoring) — phase-gated is the obvious answer.** Big rewrites kill side projects. Refactor the parts you're about to touch before each major phase, leave the rest alone. Don't do a speculative "clean everything up" pass.
 
 ---
 
