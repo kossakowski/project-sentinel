@@ -393,7 +393,7 @@ sources:
     enabled: true
     priority: 2
   gdelt:
-    enabled: true
+    enabled: false
     update_interval_minutes: 15
     themes:
     - ARMEDCONFLICT
