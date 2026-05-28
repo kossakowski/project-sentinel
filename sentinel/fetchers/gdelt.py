@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 
@@ -80,9 +80,7 @@ class GDELTFetcher(BaseFetcher):
         if countries:
             country_codes = [c["code"] for c in countries]
             fips_codes = [FIPS_MAP.get(c, c) for c in country_codes]
-            country_query = " OR ".join(
-                f"sourcecountry:{c}" for c in fips_codes
-            )
+            country_query = " OR ".join(f"sourcecountry:{c}" for c in fips_codes)
             parts.append(f"({country_query})")
 
         return " ".join(parts)
@@ -110,7 +108,7 @@ class GDELTFetcher(BaseFetcher):
             "mode": "ArtList",
             "maxrecords": 250,
             "format": "json",
-            "TIMESPAN": f"{self.config.sources.gdelt.update_interval_minutes}min",
+            "TIMESPAN": f"{self.config.sources.gdelt.lookback_minutes}min",
             "sort": "DateDesc",
         }
 
@@ -120,7 +118,10 @@ class GDELTFetcher(BaseFetcher):
                 params=params,
                 timeout=30.0,
                 headers={
-                    "User-Agent": "ProjectSentinel/1.0 (military-alert-monitor)",
+                    # GDELT pattern-matches the User-Agent and 429s default
+                    # python-requests/httpx strings; a descriptive UA with a
+                    # contact address is the documented polite-pattern.
+                    "User-Agent": "ProjectSentinel/1.0 (+kossakowski87@gmail.com)",
                 },
             )
 
@@ -129,9 +130,7 @@ class GDELTFetcher(BaseFetcher):
             return []
 
         if response.status_code >= 500:
-            self.logger.warning(
-                "GDELT: server error (%d)", response.status_code
-            )
+            self.logger.warning("GDELT: server error (%d)", response.status_code)
             return []
 
         response.raise_for_status()
@@ -139,7 +138,19 @@ class GDELTFetcher(BaseFetcher):
         try:
             data = response.json()
         except Exception:
-            self.logger.warning("GDELT: empty or non-JSON response")
+            # GDELT replies with 200 OK + plain-text bodies for parameter
+            # errors (e.g. "Timespan is too short."). Surface the actual body
+            # so the cause is obvious, and treat the documented timespan-floor
+            # message as an ERROR — it's a config bug, not a transient.
+            body_snippet = (response.text or "").strip()[:200]
+            if "Timespan is too short" in body_snippet:
+                self.logger.error(
+                    "GDELT: server rejected TIMESPAN=%dmin (%r); set sources.gdelt.lookback_minutes >= 30",
+                    self.config.sources.gdelt.lookback_minutes,
+                    body_snippet,
+                )
+            else:
+                self.logger.warning("GDELT: non-JSON 200 response: %r", body_snippet)
             return []
         raw_articles = data.get("articles", [])
 
@@ -147,7 +158,7 @@ class GDELTFetcher(BaseFetcher):
             self.logger.debug("GDELT: no articles returned")
             return []
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         articles: list[Article] = []
 
         for raw in raw_articles:
@@ -186,6 +197,4 @@ class GDELTFetcher(BaseFetcher):
     @staticmethod
     def _parse_seendate(seendate: str) -> datetime:
         """Parse GDELT seendate format: 20250910T034800Z."""
-        return datetime.strptime(seendate, "%Y%m%dT%H%M%SZ").replace(
-            tzinfo=timezone.utc
-        )
+        return datetime.strptime(seendate, "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)

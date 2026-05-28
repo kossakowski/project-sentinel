@@ -31,7 +31,7 @@ def _make_telegram_config(enabled: bool = False) -> dict:
             ],
             "gdelt": {
                 "enabled": True,
-                "update_interval_minutes": 15,
+                "lookback_minutes": 60,
                 "themes": ["ARMEDCONFLICT"],
             },
             "google_news": {

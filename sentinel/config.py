@@ -26,7 +26,7 @@ class RSSSource(BaseModel):
 
 class GDELTConfig(BaseModel):
     enabled: bool = True
-    update_interval_minutes: int = 15
+    lookback_minutes: int = 60
     themes: list[str]
 
 

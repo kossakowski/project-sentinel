@@ -402,9 +402,12 @@ sources:
       priority: 2
 
   # --- GDELT ---
+  # DOC 2.0 API throttle: 1 req / 5 s per IP, and the server rejects
+  # TIMESPAN <= 15min with "Timespan is too short." (200 OK + plain text).
+  # Polled every 15 min by the slow lane; lookback window must be > 15 min.
   gdelt:
     enabled: true
-    update_interval_minutes: 15
+    lookback_minutes: 60
     themes:
       - ARMEDCONFLICT
       - WB_2462_POLITICAL_VIOLENCE_AND_WAR

@@ -52,7 +52,7 @@ Consumed by: `sentinel/fetchers/gdelt.py`
 | YAML key | Type | Live value | Pydantic default | Description |
 |---|---|---|---|---|
 | `enabled` | bool | `true` | `true` | Enable GDELT DOC 2.0 fetcher |
-| `update_interval_minutes` | int | `15` | `15` | TIMESPAN window for GDELT query |
+| `lookback_minutes` | int | `60` | `60` | TIMESPAN window for the GDELT DOC 2.0 query. Must be >15 — the API rejects `15min` with `200 OK + "Timespan is too short."` |
 | `themes` | list[str] | `[ARMEDCONFLICT, WB_2462_POLITICAL_VIOLENCE_AND_WAR, CRISISLEX_C03_WELLBEING_HEALTH, TAX_FNCACT_MILITARY]` | required | GKG theme codes |
 
 ### `sources.google_news` — `GoogleNewsConfig`
