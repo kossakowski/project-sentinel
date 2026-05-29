@@ -24,25 +24,74 @@ EVENT_TYPE_PL = {
     "drone_attack": "Atak dronów",
 }
 
+# Twilio rejects a concatenated SMS body over 1600 characters. Cap below that
+# with a margin; the source list is trimmed to fit so heavily-corroborated
+# events (many long Google News redirect URLs) don't blow past the limit and
+# silently fail to send.
+SMS_MAX_CHARS = 1500
 
-def _build_sources_list(event: Event, db: Database) -> str:
+# Bound the (otherwise unbounded) classifier summary so the fixed template
+# overhead can never alone exceed SMS_MAX_CHARS and re-trigger Twilio's
+# rejection, while leaving real budget for the source list. summary_pl is
+# prompted for "1-2 zdania" upstream but is not capped anywhere.
+SMS_SUMMARY_MAX_CHARS = 600
+
+# Reserve room for the "- …i N więcej" trailer when trimming sources.
+_SOURCES_TRAILER_RESERVE = 40
+
+
+def _build_sources_list(event: Event, db: Database, max_chars: int | None = None) -> str:
     """Build a formatted source list from event article_ids.
 
     Looks up each article in the database to get source_name, title,
     and source_url.  Each source is rendered as a title line followed
     by a clickable URL line so the recipient can immediately verify
     the article.
+
+    When ``max_chars`` is given the list is bounded to that budget: as many
+    whole source entries as fit are included, then a "- …i N innych źródeł"
+    trailer accounts for the omitted ones. This keeps the SMS body under
+    Twilio's limit even when an event carries many long URLs.
     """
-    lines = []
+    entries: list[str] = []
     for article_id in event.article_ids:
         article = db.get_article_by_id(article_id)
         if article is not None:
-            lines.append(f"- {article.source_name}: {article.title}")
+            entry = f"- {article.source_name}: {article.title}"
             if article.source_url:
-                lines.append(f"  {article.source_url}")
+                entry += f"\n  {article.source_url}"
+            entries.append(entry)
         else:
-            lines.append(f"- (źródło {article_id[:8]})")
-    return "\n".join(lines) if lines else f"- {event.source_count} źródeł"
+            entries.append(f"- (źródło {article_id[:8]})")
+
+    if not entries:
+        return f"- {event.source_count} źródeł"
+
+    if max_chars is None:
+        return "\n".join(entries)
+
+    full = "\n".join(entries)
+    if len(full) <= max_chars:
+        return full
+
+    # Greedily include whole entries within budget, leaving room for the trailer.
+    budget = max(0, max_chars - _SOURCES_TRAILER_RESERVE)
+    included: list[str] = []
+    used = 0
+    for entry in entries:
+        add_cost = len(entry) + (1 if included else 0)  # +1 for the joining newline
+        if used + add_cost > budget:
+            break
+        included.append(entry)
+        used += add_cost
+
+    omitted = len(entries) - len(included)
+    body = "\n".join(included)
+    if omitted > 0:
+        trailer = f"- …i {omitted} więcej"
+        body = f"{body}\n{trailer}" if body else trailer
+    # Hard clamp as a final guarantee (e.g. a single oversized entry).
+    return body[:max_chars]
 
 
 def _get_latest_source_name(event: Event, db: Database) -> str:
@@ -78,19 +127,33 @@ def _format_sms_message(event: Event, db: Database, config: SentinelConfig) -> s
     event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
     countries_str = ", ".join(event.affected_countries)
     first_seen_local = format_warsaw(event.first_seen_at)
-    sources_list = _build_sources_list(event, db)
-
     template = config.alerts.templates.sms
-    return template.format(
-        event_type_pl=event_type_pl,
-        urgency_score=event.urgency_score,
-        affected_countries_str=countries_str,
-        aggressor=event.aggressor,
-        summary_pl=event.summary_pl,
-        source_count=event.source_count,
-        sources_list=sources_list,
-        first_seen_at_local=first_seen_local,
-    )
+
+    # Bound the otherwise-unbounded classifier summary so fixed template overhead
+    # can never alone exceed the budget and re-trigger Twilio's 1600-char
+    # rejection. Truncating the summary -- not the rendered body -- preserves
+    # trailing template fields like "Wykryto: {first_seen_at_local}".
+    summary_pl = event.summary_pl
+    if len(summary_pl) > SMS_SUMMARY_MAX_CHARS:
+        summary_pl = summary_pl[: SMS_SUMMARY_MAX_CHARS - 1].rstrip() + "…"
+
+    fields = {
+        "event_type_pl": event_type_pl,
+        "urgency_score": event.urgency_score,
+        "affected_countries_str": countries_str,
+        "aggressor": event.aggressor,
+        "summary_pl": summary_pl,
+        "source_count": event.source_count,
+        "first_seen_at_local": first_seen_local,
+    }
+
+    # Measure the fixed overhead (template with an empty source list), then bound
+    # the source list to the remaining budget so the whole body stays under
+    # Twilio's limit. Long Google News URLs used to push corroborated events past
+    # it, failing the send entirely.
+    overhead = len(template.format(sources_list="", **fields))
+    sources_list = _build_sources_list(event, db, max_chars=max(0, SMS_MAX_CHARS - overhead))
+    return template.format(sources_list=sources_list, **fields)
 
 
 def _format_update_sms(event: Event, db: Database, config: SentinelConfig) -> str:

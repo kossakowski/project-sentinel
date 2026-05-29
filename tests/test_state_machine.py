@@ -16,6 +16,7 @@ from uuid import uuid4
 import pytest
 
 from sentinel.alerts.state_machine import (
+    SMS_MAX_CHARS,
     AlertStateMachine,
     _format_sms_message,
     _format_update_sms,
@@ -558,6 +559,76 @@ def test_sms_format_includes_source_details(db, config):
     assert "- PAP: Atak rakietowy na Polskę" in message
     assert "- TVN24: Rosja atakuje Polskę rakietami" in message
     assert "Źródła (2):" in message
+
+
+def test_sms_body_capped_for_many_long_url_sources(db, config):
+    """A heavily-corroborated event with many long (Google News-style) URLs must
+    produce an SMS under Twilio's limit, trimming the source list with a
+    "…i N innych źródeł" trailer rather than overflowing and failing to send.
+    """
+    article_ids = []
+    for i in range(12):
+        # Google News redirect URLs run hundreds of chars; emulate that bloat.
+        article = Article(
+            source_name=f"GoogleNews:Russia attack NATO {i}",
+            source_url="https://news.google.com/rss/articles/" + ("A1b2C3d4" * 60) + f"?oc=5&i={i}",
+            source_type="google_news",
+            title=f"Rosyjski dron uderzył w blok mieszkalny w Rumunii — relacja numer {i}",
+            summary="Szczegóły zdarzenia...",
+            language="pl",
+            published_at=datetime.now(UTC),
+            fetched_at=datetime.now(UTC),
+        )
+        db.insert_article(article)
+        article_ids.append(article.id)
+
+    event = Event(
+        id=str(uuid4()),
+        event_type="drone_attack",
+        urgency_score=8,
+        affected_countries=["RO"],
+        aggressor="RU",
+        summary_pl="Rosyjski dron uderzył w blok mieszkalny w Rumunii, dwoje rannych.",
+        first_seen_at=datetime.now(UTC),
+        last_updated_at=datetime.now(UTC),
+        source_count=6,
+        article_ids=article_ids,
+    )
+
+    message = _format_sms_message(event, db, config)
+
+    # Stays under Twilio's concatenated-message limit (the bug was HTTP 400 >1600).
+    assert len(message) <= SMS_MAX_CHARS
+    # Trims rather than dropping the alert: at least the first source survives...
+    assert "GoogleNews:Russia attack NATO 0" in message
+    # ...and the omitted ones are summarized.
+    assert "więcej" in message
+
+
+def test_sms_body_capped_when_summary_is_huge(db, config):
+    """A pathologically long summary_pl (classifier output is unbounded) must not
+    push the body past the limit. The summary is truncated rather than the
+    rendered body, so trailing template fields (e.g. "Wykryto:") survive — a
+    blind tail-clamp would have deleted them.
+    """
+    event = Event(
+        id=str(uuid4()),
+        event_type="missile_strike",
+        urgency_score=10,
+        affected_countries=["PL"],
+        aggressor="RU",
+        summary_pl="A" * 2000,
+        first_seen_at=datetime.now(UTC),
+        last_updated_at=datetime.now(UTC),
+        source_count=1,
+        article_ids=[],
+    )
+
+    message = _format_sms_message(event, db, config)
+
+    assert len(message) <= SMS_MAX_CHARS
+    # The trailing detection-time field must NOT be truncated away.
+    assert "Wykryto:" in message
 
 
 # --------------------------------------------------------------------------
