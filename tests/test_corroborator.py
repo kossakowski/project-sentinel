@@ -698,3 +698,295 @@ class TestCorroborator:
 
         rows = db.conn.execute("SELECT * FROM events").fetchall()
         assert len(rows) == 2
+
+    def test_unknown_country_merges_into_concrete(self, db, config):
+        """A sub-critical article classified with affected_countries=["unknown"]
+        merges into a concrete-country event of a compatible type + matching
+        summary, instead of spawning a duplicate event. This is the core fix for
+        the Romania-drone fragmentation, where the same SMS-level incident
+        classified as ["RO"] and ["unknown"] split into separate events.
+        """
+        corroborator = Corroborator(db, config)
+
+        article1 = _make_article(
+            source_name="SourceA",
+            source_url="https://source-a.com/article/1",
+            title="Russian drone hits residential block in Romania",
+        )
+        article2 = _make_article(
+            source_name="SourceB",
+            source_url="https://source-b.com/article/2",
+            title="Drone strikes apartment building, two injured",
+        )
+        db.insert_article(article1)
+        db.insert_article(article2)
+
+        shared_summary = "Rosyjski dron uderzył w blok mieszkalny, dwoje rannych."
+        c1 = _make_classification(
+            article1,
+            urgency_score=6,
+            event_type="drone_attack",
+            affected_countries=["RO"],
+            summary_pl=shared_summary,
+        )
+        c2 = _make_classification(
+            article2,
+            urgency_score=6,
+            event_type="drone_attack",
+            affected_countries=["unknown"],
+            summary_pl=shared_summary,
+        )
+
+        corroborator.process_classifications([c1, c2])
+
+        rows = db.conn.execute("SELECT * FROM events").fetchall()
+        assert len(rows) == 1
+        assert len(Event.from_row(rows[0]).article_ids) == 2
+
+    def test_empty_country_merges_into_concrete(self, db, config):
+        """A sub-critical article with an empty affected_countries list merges into
+        a concrete event rather than spawning a duplicate (empty == no signal).
+        """
+        corroborator = Corroborator(db, config)
+
+        article1 = _make_article(
+            source_name="SourceA",
+            source_url="https://source-a.com/article/1",
+            title="Russian drone hits residential block in Romania",
+        )
+        article2 = _make_article(
+            source_name="SourceB",
+            source_url="https://source-b.com/article/2",
+            title="Drone strikes apartment building, two injured",
+        )
+        db.insert_article(article1)
+        db.insert_article(article2)
+
+        shared_summary = "Rosyjski dron uderzył w blok mieszkalny, dwoje rannych."
+        c1 = _make_classification(
+            article1,
+            urgency_score=6,
+            event_type="drone_attack",
+            affected_countries=["RO"],
+            summary_pl=shared_summary,
+        )
+        c2 = _make_classification(
+            article2,
+            urgency_score=6,
+            event_type="drone_attack",
+            affected_countries=[],
+            summary_pl=shared_summary,
+        )
+
+        corroborator.process_classifications([c1, c2])
+
+        rows = db.conn.execute("SELECT * FROM events").fetchall()
+        assert len(rows) == 1
+
+    def test_concrete_pl_stays_separate_from_ro(self, db, config):
+        """SAFETY: identical summary + compatible type but two CONCRETE different
+        countries (PL vs RO) must stay as two separate events even below the
+        phone-call threshold, so a genuine Poland alert can never be merged into
+        and suppressed by a Romania event.
+        """
+        corroborator = Corroborator(db, config)
+
+        article1 = _make_article(
+            source_name="SourceA",
+            source_url="https://source-a.com/article/1",
+            title="Drone hits building in Romania",
+        )
+        article2 = _make_article(
+            source_name="SourceB",
+            source_url="https://source-b.com/article/2",
+            title="Drone hits building in Poland",
+        )
+        db.insert_article(article1)
+        db.insert_article(article2)
+
+        shared_summary = "Dron uderzył w blok mieszkalny, dwoje rannych."
+        c1 = _make_classification(
+            article1,
+            urgency_score=6,
+            event_type="drone_attack",
+            affected_countries=["RO"],
+            summary_pl=shared_summary,
+        )
+        c2 = _make_classification(
+            article2,
+            urgency_score=6,
+            event_type="drone_attack",
+            affected_countries=["PL"],
+            summary_pl=shared_summary,
+        )
+
+        corroborator.process_classifications([c1, c2])
+
+        rows = db.conn.execute("SELECT * FROM events").fetchall()
+        assert len(rows) == 2
+
+    def test_unknown_country_still_respects_summary_gate(self, db, config):
+        """A sub-critical no-country-signal article does NOT bypass the
+        summary-similarity gate: ["unknown"] with an unrelated summary still
+        stays a separate event.
+        """
+        corroborator = Corroborator(db, config)
+
+        article1 = _make_article(
+            source_name="SourceA",
+            source_url="https://source-a.com/article/1",
+            title="Russian drone hits residential block in Romania",
+        )
+        article2 = _make_article(
+            source_name="SourceB",
+            source_url="https://source-b.com/article/2",
+            title="Unrelated aerial incident elsewhere",
+        )
+        db.insert_article(article1)
+        db.insert_article(article2)
+
+        c1 = _make_classification(
+            article1,
+            urgency_score=6,
+            event_type="drone_attack",
+            affected_countries=["RO"],
+            summary_pl="Rosyjski dron uderzył w blok mieszkalny, dwoje rannych.",
+        )
+        c2 = _make_classification(
+            article2,
+            urgency_score=6,
+            event_type="drone_attack",
+            affected_countries=["unknown"],
+            summary_pl="Awaria sieci energetycznej spowodowała przerwy w dostawie prądu.",
+        )
+
+        corroborator.process_classifications([c1, c2])
+
+        rows = db.conn.execute("SELECT * FROM events").fetchall()
+        assert len(rows) == 2
+
+    def test_merge_drops_unknown_placeholder(self, db, config):
+        """After a sub-critical ["unknown"] article merges into an ["RO"] event,
+        the stored affected_countries drops the "unknown" placeholder (so alert
+        text reads "RO", not "RO, unknown").
+        """
+        corroborator = Corroborator(db, config)
+
+        article1 = _make_article(
+            source_name="SourceA",
+            source_url="https://source-a.com/article/1",
+            title="Russian drone hits residential block in Romania",
+        )
+        article2 = _make_article(
+            source_name="SourceB",
+            source_url="https://source-b.com/article/2",
+            title="Drone strikes apartment building, two injured",
+        )
+        db.insert_article(article1)
+        db.insert_article(article2)
+
+        shared_summary = "Rosyjski dron uderzył w blok mieszkalny, dwoje rannych."
+        c1 = _make_classification(
+            article1,
+            urgency_score=6,
+            event_type="drone_attack",
+            affected_countries=["RO"],
+            summary_pl=shared_summary,
+        )
+        c2 = _make_classification(
+            article2,
+            urgency_score=6,
+            event_type="drone_attack",
+            affected_countries=["unknown"],
+            summary_pl=shared_summary,
+        )
+
+        corroborator.process_classifications([c1, c2])
+
+        rows = db.conn.execute("SELECT * FROM events").fetchall()
+        assert len(rows) == 1
+        assert Event.from_row(rows[0]).affected_countries == ["RO"]
+
+    def test_critical_no_country_does_not_merge(self, db, config):
+        """SAFETY GUARD: a CRITICAL (urgency >= phone-call threshold) article with
+        no concrete country (empty/"unknown") must NOT ride the no-signal
+        relaxation -- it spawns its OWN event (and thus its own phone call) rather
+        than being absorbed into another country's event and potentially silenced
+        by that event's post-acknowledgment cooldown.
+        """
+        corroborator = Corroborator(db, config)
+
+        article1 = _make_article(
+            source_name="SourceA",
+            source_url="https://source-a.com/article/1",
+            title="Russian drone hits residential block in Romania",
+        )
+        article2 = _make_article(
+            source_name="SourceB",
+            source_url="https://source-b.com/article/2",
+            title="Major strike on residential building, casualties",
+        )
+        db.insert_article(article1)
+        db.insert_article(article2)
+
+        shared_summary = "Rosyjski dron uderzył w blok mieszkalny, dwoje rannych."
+        c1 = _make_classification(
+            article1,
+            urgency_score=10,
+            event_type="drone_attack",
+            affected_countries=["RO"],
+            summary_pl=shared_summary,
+        )
+        c2 = _make_classification(
+            article2,
+            urgency_score=10,
+            event_type="drone_attack",
+            affected_countries=["unknown"],
+            summary_pl=shared_summary,
+        )
+
+        corroborator.process_classifications([c1, c2])
+
+        rows = db.conn.execute("SELECT * FROM events").fetchall()
+        assert len(rows) == 2
+
+    def test_critical_concrete_country_still_merges(self, db, config):
+        """A CRITICAL article DOES still merge when it shares a concrete country
+        with the event (the guard only blocks the no-signal relaxation, not a
+        genuine same-country match).
+        """
+        corroborator = Corroborator(db, config)
+
+        article1 = _make_article(
+            source_name="SourceA",
+            source_url="https://source-a.com/article/1",
+            title="Russian drone hits residential block in Poland",
+        )
+        article2 = _make_article(
+            source_name="SourceB",
+            source_url="https://source-b.com/article/2",
+            title="Major strike on residential building in Poland, casualties",
+        )
+        db.insert_article(article1)
+        db.insert_article(article2)
+
+        shared_summary = "Rosyjski dron uderzył w blok mieszkalny w Polsce, dwoje rannych."
+        c1 = _make_classification(
+            article1,
+            urgency_score=10,
+            event_type="drone_attack",
+            affected_countries=["PL"],
+            summary_pl=shared_summary,
+        )
+        c2 = _make_classification(
+            article2,
+            urgency_score=10,
+            event_type="drone_attack",
+            affected_countries=["PL"],
+            summary_pl=shared_summary,
+        )
+
+        corroborator.process_classifications([c1, c2])
+
+        rows = db.conn.execute("SELECT * FROM events").fetchall()
+        assert len(rows) == 1

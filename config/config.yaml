@@ -473,7 +473,7 @@ classification:
   max_tokens: 512
   temperature: 0.0
   corroboration_required: 1
-  corroboration_window_minutes: 60
+  corroboration_window_minutes: 360
 alerts:
   phone_number: ${ALERT_PHONE_NUMBER}
   language: pl

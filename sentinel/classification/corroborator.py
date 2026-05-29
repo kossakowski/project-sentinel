@@ -85,8 +85,16 @@ class Corroborator:
             if not self._are_compatible_types(result.event_type, event.event_type):
                 continue
 
-            # Check shared affected country
-            if not set(result.affected_countries) & set(event.affected_countries):
+            # Check affected-country compatibility. Empty / "unknown" labels carry
+            # no location signal and must NOT block a merge -- this is what shattered
+            # a single real incident into dozens of events when the classifier
+            # emitted ["RO"], [], and ["unknown"] for the same story. Two
+            # concrete-but-different countries (e.g. PL vs RO) still stay separate,
+            # and critical (phone-call-eligible) articles must match a concrete
+            # country so a Poland alert can never be absorbed into another event.
+            if not self._countries_compatible(
+                result.affected_countries, event.affected_countries, urgency=result.urgency_score
+            ):
                 continue
 
             # Check time window
@@ -121,6 +129,52 @@ class Corroborator:
 
         compatible_set = EVENT_COMPATIBILITY.get(type2)
         return compatible_set is not None and type1 in compatible_set
+
+    @staticmethod
+    def _concrete_countries(countries: list[str]) -> set[str]:
+        """Country codes carrying a real location signal.
+
+        Drops empty/whitespace-only entries and the "unknown" placeholder the
+        classifier emits when it cannot determine the target country, so they
+        don't act as a (non-)match key during grouping. Normalizes to uppercase.
+        """
+        return {code for c in countries if c and (code := c.strip().upper()) and code != "UNKNOWN"}
+
+    def _phone_call_threshold(self) -> int:
+        """Lowest urgency whose configured action is a phone call.
+
+        Read from config (alerts.urgency_levels) rather than hardcoded; falls
+        back to 9 if no phone-call level is configured.
+        """
+        thresholds = [
+            level.min_score for level in self.config.alerts.urgency_levels.values() if level.action == "phone_call"
+        ]
+        return min(thresholds) if thresholds else 9
+
+    def _countries_compatible(self, result_countries: list[str], event_countries: list[str], urgency: int = 0) -> bool:
+        """Decide whether affected-country labels permit grouping.
+
+        - A critical (phone-call-eligible) article must share a CONCRETE country
+          with the event; the empty/"unknown" no-signal relaxation is NOT applied
+          to it. Otherwise an urgency-9/10 Poland article whose country the
+          classifier failed to extract could be absorbed into another country's
+          already-alerted event and silenced by its post-acknowledgment cooldown.
+          Without a concrete match it spawns its own event -- and its own call.
+        - Below the phone-call threshold, events are SMS-only and can never enter
+          cooldown, so empty/"unknown" labels (no location signal) don't block a
+          merge -- they fall back to event-type + summary matching. This is what
+          stops one incident from shattering into many SMS-spamming events.
+        - When both sides name concrete countries, require a non-empty
+          intersection so explicitly-different incidents (e.g. PL vs RO) stay
+          separate regardless of urgency.
+        """
+        result_set = self._concrete_countries(result_countries)
+        event_set = self._concrete_countries(event_countries)
+        if urgency >= self._phone_call_threshold():
+            return bool(result_set & event_set)
+        if not result_set or not event_set:
+            return True
+        return bool(result_set & event_set)
 
     def _is_independent_source(self, result: ClassificationResult, event: Event) -> bool:
         """Determine if the new classification comes from an independent source.
@@ -217,9 +271,13 @@ class Corroborator:
         if is_independent:
             event.source_count += 1
 
-        # Merge affected countries
-        merged_countries = list(set(event.affected_countries) | set(result.affected_countries))
-        event.affected_countries = merged_countries
+        # Merge affected countries through the same normalization the matching
+        # gate uses (uppercased, "unknown"/blank dropped) so stored data and
+        # alert text stay clean -- e.g. "RO", never "RO, unknown" or mixed case.
+        merged = self._concrete_countries(event.affected_countries) | self._concrete_countries(
+            result.affected_countries
+        )
+        event.affected_countries = sorted(merged)
 
         # Re-evaluate alert status
         event.alert_status = self._determine_alert_status(urgency=event.urgency_score, source_count=event.source_count)
