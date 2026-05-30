@@ -498,12 +498,23 @@ classification:
   max_tokens: 512
   temperature: 0.0
   corroboration_required: 1
-  # Wider than the 1h corroboration default to absorb multi-hour incident reporting
-  # windows; lowering this risks fragmenting one real incident into multiple Event rows.
+  # Sliding window measured from an event's LAST activity (last_updated_at): a new
+  # article merges if it arrives within this many minutes of the event's most recent
+  # article. Wider absorbs multi-hour incident reporting; too narrow fragments one
+  # real incident into multiple Event rows.
   corroboration_window_minutes: 360
-  # Fuzzy token_sort_ratio for matching two summaries to the same event; lower =
-  # more aggressive grouping; range 0-100.
-  summary_similarity_threshold: 40
+  # Absolute cap (measured from first_seen_at) on total event lifetime, so a
+  # perpetually-updated event can't live forever and chain-merge genuinely distinct
+  # incidents. 0 disables the cap. 2880 = 48h.
+  corroboration_max_age_minutes: 2880
+  # rapidfuzz.fuzz metric for matching two summaries to the same event. token_set_ratio
+  # is length-robust (a short wire headline and a long elaboration of the same incident
+  # still score high); token_sort_ratio is length-sensitive. One of:
+  # ratio, partial_ratio, token_sort_ratio, token_set_ratio, WRatio, QRatio.
+  summary_similarity_metric: token_set_ratio
+  # Similarity (0-100) at/above which two summaries are treated as the same event;
+  # lower = more aggressive grouping.
+  summary_similarity_threshold: 50
   # Title similarity threshold above which two articles are treated as syndicated
   # copies of one source (range 0-100).
   syndication_similarity_threshold: 90

@@ -171,11 +171,12 @@ class TestCorroborator:
         assert "naval_blockade" in event_types
 
     def test_outside_time_window_separate(self, db, config):
-        """Same event type but 2 hours apart -> separate events."""
+        """An event whose LAST activity is older than the window -> a new
+        compatible article starts a separate event (sliding-window semantics).
+        """
         corroborator = Corroborator(db, config)
 
         now = datetime.now(UTC)
-        two_hours_ago = now - timedelta(hours=2)
 
         article1 = _make_article(
             source_name="SourceA",
@@ -188,13 +189,20 @@ class TestCorroborator:
         db.insert_article(article1)
         db.insert_article(article2)
 
-        c1 = _make_classification(article1, classified_at=two_hours_ago)
-        c2 = _make_classification(article2, classified_at=now)
-
-        # Process c1 first, then c2
+        c1 = _make_classification(article1)
         events1 = corroborator.process_classifications([c1])
         assert len(events1) == 1
 
+        # Age the event's last activity well past the (60-min) window so it is no
+        # longer a live grouping candidate.
+        stale = (now - timedelta(hours=2)).isoformat()
+        db.conn.execute(
+            "UPDATE events SET last_updated_at = ? WHERE id = ?",
+            (stale, events1[0].id),
+        )
+        db.conn.commit()
+
+        c2 = _make_classification(article2, classified_at=now)
         events2 = corroborator.process_classifications([c2])
         assert len(events2) == 1
 
@@ -990,3 +998,272 @@ class TestCorroborator:
 
         rows = db.conn.execute("SELECT * FROM events").fetchall()
         assert len(rows) == 1
+
+    def test_sliding_window_late_update_still_merges(self, db, config):
+        """Sliding window: an event whose first_seen_at predates the window but
+        whose LAST activity is recent still absorbs a new compatible article. It
+        would NOT merge under the old first_seen_at birth anchor.
+        """
+        config.classification.corroboration_window_minutes = 60
+        corroborator = Corroborator(db, config)
+
+        now = datetime.now(UTC)
+        article1 = _make_article(source_name="A", source_url="https://a.com/1")
+        article2 = _make_article(source_name="B", source_url="https://b.com/2")
+        db.insert_article(article1)
+        db.insert_article(article2)
+
+        shared = "Rosyjski dron uderzył w blok mieszkalny w Rumunii, dwoje rannych."
+        c1 = _make_classification(
+            article1,
+            urgency_score=6,
+            event_type="drone_attack",
+            affected_countries=["RO"],
+            summary_pl=shared,
+        )
+        ev_id = corroborator.process_classifications([c1])[0].id
+
+        # Born 90 min ago (outside a 60-min birth window) but updated 10 min ago.
+        db.conn.execute(
+            "UPDATE events SET first_seen_at = ?, last_updated_at = ? WHERE id = ?",
+            ((now - timedelta(minutes=90)).isoformat(), (now - timedelta(minutes=10)).isoformat(), ev_id),
+        )
+        db.conn.commit()
+
+        c2 = _make_classification(
+            article2,
+            urgency_score=6,
+            event_type="drone_attack",
+            affected_countries=["RO"],
+            summary_pl=shared,
+            classified_at=now,
+        )
+        corroborator.process_classifications([c2])
+
+        rows = db.conn.execute("SELECT * FROM events").fetchall()
+        assert len(rows) == 1
+        assert len(Event.from_row(rows[0]).article_ids) == 2
+
+    def test_max_age_cap_forces_separate_event(self, db, config):
+        """The absolute max-age cap retires an event even if its last activity is
+        recent: an article past corroboration_max_age_minutes from first_seen_at
+        starts a separate event, so a perpetually-updated event can't chain-merge
+        distinct incidents.
+        """
+        config.classification.corroboration_window_minutes = 360
+        config.classification.corroboration_max_age_minutes = 120
+        corroborator = Corroborator(db, config)
+
+        now = datetime.now(UTC)
+        article1 = _make_article(source_name="A", source_url="https://a.com/1")
+        article2 = _make_article(source_name="B", source_url="https://b.com/2")
+        db.insert_article(article1)
+        db.insert_article(article2)
+
+        shared = "Rosyjski dron uderzył w blok mieszkalny w Rumunii, dwoje rannych."
+        c1 = _make_classification(
+            article1,
+            urgency_score=6,
+            event_type="drone_attack",
+            affected_countries=["RO"],
+            summary_pl=shared,
+        )
+        ev_id = corroborator.process_classifications([c1])[0].id
+
+        # Born 3h ago (past the 2h cap) but updated 5 min ago (inside the window).
+        db.conn.execute(
+            "UPDATE events SET first_seen_at = ?, last_updated_at = ? WHERE id = ?",
+            ((now - timedelta(hours=3)).isoformat(), (now - timedelta(minutes=5)).isoformat(), ev_id),
+        )
+        db.conn.commit()
+
+        c2 = _make_classification(
+            article2,
+            urgency_score=6,
+            event_type="drone_attack",
+            affected_countries=["RO"],
+            summary_pl=shared,
+            classified_at=now,
+        )
+        corroborator.process_classifications([c2])
+
+        rows = db.conn.execute("SELECT * FROM events").fetchall()
+        assert len(rows) == 2
+
+    def test_max_age_cap_disabled_allows_merge(self, db, config):
+        """corroboration_max_age_minutes=0 disables the cap: the same old-but-fresh
+        event still merges (only the sliding window applies).
+        """
+        config.classification.corroboration_window_minutes = 360
+        config.classification.corroboration_max_age_minutes = 0
+        corroborator = Corroborator(db, config)
+
+        now = datetime.now(UTC)
+        article1 = _make_article(source_name="A", source_url="https://a.com/1")
+        article2 = _make_article(source_name="B", source_url="https://b.com/2")
+        db.insert_article(article1)
+        db.insert_article(article2)
+
+        shared = "Rosyjski dron uderzył w blok mieszkalny w Rumunii, dwoje rannych."
+        c1 = _make_classification(
+            article1,
+            urgency_score=6,
+            event_type="drone_attack",
+            affected_countries=["RO"],
+            summary_pl=shared,
+        )
+        ev_id = corroborator.process_classifications([c1])[0].id
+
+        db.conn.execute(
+            "UPDATE events SET first_seen_at = ?, last_updated_at = ? WHERE id = ?",
+            ((now - timedelta(hours=3)).isoformat(), (now - timedelta(minutes=5)).isoformat(), ev_id),
+        )
+        db.conn.commit()
+
+        c2 = _make_classification(
+            article2,
+            urgency_score=6,
+            event_type="drone_attack",
+            affected_countries=["RO"],
+            summary_pl=shared,
+            classified_at=now,
+        )
+        corroborator.process_classifications([c2])
+
+        rows = db.conn.execute("SELECT * FROM events").fetchall()
+        assert len(rows) == 1
+
+    def test_token_set_metric_merges_length_asymmetric_summaries(self, db, config):
+        """With token_set_ratio, a short and a long summary of the SAME incident
+        merge where the length-sensitive token_sort_ratio would split them.
+        """
+        from rapidfuzz import fuzz
+
+        config.classification.summary_similarity_metric = "token_set_ratio"
+        config.classification.summary_similarity_threshold = 50
+        corroborator = Corroborator(db, config)
+
+        short = "Rosyjski dron uderzył w blok w Rumunii."
+        long = (
+            "Rosyjski dron uderzył w blok mieszkalny w rumuńskim mieście Gałacz, "
+            "raniąc dwoje ludzi, po tym jak został zestrzelony przez ukraińską obronę "
+            "powietrzną w pobliżu granicy, co zwiększa ryzyko eskalacji na terytorium NATO."
+        )
+        # Precondition: the metric choice separates these the way the test relies on.
+        assert fuzz.token_sort_ratio(short, long) < 50
+        assert fuzz.token_set_ratio(short, long) >= 50
+
+        article1 = _make_article(source_name="A", source_url="https://a.com/1")
+        article2 = _make_article(source_name="B", source_url="https://b.com/2")
+        db.insert_article(article1)
+        db.insert_article(article2)
+
+        c1 = _make_classification(
+            article1,
+            urgency_score=6,
+            event_type="drone_attack",
+            affected_countries=["RO"],
+            summary_pl=short,
+        )
+        c2 = _make_classification(
+            article2,
+            urgency_score=6,
+            event_type="drone_attack",
+            affected_countries=["RO"],
+            summary_pl=long,
+        )
+        corroborator.process_classifications([c1, c2])
+
+        rows = db.conn.execute("SELECT * FROM events").fetchall()
+        assert len(rows) == 1
+
+    def test_token_sort_metric_splits_length_asymmetric_summaries(self, db, config):
+        """Selecting token_sort_ratio splits the same length-asymmetric pair that
+        token_set_ratio merges -- proving summary_similarity_metric is honoured.
+        """
+        config.classification.summary_similarity_metric = "token_sort_ratio"
+        config.classification.summary_similarity_threshold = 50
+        corroborator = Corroborator(db, config)
+
+        short = "Rosyjski dron uderzył w blok w Rumunii."
+        long = (
+            "Rosyjski dron uderzył w blok mieszkalny w rumuńskim mieście Gałacz, "
+            "raniąc dwoje ludzi, po tym jak został zestrzelony przez ukraińską obronę "
+            "powietrzną w pobliżu granicy, co zwiększa ryzyko eskalacji na terytorium NATO."
+        )
+        article1 = _make_article(source_name="A", source_url="https://a.com/1")
+        article2 = _make_article(source_name="B", source_url="https://b.com/2")
+        db.insert_article(article1)
+        db.insert_article(article2)
+
+        c1 = _make_classification(
+            article1,
+            urgency_score=6,
+            event_type="drone_attack",
+            affected_countries=["RO"],
+            summary_pl=short,
+        )
+        c2 = _make_classification(
+            article2,
+            urgency_score=6,
+            event_type="drone_attack",
+            affected_countries=["RO"],
+            summary_pl=long,
+        )
+        corroborator.process_classifications([c1, c2])
+
+        rows = db.conn.execute("SELECT * FROM events").fetchall()
+        assert len(rows) == 2
+
+    def test_invalid_summary_metric_rejected(self):
+        """An unknown summary_similarity_metric fails config validation."""
+        import pytest
+        from pydantic import ValidationError
+
+        from sentinel.config import ClassificationConfig
+
+        with pytest.raises(ValidationError):
+            ClassificationConfig(summary_similarity_metric="not_a_metric")
+
+    def test_critical_not_absorbed_into_acknowledged_event(self, db, config):
+        """SAFETY: a CRITICAL article does NOT merge into an already-acknowledged
+        event (which is in post-alert cooldown) -- it spawns its own event so a
+        genuinely new critical escalation can never be silenced by cooldown.
+        """
+        config.classification.corroboration_window_minutes = 360
+        corroborator = Corroborator(db, config)
+
+        now = datetime.now(UTC)
+        article1 = _make_article(source_name="A", source_url="https://a.com/1")
+        article2 = _make_article(source_name="B", source_url="https://b.com/2")
+        db.insert_article(article1)
+        db.insert_article(article2)
+
+        shared = "Rosyjski dron uderzył w blok mieszkalny w Polsce, dwoje rannych."
+        c1 = _make_classification(
+            article1,
+            urgency_score=10,
+            event_type="drone_attack",
+            affected_countries=["PL"],
+            summary_pl=shared,
+        )
+        ev_id = corroborator.process_classifications([c1])[0].id
+
+        # Mark the event acknowledged (i.e. in post-alert cooldown).
+        db.conn.execute(
+            "UPDATE events SET acknowledged_at = ? WHERE id = ?",
+            (now.isoformat(), ev_id),
+        )
+        db.conn.commit()
+
+        c2 = _make_classification(
+            article2,
+            urgency_score=10,
+            event_type="drone_attack",
+            affected_countries=["PL"],
+            summary_pl=shared,
+        )
+        corroborator.process_classifications([c2])
+
+        rows = db.conn.execute("SELECT * FROM events").fetchall()
+        assert len(rows) == 2

@@ -224,7 +224,9 @@ def test_disabled_source_loadable(tmp_path):
     # Spec 1.6b: YAML with empty `classification: {}` must populate the new
     # threshold defaults so existing production configs keep working.
     assert config.classification.corroboration_window_minutes == 360
-    assert config.classification.summary_similarity_threshold == 40
+    assert config.classification.summary_similarity_threshold == 50
+    assert config.classification.summary_similarity_metric == "token_set_ratio"
+    assert config.classification.corroboration_max_age_minutes == 2880
     assert config.classification.syndication_similarity_threshold == 90
 
 
@@ -234,10 +236,36 @@ def test_corroboration_window_default_is_360():
     assert cfg.corroboration_window_minutes == 360
 
 
-def test_summary_threshold_default_is_40():
-    """ClassificationConfig built without summary_similarity_threshold defaults to 40."""
+def test_summary_threshold_default_is_50():
+    """ClassificationConfig built without summary_similarity_threshold defaults to 50
+    (raised from 40 alongside the token_set_ratio metric switch)."""
     cfg = ClassificationConfig()
-    assert cfg.summary_similarity_threshold == 40
+    assert cfg.summary_similarity_threshold == 50
+
+
+def test_summary_metric_default_is_token_set_ratio():
+    """ClassificationConfig defaults to the length-robust token_set_ratio metric,
+    and an unknown metric is rejected by validation."""
+    import pytest
+    from pydantic import ValidationError
+
+    assert ClassificationConfig().summary_similarity_metric == "token_set_ratio"
+    assert ClassificationConfig().corroboration_max_age_minutes == 2880
+    with pytest.raises(ValidationError):
+        ClassificationConfig(summary_similarity_metric="bogus")
+
+
+def test_all_allowed_summary_metrics_resolve_to_callables():
+    """Every metric the validator allows must resolve to a real rapidfuzz.fuzz
+    callable so the corroborator's getattr(fuzz, metric) can never fail at runtime
+    (guards against allowlist/rapidfuzz API drift)."""
+    from rapidfuzz import fuzz
+
+    for metric in ("ratio", "partial_ratio", "token_sort_ratio", "token_set_ratio", "WRatio", "QRatio"):
+        cfg = ClassificationConfig(summary_similarity_metric=metric)
+        fn = getattr(fuzz, cfg.summary_similarity_metric)
+        assert callable(fn)
+        assert isinstance(fn("a", "a"), (int, float))
 
 
 def test_syndication_threshold_default_is_90():

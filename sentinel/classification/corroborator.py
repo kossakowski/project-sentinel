@@ -75,10 +75,15 @@ class Corroborator:
     def _find_matching_event(self, result: ClassificationResult) -> Event | None:
         """Find an existing active event that matches this classification."""
         window_minutes = self.config.classification.corroboration_window_minutes
+        max_age_minutes = self.config.classification.corroboration_max_age_minutes
         summary_threshold = self.config.classification.summary_similarity_threshold
-        # Convert window to hours (round up) for the DB query
+        metric_fn = getattr(fuzz, self.config.classification.summary_similarity_metric)
+        phone_threshold = self._phone_call_threshold()
+        # Convert window to hours (round up) for the DB candidate query
         window_hours = max(1, (window_minutes + 59) // 60)
         active_events = self.db.get_active_events(within_hours=window_hours)
+
+        classified_at = self._as_utc(result.classified_at)
 
         for event in active_events:
             # Check event type compatibility
@@ -97,13 +102,32 @@ class Corroborator:
             ):
                 continue
 
-            # Check time window
-            time_diff = abs((result.classified_at - event.first_seen_at).total_seconds())
-            if time_diff > window_minutes * 60:
+            # SAFETY: a critical (phone-call-eligible) article must never be absorbed
+            # into an event that has already been acknowledged -- such an event is in
+            # (or past) its post-alert cooldown and would silently swallow the new
+            # article, so a genuinely new critical escalation could be suppressed.
+            # Force it to spawn its own event -- and its own phone call. This mirrors
+            # the no-concrete-country critical guard in _countries_compatible.
+            if result.urgency_score >= phone_threshold and event.acknowledged_at is not None:
+                continue
+
+            # Sliding time window: measure recency from the event's LAST activity
+            # (last_updated_at), not its birth, so a continuously-updated incident
+            # stays one event instead of re-fragmenting every window_minutes.
+            recency = abs((classified_at - self._as_utc(event.last_updated_at)).total_seconds())
+            if recency > window_minutes * 60:
+                continue
+
+            # Absolute age cap (from first_seen_at): retire a perpetually-touched
+            # event so it can't chain-merge genuinely separate incidents. 0 disables.
+            if (
+                max_age_minutes
+                and abs((classified_at - self._as_utc(event.first_seen_at)).total_seconds()) > max_age_minutes * 60
+            ):
                 continue
 
             # Check summary_pl semantic similarity (fuzzy match)
-            summary_similarity = fuzz.token_sort_ratio(result.summary_pl, event.summary_pl)
+            summary_similarity = metric_fn(result.summary_pl, event.summary_pl)
             if summary_similarity < summary_threshold:
                 self.logger.debug(
                     "Summary mismatch (%.0f%% < %d%%): '%s' vs '%s'",
@@ -139,6 +163,16 @@ class Corroborator:
         don't act as a (non-)match key during grouping. Normalizes to uppercase.
         """
         return {code for c in countries if c and (code := c.strip().upper()) and code != "UNKNOWN"}
+
+    @staticmethod
+    def _as_utc(dt: datetime) -> datetime:
+        """Coerce a datetime to tz-aware UTC (assume UTC if naive).
+
+        Timestamps are stored as UTC ISO strings; a naive value sneaking in would
+        otherwise raise TypeError when subtracted from an aware value and crash the
+        whole grouping loop.
+        """
+        return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
 
     def _phone_call_threshold(self) -> int:
         """Lowest urgency whose configured action is a phone call.

@@ -474,6 +474,16 @@ classification:
   temperature: 0.0
   corroboration_required: 1
   corroboration_window_minutes: 360
+  # Absolute cap (from first_seen_at) on how long one event keeps absorbing
+  # articles; retires a perpetually-updated event so it can't chain-merge
+  # distinct incidents. 0 disables. 2880 = 48h.
+  corroboration_max_age_minutes: 2880
+  # Fuzzy metric + threshold (0-100) for matching two summaries to one event.
+  # token_set_ratio is length-robust (short headline vs long elaboration);
+  # lower threshold = more aggressive grouping (tune here without a code deploy).
+  summary_similarity_metric: token_set_ratio
+  summary_similarity_threshold: 50
+  syndication_similarity_threshold: 90
 alerts:
   phone_number: ${ALERT_PHONE_NUMBER}
   language: pl

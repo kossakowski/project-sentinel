@@ -65,6 +65,10 @@ def sample_config_dict():
             "temperature": 0.0,
             "corroboration_required": 2,
             "corroboration_window_minutes": 60,
+            # Pin the legacy metric + threshold so existing grouping tests keep their
+            # exact semantics; tests for the new behaviour set these explicitly.
+            "summary_similarity_threshold": 40,
+            "summary_similarity_metric": "token_sort_ratio",
         },
         "alerts": {
             "phone_number": "+48123456789",

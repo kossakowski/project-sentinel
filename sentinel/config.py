@@ -3,7 +3,7 @@ import re
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, HttpUrl, model_validator
+from pydantic import BaseModel, HttpUrl, field_validator, model_validator
 
 
 class ConfigError(Exception):
@@ -162,8 +162,25 @@ class ClassificationConfig(BaseModel):
     temperature: float = 0.0
     corroboration_required: int = 2
     corroboration_window_minutes: int = 360
-    summary_similarity_threshold: int = 40
+    # Absolute cap (measured from first_seen_at) on how long one event keeps
+    # absorbing articles. With the sliding (last-activity) corroboration window a
+    # perpetually-updated event would otherwise live forever and could chain-merge
+    # genuinely distinct incidents; this retires it. 0 disables the cap.
+    corroboration_max_age_minutes: int = 2880
+    summary_similarity_threshold: int = 50
+    # rapidfuzz.fuzz metric used to compare two summaries when grouping. token_set_ratio
+    # is length-robust (a short wire headline and a long elaboration of the SAME incident
+    # still score high), unlike the length-sensitive token_sort_ratio.
+    summary_similarity_metric: str = "token_set_ratio"
     syndication_similarity_threshold: int = 90
+
+    @field_validator("summary_similarity_metric")
+    @classmethod
+    def _validate_summary_metric(cls, v: str) -> str:
+        allowed = {"ratio", "partial_ratio", "token_sort_ratio", "token_set_ratio", "WRatio", "QRatio"}
+        if v not in allowed:
+            raise ValueError(f"summary_similarity_metric must be one of {sorted(allowed)}, got {v!r}")
+        return v
 
 
 class SchedulerConfig(BaseModel):

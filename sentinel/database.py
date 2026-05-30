@@ -1,7 +1,7 @@
 import logging
 import os
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sentinel.models import AlertRecord, Article, ClassificationResult, Event
 
@@ -84,6 +84,7 @@ class Database:
 
                 CREATE INDEX IF NOT EXISTS idx_events_alert_status ON events(alert_status);
                 CREATE INDEX IF NOT EXISTS idx_events_first_seen ON events(first_seen_at);
+                CREATE INDEX IF NOT EXISTS idx_events_last_updated ON events(last_updated_at);
 
                 CREATE TABLE IF NOT EXISTS alert_records (
                     id TEXT PRIMARY KEY,
@@ -136,8 +137,7 @@ class Database:
         Used by the deduplicator for fuzzy title matching.
         """
         cursor = self.conn.execute(
-            "SELECT source_name, title_normalized FROM articles "
-            "WHERE fetched_at > datetime('now', ? || ' minutes')",
+            "SELECT source_name, title_normalized FROM articles WHERE fetched_at > datetime('now', ? || ' minutes')",
             (str(-since_minutes),),
         )
         return [(row["source_name"], row["title_normalized"]) for row in cursor.fetchall()]
@@ -174,7 +174,7 @@ class Database:
         Only update the fields passed as kwargs.
         Always update last_updated_at to current time.
         """
-        kwargs["last_updated_at"] = datetime.now(timezone.utc).isoformat()
+        kwargs["last_updated_at"] = datetime.now(UTC).isoformat()
 
         set_clause = ", ".join(f"{key} = ?" for key in kwargs)
         values = list(kwargs.values())
@@ -188,11 +188,19 @@ class Database:
         self.logger.debug("Event updated: %s", event_id)
 
     def get_active_events(self, within_hours: int) -> list[Event]:
-        """Get events with alert_status != 'expired' from the last N hours."""
+        """Get non-expired events active within the last N hours.
+
+        "Active" is measured by last_updated_at (the most recent corroborating
+        article), NOT first_seen_at, so a long-running incident that keeps
+        receiving articles stays a single grouping candidate instead of ageing
+        out and re-fragmenting. Ordered freshest-first so the corroborator binds
+        the most recently active matching event.
+        """
         cursor = self.conn.execute(
             "SELECT * FROM events "
             "WHERE alert_status != 'expired' "
-            "AND first_seen_at > datetime('now', ? || ' hours')",
+            "AND last_updated_at > datetime('now', ? || ' hours') "
+            "ORDER BY last_updated_at DESC",
             (str(-within_hours),),
         )
         return [Event.from_row(row) for row in cursor.fetchall()]
@@ -224,8 +232,7 @@ class Database:
         Used to check call completion status.
         """
         cursor = self.conn.execute(
-            "SELECT * FROM alert_records "
-            "WHERE alert_type = 'phone_call' AND status IN ('initiated', 'ringing')"
+            "SELECT * FROM alert_records WHERE alert_type = 'phone_call' AND status IN ('initiated', 'ringing')"
         )
         return [AlertRecord.from_row(row) for row in cursor.fetchall()]
 
