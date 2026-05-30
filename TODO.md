@@ -2,6 +2,25 @@
 
 ## 1. Smarter multi-tier classification to reduce false positives
 
+### 1.0 — URGENT: Audit historical false-positive PL phone calls (escape-trigger misfires)
+
+> Surfaced by the 7-agent event-grouping deep dive on 2026-05-30. Conversation: `20fb6962-608c-433b-978a-92e1a5740b26` (session "event-grouping-bugfix"). This is the safety-critical half of the false-positive problem below — quantify how often the escape trigger has *already* fired wrongly, and close the root cause, before/while building the tiered pipeline.
+
+**What we found (production DB evidence):** the Haiku classifier resolves thin headlines like *"Russian drone hit a residential block in a NATO country"* to **Poland, urgency 9** with fabricated summaries (e.g. *"bezpośrednie zagrożenie dla terytorium Polski"*) for incidents physically in **Romania or Ukraine**. Concrete cases found in `alert_records`:
+- **2026-05-01 — Tarnopil (Ukraine) drone strike** classified `["PL"]` urgency 9 → **7 completed Twilio phone calls** (events `61c468f6`, `b8c6feda`). Almost certainly FALSE (Ukrainian city, not Poland).
+- **2026-04-03** (event `b2dcd82b`, "masowy atak na Polskę") and **2026-04-17** (event `aa6fd456`, "Polska ostrzelana przez Rosję"): PL/9, **completed phone calls — UNVERIFIED**: real PL events, or the same UA/RO→PL bug?
+- **2026-05-30 — Galați (Romania)**: PL/9 row (`a8ae1407`) did NOT call ONLY because `corroboration_required=1` + single source held it at `retry_pending`. The corroboration gate is the sole circuit-breaker that happened to trip.
+- Instability scale: across 579 classifications of the single Galați incident, urgency ranged **1–9**, 5 event_types, country `["RO"]`×310 / `[]`×265 / monitored-country×4. PL-contamination is rare (~0.7%) — frequent enough to fire eventually, rare enough that each call looks like an anomaly.
+
+**Task:**
+1. **Verify every historical PL/Baltic urgency-9/10 phone call** in `alert_records` (JOIN to `events`/`articles`, read the source). Label each REAL vs FALSE; quantify real escape-trigger calls vs misfires to date.
+2. **Assess current exposure:** with live `corroboration_required=1`, a single mis-tagged source can dial out — confirm whether any single-source path to a PL/9 call is currently open, and whether raising the phone-tier `corroboration_required` is warranted (without the grouping changes re-suppressing genuine corroboration).
+3. **Root-cause prompt fix (Cause C; feeds §1 tiered pipeline and §5.2):** the classifier prompt's `R4 POLAND PRIORITY` + bare "NATO state = 9" language lets a non-PL NATO incident acquire a PL/9 label. Fix sketch — **eval-gated; owner is sole ground-truth labeler, do NOT blind-deploy:** add an `R0 TARGET-COUNTRY GATE` (non-monitored NATO ≠ PL; "a NATO country" must NOT resolve to Poland), demote R4 to a tie-break applied only once PL is already confirmed, replace "NATO = 9" with "monitored country (PL/LT/LV/EE) = 9", and confine spillover language to urgency only (never to `affected_countries`).
+
+**Why urgent:** a false phone call can trigger a needless flight from Poland — the worst non-miss failure mode of the escape trigger. The grouping fix deployed 2026-05-30 (tag `deploy-20260530-163637`) reduced the duplicate-SMS *symptom*; this item addresses the dangerous *root cause*.
+
+---
+
 **Problem:** Haiku misclassifies headlines like "Poland scrambles jets in response to Russian strike on Ukraine" as a direct attack on Poland (urgency 9). Using Opus for all classifications would fix accuracy but is prohibitively expensive at 688+ articles per cycle.
 
 **Approach: Tiered classification pipeline (Haiku → Sonnet → Opus)**
