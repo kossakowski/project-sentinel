@@ -1,83 +1,49 @@
-# Project Sentinel -- Military Alert Monitoring System
+# Project Sentinel — Military Alert Monitoring System
 
-## Overview
-Real-time monitoring bot that scans media sources (PL/EN/UA/RU) for military attacks or invasions targeting Poland and the Baltic states, and alerts via Twilio phone call. **The application is running in production on a Hetzner VPS** — see [Server Runbook](docs/server-runbook.md) for access, operations, and troubleshooting.
+Real-time bot that scans PL/EN/UA/RU media for military attacks/invasions targeting Poland and
+the Baltic states and alerts via Twilio **phone call + SMS** (optional additive Expo **push**).
+**Live in production on a Hetzner VPS.**
 
-A separate read-only **Article Dashboard** subsystem lives under `dashboard/` (local-only Flask backend + React/Vite/TS frontend over the production SQLite DB, accessed via SCP sync or SSH-tunnel fresh-fetch). It is not part of the monitoring runtime — see [Dashboard Spec](SPEC.md).
+A separate read-only **Article Dashboard** (`dashboard/`) is local-only and NOT part of the
+monitoring runtime — its rules live in [`dashboard/CLAUDE.md`](dashboard/CLAUDE.md) and load when
+you work in that subtree.
 
-## Documentation
-- [Architecture](docs/architecture.md) -- system design, data flow, components
-- [Pipeline Reference](docs/pipeline.md) -- step-by-step data flow from source collection to phone alert
-- [Implementation Phases](docs/phases.md) -- 7-phase build plan with test gates
-- [Configuration Reference](docs/config-reference.md) -- every configurable parameter
-- [Testing Strategy](docs/testing.md) -- dry run, fixtures, manual testing
-- [VPS Security Hardening](docs/security/vps-hardening.md) -- do this BEFORE deployment
-- [API Setup Guide](docs/api-setup.md) -- Anthropic, Twilio, Telegram account setup
-- [Media Sources Reference](docs/sources.md) -- all monitored sources with URLs/RSS
-- [Server Runbook](docs/server-runbook.md) -- production server access, file layout, service management, deployment, troubleshooting. **Read this first for anything server-related.**
-- [Dashboard Spec](SPEC.md) -- source of truth for the `dashboard/` subsystem (Phases 1 backend + 2 frontend foundation + 3 analytics/detail pages + 4 annotations complete; later phases spec'd but not yet implemented)
-- [Alert Grouping Spec](SPEC_ALERT_GROUPING.md) -- 3-phase widen-window + dashboard event-grouping + audit-grouping spec (Phase 1 corroborator widening + Phase 2 dashboard event grouping + Phase 3 audit-skill event grouping complete). The `/sentinel-audit` daily report now partitions classified articles into per-event blocks (ordered `urgency_score` desc then `first_seen_at` desc) + a flat "Standalone classified articles" section, computed via SQL `json_each` over `events.article_ids` filtered by `e.last_updated_at` so events updated during the audit window are captured even when first-seen earlier.
-- [TODO List](TODO.md) -- backlog: classification improvements, source analysis, mobile app / PWA, productization roadmap, pipeline refinement, code & ops debt trackers
-
-## Quick Reference
-- Config: `config/config.yaml` (see `config/config.example.yaml`)
-- Run: `./run.sh` (auto-activates venv, forwards all args to `sentinel.py`)
-- Run once: `./run.sh --once` (single pipeline cycle, then exit)
-- Dry run: `./run.sh --dry-run`
-- Continuous dry run: `./run.sh --dry-run` (dual-lane scheduler, no Twilio calls; fast every 3 min, slow every 15 min)
-- Test single headline: `./run.sh --test-headline "headline text here"`
-- Test headlines file: `./run.sh --test-file tests/fixtures/test_headlines.yaml`
-- Test alert: `./run.sh --test-alert` (fire real phone call via Twilio with fake event)
-- Test alert SMS: `./run.sh --test-alert sms` (fire real SMS instead of phone call)
-- Diagnostic: `./run.sh --diagnostic` (single cycle, generates `data/diagnostic.html` with all articles)
-- Custom config: `./run.sh --config path/to/config.yaml`
-- Log level: `./run.sh --log-level DEBUG` (DEBUG, INFO, WARNING, ERROR)
-- Health check: `./run.sh --health` (prints `data/health.json`)
-- Tests: `.venv/bin/pytest tests/ -v`
-
-## Dashboard (separate subsystem -- local only)
-Read-only Flask API + React/Vite/TypeScript frontend over the production SQLite DB. Runs on your local machine; never deployed. See [SPEC.md](SPEC.md) for the full reference.
-
-**Backend (Flask API):**
-- Launch: `./dashboard/run-dashboard.sh` (auto-activates venv, forwards args to `python -m dashboard`)
-- Sync DB from production then start: `./dashboard/run-dashboard.sh --sync`
-- Tunnel mode (SCP-fresh-fetch at startup, LIKE-only search): `./dashboard/run-dashboard.sh --tunnel`
-- Custom port (default `5001`): `./dashboard/run-dashboard.sh --port 5005`
-- Custom DB path: `./dashboard/run-dashboard.sh --db path/to/sentinel.db`
-- Backend tests: `.venv/bin/pytest tests/test_dashboard_api.py tests/test_dashboard_db.py tests/test_dashboard_annotations.py -v`
-
-**Frontend (React/Vite/TS at `dashboard/frontend/`):**
-- Install once: `cd dashboard/frontend && npm install`
-- Dev server (proxies `/api/*` to Flask on `:5001`): `cd dashboard/frontend && npm run dev` — opens on `:5173`
-- Production build into `dashboard/frontend/dist/` (served by Flask when present): `cd dashboard/frontend && npm run build`
-- Type-check only: `cd dashboard/frontend && npx tsc --noEmit`
-- Frontend tests (vitest + jsdom): `cd dashboard/frontend && npx vitest run`
-
-Routes: `/` Overview (analytics landing — KPI cards, pipeline funnel, time-series, urgency histogram, source breakdown), `/articles` (filterable article list, Phase 2), `/articles/:id` (article detail with side-by-side classifier view + event timeline + annotation panel), `/events/:id` (event detail with metadata header + article list + alert timeline, [SPEC_ALERT_GROUPING.md](SPEC_ALERT_GROUPING.md) Phase 2). Charts use `recharts`; full route + component map in [docs/architecture.md §10](docs/architecture.md).
-
-**Annotations (Phase 4):** User labels (correct / incorrect / uncertain), expected-urgency overrides, and free-text notes live in a SEPARATE local SQLite file at `dashboard/data/annotations.db` so production-DB syncs cannot overwrite labelling work. Four endpoints — `POST /api/annotations` (upsert), `GET /api/annotations` (paginated list with `?label` filter), `GET /api/annotations/<article_id>` (404 on miss), `DELETE /api/annotations/<article_id>` (idempotent 204) — and the article-list response carries a narrow `annotation` field (`{label, expected_urgency, notes}`, or null) joined via cross-DB ATTACH. The article table renders an annotation column (coloured dot per label) in the rightmost default position; the article detail page mounts an `AnnotationPanel` below the classifier view + event timeline. `GET /api/stats.annotation_stats` adds `{total, by_label, average_urgency_deviation}`.
-
-**Event grouping ([SPEC_ALERT_GROUPING.md](SPEC_ALERT_GROUPING.md) Phase 2):** Every article-list row now carries an `event_id` field (the id of the retained event whose `article_ids` JSON contains the article, or null), computed via a correlated `LEFT JOIN` scoped to the last `EVENT_ID_RETENTION_DAYS` days (a 30-day dashboard-side code constant in `dashboard/db.py`, not a `config/config.yaml` key; override via the `DashboardDB(event_id_retention_days=...)` constructor or `app.config["EVENT_ID_RETENTION_DAYS"]`). The article table renders a single-pass visual grouping pass over consecutive same-event rows: the first row of a same-event run shows a chevron + member-count indicator that links to `/events/<id>`; continuation rows get faded background + coloured left border (two independent visual cues per spec accessibility rule). A new `GET /api/events/<event_id>` endpoint returns `{event, articles[] (ordered published_at ASC), alert_records[] (ordered sent_at ASC)}` (404 on unknown id); the `/events/:id` route renders an `EventDetailPage` with a metadata header (id, type, urgency, affected_countries, aggressor, summary_pl, timestamps, source_count, alert_status badge), the article list, and the alert timeline (per-row expand toggle for message bodies longer than 200 chars). Back navigation uses `navigate(-1)` per spec.
-
-Typical local workflow: run Flask backend in one terminal (`./dashboard/run-dashboard.sh`), Vite dev server in another (`npm run dev`), and open `http://localhost:5173`. For a single-process production-style run, `npm run build` first, then start the Flask backend — it serves `dist/` at `/`.
-
-## Known Issue: Project Rename History
-This project was renamed twice (`twilio-playground` → `sentinel` → `project-sentinel`). If imports fail with paths to old names like `twilio-plaground` or `sentinel`, recreate the venv: `rm -rf .venv && python -m venv .venv && pip install -r requirements.txt` and clear `__pycache__` dirs.
-
-## Production Server Policy
-- **SSH access:** `ssh -p 2222 deploy@178.104.76.254` — **always use `deploy@`**, never `root@` or `kossa@`. Wrong usernames trigger fail2ban bans.
-- **NEVER modify files on the production server** unless the user explicitly asks for it.
-- If a task requires changing server files (deploy, config update, etc.), **ask the user for permission first** — do not do it autonomously.
-- Run and test code **locally** by default. Use local env vars for Twilio/API credentials when testing.
-- The only exception is read-only commands (checking logs, health, DB queries) which are safe to run on the server.
-
-## Development Rules
+## ⚠️ Critical rules (always honor)
+- **NEVER modify production server files** without explicit user permission — ask first. Read-only
+  commands (logs, health, DB queries) on the server are fine.
+- **SSH only as `deploy@`**: `ssh -p 2222 deploy@178.104.76.254`. `root@`/`kossa@` trigger fail2ban bans.
+- **Run and test locally by default.** Use local env vars for Twilio/Anthropic/Telegram credentials.
+- **No quiet hours** — this is a life-safety alert system; call at any hour. Never miss urgency 9–10.
+- **Alerts are in Polish.** Source scanning covers PL/EN/UA/RU.
+- **Don't spam.** One phone call per event, then SMS for updates.
+- **Corroboration required** before a phone call (independent source). Tunables live in
+  `config/config.yaml` — see [config reference](docs/reference/config-reference.md) and
+  [`.claude/rules/corroboration.md`](.claude/rules/corroboration.md). Do not restate the numbers here.
 - **Nothing is hardcoded.** All keywords, sources, countries, thresholds, and URLs live in `config/config.yaml`.
-- **Every phase must pass its tests** before starting the next phase.
-- **Alerts are in Polish.** Source scanning covers PL, EN, UA, RU.
-- **Use Claude Haiku 4.5** (`claude-haiku-4-5-20251001`) for classification -- cost-efficient.
-- **No quiet hours.** This is a critical alert system -- call at any hour.
-- **Don't spam.** Call once per event, then switch to SMS for updates. (The WhatsApp channel was removed; phone calls and SMS are the only alert channels.)
-- **Corroboration required.** Phone calls require independent source corroboration (configured via `classification.corroboration_required`; live value is `1`).
-- **Corroboration window: 6h sliding.** `classification.corroboration_window_minutes` (default & live `360`) is a SLIDING window measured from an event's LAST activity (`last_updated_at`), not its birth, so a multi-hour incident stays one event. An absolute lifetime cap `classification.corroboration_max_age_minutes` (default & live `2880` = 48h, `0` disables) measured from `first_seen_at` retires perpetually-updated events. Summary matching uses a config-driven `classification.summary_similarity_metric` (default `token_set_ratio`, length-robust) at `classification.summary_similarity_threshold` (default & live `50`; tune in config without a code deploy). `classification.syndication_similarity_threshold` default `90`.
-- Config format: YAML. Database: SQLite. Scheduler: APScheduler (dual-lane: fast lane every 3 min for Telegram + priority-1 RSS + Google News, slow lane every 15 min for all sources including GDELT).
+- **Classification model: Claude Haiku 4.5** (`claude-haiku-4-5-20251001`) — cost-efficient.
+- **Every phase passes its tests** before the next begins.
+
+## Quick reference
+- Config: `config/config.yaml` (template `config/config.example.yaml`)
+- Run: `./run.sh` · once: `--once` · dry run: `--dry-run` · health: `--health`
+- Diagnostic: `./run.sh --diagnostic` (writes `data/diagnostic.html`) · log level: `--log-level DEBUG`
+- Test one headline: `./run.sh --test-headline "…"` · headline file (YAML with a `headlines:` list): `--test-file FILE`
+- Classifier eval harness: `./run.sh --eval [PATH]` (default `tests/fixtures/eval_set.yaml`; scored, CI gate)
+- Test a real alert: `./run.sh --test-alert` (phone call) · `--test-alert sms` · `--test-alert push`
+- Tests: `.venv/bin/pytest tests/ -v`
+- Full CLI: [docs/reference/cli.md](docs/reference/cli.md)
+- Stack: YAML config · SQLite · APScheduler dual-lane (fast 3 min: Telegram + priority-1 RSS + Google
+  News; slow 15 min: all enabled sources — GDELT is currently disabled).
+
+## Docs (link, don't restate — `docs/` follows Diátaxis)
+- **Index:** [docs/README.md](docs/README.md)
+- **Server ops / deploy / troubleshooting:** [docs/how-to/server-runbook.md](docs/how-to/server-runbook.md) — **read first for anything server-related**
+- Architecture → [docs/explanation/architecture.md](docs/explanation/architecture.md) · Pipeline → [docs/explanation/pipeline.md](docs/explanation/pipeline.md) · Mobile app → [docs/explanation/mobile-app.md](docs/explanation/mobile-app.md)
+- Config params → [docs/reference/config-reference.md](docs/reference/config-reference.md) · Sources → [docs/reference/sources.md](docs/reference/sources.md) · CLI → [docs/reference/cli.md](docs/reference/cli.md)
+- Local setup → [docs/tutorials/getting-started.md](docs/tutorials/getting-started.md) · API setup → [docs/how-to/api-setup.md](docs/how-to/api-setup.md) · Testing → [docs/how-to/testing.md](docs/how-to/testing.md) · VPS hardening → [docs/how-to/security/vps-hardening.md](docs/how-to/security/vps-hardening.md)
+- Dashboard spec (living) → [SPEC.md](SPEC.md) · Backlog → [TODO.md](TODO.md) · Historic specs → [docs/archive/](docs/archive/README.md)
+
+## Gotcha: project rename history
+Renamed twice (`twilio-playground` → `sentinel` → `project-sentinel`). If imports fail with old
+paths, recreate the venv: `rm -rf .venv && python -m venv .venv && pip install -r requirements.txt`
+and clear `__pycache__` dirs.

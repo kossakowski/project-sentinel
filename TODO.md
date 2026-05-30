@@ -187,6 +187,16 @@ Build or plan metrics that track classification quality over time:
 
 **Decision needed:** Pick a strategy. This ties into the overall product roadmap (TODO #4) — refactoring milestones should be part of the timeline.
 
+### 6.1 Config & deployment bugs (surfaced 2026-05-30 docs overhaul)
+
+Issues surfaced while auditing docs against source during the 2026-05-30 docs overhaul. All low-impact today but worth fixing:
+
+1. **`config/config.yaml` — stale GDELT field.** `sources.gdelt.update_interval_minutes: 15` targets a non-existent field and is a silent no-op. The real GDELT key is `lookback_minutes` (default `60`). Low impact because GDELT is currently disabled (`sources.gdelt.enabled: false`), but fix this before re-enabling — otherwise GDELT silently falls back to the 60-minute default regardless of the intended value.
+2. **`deploy/configs/sentinel.service` — misplaced systemd directives.** `StartLimitBurst` and `StartLimitIntervalSec` are under `[Service]`, but systemd expects them under `[Unit]`, so they are silently ignored and the restart rate-limit is not actually applied. Move both keys to the `[Unit]` section.
+3. **`mobile/app.json` — placeholder EAS `projectId`.** Ships as all-zeros (`00000000-0000-0000-0000-000000000000`). Expo's push service can't mint a real token against a placeholder project id, so `getExpoPushTokenAsync({ projectId })` in `mobile/push/registerForPush.ts` fails — i.e. the Expo **push channel cannot be provisioned end-to-end** until a real EAS project id is wired in. (Push is off by default, so no runtime impact today.)
+4. **`--test-alert push` help text names the wrong env var.** The CLI help/failure message references `EXPO_PUSH_TOKEN`, but the credential `push_client.py` actually reads is `EXPO_ACCESS_TOKEN` (`EXPO_PUSH_TOKEN` is only a `${VAR}` placeholder substituted into `alerts.push.tokens`). One-line clarification in the help string.
+5. **`state_machine.py` — confirmation code stored on bare instance attributes.** `self._confirmation_code` / `self._confirmation_sms_sid` are not per-event scoped and never reset between events. Safe today because dispatch is serialized by the cycle lock, but if event dispatch is ever parallelized, a reply to one event's code could spuriously acknowledge another. Scope them per-event before any concurrency change.
+
 ---
 
 ## Commentary: Priority & sequencing (Claude's assessment, 2026-05-24)
@@ -212,3 +222,9 @@ Build or plan metrics that track classification quality over time:
 ## Completed Debt (reference)
 
 All 7 code debt items and 8 ops debt items were resolved 2026-05-25 through 2026-05-27. See git history for details.
+
+---
+
+## Documentation reorganization (2026-05-30)
+
+The documentation was overhauled and reorganized into a Diátaxis `docs/` tree (tutorials / how-to / reference / explanation / archive) on 2026-05-30. Doc paths changed — see [docs/README.md](docs/README.md) for the new index.

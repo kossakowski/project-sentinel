@@ -1,3 +1,5 @@
+> ⚠️ **HISTORIC — archived 2026-05-30.** Describes a completed implementation effort; do not consult as current truth. See [docs/archive/README.md](README.md) and the living docs it points to.
+
 # Alert Grouping — Implementation Specification
 
 ## Overview

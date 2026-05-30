@@ -44,9 +44,9 @@ print(msg.content[0].text)
 
 ---
 
-## 2. Twilio (Phone Calls, SMS, WhatsApp)
+## 2. Twilio (Phone Calls & SMS)
 
-If you want a sandbox to test Twilio interactively, you can build one separately — Project Sentinel itself does not include one.
+Twilio powers the two primary alert channels: the urgency-9+ **phone call** and the SMS used for acknowledgments, updates, and the downgrade channel.
 
 ### Steps
 
@@ -59,15 +59,11 @@ If you want a sandbox to test Twilio interactively, you can build one separately
    - Go to **Phone Numbers → Manage → Buy a Number**
    - Buy a number with **Voice** and **SMS** capabilities
    - For Polish calls: any US/EU number works, but a Polish number (+48) avoids international call costs
-5. For WhatsApp:
-   - Go to **Messaging → Try it Out → Send a WhatsApp message**
-   - Follow the sandbox setup (or apply for a WhatsApp Business sender)
-6. Add to `.env`:
+5. Add to `.env`:
    ```
    TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
    TWILIO_AUTH_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
    TWILIO_PHONE_NUMBER=+1XXXXXXXXXX
-   TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886
    ALERT_PHONE_NUMBER=+48XXXXXXXXX
    ```
 
@@ -106,7 +102,34 @@ print(f'SMS sent: {msg.sid}')
 
 ---
 
-## 3. Telegram API (Channel Monitoring)
+## 3. Expo Push (Optional — Mobile Push Channel)
+
+Expo Push is an **optional, additive** alert channel that fires a push notification alongside the phone call / SMS. It is **off by default** and needs no account or paid plan for basic sends — Expo's push service is free.
+
+There is no API key to obtain. The two pieces you provide are:
+
+1. **(Optional) `EXPO_ACCESS_TOKEN`** — an Expo access token used as a bearer credential to harden sends against spoofing. Create one at **https://expo.dev → Account → Access Tokens**, then add it to `.env`:
+   ```
+   EXPO_ACCESS_TOKEN=your-expo-access-token
+   ```
+   Leave it unset for basic (unauthenticated) sends.
+
+2. **Device push tokens** — the per-device tokens (`ExponentPushToken[...]`) that identify which phones receive alerts. These are surfaced by the companion mobile app under `mobile/`, which prints/copies the device's Expo push token. Paste each token into `alerts.push.tokens` in `config/config.yaml` and set `alerts.push.enabled: true`:
+   ```yaml
+   alerts:
+     push:
+       enabled: true
+       tokens:
+         - "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]"
+   ```
+
+See the [mobile companion app explanation](../explanation/mobile-app.md) for how to obtain a device token, and the [Configuration Reference](../reference/config-reference.md) for the full `alerts.push` block.
+
+Test it once configured with `./run.sh --test-alert push`.
+
+---
+
+## 4. Telegram API (Channel Monitoring)
 
 Telegram monitoring uses a personal account via `telethon`. You do NOT need a bot -- you monitor public channels the same way a regular user would.
 
@@ -155,7 +178,7 @@ asyncio.run(main())
 "
 ```
 
-Follow the prompts. After success, a `sentinel_session.session` file is created -- **keep this file secure**, it grants access to your Telegram account.
+Follow the prompts. After success, a `sentinel_session.session` file is created -- **keep this file secure**, it grants access to your Telegram account. The session base name (without the `.session` suffix) is set by `sources.telegram.session_name` in config; in **production** it lives at `/var/lib/sentinel/sentinel_session` (so the running file is `/var/lib/sentinel/sentinel_session.session`).
 
 ### Finding Channel IDs
 
@@ -164,13 +187,14 @@ Channel IDs in config use the format `@channel_name` (the public username). To f
 2. Look at the channel info -- the username is shown as `t.me/channel_name`
 3. Use `@channel_name` in config
 
-### Recommended Channels
+### Monitored Channels (live config)
 
 | Channel | ID | Language | Notes |
 |---|---|---|---|
-| Ukrainian Air Force | `@kpszsu` | UK | Fastest for cross-border drone events |
-| NEXTA Live | `@nexta_live` | EN/RU | Belarusian opposition, fast on military events |
-| Rybar | `@rybar_force` | RU | Russian mil-blogger, detailed maps |
+| Ukrainian Air Force | `@kpszsu` | uk | Fastest for cross-border drone/missile events |
+| General Staff of Ukraine | `@GeneralStaffZSU` | uk | Official military situation updates |
+| DeepState UA | `@DeepStateUA` | uk | Front-line mapping / situational reports |
+| NEXTA Live | `@nexta_live` | ru | Belarusian opposition, fast on military events |
 
 **Note:** Channel IDs may change. Verify them before configuring.
 
@@ -183,11 +207,11 @@ The Telegram session file (`sentinel_session.session`) is equivalent to being lo
 
 ---
 
-## 4. GDELT API
+## 5. GDELT API
 
-**No setup needed.** The GDELT DOC 2.0 API is free and requires no API key or registration. Endpoint: `https://api.gdeltproject.org/api/v2/doc/doc`
+**No setup needed.** The GDELT DOC 2.0 API is free and requires no API key or registration. Endpoint: `https://api.gdeltproject.org/api/v2/doc/doc` (GDELT is currently **disabled** in production — `sources.gdelt.enabled: false` — due to IP-level throttling, but no credentials are required if you re-enable it.)
 
-## 5. Google News RSS
+## 6. Google News RSS
 
 **No setup needed.** Google News RSS feeds are public and free.
 
@@ -200,7 +224,6 @@ The Telegram session file (`sentinel_session.session`) is equivalent to being lo
 TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 TWILIO_AUTH_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 TWILIO_PHONE_NUMBER=+1XXXXXXXXXX
-TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886
 
 # Alert recipient
 ALERT_PHONE_NUMBER=+48XXXXXXXXX
@@ -211,4 +234,7 @@ ANTHROPIC_API_KEY=sk-ant-xxxxx
 # Telegram
 TELEGRAM_API_ID=12345678
 TELEGRAM_API_HASH=abcdef1234567890abcdef1234567890
+
+# Expo Push (optional — device push tokens go in alerts.push.tokens, not here)
+# EXPO_ACCESS_TOKEN=your-expo-access-token
 ```

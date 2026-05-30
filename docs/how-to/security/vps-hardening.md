@@ -11,6 +11,8 @@
 
 Automated bots scan new IPs within minutes. Every step below should be done in your first SSH session.
 
+This guide has **13 steps total: Step 0 (Hetzner Cloud Firewall, done in the web console before your first SSH login) plus Steps 1–12** (run on the server). Do them in order.
+
 ---
 
 ## Step 0: Hetzner Cloud Firewall
@@ -91,16 +93,24 @@ ssh-keygen -t ed25519 -a 100 -C "sentinel-vps"
 
 > **Why ed25519?** Shorter keys, faster operations, and no known weak-parameter risks (unlike certain RSA or ECDSA configurations). If you already have an RSA-4096 key, it's fine to keep using it.
 
-Copy the key to the server:
+Copy the **public** key to the server. Print it on your local machine and paste it into the deploy user's `authorized_keys` (only the `.pub` file is the public key — never copy a private key or your local `authorized_keys`):
 
 ```bash
-# Still logged in as root on the server:
+# On your LOCAL machine — show the PUBLIC key and copy the output:
+cat ~/.ssh/id_ed25519.pub
+```
+
+```bash
+# Still logged in as root on the server — create the deploy user's authorized_keys
+# and paste the public key line you just copied:
 mkdir -p /home/deploy/.ssh
-cp ~/.ssh/authorized_keys /home/deploy/.ssh/
+echo 'ssh-ed25519 AAAA...your-public-key... sentinel-vps' > /home/deploy/.ssh/authorized_keys
 chown -R deploy:deploy /home/deploy/.ssh
 chmod 700 /home/deploy/.ssh
 chmod 600 /home/deploy/.ssh/authorized_keys
 ```
+
+> Alternatively, from your local machine: `ssh-copy-id -i ~/.ssh/id_ed25519.pub -p 22 deploy@<server-ip>` (works only while password auth is still enabled, i.e. before Step 3c).
 
 ### 3b: Test the New User Login (BEFORE Locking Root)
 

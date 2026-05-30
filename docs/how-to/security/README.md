@@ -8,11 +8,11 @@ Guides for hardening the VPS before deploying Project Sentinel.
 
 | Document | Purpose |
 |----------|---------|
-| [VPS Hardening Guide](vps-hardening.md) | Step-by-step server security setup (12 steps) |
+| [VPS Hardening Guide](vps-hardening.md) | Step-by-step server security setup (Step 0 + Steps 1–12, 13 steps total) |
 
 ## Quick Order of Operations
 
 1. Create VPS on Hetzner
-2. **Complete [VPS Hardening Guide](vps-hardening.md)** (all 12 steps)
+2. **Complete [VPS Hardening Guide](vps-hardening.md)** (Step 0 + Steps 1–12)
 3. Reboot and run the post-hardening checklist
 4. Only then proceed to deployment. See [Server Runbook](../server-runbook.md) for ongoing operations.

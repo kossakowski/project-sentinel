@@ -1,5 +1,16 @@
 # Server Runbook — Project Sentinel
 
+> **Owner:** Łukasz (kossakowski87@gmail.com)
+> **Last updated:** 2026-05-30
+
+## Prerequisites
+
+Before running anything in this runbook:
+
+- **SSH only as `deploy@178.104.76.254` on port 2222.** `ssh -p 2222 deploy@178.104.76.254`. **Never** use `root@` or `kossa@` — a wrong username counts as a failed login and 5 failures in 10 min trips fail2ban, banning your IP for 1 hour. Port 22 is firewalled.
+- **Read-only by default.** Do **NOT** modify files on the production server unless explicitly authorised. Log/health/DB inspection commands below are safe; anything that writes (deploy, config edits, session re-auth) needs a deliberate decision.
+- **Required env vars (in `/etc/sentinel/sentinel.env`, loaded by systemd):** `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`, `ALERT_PHONE_NUMBER`, `ANTHROPIC_API_KEY`, `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`. See [Secrets](#secrets).
+
 ## Server Facts
 
 | Field | Value |
@@ -46,7 +57,7 @@ Emergency (SSH blocked): Hetzner Cloud web console → server → Console tab �
 └── health.json                      # Updated each pipeline cycle
 
 /var/log/sentinel/                   # App logs (sentinel:sentinel 750)
-└── sentinel.log                     # Rotated daily, 14-day retention, 50 MB max
+└── sentinel.log                     # Two rotation mechanisms coexist (see Log Rotation below)
 
 /home/deploy/backups/                # Daily SQLite backups (7-day retention)
 └── sentinel_YYYYMMDD.db
@@ -75,6 +86,17 @@ sudo tail -100 /var/log/sentinel/sentinel.log
 ```
 
 Key log signals: `[ALERT]` = phone/SMS triggered; `[CLASSIFY]` = LLM call; `[FETCH ERROR]` = source down; `[PIPELINE]` = cycle heartbeat.
+
+## Log Rotation
+
+Two independent rotation mechanisms apply to `sentinel.log` — both are real and both run:
+
+| Mechanism | Trigger | Config | Behaviour |
+|---|---|---|---|
+| App-side `RotatingFileHandler` | **Size-based** | `logging.max_size_mb: 50`, `logging.backup_count: 5` (in `/etc/sentinel/config.yaml`) | Rotates when the file reaches 50 MB, keeps 5 backups |
+| OS `logrotate` | **Time-based** | `deploy/configs/sentinel-logrotate` (`daily`, `rotate 14`, `compress`, `copytruncate`) | Rotates once daily, keeps 14 compressed days |
+
+`copytruncate` in the logrotate config lets the OS rotate the file without the process needing to reopen its handle, so the two mechanisms coexist without fighting over the file.
 
 ## Deployment (git-based)
 
@@ -142,6 +164,8 @@ sudo nano /etc/sentinel/config.yaml
 sudo systemctl restart sentinel
 ```
 
+> **Push channel (optional, off by default):** device push tokens for the Expo push channel live in `alerts.push.tokens` (a YAML list) under the `alerts.push` block (`enabled`, `tokens`). The live `/etc/sentinel/config.yaml` omits the block, so push is disabled; add the block and tokens here to enable it. See `config/config.example.yaml` for the shape.
+
 ## Secrets
 
 File: `/etc/sentinel/sentinel.env` — loaded by systemd `EnvironmentFile=` before dropping to `sentinel` user.
@@ -208,20 +232,22 @@ View: `ssh -p 2222 deploy@178.104.76.254 'crontab -l'`
 | Lane | Interval | Sources | Jitter |
 |---|---|---|---|
 | Fast | every 3 min | Telegram channels, priority-1 RSS, Google News | `min(jitter_seconds, 10)` — capped at 10 s |
-| Slow | every 15 min | All sources including GDELT and lower-priority RSS | `jitter_seconds` (default 30 s) |
+| Slow | every 15 min | All **enabled** sources (superset of fast) plus lower-priority RSS | `jitter_seconds` (default 30 s) |
+
+> **GDELT is currently disabled** (`sources.gdelt.enabled: false`, IP-level 429 throttling, ~20% success). The fetcher is only instantiated when the source is enabled, so although the slow lane *would* include GDELT, it does not run while disabled. Re-enable in config to add it back to the slow lane.
 
 ## Known Server Hazards
 
-Findings from the 2026-04-12 production audit. Remediation tracked in `TODO.md`.
+> **Audit snapshot: 2026-04-12.** This table is the original production-audit finding set. The code and ops debt it tracked was **resolved 2026-05-25 through 2026-05-27** (see `TODO.md` → "Completed Debt" and git history). Resolved rows are marked **RESOLVED** below and kept for historical context; only genuinely open items are flagged **OPEN**. Re-audit and re-snapshot this table when the server state next changes.
 
-| # | Hazard | Location | Impact | Fix |
+| # | Hazard | Location | Impact | Status / Fix |
 |---|---|---|---|---|
-| 1 | **Detached HEAD** | `/home/deploy/sentinel/.git` | `git pull origin master` fails — repo is not on any branch | `cd /home/deploy/sentinel && git checkout master && git pull origin master` |
-| 2 | **Stale `.env` files with live credentials** | `/home/deploy/sentinel.bak-20260324/.env` and `/home/deploy/sentinel/project-sentinel/.env` (nested untracked clone) | Twilio + Anthropic + Telegram keys exposed in two extra files | Delete both files after confirming credentials are rotated or unchanged |
-| 3 | **Two Python venvs** | `/home/deploy/sentinel/venv/` (legacy) and `/home/deploy/sentinel/.venv/` (live) | The systemd service was hand-corrected to use `.venv/`; `deploy/configs/sentinel.service` in the repo still references `venv/` | Use `.venv/bin/python` for all operator commands; update `deploy/configs/sentinel.service` to reference `.venv/` |
-| 4 | **Live config behind repo by ~35 keywords** | `/etc/sentinel/config.yaml` | Commit `d96f4a4` added keywords that were never deployed — production detects fewer threats than the repo claims | Re-run `/deploy` to sync `/etc/sentinel/config.yaml` |
-| 5 | **Backup directory unbounded** | `/home/deploy/backups/` (792 MB at last audit) | Rolling DB backups auto-prune after 7 days; deploy snapshots (`deploy-YYYYMMDD-HHMMSS/`) created by `/deploy` do NOT auto-prune and accumulate | Add a retention rule (e.g. `find /home/deploy/backups -maxdepth 1 -name 'deploy-*' -mtime +30 -exec rm -rf {} +`) |
-| 6 | **TVN24 and LSM Latvia 403ing** | RSS fetcher logs | 558 of 655 log errors are TVN24 RSS; 93 are LSM Latvia RSS — both return consistent 403 Forbidden from server IPs | No alerting impact (priority-2 sources) but high log noise. Decide: replace URL, disable source in config, or accept and suppress |
+| 1 | **Detached HEAD** | `/home/deploy/sentinel/.git` | `git pull origin master` fails — repo is not on any branch | **RESOLVED 2026-05-25–27.** Repo back on `master`. If it recurs: `cd /home/deploy/sentinel && git checkout master && git pull origin master` |
+| 2 | **Stale `.env` files with live credentials** | `/home/deploy/sentinel.bak-20260324/.env` and `/home/deploy/sentinel/project-sentinel/.env` (nested untracked clone) | Twilio + Anthropic + Telegram keys exposed in two extra files | **RESOLVED 2026-05-25–27.** Stray `.env` files removed; secrets live only in `/etc/sentinel/sentinel.env` |
+| 3 | **Two Python venvs** | `/home/deploy/sentinel/venv/` (legacy) and `/home/deploy/sentinel/.venv/` (live) | systemd unit must point at the live venv | **RESOLVED 2026-05-25–27.** `deploy/configs/sentinel.service` now references `.venv/` (`ExecStart=/home/deploy/sentinel/.venv/bin/python …`) — verified in-repo. Continue to use `.venv/bin/python` for operator commands; the legacy `venv/` is harmless if still present |
+| 4 | **Live config behind repo by ~35 keywords** | `/etc/sentinel/config.yaml` | Commit `d96f4a4` added keywords that were never deployed — production detected fewer threats than the repo claimed | **RESOLVED 2026-05-25–27.** Live config synced via `/deploy`. If it drifts again: re-run `/deploy` to sync `/etc/sentinel/config.yaml` |
+| 5 | **Backup directory unbounded** | `/home/deploy/backups/` (792 MB at last audit) | Rolling DB backups auto-prune after 7 days; deploy snapshots (`deploy-YYYYMMDD-HHMMSS/`) created by `/deploy` did NOT auto-prune and accumulated | **RESOLVED 2026-05-25–27.** Retention rule added for deploy snapshots (e.g. `find /home/deploy/backups -maxdepth 1 -name 'deploy-*' -mtime +30 -exec rm -rf {} +`) |
+| 6 | **TVN24 and LSM Latvia 403ing** | RSS fetcher logs | 558 of 655 log errors are TVN24 RSS; 93 are LSM Latvia RSS — both return consistent 403 Forbidden from server IPs | **RESOLVED 2026-05-25–27 (TVN24).** TVN24 is now `enabled: false` in config (see Known Issues). LSM Latvia: confirm current state at next audit. Options if a feed 403s again: replace URL, disable source in config, or accept and suppress |
 
 ## Troubleshooting Decision Tree
 
@@ -279,6 +305,6 @@ sudo fail2ban-client get sshd ignoreip    # verify
 
 | Source | Issue | Status |
 |---|---|---|
-| PAP RSS | WAF blocks server IPs — malformed XML or connection refused | Disabled in config |
-| TVN24 RSS | Returns 403 Forbidden from server IPs | Disabled / intermittent |
-| GDELT | 429 rate limit on first pipeline cycle | Auto-recovers on subsequent cycles |
+| PAP RSS | WAF blocks server IPs — malformed XML or connection refused | `enabled: false` in config |
+| TVN24 RSS | Returns 403 Forbidden from server IPs | `enabled: false` in config |
+| GDELT | IP-level 429 throttling (~20% success); previously a 429 on the first pipeline cycle | `enabled: false` in config — fetcher is not instantiated while disabled, so the "429 on first cycle" symptom cannot occur. Re-enable only if the throttling clears |

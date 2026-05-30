@@ -16,9 +16,10 @@
 | `sentinel/database.py` | `Database` | SQLite WAL-mode access layer; table creation, CRUD, cleanup |
 | `sentinel/diagnostic.py` | `DiagnosticData`, `DiagnosticArticle` | Data containers for HTML diagnostic report |
 | `sentinel/logging_setup.py` | `setup_logging()` | Rotating file + stderr handler config |
+| `sentinel/utils/` | `datetime.py`, `html.py` | Was the single module `sentinel/utils.py`; now a package — `datetime.py` (UTC-store / Warsaw-render helpers, e.g. `format_warsaw`), `html.py` (`strip_html`) |
 | `sentinel/fetchers/base.py` | `BaseFetcher` | Abstract base: `name: str`, `fetch() -> list[Article]` |
 | `sentinel/fetchers/rss.py` | `RSSFetcher` | `feedparser` + `httpx`; conditional GET via in-memory `_etag_cache` / `_last_modified_cache` keyed by URL (sends `If-None-Match` / `If-Modified-Since`; 304 → `[]`). `rss.py:99-111`. `fetch(max_priority=N)` |
-| `sentinel/fetchers/gdelt.py` | `GDELTFetcher` | GDELT DOC 2.0 API; theme + CAMEO code + Goldstein filter |
+| `sentinel/fetchers/gdelt.py` | `GDELTFetcher` | GDELT DOC 2.0 API; theme + `sourcecountry` filter, `TIMESPAN={lookback_minutes}min`, `maxrecords=250`. **DISABLED in production** (`sources.gdelt.enabled: false`); the fetcher is only instantiated when enabled. (No CAMEO event-code or Goldstein filter — those never existed.) |
 | `sentinel/fetchers/google_news.py` | `GoogleNewsFetcher` | Google News RSS per configured query |
 | `sentinel/fetchers/telegram.py` | `TelegramFetcher` | Telethon MTProto client; buffers messages; **requires `start()`/`stop()` lifecycle** |
 | `sentinel/processing/normalizer.py` | `Normalizer` | Strips/coerces fields to `Article` schema |
@@ -30,6 +31,7 @@
 | `sentinel/alerts/dispatcher.py` | `AlertDispatcher` | Sorts events by urgency; routes to `AlertStateMachine` or dry-run log |
 | `sentinel/alerts/state_machine.py` | `AlertStateMachine` | Urgency → action decision; async call/SMS execution; cooldown; call polling |
 | `sentinel/alerts/twilio_client.py` | `TwilioClient` | Twilio REST API wrapper: `make_alert_call(phone, message_pl, event_id)` (`twilio_client.py:43`), `send_sms(phone, message, event_id)`, `get_call_status(twilio_sid)` |
+| `sentinel/alerts/push_client.py` | `ExpoPushClient` | Additive Expo push channel: `send_push(title, body, event_id, data)` POSTs to `https://exp.host/--/api/v2/push/send` (optional `EXPO_ACCESS_TOKEN` bearer). OFF by default (`alerts.push.enabled: false`); returns a generic `AlertRecord` with `alert_type="push"`. See [`mobile-app.md`](mobile-app.md) for the companion app that registers the device push token. |
 
 ---
 
@@ -96,7 +98,7 @@ Produced by: `AlertStateMachine`. Consumed by: `AlertStateMachine.check_pending_
 | Field | Type | Notes |
 |---|---|---|
 | `event_id` | `str` | FK → `Event.id` |
-| `alert_type` | `str` | `phone_call` \| `sms` (historical records may also contain `whatsapp` — channel removed) |
+| `alert_type` | `str` | `phone_call` \| `sms` \| `push` (historical records may also contain `whatsapp` — that channel was removed; the literal survives only in old DB rows) |
 | `twilio_sid` | `str` | Twilio call/message SID |
 | `status` | `str` | Twilio API values: `initiated`, `ringing`, `in-progress`, `completed`, `busy`, `no-answer`, `failed`, `canceled`; plus internal `acknowledged`. `Database.get_pending_call_records()` (`database.py:221`) filters `status IN ('initiated', 'ringing')`. |
 | `attempt_number` | `int` | Retry counter |
@@ -187,7 +189,7 @@ Stage 9 — Database.cleanup_old_records(article_days, event_days)
 | Lane | Interval | Jitter | Sources | APScheduler job ID |
 |---|---|---|---|---|
 | Fast | `config.scheduler.fast_interval_minutes` (default: 3 min) | `min(jitter_seconds, 10)` | Telegram + Google News + RSS priority ≤ 1 | `sentinel_fast_lane` |
-| Slow (full) | `config.scheduler.interval_minutes` (default: 15 min) | `jitter_seconds` (default: 30 s) | All sources (superset of fast lane, including GDELT + all RSS) | `sentinel_slow_lane` |
+| Slow (full) | `config.scheduler.interval_minutes` (default: 15 min) | `jitter_seconds` (default: 30 s) | All enabled fetchers (superset of fast lane: all RSS + GDELT **only if `sources.gdelt.enabled` — currently off in production**) | `sentinel_slow_lane` |
 
 Both jobs: `max_instances=1`, `coalesce=True` (skips missed fires, never stacks).
 
@@ -200,6 +202,10 @@ Pipeline failure: SMS sent after 3 consecutive cycle failures.
 
 ## 5. Alert Routing Logic (`sentinel/alerts/state_machine.py:AlertStateMachine._determine_action`)
 
+**Two independent alert-level decisions exist** (they can disagree — see §9):
+1. `Corroborator._determine_alert_status` gates whether an event is "alertable" using hardcoded urgency cuts (`phone_call` if urgency ≥ 9 AND `source_count ≥ corroboration_required`; `sms` if ≥ 7; `sms` if ≥ 5; else `pending`; `dry_run` short-circuits to `"dry_run"`). It writes a provisional `Event.alert_status`.
+2. `AlertStateMachine._determine_action` makes the **final channel choice** from `config.alerts.urgency_levels` + each level's `corroboration_required`, ignoring the stored value.
+
 Decision matrix driven by `config.alerts.urgency_levels` (sorted by `min_score` desc):
 
 | urgency_score | source_count vs. corroboration_required | action | Event.alert_status set by corroborator |
@@ -209,6 +215,8 @@ Decision matrix driven by `config.alerts.urgency_levels` (sorted by `min_score` 
 | ≥ 7 (HIGH) | any | `sms` | `sms` |
 | ≥ 5 (MEDIUM) | any | `sms` | `sms` |
 | ≥ 1 (LOW) | any | `log_only` | `pending` |
+
+**Additive push dispatch.** For any non-`log_only` action, `process_event` fires an Expo push (`_maybe_send_push` → `ExpoPushClient.send_push`) **additively, before** the Twilio dispatch — after the cooldown / acknowledged / pending-call / dedup gates, so it reaches the phone immediately. It is a no-op when `alerts.push.enabled` is false or no tokens are configured (the default). The push is recorded as a separate `AlertRecord` with `alert_type="push"`; the initial push is deduped on the presence of a prior `push` record. Because `push` is NOT in `_USER_NOTIFIED_ALERT_TYPES` (`sms`, `whatsapp`, `phone_call`), a sent push does not suppress a later SMS. See [`mobile-app.md`](mobile-app.md) for the companion app.
 
 Post-alert state transitions (managed by `AlertStateMachine`, not corroborator):
 - `acknowledged`: operator replies to the pre-call SMS with the correct 6-digit confirmation code. `acknowledged_at` is set on the Event. Further source additions trigger `_send_update_sms()`.
@@ -222,10 +230,12 @@ Post-alert state transitions (managed by `AlertStateMachine`, not corroborator):
 
 | YAML path | Type | Default | Effect |
 |---|---|---|---|
-| `classification.corroboration_required` | `int` | `2` | Min independent sources before `Event.alert_status` leaves `pending`. **Live config uses `1`.** |
-| `classification.corroboration_window_minutes` | `int` | `360` | Lookback window for grouping articles into the same Event (6 hours). **Live config still uses `60`.** |
-| `classification.summary_similarity_threshold` | `int` | `40` | Fuzzy token_sort_ratio for matching summaries to an existing event (range 0-100; lower = more aggressive merging). |
-| `classification.syndication_similarity_threshold` | `int` | `90` | Title similarity threshold above which two articles are treated as syndicated copies of one source (range 0-100). |
+| `classification.corroboration_required` | `int` | `2` | Min independent sources before a phone call fires (the corroborator's `phone_call` gate). **Pydantic default `2`, but live `config/config.yaml` sets `1`.** |
+| `classification.corroboration_window_minutes` | `int` | `360` | **Sliding** window (6 h) for grouping articles into the same Event, measured from the event's `last_updated_at` (last activity), **not** `first_seen_at` — a multi-hour incident that keeps getting fresh articles stays ONE event. Default & live `360`. |
+| `classification.corroboration_max_age_minutes` | `int` | `2880` | Absolute lifetime cap (48 h) measured from `first_seen_at`; retires perpetually-updated events so they can't chain-merge distinct incidents. `0` disables. Default & live `2880`. |
+| `classification.summary_similarity_metric` | `str` | `token_set_ratio` | Which `rapidfuzz.fuzz` function matches a summary to an existing event; validated against `{ratio, partial_ratio, token_sort_ratio, token_set_ratio, WRatio, QRatio}`. `token_set_ratio` is length-robust. Config-selectable (no code deploy needed). |
+| `classification.summary_similarity_threshold` | `int` | `50` | Score (0-100) from `summary_similarity_metric` required to merge a summary into an existing event (lower = more aggressive merging). Default & live `50`. |
+| `classification.syndication_similarity_threshold` | `int` | `90` | Title similarity (`fuzz.ratio` over normalized titles) at/above which a new article is treated as a syndicated copy of an existing source and does NOT count as independent (checked across all source types). |
 | `classification.model` | `str` | `claude-haiku-4-5-20251001` | Anthropic model for classification |
 | `scheduler.fast_interval_minutes` | `int` | `3` | Fast-lane cadence |
 | `scheduler.interval_minutes` | `int` | `15` | Slow-lane cadence |
@@ -241,7 +251,28 @@ Post-alert state transitions (managed by `AlertStateMachine`, not corroborator):
 | `sources.rss[*].priority` | `int` | `2` | Priority 1 = included in fast lane; 2+ = slow lane only |
 | `sources.rss[*].keyword_bypass` | `bool` | `false` | If true, article skips Stage 4 (keyword filter) |
 | `sources.telegram.channels[*].keyword_bypass` | `bool` | `false` | Same bypass for Telegram channels |
+| `sources.gdelt.enabled` | `bool` | `false` | GDELT fetcher instantiated only when true; **disabled in production** (IP-throttled) |
+| `sources.gdelt.lookback_minutes` | `int` | `60` | GDELT `TIMESPAN` window (the API rejects < ~30 min). Live config carries a stale `update_interval_minutes: 15` that is a no-op typo for this field |
+| `alerts.push.enabled` | `bool` | `false` | Enables the additive Expo push channel |
+| `alerts.push.tokens` | `list[str]` | `[]` | Expo push tokens to deliver to (live `config.yaml` omits the whole block → push off) |
 | `testing.dry_run` | `bool` | `false` | Dispatcher logs intended actions; no Twilio calls made |
+
+---
+
+## 6.5 Corroboration & Event Grouping (`sentinel/classification/corroborator.py`)
+
+Stage 6 groups military classifications (urgency ≥ 5) into `Event`s and decides independence. A new classification merges into an existing event only when **all** of these hold (`_find_matching_event`):
+
+1. **Event-type compatibility** (`EVENT_COMPATIBILITY`) — e.g. `drone_attack` ↔ `airstrike`; `cyber_attack` only matches `cyber_attack`.
+2. **Country compatibility** (`_countries_compatible`):
+   - At/above the phone-call urgency threshold (9), a concrete-country intersection is **required** — a Poland-critical article whose country the classifier failed to extract (empty / `"unknown"`) spawns its OWN event/call; the no-signal relaxation is NOT applied at critical urgency.
+   - Below the threshold, empty / `"unknown"` labels carry no location signal and don't block a merge, but two concrete-but-different country sets (e.g. PL vs RO) stay separate.
+   - Countries are normalized (uppercased; blank / `"unknown"` dropped) when events merge.
+3. **Critical-urgency safety guard** — a phone-call-eligible article is **never** absorbed into an event that already has `acknowledged_at` set (already alerted / in cooldown). It forces a NEW event and a NEW call, so a fresh critical escalation can't be silenced by an earlier event's cooldown.
+4. **Sliding time window** — `corroboration_window_minutes` (live 360) measured from the event's `last_updated_at`, plus an absolute `corroboration_max_age_minutes` (live 2880) cap from `first_seen_at`.
+5. **Summary similarity** — `summary_similarity_metric(result.summary_pl, event.summary_pl) ≥ summary_similarity_threshold` (live `token_set_ratio` @ 50).
+
+**Source independence** (`_is_independent_source`): a new article counts toward `source_count` only if it's a different domain AND its normalized title is `< syndication_similarity_threshold` (90, `fuzz.ratio`) similar to every existing source title — caught across all source types to reject wire/syndication reuse.
 
 ---
 
@@ -272,7 +303,7 @@ SQLite WAL mode enabled. `check_same_thread=False` (single-process, async-safe v
 | `--test-headline "TEXT"` | Feed single headline through classifier only; print result |
 | `--test-file FILE` | Feed YAML file of headlines through classifier; print results |
 | `--eval [PATH]` | Run classification eval against a YAML eval set (default: `testing.eval_set_file`); hits the live API; saves a JSON report to `data/eval/`; exits 0 only if all cases pass |
-| `--test-alert [phone_call\|sms]` | Fire real Twilio alert with synthetic event; bypasses fetch/classify/corroborate (argparse `choices=["phone_call", "sms"]`, default `phone_call`) |
+| `--test-alert [phone_call\|sms\|push]` | Fire a real alert with a synthetic event; bypasses fetch/classify/corroborate (argparse `choices=["phone_call", "sms", "push"]`, default `phone_call`). `phone_call`/`sms` go via Twilio; `push` goes via Expo (requires `alerts.push.enabled` + a token) |
 
 The classifier **and** the alert/Twilio path are async, so the synchronous CLI/eval entry points bridge to them via `asyncio.run(...)`: `--test-headline` (`_run_test_headline`) runs one `classify`; `--test-file` (`_run_test_file`) runs **one** `asyncio.run` wrapping an inner loop over all headlines (not one event loop per headline); `--eval` (`_run_eval`) runs `asyncio.run(run_eval(...))`. `--test-alert` (`_run_test_alert`) drives the now-async `_execute_phone_call` / `_execute_sms` under `asyncio.run(...)` as well (see §9).
 
@@ -303,7 +334,7 @@ Config loading: `sentinel/config.py:load_config()`. Env vars substituted via `${
 
 ## 10. Dashboard Subsystem (`dashboard/`)
 
-Separate from the monitoring runtime described above. Read-only Flask backend + React/Vite/TypeScript frontend over the production SQLite DB; runs locally only, never deployed. Full reference: [`SPEC.md`](../SPEC.md).
+Separate from the monitoring runtime described above. Read-only Flask backend + React/Vite/TypeScript frontend over the production SQLite DB; runs locally only, never deployed. Full reference: [`SPEC.md`](../../SPEC.md).
 
 ### 10.1 Backend (Flask)
 

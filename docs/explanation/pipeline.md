@@ -6,7 +6,7 @@
 
 Project Sentinel processes incoming media in seven sequential stages. Each stage has a clear job: fetch raw content, clean it, deduplicate it, filter for relevance, classify it with AI, corroborate it across sources, and finally alert you. The sections below describe each stage in the order data flows through it.
 
-The system runs continuously on two overlapping schedules. The **fast lane** runs every 3 minutes and covers Telegram channels, Google News, and priority-1 RSS sources. The **slow lane** runs every 15 minutes and covers all sources including GDELT. Every slow-lane cycle is a superset of a fast-lane cycle.
+The system runs continuously on two overlapping schedules. The **fast lane** runs every 3 minutes and covers Telegram channels, Google News, and priority-1 RSS sources. The **slow lane** runs every 15 minutes and covers all enabled sources (GDELT would belong here, but it is disabled in production — see the GDELT section below). Every slow-lane cycle is a superset of a fast-lane cycle.
 
 ### Scheduler jitter
 
@@ -35,7 +35,9 @@ PAP (the Polish Press Agency) blocks automated fetching via WAF, so it is not fe
 
 ### GDELT
 
-GDELT (Global Database of Events, Language, and Tone) is a global news index that covers sources in any language. The system queries the GDELT DOC 2.0 API for articles published in the past 15 minutes, filtered to military-relevant topic codes: ARMEDCONFLICT, WB_2462_POLITICAL_VIOLENCE_AND_WAR, CRISISLEX_C03_WELLBEING_HEALTH, and TAX_FNCACT_MILITARY. Up to 250 articles are returned per call. GDELT articles ship with `summary = ""` (`sentinel/fetchers/gdelt.py:178`); the keyword filter therefore scans title-only for GDELT. Language detection is performed later in the pipeline. GDELT runs on the slow lane only.
+GDELT (Global Database of Events, Language, and Tone) is a global news index that covers sources in any language. The system queries the GDELT DOC 2.0 API over a lookback window of `sources.gdelt.lookback_minutes` (default 60 minutes — the API rejects windows shorter than ~30 minutes), filtered to military-relevant topic codes: ARMEDCONFLICT, WB_2462_POLITICAL_VIOLENCE_AND_WAR, CRISISLEX_C03_WELLBEING_HEALTH, and TAX_FNCACT_MILITARY, plus a `sourcecountry` filter. Up to 250 articles are returned per call. GDELT articles ship with `summary = ""` (`sentinel/fetchers/gdelt.py:178`); the keyword filter therefore scans title-only for GDELT. Language detection is performed later in the pipeline.
+
+**GDELT is currently disabled in production** (`sources.gdelt.enabled: false`) because the API IP-throttles us with HTTP 429 down to roughly a 20% success rate. The fetcher is only instantiated when enabled, so although the slow lane *would* include GDELT, in production it does not run at all. (The live config also carries a stale `update_interval_minutes: 15`, which is a no-op — the real field is `lookback_minutes`.)
 
 ### Telegram
 
@@ -67,7 +69,7 @@ Articles that clear all three checks are inserted into the database.
 
 ## Stage 4: Keyword Filtering
 
-Before spending AI budget on classification, articles are screened for military relevance using a keyword filter. Two categories of source bypass this stage entirely and proceed directly to classification: the four specialist defence media (Defence24 PL and Defence24 EN) and all four Telegram channels. These sources are considered high signal-to-noise by design.
+Before spending AI budget on classification, articles are screened for military relevance using a keyword filter. Two categories of source bypass this stage entirely and proceed directly to classification: the two specialist defence-media RSS feeds carrying `keyword_bypass: true` (Defence24 PL and Defence24 EN) and all four Telegram channels. These sources are considered high signal-to-noise by design.
 
 For all other sources, the filter works as follows:
 
@@ -122,14 +124,16 @@ Additional rules the model applies: diplomatic tensions, opinion pieces, and "sp
 
 A single article, however alarming, is not enough to trigger a phone call. The corroborator groups classification results into Events — each Event representing one real-world military incident — and requires corroboration from independent sources before escalating to the highest alert level.
 
-An Event is created when the first classification with urgency 5 or higher arrives. Subsequent classifications are evaluated to see whether they belong to an existing Event or represent a new one. Four conditions must all be satisfied for a match:
+An Event is created when the first classification with urgency 5 or higher arrives. Subsequent classifications are evaluated to see whether they belong to an existing Event or represent a new one. All of these conditions must be satisfied for a match:
 
 1. The event types must be compatible. For example, a drone_attack classification is compatible with an airstrike Event; a cyber_attack is only compatible with other cyber_attack classifications.
-2. At least one affected country must overlap.
-3. The classification must fall within the corroboration window of the Event — `classification.corroboration_window_minutes` (Pydantic default 360 = 6h; live production config still 60).
-4. The Polish summaries must have at least `classification.summary_similarity_threshold` semantic similarity (Pydantic default 40, measured by `rapidfuzz.fuzz.token_sort_ratio`).
+2. The affected countries must be compatible. At and above the phone-call urgency threshold (9), a **concrete-country intersection is required** — a Poland-critical article whose country the classifier failed to extract (empty or "unknown") spawns its own Event and its own call rather than being absorbed. Below that threshold, empty/"unknown" labels carry no location signal and don't block a merge, but two concrete-but-different country sets (e.g. PL vs RO) still stay separate. Country labels are normalized (uppercased, blank/"unknown" dropped) when Events merge.
+3. The classification must fall within the corroboration window — `classification.corroboration_window_minutes` (default and live `360` = 6h). This is a **sliding** window measured from the Event's *last activity* (`last_updated_at`), not its birth, so a multi-hour incident that keeps drawing fresh articles stays one Event. A separate absolute lifetime cap, `classification.corroboration_max_age_minutes` (default and live `2880` = 48h, `0` disables), is measured from `first_seen_at` and retires a perpetually-updated Event so it can't chain-merge genuinely separate incidents.
+4. The Polish summaries must have at least `classification.summary_similarity_threshold` similarity (default and live `50`), measured by the configurable `classification.summary_similarity_metric` (default `token_set_ratio`, a length-robust `rapidfuzz.fuzz` function; the metric is a config key, tunable without a code deploy).
 
-If no existing Event satisfies all four conditions, a new Event is created.
+There is also a **critical-urgency safety guard**: a phone-call-eligible article is never absorbed into an Event that has already been acknowledged (and is therefore in or past its post-alert cooldown). It is forced into a new Event — and a new call — so a fresh critical escalation can never be silenced by an earlier Event's cooldown.
+
+If no existing Event satisfies all the conditions, a new Event is created.
 
 A classification counts as a new independent source only if it comes from a different domain than sources already in the Event, and its title is less than `classification.syndication_similarity_threshold` similar (Pydantic default 90, measured by `rapidfuzz.fuzz.ratio`) to any existing source title. This second check prevents wire service syndication from being mistaken for independent confirmation.
 
@@ -142,13 +146,17 @@ The alert level assigned to an Event is determined by `alerts/state_machine.py:_
 | `urgency >= 5` | SMS | `state_machine.py:_determine_action` |
 | Below threshold | Pending — no alert | |
 
-Note: two parallel urgency decision paths exist (corroborator and state_machine) and can disagree. Live `corroboration_required` is `1`; any prior documentation citing `2` is stale.
+Note: two parallel urgency decision paths exist (corroborator and state_machine) and can disagree. The **Pydantic default for `corroboration_required` is `2`**, but live `config/config.yaml` sets it to `1` — so in production a single source can trigger a phone call. Always check the live config before assuming corroboration behaviour.
 
 Events are stored in the database and are not static. As new articles arrive in later cycles, the urgency, source count, and alert level can all escalate.
 
 ---
 
 ## Stage 7: Alerts
+
+### Push Notification (additive, fires first)
+
+For any Event whose action is not `log_only`, an **Expo push notification** is sent to the companion mobile app *before* the (potentially blocking) Twilio dispatch, so it reaches the phone immediately. Push is **additive** — it never replaces the phone call or SMS — and is **off by default**: it only fires when `alerts.push.enabled` is true and at least one Expo token is configured (the live production config omits the block, so push is currently disabled). The initial push is deduplicated against any prior push for the same Event, and because push is not one of the "user already notified" channels, a sent push never suppresses a later SMS. See the [mobile app explainer](mobile-app.md) for how a device registers its push token.
 
 ### Phone Call (Urgency 9–10 with Independent Corroboration)
 
@@ -171,6 +179,8 @@ A phone call is the highest alert level and requires both a very high urgency sc
 ### SMS Alert (Urgency 7–8)
 
 An SMS is sent containing the full event details in Polish: event type, urgency score out of 10, affected countries, aggressor, the Polish summary, a list of source titles with URLs, and a timestamp.
+
+The body is **budget-capped to stay under Twilio's 1600-character limit** (`alerts/state_machine.py`): the whole message is held to `SMS_MAX_CHARS = 1500`, the classifier's `summary_pl` is truncated to `SMS_SUMMARY_MAX_CHARS = 600`, and the source list is packed greedily into whatever budget remains with an "…i N więcej" trailer counting the omitted sources. This was a fix — heavily-corroborated events (many long Google News redirect URLs) previously blew past 1600 characters and Twilio silently rejected the send with HTTP 400.
 
 ### Post-Acknowledgment Behavior
 

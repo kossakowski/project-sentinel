@@ -1,6 +1,6 @@
 # Project Sentinel -- Setup & Launch Guide
 
-> **First-time credential setup:** For obtaining Twilio / Anthropic / Telegram credentials and API keys, see [API Setup Guide](docs/api-setup.md).
+> **First-time credential setup:** For obtaining Twilio / Anthropic / Telegram credentials and API keys, see [API Setup Guide](../how-to/api-setup.md).
 
 ## Prerequisites
 
@@ -29,7 +29,7 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Fill in credentials for Twilio, Anthropic, and Telegram. GDELT and Google News RSS require no API keys. See [API Setup Guide](docs/api-setup.md) for a complete `.env` template and account setup instructions.
+Fill in credentials for Twilio, Anthropic, and Telegram. GDELT and Google News RSS require no API keys; Expo push is optional and off by default. See [API Setup Guide](../how-to/api-setup.md) for a complete `.env` template and account setup instructions.
 
 ## 4. Configure Application
 
@@ -41,12 +41,12 @@ The defaults are sensible out of the box. Key settings you may want to customize
 
 - **Monitored countries** -- default: Poland, Lithuania, Latvia, Estonia
 - **Keywords** -- critical and high-urgency terms in PL/EN/UA/RU
-- **RSS sources** -- 17 feeds preconfigured (PAP, TVN24, Defence24, BBC, etc.)
-- **Scan interval** -- dual-lane: fast lane every 3 min (Telegram, Google News, priority-1 RSS), slow lane every 15 min (all sources including GDELT)
-- **Corroboration threshold** -- default value in code is 2; live `config.example.yaml` uses 1 (single source triggers phone call)
-- **Urgency routing** -- critical (9-10) = phone call, high (7-8) = SMS, medium (5-6) = SMS (WhatsApp tier disabled in production), low (1-4) = log only
+- **RSS sources** -- ~20 feeds preconfigured (Defence24, RMF24, BBC, TASS, etc.); PAP and TVN24 ship disabled (`enabled: false`)
+- **Scan interval** -- dual-lane: fast lane every 3 min (Telegram, Google News, priority-1 RSS), slow lane every 15 min (all enabled sources; GDELT is disabled in production)
+- **Corroboration threshold** -- default is 1 (a single source can trigger a phone call)
+- **Urgency routing** -- critical (9-10) = phone call, high (7-8) = SMS, medium (5-6) = SMS, low (1-4) = log only. An optional Expo **push** channel can fire additively alongside these (off by default)
 
-See [docs/config-reference.md](docs/config-reference.md) for every parameter.
+See [Configuration Reference](../reference/config-reference.md) for every parameter.
 
 ## 5. Verify Setup
 
@@ -75,7 +75,7 @@ Use `./run.sh` — it activates the virtual environment automatically. All argum
 | `--once` | Run one cycle and exit |
 | `--test-headline TEXT` | Classify a single headline |
 | `--test-file FILE` | Classify all headlines from a YAML file |
-| `--test-alert [sms\|whatsapp]` | Fire a real alert with a fake event |
+| `--test-alert [phone_call\|sms\|push]` | Fire a real alert with a fake event (no-arg defaults to `phone_call`) |
 | `--config PATH` | Use a custom config file (default: `config/config.yaml`) |
 | `--log-level LEVEL` | Override log level (DEBUG, INFO, WARNING, ERROR) |
 | `--health` | Print `data/health.json` |

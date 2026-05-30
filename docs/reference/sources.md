@@ -1,6 +1,6 @@
 # Media Sources Reference
 
-> Source-of-truth: `config/config.example.yaml`. Update this doc when the canonical config changes.
+> **Source of truth: `config/config.yaml`** (the live, running config). `config/config.example.yaml` is only a documented template. Update this doc when `config/config.yaml` changes.
 
 Derived from `config/config.yaml`. Do not add sources not present in config — this doc tracks config state, not aspirations.
 
@@ -70,14 +70,21 @@ Polled on fast lane (every 3 min). Config key: `sources.google_news.queries`. Al
 
 ---
 
-## GDELT
+## GDELT — **DISABLED in production**
 
-Config key: `sources.gdelt`. Slow lane only (every 15 min).
+Config key: `sources.gdelt`. Slow lane only (every 15 min), **and only when `enabled: true`** — which it is **not** in the live config (`enabled: false`). The fetcher is instantiated only when enabled, so GDELT contributes nothing today.
+
+**Why disabled:** IP-level 429 throttling from the Hetzner datacenter IP drove the success rate to ~20%, so it was switched off rather than burn slow-lane time on failures.
+
+When enabled, the fetcher (`sentinel/fetchers/gdelt.py`) issues a single GDELT DOC 2.0 `ArtList` query built from only these parameters:
 
 - **API:** `https://api.gdeltproject.org/api/v2/doc/doc` — free, no API key required.
-- **Themes:** `ARMEDCONFLICT`, `WB_2462_POLITICAL_VIOLENCE_AND_WAR`, `CRISISLEX_C03_WELLBEING_HEALTH`, `TAX_FNCACT_MILITARY`.
-- **CAMEO event codes:** 18, 19, 190, 191, 192, 193, 194, 195, 20.
-- **Goldstein threshold:** −7.0 (only articles at or below this conflict score are processed). No article summaries — headlines and metadata only.
+- **Themes** (`sources.gdelt.themes`): `ARMEDCONFLICT`, `WB_2462_POLITICAL_VIOLENCE_AND_WAR`, `CRISISLEX_C03_WELLBEING_HEALTH`, `TAX_FNCACT_MILITARY`. OR-combined as `theme:...`.
+- **Country filter:** `sourcecountry:` for each target country (PL, LT→`LH`, LV→`LG`, EE→`EN`, FIPS-mapped), OR-combined.
+- **Window:** `TIMESPAN={lookback_minutes}min` — the config field is `lookback_minutes` (default `60`; the live config's stale `update_interval_minutes: 15` is a no-op for a non-existent field and is silently ignored). The API rejects spans below ~30 min with a `200 OK` + plain-text body `"Timespan is too short."`.
+- **Other params:** `mode=ArtList`, `maxrecords=250`, `format=json`, `sort=DateDesc`. Articles arrive as headline + metadata only (no body summaries).
+
+> There is **no CAMEO event-code filter and no Goldstein conflict-score threshold** — the fetcher sends only the theme + country + timespan parameters above. (Earlier versions of this doc claimed "CAMEO codes 18/19/…/20" and a "Goldstein −7.0" threshold; both were fabricated and have been removed.)
 
 ---
 
@@ -87,3 +94,11 @@ Config key: `sources.gdelt`. Slow lane only (every 15 min).
 |---|---|---|
 | PAP | Blocked by Incapsula/Imperva WAF since ~2026. All non-browser HTTP requests rejected. | `site:pap.pl` Google News query — indexes PAP articles without hitting the WAF. |
 | TVN24 | Cloudflare blocks Hetzner datacenter IPs (403 Forbidden). Not User-Agent related — tested with browser UA, still blocked. Disabled 2026-05-27 to stop spamming their servers. | Polish news well-covered by 5 other sources. Re-enable if we add proxy support or move to a residential IP. |
+| GDELT | IP-level 429 throttling (~20% success) from the Hetzner datacenter IP. | Disabled (`sources.gdelt.enabled: false`). Re-enable behind a residential IP / proxy. |
+
+---
+
+## See also
+
+- [Config Reference](config-reference.md) — the `sources.*` keys (`rss`, `gdelt`, `google_news`, `telegram`) in detail.
+- [Architecture](../explanation/architecture.md) — how fetchers, the dual-lane scheduler, and corroboration fit together.

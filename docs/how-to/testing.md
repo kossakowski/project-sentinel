@@ -12,10 +12,11 @@ All commands use `./run.sh` (auto-activates `.venv`, forwards args to `sentinel.
 | Dry run (continuous) | `./run.sh --dry-run` | Continuous dual-lane scheduler; suppresses Twilio | Same as above, runs until killed |
 | Run once | `./run.sh --once` | One full pipeline cycle with real alerts | Real Twilio calls/SMS if event triggers |
 | Test headline | `./run.sh --test-headline "TEXT"` | Classifies a single headline via Claude Haiku; no fetch, no DB write | API cost: ~$0.001 per call |
-| Test file | `./run.sh --test-file tests/fixtures/test_headlines.yaml` | Classifies all headlines in fixture; compares against expected scores | API cost per headline; no DB writes |
+| Test file | `./run.sh --test-file path/to/headlines.yaml` | Classifies every headline in a YAML file (a `headlines:` list, optional per-entry `expected:` map); compares against expected scores when present | API cost per headline; no DB writes |
+| Eval harness | `./run.sh --eval` or `./run.sh --eval path/to/eval_set.yaml` | Runs the classifier eval set (default `testing.eval_set_file` = `tests/fixtures/eval_set.yaml`); saves a JSON report under `data/eval/` | Real API cost; exits 0 only at 100% pass |
 | Test alert (call) | `./run.sh --test-alert` or `./run.sh --test-alert phone_call` | Fires real Twilio phone call with synthetic event; bypasses fetch/classify/corroborate | Real Twilio charge; forces `dry_run=False` |
 | Test alert (SMS) | `./run.sh --test-alert sms` | Fires real Twilio SMS with synthetic event | Real Twilio charge |
-| Test alert (WhatsApp) | `./run.sh --test-alert whatsapp` | Fires real Twilio WhatsApp message with synthetic event | Real Twilio charge |
+| Test alert (push) | `./run.sh --test-alert push` | Fires a real Expo push notification with synthetic event (requires `alerts.push.enabled: true` and at least one token in `alerts.push.tokens`) | Real push to configured devices |
 | Diagnostic | `./run.sh --diagnostic` | One full pipeline cycle; generates `data/diagnostic.html` | No alerts sent (forces dry-run); real API fetch costs |
 | Health check | `./run.sh --health` | Prints `data/health.json` to stdout | Read-only |
 
@@ -71,24 +72,33 @@ The classifier's Anthropic API path is async (`anthropic.AsyncAnthropic`; `class
 
 ## Fixture Files
 
+The bundled fixtures are YAML files with a top-level `headlines:` list (each entry may carry an optional `expected:` map of `is_military_event`, `urgency_min/max`, `event_type`, `affected_countries`, `aggressor`). Both feed the classifier through `--test-file` (ad-hoc, prints results) and `--eval` (the scored eval harness).
+
 | Path | Contents |
 |---|---|
-| `tests/fixtures/test_headlines.yaml` | 25 headlines with expected `is_military_event`, `urgency_min/max`, `event_type`, `affected_countries`, `aggressor`. Covers critical (9-10), high (7-8), medium (5-6), low/not-military (1-4), and edge cases. |
+| `tests/fixtures/eval_set.yaml` | Default eval set (the path returned by config key `testing.eval_set_file`). Covers critical (9-10), high (7-8), medium (5-6), low/not-military (1-4), and edge cases. |
+| `tests/fixtures/eval_set_human.yaml` | Companion eval set with human-labelled expectations. |
 
-Config key for fixture path: `testing.test_headlines_file`.
+### `--eval` (classifier eval harness)
 
-Pass threshold: **90%+ of headlines within expected urgency range** (LLM classification is probabilistic; off-by-one deviations are acceptable).
+```bash
+./run.sh --eval                               # uses testing.eval_set_file (tests/fixtures/eval_set.yaml)
+./run.sh --eval tests/fixtures/eval_set_human.yaml   # explicit path
+```
+
+The eval harness hits the live API, scores every headline against its `expected:` map, and writes a JSON report under `data/eval/`. **It exits 0 only when the pass rate is 1.0 (100%)** — any miss is a non-zero exit, which makes it usable as a CI/regression gate. (LLM classification is probabilistic, so expect to tune thresholds or labels rather than chasing a flaky single run.)
 
 ---
 
 ## Dry-Run Behavior
 
 What is **suppressed** in dry-run mode:
-- All Twilio phone calls, SMS, and WhatsApp messages.
+- All Twilio phone calls and SMS.
+- Expo push notifications.
 - No Twilio charges incurred.
 
 What runs **normally** in dry-run mode:
-- All source fetching (RSS, Telegram, Google News, GDELT).
+- All enabled source fetching (RSS, Telegram, Google News). GDELT is disabled in production (`sources.gdelt.enabled: false`), so it won't actually fetch.
 - Deduplication and keyword filtering.
 - AI classification via Claude Haiku (API costs apply).
 - Event creation and DB writes.

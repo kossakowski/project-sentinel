@@ -41,19 +41,23 @@ Consumed by: `sentinel/fetchers/`
 | `priority` | int | `2` | 1=fast lane + highest corroboration weight; 2–3=slow lane only |
 | `keyword_bypass` | bool | `false` | Skip keyword filter; send all articles to AI classification |
 
-Live priority-1 feeds (enabled): TVN24, RMF24, Defence24 PL, Ukrainska Pravda UA.
-`keyword_bypass: true` on: Defence24 PL, Defence24 EN.
-PAP disabled (Incapsula WAF); routed via `google_news` `site:pap.pl` query.
+Live **enabled** priority-1 feeds: RMF24, Defence24 PL, Ukrainska Pravda UA, Ukrainska Pravda EN, Kyiv Independent.
+`keyword_bypass: true` on: Defence24 PL, Defence24 EN (only).
+PAP and TVN24 are priority-1 but **`enabled: false`** — PAP is blocked by an Incapsula/Imperva WAF (routed via the `google_news` `site:pap.pl` query instead); TVN24 was disabled 2026-05-27 (Cloudflare blocks the Hetzner datacenter IP).
 
 ### `sources.gdelt` — `GDELTConfig`
 
 Consumed by: `sentinel/fetchers/gdelt.py`
 
+**GDELT is DISABLED in production** (`enabled: false`) due to IP-level 429 throttling (~20% success rate from the Hetzner datacenter IP). The fetcher is only instantiated when enabled, so the slow lane "would" include GDELT but currently does not.
+
 | YAML key | Type | Live value | Pydantic default | Description |
 |---|---|---|---|---|
-| `enabled` | bool | `true` | `true` | Enable GDELT DOC 2.0 fetcher |
-| `lookback_minutes` | int | `60` | `60` | TIMESPAN window for the GDELT DOC 2.0 query. Must be >15 — the API rejects `15min` with `200 OK + "Timespan is too short."` |
-| `themes` | list[str] | `[ARMEDCONFLICT, WB_2462_POLITICAL_VIOLENCE_AND_WAR, CRISISLEX_C03_WELLBEING_HEALTH, TAX_FNCACT_MILITARY]` | required | GKG theme codes |
+| `enabled` | bool | **`false`** | `true` | Enable GDELT DOC 2.0 fetcher. Off in production. |
+| `lookback_minutes` | int | (omitted → `60`) | `60` | `TIMESPAN` window (minutes) for the GDELT DOC 2.0 query. Sent as `TIMESPAN={lookback_minutes}min`. Must be ≥ ~30 — the API rejects shorter spans with `200 OK` + plain-text body `"Timespan is too short."` (logged as an ERROR). |
+| `themes` | list[str] | `[ARMEDCONFLICT, WB_2462_POLITICAL_VIOLENCE_AND_WAR, CRISISLEX_C03_WELLBEING_HEALTH, TAX_FNCACT_MILITARY]` | required | GKG theme codes; OR-combined with the target-country `sourcecountry:` filter to build the query. |
+
+> ⚠ **Stale key in live config:** `config/config.yaml` contains `sources.gdelt.update_interval_minutes: 15`. There is **no such Pydantic field** — Pydantic ignores unknown keys, so it is a **silent no-op**. The real field is `lookback_minutes` (omitted in the live config, so GDELT would fall back to the `60` default if re-enabled). Do not mistake `update_interval_minutes` for a working setting.
 
 ### `sources.google_news` — `GoogleNewsConfig`
 
@@ -118,15 +122,24 @@ Live keyword languages: `en`, `pl`, `uk`, `ru`. Live `exclude_keywords` language
 
 Consumed by: `sentinel/classification/classifier.py`
 
+Consumed by: `sentinel/classification/classifier.py` (LLM call) and `sentinel/classification/corroborator.py` (event grouping / corroboration).
+
 | YAML key | Type | Live value | Pydantic default | Description |
 |---|---|---|---|---|
-| `model` | str | `claude-haiku-4-5-20251001` | `claude-haiku-4-5-20251001` | Anthropic model ID |
+| `model` | str | `claude-haiku-4-5-20251001` | `claude-haiku-4-5-20251001` | Anthropic model ID. Also used by the enricher's vagueness/quality gate. |
 | `max_tokens` | int | `512` | `512` | Max output tokens per classification call |
 | `temperature` | float | `0.0` | `0.0` | LLM temperature (0 = deterministic) |
-| `corroboration_required` | int | `1` | `2` | Min independent sources to form an event; live config overrides Pydantic default |
-| `corroboration_window_minutes` | int | `60` | `360` | Time window for grouping articles into a single event; live config still uses `60` minutes (Pydantic default is `360` = 6 hours) |
-| `summary_similarity_threshold` | int | `40` | `40` | Fuzzy token_sort_ratio for matching summaries to existing events; lower = more aggressive merging; range 0-100 |
-| `syndication_similarity_threshold` | int | `90` | `90` | Title similarity threshold above which two articles are treated as syndicated copies of one source; range 0-100 |
+| `corroboration_required` | int | `1` | `2` | Min independent sources for a phone-call-eligible event. **Live config sets `1`**; the Pydantic default is `2`. (The per-level `alerts.urgency_levels.*.corroboration_required` is the value the state machine actually gates on; this top-level key feeds the corroborator's alertable check.) |
+| `corroboration_window_minutes` | int | `360` | `360` | **Sliding** window (minutes) for grouping a new article into an existing event, measured from that event's `last_updated_at` (its **last activity**), not `first_seen_at`. So a multi-hour incident that keeps drawing fresh articles stays ONE event. Live & default `360` (6h). |
+| `corroboration_max_age_minutes` | int | `2880` | `2880` | Absolute lifetime cap (minutes) measured from `first_seen_at`. Once an event is older than this it stops absorbing articles — a fresh article spawns a NEW event — so a perpetually-updated event can't chain-merge genuinely distinct incidents. `0` disables the cap. Live & default `2880` (48h). |
+| `summary_similarity_metric` | str | `token_set_ratio` | `token_set_ratio` | Which `rapidfuzz.fuzz` function compares a new summary to an existing event's summary. **Validated against an allow-list**: `ratio`, `partial_ratio`, `token_sort_ratio`, `token_set_ratio`, `WRatio`, `QRatio` (any other value raises `ConfigError` at load). `token_set_ratio` is length-robust — a short wire headline and a long elaboration of the same incident still score high — unlike the length-sensitive `token_sort_ratio`. |
+| `summary_similarity_threshold` | int | `50` | `50` | Score (0-100) from the metric above, at/above which a new summary is treated as the same event. Lower = more aggressive merging. Live & default `50`. Tune in config without a code deploy. |
+| `syndication_similarity_threshold` | int | `90` | `90` | Source-independence guard. A source counts as *independent* only if it is a different domain AND its (normalized) title similarity to an already-counted source is `< 90` (`fuzz.ratio`), checked across all source types to catch wire/syndication reuse. Range 0-100. |
+
+**Event-grouping notes (corroborator):**
+- **Sliding window + max-age cap together:** the 6h window is re-anchored on every update, so the 48h cap is what ultimately retires a long-running event.
+- **Country gate:** at/above the phone-call urgency threshold (9), a match requires a concrete-country intersection — a Poland-critical article whose country wasn't extracted spawns its OWN event/call (empty/"unknown" does NOT relax the gate at critical urgency). Below the threshold, empty/"unknown" labels don't block a merge, but two concrete-but-different country sets (e.g. PL vs RO) stay separate. Countries are normalized (uppercased; blank/"unknown" dropped) on merge.
+- **Critical-urgency safety guard:** a phone-call-eligible article is NEVER absorbed into an event that already has `acknowledged_at` set (already alerted / in cooldown). It forces a NEW event and a NEW call so a fresh escalation can't be silenced by an earlier event's cooldown.
 
 ---
 
@@ -178,6 +191,19 @@ Python format strings. Override in config to customize; Pydantic provides defaul
 | `sms` | `{event_type_pl}`, `{urgency_score}`, `{affected_countries_str}`, `{aggressor}`, `{summary_pl}`, `{source_count}`, `{sources_list}`, `{first_seen_at_local}` | Initial SMS alert body |
 | `sms_update` | `{event_type_pl}`, `{new_source_name}`, `{summary_pl}`, `{source_count}`, `{urgency_score}` | SMS for new sources corroborating an acknowledged event |
 
+### `alerts.push` — `PushConfig`
+
+Consumed by: `sentinel/alerts/push_client.py` (`ExpoPushClient`) via `sentinel/alerts/state_machine.py`.
+
+Push (Expo) is an **additive, opt-in** channel for the companion mobile app. It fires *alongside* the phone call / SMS (before the Twilio dispatch, after the cooldown/dedup/suppression gates) for any non-`log_only` event — it never replaces the Twilio channels. A push does NOT suppress a later SMS (`push` is not in the user-notified-alert-types set). **The live `config/config.yaml` omits this block entirely, so push is OFF by default**; `config/config.example.yaml` ships it as a commented template.
+
+| YAML key | Type | Live value | Pydantic default | Description |
+|---|---|---|---|---|
+| `enabled` | bool | (omitted → `false`) | `false` | Enable Expo push dispatch |
+| `tokens` | list[str] | (omitted → `[]`) | `[]` | Expo push tokens (e.g. `ExponentPushToken[...]`, or `${EXPO_PUSH_TOKEN}` from the env). Surfaced by the `mobile/` companion app. |
+
+Optional env var: **`EXPO_ACCESS_TOKEN`** — when set, `ExpoPushClient` sends it as a bearer token to `https://exp.host/--/api/v2/push/send`. Not required for basic sends.
+
 ---
 
 ## `scheduler` — `SchedulerConfig`
@@ -186,12 +212,14 @@ Consumed by: `sentinel/scheduler.py`
 
 | YAML key | Type | Live value | Pydantic default | Description |
 |---|---|---|---|---|
-| `interval_minutes` | int | `15` | `15` | Slow-lane interval: all sources including GDELT |
+| `interval_minutes` | int | `15` | `15` | Slow-lane interval: all enabled sources (GDELT belongs here but is disabled in production) |
 | `fast_interval_minutes` | int | `3` | `3` | Fast-lane interval: Telegram + priority-1 RSS + Google News |
 | `jitter_seconds` | int | `30` | `30` | Random ±offset applied to each scheduled run |
 
 Fast lane sources: all Telegram channels, all `priority: 1` RSS feeds, all Google News queries.
-Slow lane: all sources (superset of fast lane, including GDELT).
+Slow lane: all **enabled** sources (superset of the fast lane). GDELT would run in the slow lane but
+is currently disabled (`sources.gdelt.enabled: false`), and its fetcher is only instantiated when
+enabled — so today the slow lane equals the fast-lane superset without GDELT.
 
 ---
 
@@ -239,6 +267,14 @@ Consumed by: `sentinel/scheduler.py`, `sentinel/alerts/`
 | YAML key | Type | Live value | Pydantic default | Description |
 |---|---|---|---|---|
 | `dry_run` | bool | `false` | `false` | Run full pipeline but suppress all Twilio calls/SMS; also set by `--dry-run` CLI flag |
-| `eval_set_file` | str | `tests/fixtures/eval_set.yaml` | same | YAML eval set used by `--eval` for classification-accuracy checks |
+| `eval_set_file` | str | (omitted → `tests/fixtures/eval_set.yaml`) | `tests/fixtures/eval_set.yaml` | Default YAML eval set used by `--eval` (no path arg) for classification-accuracy checks. **The live `config/config.yaml` omits this key**, so it falls back to the Pydantic default. |
 
 `dry_run` runs the complete classification pipeline — only the Twilio dispatch step is skipped. Safe for development and continuous testing.
+
+---
+
+## See also
+
+- [CLI Reference](cli.md) — every `sentinel.py` and dashboard flag.
+- [Media Sources Reference](sources.md) — the source lists this config drives.
+- [Testing how-to](../how-to/testing.md) — dry run, fixtures, the eval harness.

@@ -1,5 +1,16 @@
 # Article Dashboard — Implementation Specification
 
+> **Status: living.** This dashboard spec remains the current source of truth for the
+> `dashboard/` subsystem. The related alert-grouping and async-refactor specs have been
+> retired to [`docs/archive/`](docs/archive/) as historic implementation scaffolding —
+> see [`docs/archive/SPEC_ALERT_GROUPING.md`](docs/archive/SPEC_ALERT_GROUPING.md) and
+> [`docs/archive/README.md`](docs/archive/README.md). Their event-grouping behaviour is
+> now reflected here and in the living docs under [`docs/explanation/`](docs/explanation/).
+>
+> **Last reviewed: 2026-05-30.** Row-counts and percentages in the snapshots below are
+> **illustrative** (captured at an earlier point in time) — treat them as orders of
+> magnitude, not live figures.
+
 ## Overview
 
 When complete, the Article Dashboard will be a locally-running web application that
@@ -102,7 +113,7 @@ CREATE TABLE events (
 CREATE TABLE alert_records (
     id TEXT PRIMARY KEY,                -- UUID
     event_id TEXT NOT NULL,             -- FK → events(id)
-    alert_type TEXT NOT NULL,           -- "sms"|"phone_call"|"whatsapp"
+    alert_type TEXT NOT NULL,           -- "sms"|"phone_call"|"push" (live); "whatsapp" = historical data only
     twilio_sid TEXT,
     status TEXT NOT NULL,               -- "sent"|"completed"|"failed"|...
     duration_seconds INTEGER,           -- For phone calls
@@ -111,6 +122,14 @@ CREATE TABLE alert_records (
     message_body TEXT                   -- Full alert text
 );
 ```
+
+> **`alert_type` values.** The live monitoring runtime writes three channels: `sms`,
+> `phone_call`, and the additive `push` channel (Expo push notifications fired before the
+> Twilio dispatch; reuses this same `alert_records` table with no schema change). The
+> `whatsapp` literal appears **only in historical rows** — the WhatsApp channel was removed
+> and no code writes it anymore. The dashboard still renders an icon for legacy `whatsapp`
+> rows in the event timeline. Row counts below (`365 rows`, etc.) are illustrative snapshots,
+> not live totals.
 
 ### Pipeline Stage Context
 
