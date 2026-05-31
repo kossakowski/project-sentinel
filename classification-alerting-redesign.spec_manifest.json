@@ -1,0 +1,242 @@
+{
+  "spec_file": "classification-alerting-redesign.SPEC.md",
+  "mode": "autonomous-escape-hatch",
+  "note": "Owner pre-decided all 9 governing questions (TODO.md §6.0); decisions firm. Mechanism details tagged [assumed]. Grounded in a full live-code read 2026-05-31 (baseline 361 tests pass). Line numbers indicative — executor confirms against live files.",
+  "phases": [
+    {
+      "id": 0,
+      "title": "Geography correctness (Romania + classifier prompt fix)",
+      "depends_on": [],
+      "owned_files": [
+        "config/config.yaml",
+        "sentinel/config.py",
+        "sentinel/classification/classifier.py",
+        "sentinel/eval/harness.py",
+        "sentinel.py",
+        "tests/test_classifier_geography.py",
+        "tests/test_config_countries.py"
+      ],
+      "exported_interfaces": [],
+      "parallelizable_with": [],
+      "requirement_count": 13
+    },
+    {
+      "id": 1,
+      "title": "Alerting reliability (durable failure records + bounded retry)",
+      "depends_on": [],
+      "owned_files": [
+        "sentinel/database.py",
+        "sentinel/models.py",
+        "sentinel/alerts/state_machine.py",
+        "sentinel/alerts/twilio_client.py",
+        "sentinel/alerts/push_client.py",
+        "config/config.yaml",
+        "sentinel/config.py",
+        "tests/test_alert_reliability.py"
+      ],
+      "exported_interfaces": [],
+      "parallelizable_with": [],
+      "requirement_count": 7
+    },
+    {
+      "id": 2,
+      "title": "Single AlertPolicy + GeoWeighter (decision consolidation; remove corroboration)",
+      "depends_on": [0, 1],
+      "owned_files": [
+        "sentinel/alerts/policy.py",
+        "sentinel/classification/geo_weighter.py",
+        "sentinel/classification/classifier.py",
+        "sentinel/classification/corroborator.py",
+        "sentinel/alerts/state_machine.py",
+        "sentinel/eval/harness.py",
+        "config/config.yaml",
+        "sentinel/config.py",
+        "tests/test_alert_policy.py",
+        "tests/test_geo_weighter.py"
+      ],
+      "exported_interfaces": ["AlertPolicy", "AlertIntent", "EventDecision", "GeoTier", "ChannelClass", "GeoWeighter"],
+      "parallelizable_with": [],
+      "requirement_count": 12
+    },
+    {
+      "id": 3,
+      "title": "EventDeduplicator (deterministic core; split-when-unsure)",
+      "depends_on": [0, 2],
+      "owned_files": [
+        "sentinel/classification/event_dedup.py",
+        "sentinel/classification/corroborator.py",
+        "config/config.yaml",
+        "sentinel/config.py",
+        "tests/fixtures/dedup_traps.yaml",
+        "tests/test_event_dedup.py",
+        "tests/test_dedup_traps.py"
+      ],
+      "exported_interfaces": ["EventDeduplicator"],
+      "parallelizable_with": [],
+      "requirement_count": 12
+    },
+    {
+      "id": 4,
+      "title": "Embeddings + Sonnet critical-band judge",
+      "depends_on": [2, 3],
+      "owned_files": [
+        "sentinel/classification/embeddings.py",
+        "sentinel/classification/dedup_judge.py",
+        "sentinel/classification/event_dedup.py",
+        "config/config.yaml",
+        "sentinel/config.py",
+        "requirements.txt",
+        "tests/test_embeddings.py",
+        "tests/test_dedup_judge.py"
+      ],
+      "exported_interfaces": [],
+      "parallelizable_with": [],
+      "requirement_count": 10
+    }
+  ],
+  "requirements": [
+    {"id": "0.1", "severity": "MUST", "statement": "Add Romania to monitoring.target_countries as {code: RO, name: Romania, name_native: Rumunia}.", "test_ids": ["test_config_ro_target_country"], "provenance": "user-decision"},
+    {"id": "0.2", "severity": "MUST", "statement": "Add geography.high_tier_countries containing PL,LT,LV,EE,RO (RO HIGH-eligible).", "test_ids": ["test_config_ro_high_tier"], "provenance": "user-decision"},
+    {"id": "0.3", "severity": "MUST NOT", "statement": "No hardcoded city/town/gazetteer; country resolution stays LLM-driven country-level.", "test_ids": ["test_config_no_gazetteer"], "provenance": "user-decision"},
+    {"id": "0.4", "severity": "SHOULD", "statement": "Add Romanian-language source(s)/keywords.", "test_ids": [], "provenance": "assumed"},
+    {"id": "0.5", "severity": "MUST", "statement": "Prompt target-country gate: unnamed 'a NATO country' must not resolve to Poland/a specific monitored country unless named.", "test_ids": ["test_prompt_target_country_gate"], "provenance": "research"},
+    {"id": "0.6", "severity": "MUST", "statement": "Revise the 'EXCLUSIVELY PL/LT/LV/EE' (L142) + 'non-monitored=1-3' (L143-144) clauses: monitored=PL/LT/LV/EE/RO are 9-10 eligible; non-monitored NATO not auto-9; NATO-attack-on-Russia HIGH; scope line (L14-15) includes Romania.", "test_ids": ["test_prompt_scope_includes_romania", "test_prompt_nato_attack_on_russia_high"], "provenance": "research"},
+    {"id": "0.7", "severity": "MUST", "statement": "Demote R4 POLAND PRIORITY (L57-59) to a confirmed-PL tie-break; must not promote non-PL to PL.", "test_ids": ["test_prompt_r4_scoped_to_confirmed_pl"], "provenance": "research"},
+    {"id": "0.8", "severity": "MUST", "statement": "Preserve (not weaken) explicit-country-only + physical-location rules (L34-37, L145-146); spillover affects urgency only.", "test_ids": ["test_prompt_affected_countries_explicit_only"], "provenance": "research"},
+    {"id": "0.9", "severity": "MUST", "statement": "Preserve inside-Ukraine = urgency 1-3 (R9); not labeled as attack on a monitored country.", "test_ids": ["test_prompt_inside_ukraine_low"], "provenance": "user-decision"},
+    {"id": "0.10", "severity": "MUST", "statement": "Set config.testing.eval_set_file to eval_set_human.yaml (owner gate).", "test_ids": ["test_config_eval_gate_human"], "provenance": "user-decision"},
+    {"id": "0.11", "severity": "SHOULD", "statement": "Add testing.regression_eval_set_file (=eval_set.yaml) wired as a non-gating regression run.", "test_ids": ["test_config_regression_eval"], "provenance": "user-decision"},
+    {"id": "0.12", "severity": "MUST NOT", "statement": "Must not modify/pre-fill/bootstrap labels in either eval fixture; owner is sole labeler.", "test_ids": ["test_harness_does_not_write_fixtures"], "provenance": "user-decision"},
+    {"id": "0.13", "severity": "MUST", "statement": "Add 'RO' to harness.MONITORED_COUNTRIES so RO/9 maps to phone_call in eval.", "test_ids": ["test_harness_monitored_includes_ro"], "provenance": "research"},
+
+    {"id": "1.1", "severity": "MUST", "statement": "Persist a failed send as an alert_records row status='failed' with non-null error_code (not only a log line).", "test_ids": ["test_failed_call_is_recorded"], "provenance": "user-decision"},
+    {"id": "1.2", "severity": "MUST", "statement": "Bound cross-cycle phone-retry rounds by config alerts.retry.max_rounds against a durable per-event counter events.alert_round_count; terminal status (failed_terminal) at cap; not in-memory.", "test_ids": ["test_retry_rounds_bounded"], "provenance": "user-decision"},
+    {"id": "1.3", "severity": "MUST", "statement": "Failed primary send must not silently drop the alert; recorded + retried up to cap.", "test_ids": ["test_failed_call_is_recorded"], "provenance": "user-decision"},
+    {"id": "1.4", "severity": "MUST", "statement": "Twilio/push clients MUST return a structured failure result (replacing bare None) carrying error code/detail; all 'if record is None' call sites updated so the failure record (1.1) captures it.", "test_ids": ["test_failure_record_has_error_code", "test_failed_call_is_recorded"], "provenance": "research"},
+    {"id": "1.5", "severity": "SHOULD", "statement": "_confirmation_code/_confirmation_sms_sid scoped per-event.", "test_ids": ["test_confirmation_code_per_event"], "provenance": "research"},
+    {"id": "1.6", "severity": "MUST", "statement": "All retry/cap values from config; none hardcoded.", "test_ids": ["test_retry_cap_is_config_driven"], "provenance": "research"},
+    {"id": "1.7", "severity": "MUST", "statement": "alert_records schema change migrates existing rows without data loss (additive columns).", "test_ids": ["test_migration_adds_columns_preserves_rows"], "provenance": "research"},
+
+    {"id": "2.1", "severity": "MUST", "statement": "AlertPolicy is the single decision authority; the THREE old decision sites (corroborator._determine_alert_status, state_machine._determine_action, harness._action_for_urgency) are deleted or delegate.", "test_ids": ["test_old_decision_sites_removed", "test_new_critical_high_calls"], "provenance": "research"},
+    {"id": "2.2", "severity": "MUST", "statement": "Corroboration removed; no source-count gate may suppress/delay. Remove the full surface: both YAML keys, both Pydantic fields (ClassificationConfig.corroboration_required default 2, UrgencyLevel.corroboration_required), and the tests/conftest.py key — config still loads cleanly.", "test_ids": ["test_no_corroboration_gate"], "provenance": "user-decision"},
+    {"id": "2.3", "severity": "MUST", "statement": "Dedup is the only suppressor: no-alert only when relation==SAME on an already-alerted event.", "test_ids": ["test_same_already_alerted_suppresses"], "provenance": "user-decision"},
+    {"id": "2.4", "severity": "MUST", "statement": "Urgency >=call-tier (9-10) -> CALL; lower -> NOTIFY.", "test_ids": ["test_new_critical_high_calls", "test_lower_urgency_notifies"], "provenance": "user-decision"},
+    {"id": "2.5", "severity": "MUST", "statement": "GeoWeighter computes geo_tier (HIGH if target in high_tier_countries OR target==RU & attacker_is_nato; LOW for inside-UA/interior-MD) and floors kinetic HIGH-tier to >=9; CALL requires urgency>=tier AND geo HIGH.", "test_ids": ["test_low_geo_critical_does_not_call", "test_geo_weighter_nato_attacks_russia_high", "test_geo_weighter_floors_high_tier_kinetic"], "provenance": "user-decision"},
+    {"id": "2.5a", "severity": "MUST", "statement": "UNKNOWN geo at urgency>=9 treated as HIGH (fail toward firing).", "test_ids": ["test_unknown_geo_critical_fails_open"], "provenance": "research"},
+    {"id": "2.5b", "severity": "MUST", "statement": "kinetic derived deterministically from event_type against config-driven geography.kinetic_event_types (not a new LLM field, not hardcoded); single definition consumed by 2.5 and 3.8.", "test_ids": ["test_geo_weighter_kinetic_from_event_type"], "provenance": "research"},
+    {"id": "2.6", "severity": "MUST", "statement": "NEW at CALL tier fires a call; ESCALATION/UPDATE to an already-alerted event uses NOTIFY, not a second call.", "test_ids": ["test_escalation_high_notifies_not_recall"], "provenance": "user-decision"},
+    {"id": "2.7", "severity": "MUST", "statement": "Decision is channel-agnostic; AlertIntent carries a channel class; transports pluggable and preserved.", "test_ids": ["test_new_critical_high_calls"], "provenance": "user-decision"},
+    {"id": "2.8", "severity": "MUST", "statement": "All thresholds + geography membership in config; none hardcoded.", "test_ids": ["test_thresholds_config_driven"], "provenance": "research"},
+    {"id": "2.9", "severity": "SHOULD", "statement": "AlertPolicy.decide is a pure no-I/O function.", "test_ids": ["test_event_decision_contract"], "provenance": "research"},
+    {"id": "2.10", "severity": "MUST", "statement": "Defines EventDecision contract (relation NEW|SAME|ESCALATION + matched_event_id) as the Phase 3 interface.", "test_ids": ["test_event_decision_contract"], "provenance": "assumed"},
+
+    {"id": "3.1", "severity": "MUST", "statement": "EventDeduplicator.decide replaces corroborator._find_matching_event grouping and emits EventDecision (article-level deduplicator.py untouched).", "test_ids": ["test_different_geo_id_splits"], "provenance": "research"},
+    {"id": "3.2", "severity": "MUST", "statement": "Ambiguous same/new defaults to NEW, never SAME.", "test_ids": ["test_ambiguous_defaults_to_new"], "provenance": "user-decision"},
+    {"id": "3.3", "severity": "MUST", "statement": "Split driven by concrete signals (geo_id, tier-cross, time gap), not wording.", "test_ids": ["test_urgency_tier_cross_splits", "test_different_geo_id_splits"], "provenance": "user-decision"},
+    {"id": "3.4", "severity": "MUST", "statement": "geo_id normalization collapses cross-language place refs (Galati variants) via transliteration, no town list.", "test_ids": ["test_geo_id_cross_language_collapse"], "provenance": "user-decision"},
+    {"id": "3.5", "severity": "MUST", "statement": "Higher-or-equal-urgency new event at same place must not be a silent SAME (no attach-and-silence); sub-critical->critical surfaces as ESCALATION/NEW.", "test_ids": ["test_no_attach_and_silence", "test_urgency_tier_cross_splits"], "provenance": "user-decision"},
+    {"id": "3.6", "severity": "MUST", "statement": "Strike on monitored soil while another event open -> NEW + CALL re-eval (RO-open->PL-strike).", "test_ids": ["test_ro_open_then_pl_strike_splits"], "provenance": "user-decision"},
+    {"id": "3.7", "severity": "MUST", "statement": "Dedup must not suppress across a different geo_id or across the CALL-tier boundary.", "test_ids": ["test_different_geo_id_splits"], "provenance": "user-decision"},
+    {"id": "3.8", "severity": "MUST", "statement": "Kinetic strike must not merge into a non-kinetic airspace-violation event (same geography.kinetic_event_types definition as 2.5b).", "test_ids": ["test_kinetic_not_merged_into_nonkinetic"], "provenance": "research"},
+    {"id": "3.8a", "severity": "MAY", "statement": "Deduplicator MAY use the already-emitted is_new_event as a NEW-direction (split) signal only; MUST NOT use it as a merge-toward-prior signal.", "test_ids": [], "provenance": "research"},
+    {"id": "3.9", "severity": "MUST", "statement": "Deterministic core does no network/LLM I/O; fully unit-testable.", "test_ids": ["test_dedup_no_network_io"], "provenance": "research"},
+    {"id": "3.10", "severity": "MUST", "statement": "Create blank-label dedup_traps.yaml (schema + authored catastrophe seeds, labels empty); must not fill labels.", "test_ids": ["test_dedup_traps_schema"], "provenance": "user-decision"},
+    {"id": "3.11", "severity": "MUST", "statement": "All dedup windows/thresholds/normalization in config; none hardcoded.", "test_ids": ["test_dedup_window_config_driven"], "provenance": "research"},
+
+    {"id": "4.1", "severity": "MUST", "statement": "Embedding model runs locally; no hosted embedding API in the dedup path.", "test_ids": ["test_embedding_fail_open"], "provenance": "user-decision"},
+    {"id": "4.2", "severity": "MUST", "statement": "Embeddings fail-open: failed embed -> NEW (fire), never suppression.", "test_ids": ["test_embedding_fail_open"], "provenance": "user-decision"},
+    {"id": "4.3", "severity": "MUST", "statement": "Embedding similarity only in the ambiguous band; Phase 3 deterministic hard overrides not overruled.", "test_ids": ["test_embedding_only_in_ambiguous_band"], "provenance": "research"},
+    {"id": "4.4", "severity": "MUST", "statement": "Sonnet 4.6 judge invoked only when urgency>=9 on either side.", "test_ids": ["test_judge_only_on_high_urgency"], "provenance": "user-decision"},
+    {"id": "4.5", "severity": "MUST", "statement": "Geo-floored->=9 HIGH-tier article fires CALL first; judge runs async, only suppresses the next copy, never gates the first call.", "test_ids": ["test_judge_is_fire_first"], "provenance": "user-decision"},
+    {"id": "4.6", "severity": "MUST", "statement": "Judge fails-open on timeout/429/error -> NEW + CALL under config judge_timeout_seconds.", "test_ids": ["test_judge_fail_open"], "provenance": "user-decision"},
+    {"id": "4.7", "severity": "MUST", "statement": "Classification stays Haiku 4.5; only the dedup judge escalates to Sonnet 4.6.", "test_ids": ["test_classification_model_is_haiku"], "provenance": "user-decision"},
+    {"id": "4.8", "severity": "MUST", "statement": "Embedding/judge model ids, trigger, band thresholds, judge_timeout_seconds, Tier-2 toggle in config; none hardcoded.", "test_ids": ["test_dedup_smart_layer_config_driven"], "provenance": "user-decision"},
+    {"id": "4.9", "severity": "SHOULD", "statement": "Embedding model is a lightweight quantized multilingual model suited to the VPS; exact choice tuned against the over-merge eval.", "test_ids": [], "provenance": "assumed"},
+    {"id": "4.10", "severity": "MUST", "statement": "Embedding/judge tests hermetic (mock model + API); real-model/API tests marked non-gating (integration).", "test_ids": ["test_embedding_fail_open", "test_judge_fail_open"], "provenance": "research"}
+  ],
+  "tests": [
+    {"name": "test_prompt_scope_includes_romania", "type": "unit", "requirement_ids": ["0.6"], "gate_command": ".venv/bin/pytest tests/test_classifier_geography.py -v", "assertion": "system scope names Romania; 9-10 clause includes RO; 'EXCLUSIVELY ... PL, LT, LV, or EE' string revised/gone"},
+    {"name": "test_prompt_nato_attack_on_russia_high", "type": "unit", "requirement_ids": ["0.6"], "gate_command": ".venv/bin/pytest tests/test_classifier_geography.py -v", "assertion": "prompt makes a NATO/member attack ON Russia HIGH-eligible"},
+    {"name": "test_prompt_target_country_gate", "type": "unit", "requirement_ids": ["0.5"], "gate_command": ".venv/bin/pytest tests/test_classifier_geography.py -v", "assertion": "prompt forbids resolving unnamed 'a NATO country' to Poland/a specific monitored country"},
+    {"name": "test_prompt_r4_scoped_to_confirmed_pl", "type": "unit", "requirement_ids": ["0.7"], "gate_command": ".venv/bin/pytest tests/test_classifier_geography.py -v", "assertion": "R4 scoped to 'Poland already confirmed'; no non-PL->PL promotion"},
+    {"name": "test_prompt_affected_countries_explicit_only", "type": "unit", "requirement_ids": ["0.8"], "gate_command": ".venv/bin/pytest tests/test_classifier_geography.py -v", "assertion": "explicit-country-only + physical-location rules still present"},
+    {"name": "test_prompt_inside_ukraine_low", "type": "unit", "requirement_ids": ["0.9"], "gate_command": ".venv/bin/pytest tests/test_classifier_geography.py -v", "assertion": "inside-Ukraine = urgency 1-3 rule still present"},
+    {"name": "test_config_ro_target_country", "type": "unit", "requirement_ids": ["0.1"], "gate_command": ".venv/bin/pytest tests/test_config_countries.py -v", "assertion": "object with code=='RO' in monitoring.target_countries"},
+    {"name": "test_config_ro_high_tier", "type": "unit", "requirement_ids": ["0.2"], "gate_command": ".venv/bin/pytest tests/test_config_countries.py -v", "assertion": "'RO' in geography.high_tier_countries"},
+    {"name": "test_config_no_gazetteer", "type": "unit", "requirement_ids": ["0.3"], "gate_command": ".venv/bin/pytest tests/test_config_countries.py -v", "assertion": "no key named gazetteer/places/cities/coordinates/geocells at any depth; target_countries entries have only {code,name,name_native}"},
+    {"name": "test_config_eval_gate_human", "type": "unit", "requirement_ids": ["0.10"], "gate_command": ".venv/bin/pytest tests/test_config_countries.py -v", "assertion": "config.testing.eval_set_file ends with eval_set_human.yaml"},
+    {"name": "test_config_regression_eval", "type": "unit", "requirement_ids": ["0.11"], "gate_command": ".venv/bin/pytest tests/test_config_countries.py -v", "assertion": "config.testing.regression_eval_set_file ends with eval_set.yaml and differs"},
+    {"name": "test_harness_monitored_includes_ro", "type": "unit", "requirement_ids": ["0.13"], "gate_command": ".venv/bin/pytest tests/test_config_countries.py -v", "assertion": "'RO' in harness.MONITORED_COUNTRIES"},
+    {"name": "test_harness_does_not_write_fixtures", "type": "unit", "requirement_ids": ["0.12"], "gate_command": ".venv/bin/pytest tests/test_config_countries.py -v", "assertion": "harness source has no write/open-for-write against tests/fixtures/"},
+
+    {"name": "test_failed_call_is_recorded", "type": "integration", "requirement_ids": ["1.1", "1.3"], "gate_command": ".venv/bin/pytest tests/test_alert_reliability.py -v", "assertion": "make_alert_call returns None -> alert_records row status='failed' with non-null error_code"},
+    {"name": "test_retry_rounds_bounded", "type": "unit", "requirement_ids": ["1.2"], "gate_command": ".venv/bin/pytest tests/test_alert_reliability.py -v", "assertion": "max_rounds=3 + persistent failure -> terminal failed status after 3 rounds; stops re-entering"},
+    {"name": "test_failure_record_has_error_code", "type": "unit", "requirement_ids": ["1.4"], "gate_command": ".venv/bin/pytest tests/test_alert_reliability.py -v", "assertion": "Twilio failure error code captured into persisted failure record"},
+    {"name": "test_confirmation_code_per_event", "type": "unit", "requirement_ids": ["1.5"], "gate_command": ".venv/bin/pytest tests/test_alert_reliability.py -v", "assertion": "ACK for event A does not resolve event B"},
+    {"name": "test_retry_cap_is_config_driven", "type": "unit", "requirement_ids": ["1.6"], "gate_command": ".venv/bin/pytest tests/test_alert_reliability.py -v", "assertion": "round count follows config max_rounds (1 then 5)"},
+    {"name": "test_migration_adds_columns_preserves_rows", "type": "integration", "requirement_ids": ["1.7"], "gate_command": ".venv/bin/pytest tests/test_alert_reliability.py -v", "assertion": "old-schema rows intact after migration; error_code/error_detail present with defaults"},
+
+    {"name": "test_new_critical_high_calls", "type": "unit", "requirement_ids": ["2.1", "2.4", "2.5", "2.7"], "gate_command": ".venv/bin/pytest tests/test_alert_policy.py -v", "assertion": "NEW + urgency9 + HIGH -> channel-class CALL"},
+    {"name": "test_escalation_high_notifies_not_recall", "type": "unit", "requirement_ids": ["2.6"], "gate_command": ".venv/bin/pytest tests/test_alert_policy.py -v", "assertion": "ESCALATION on already-alerted + urgency9 + HIGH -> NOTIFY, not CALL"},
+    {"name": "test_same_already_alerted_suppresses", "type": "unit", "requirement_ids": ["2.3"], "gate_command": ".venv/bin/pytest tests/test_alert_policy.py -v", "assertion": "SAME on already-alerted -> no alert"},
+    {"name": "test_no_corroboration_gate", "type": "unit", "requirement_ids": ["2.2"], "gate_command": ".venv/bin/pytest tests/test_alert_policy.py -v", "assertion": "NEW + urgency9 + HIGH + single source -> still CALL; no corroboration_required key in config"},
+    {"name": "test_low_geo_critical_does_not_call", "type": "unit", "requirement_ids": ["2.5"], "gate_command": ".venv/bin/pytest tests/test_alert_policy.py -v", "assertion": "NEW + urgency9 + LOW (inside-UA) -> not CALL"},
+    {"name": "test_unknown_geo_critical_fails_open", "type": "unit", "requirement_ids": ["2.5a"], "gate_command": ".venv/bin/pytest tests/test_alert_policy.py -v", "assertion": "NEW + urgency9 + UNKNOWN geo -> treated HIGH -> CALL"},
+    {"name": "test_lower_urgency_notifies", "type": "unit", "requirement_ids": ["2.4"], "gate_command": ".venv/bin/pytest tests/test_alert_policy.py -v", "assertion": "NEW + urgency5 + HIGH -> NOTIFY, not CALL"},
+    {"name": "test_geo_weighter_nato_attacks_russia_high", "type": "unit", "requirement_ids": ["2.5"], "gate_command": ".venv/bin/pytest tests/test_geo_weighter.py -v", "assertion": "target=RU, attacker_is_nato=true -> geo_tier HIGH"},
+    {"name": "test_geo_weighter_floors_high_tier_kinetic", "type": "unit", "requirement_ids": ["2.5"], "gate_command": ".venv/bin/pytest tests/test_geo_weighter.py -v", "assertion": "HIGH-tier kinetic event with LLM urgency 4 -> floored >=9"},
+    {"name": "test_geo_weighter_kinetic_from_event_type", "type": "unit", "requirement_ids": ["2.5b"], "gate_command": ".venv/bin/pytest tests/test_geo_weighter.py -v", "assertion": "event_type in geography.kinetic_event_types -> kinetic True; troop_movement -> False; follows config"},
+    {"name": "test_thresholds_config_driven", "type": "unit", "requirement_ids": ["2.8"], "gate_command": ".venv/bin/pytest tests/test_alert_policy.py -v", "assertion": "moving the call-tier threshold shifts the CALL boundary"},
+    {"name": "test_old_decision_sites_removed", "type": "unit", "requirement_ids": ["2.1"], "gate_command": ".venv/bin/pytest tests/test_alert_policy.py -v", "assertion": "corroborator._determine_alert_status and harness._action_for_urgency gone/thin; state_machine._determine_action delegates to AlertPolicy; harness.MONITORED_COUNTRIES still exists"},
+    {"name": "test_event_decision_contract", "type": "unit", "requirement_ids": ["2.9", "2.10"], "gate_command": ".venv/bin/pytest tests/test_alert_policy.py -v", "assertion": "EventDecision exposes relation + matched_event_id consumed by AlertPolicy"},
+
+    {"name": "test_geo_id_cross_language_collapse", "type": "unit", "requirement_ids": ["3.4"], "gate_command": ".venv/bin/pytest tests/test_event_dedup.py -v", "assertion": "Galati variants normalize to one geo_id"},
+    {"name": "test_different_geo_id_splits", "type": "unit", "requirement_ids": ["3.1", "3.3", "3.7"], "gate_command": ".venv/bin/pytest tests/test_event_dedup.py -v", "assertion": "two articles different geo_id -> two NEW"},
+    {"name": "test_urgency_tier_cross_splits", "type": "unit", "requirement_ids": ["3.3", "3.5"], "gate_command": ".venv/bin/pytest tests/test_event_dedup.py -v", "assertion": "same place, second crosses CALL tier -> ESCALATION/NEW, never silent SAME"},
+    {"name": "test_ambiguous_defaults_to_new", "type": "unit", "requirement_ids": ["3.2"], "gate_command": ".venv/bin/pytest tests/test_event_dedup.py -v", "assertion": "no concrete same-event signal -> NEW"},
+    {"name": "test_no_attach_and_silence", "type": "unit", "requirement_ids": ["3.5"], "gate_command": ".venv/bin/pytest tests/test_event_dedup.py -v", "assertion": "higher-urgency strike same place as low event -> not silent SAME"},
+    {"name": "test_ro_open_then_pl_strike_splits", "type": "unit", "requirement_ids": ["3.6"], "gate_command": ".venv/bin/pytest tests/test_event_dedup.py -v", "assertion": "RO event open then PL-soil strike -> NEW for CALL re-eval"},
+    {"name": "test_kinetic_not_merged_into_nonkinetic", "type": "unit", "requirement_ids": ["3.8"], "gate_command": ".venv/bin/pytest tests/test_event_dedup.py -v", "assertion": "kinetic strike vs open airspace-violation event -> not merged"},
+    {"name": "test_dedup_no_network_io", "type": "unit", "requirement_ids": ["3.9"], "gate_command": ".venv/bin/pytest tests/test_event_dedup.py -v", "assertion": "network/LLM patched to raise -> decide still returns EventDecision"},
+    {"name": "test_dedup_traps_schema", "type": "unit", "requirement_ids": ["3.10"], "gate_command": ".venv/bin/pytest tests/test_dedup_traps.py -v", "assertion": "fixture parses, defined fields + authored seeds, every label field blank"},
+    {"name": "test_dedup_traps_behavioral", "type": "integration", "requirement_ids": ["3.5", "3.6", "3.7"], "gate_command": ".venv/bin/pytest tests/test_dedup_traps.py -v", "assertion": "parametrized over LABELED cases only (unlabeled skip); verdict matches owner label"},
+    {"name": "test_dedup_window_config_driven", "type": "unit", "requirement_ids": ["3.11"], "gate_command": ".venv/bin/pytest tests/test_event_dedup.py -v", "assertion": "changing dedup window shifts time-gap split boundary"},
+
+    {"name": "test_embedding_fail_open", "type": "unit", "requirement_ids": ["4.2", "4.10"], "gate_command": ".venv/bin/pytest tests/test_embeddings.py -v", "assertion": "embedder patched to raise -> decide returns NEW"},
+    {"name": "test_embedding_only_in_ambiguous_band", "type": "unit", "requirement_ids": ["4.3"], "gate_command": ".venv/bin/pytest tests/test_embeddings.py -v", "assertion": "hard geo_id mismatch -> split despite forced high similarity"},
+    {"name": "test_judge_only_on_high_urgency", "type": "unit", "requirement_ids": ["4.4"], "gate_command": ".venv/bin/pytest tests/test_dedup_judge.py -v", "assertion": "urgency5 -> judge not called; urgency9 either side -> judge called (mocked)"},
+    {"name": "test_judge_is_fire_first", "type": "unit", "requirement_ids": ["4.5"], "gate_command": ".venv/bin/pytest tests/test_dedup_judge.py -v", "assertion": "geo-floored->=9 HIGH-tier article fires CALL without awaiting a blocking judge mock"},
+    {"name": "test_judge_fail_open", "type": "unit", "requirement_ids": ["4.6", "4.10"], "gate_command": ".venv/bin/pytest tests/test_dedup_judge.py -v", "assertion": "judge raises/times out -> NEW + CALL"},
+    {"name": "test_classification_model_is_haiku", "type": "unit", "requirement_ids": ["4.7"], "gate_command": ".venv/bin/pytest tests/test_dedup_judge.py -v", "assertion": "classifier id resolves to claude-haiku-4-5-20251001; judge id to a Sonnet 4.6 id"},
+    {"name": "test_dedup_smart_layer_config_driven", "type": "unit", "requirement_ids": ["4.8"], "gate_command": ".venv/bin/pytest tests/test_dedup_judge.py -v", "assertion": "Tier-2 toggle off -> judge never invoked"}
+  ],
+  "gate_criteria": {
+    "0": [
+      ".venv/bin/pytest tests/test_classifier_geography.py tests/test_config_countries.py -v",
+      ".venv/bin/ruff check sentinel/classification/classifier.py sentinel/eval/harness.py sentinel/config.py",
+      ".venv/bin/python -c \"import sentinel.classification.classifier, sentinel.eval.harness\"",
+      ".venv/bin/python -c \"import yaml; yaml.safe_load(open('config/config.yaml'))\""
+    ],
+    "1": [
+      ".venv/bin/pytest tests/test_alert_reliability.py -v",
+      ".venv/bin/ruff check sentinel/alerts/state_machine.py sentinel/alerts/twilio_client.py sentinel/alerts/push_client.py sentinel/database.py sentinel/models.py",
+      ".venv/bin/python -c \"import sentinel.alerts.state_machine, sentinel.database, sentinel.models\""
+    ],
+    "2": [
+      ".venv/bin/pytest tests/test_alert_policy.py tests/test_geo_weighter.py -v",
+      ".venv/bin/ruff check sentinel/alerts/policy.py sentinel/classification/geo_weighter.py sentinel/classification/corroborator.py sentinel/alerts/state_machine.py sentinel/eval/harness.py",
+      ".venv/bin/python -c \"from sentinel.alerts.policy import AlertPolicy, EventDecision; from sentinel.classification.geo_weighter import GeoWeighter\""
+    ],
+    "3": [
+      ".venv/bin/pytest tests/test_event_dedup.py tests/test_dedup_traps.py -v",
+      ".venv/bin/ruff check sentinel/classification/event_dedup.py sentinel/classification/corroborator.py",
+      ".venv/bin/python -c \"from sentinel.classification.event_dedup import EventDeduplicator\"",
+      ".venv/bin/python -c \"import yaml; yaml.safe_load(open('tests/fixtures/dedup_traps.yaml'))\""
+    ],
+    "4": [
+      ".venv/bin/pytest tests/test_embeddings.py tests/test_dedup_judge.py -v",
+      ".venv/bin/ruff check sentinel/classification/embeddings.py sentinel/classification/dedup_judge.py sentinel/classification/event_dedup.py",
+      ".venv/bin/python -c \"import sentinel.classification.embeddings, sentinel.classification.dedup_judge\""
+    ]
+  }
+}
