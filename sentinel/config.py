@@ -98,6 +98,19 @@ class UrgencyLevel(BaseModel):
     retry_attempts: int = 0
     retry_interval_minutes: int = 5
     fallback: str | None = None
+    # Per-tier delivery channel for the SMS-action tiers (5-8). Consulted by
+    # AlertStateMachine._determine_action only when action == "sms"; ignored for
+    # phone_call (9-10) and log_only (1-4) levels. Default "both" is
+    # behavior-preserving while push is disabled (SMS only).
+    channel: str = "both"
+
+    @field_validator("channel")
+    @classmethod
+    def _validate_channel(cls, v: str) -> str:
+        allowed = {"sms", "push", "both"}
+        if v not in allowed:
+            raise ValueError(f"channel must be one of {sorted(allowed)}, got {v!r}")
+        return v
 
 
 class AcknowledgmentConfig(BaseModel):

@@ -902,7 +902,74 @@ async def test_poll_durations_from_config(mock_sleep, state_machine, db, mock_tw
 
 
 # --------------------------------------------------------------------------
-# Push notification wiring (additive channel)
+# Per-tier channel routing: _determine_action returns the SMS-tier channel
+# --------------------------------------------------------------------------
+def _set_channel(config, level_name: str, channel: str) -> None:
+    """Rebuild an urgency level with a given channel (UrgencyLevel is frozen-ish)."""
+    from sentinel.config import UrgencyLevel
+
+    existing = config.alerts.urgency_levels[level_name]
+    config.alerts.urgency_levels[level_name] = UrgencyLevel(
+        min_score=existing.min_score,
+        action=existing.action,
+        corroboration_required=existing.corroboration_required,
+        channel=channel,
+    )
+
+
+@pytest.mark.asyncio
+async def test_determine_action_high_returns_channel(state_machine, config):
+    """[1.2, 1.2c] Score-7 high tier returns its configured channel, order-independent."""
+    for channel in ("push", "both", "sms"):
+        _set_channel(config, "high", channel)
+        event = _make_event(urgency_score=7, source_count=1)
+        assert state_machine._determine_action(event) == channel
+
+
+@pytest.mark.asyncio
+async def test_determine_action_medium_returns_channel(state_machine, config):
+    """[1.2] Score-5 medium tier returns its configured channel (medium injected per fixture note)."""
+    from sentinel.config import UrgencyLevel
+
+    for channel in ("push", "both", "sms"):
+        config.alerts.urgency_levels["medium"] = UrgencyLevel(
+            min_score=5, action="sms", corroboration_required=1, channel=channel
+        )
+        event = _make_event(urgency_score=5, source_count=1)
+        assert state_machine._determine_action(event) == channel
+
+
+def test_determine_action_critical_call_when_corroborated(state_machine):
+    """[1.2a] Score 10, sources 2, corr 1 -> phone_call (channel ignored)."""
+    event = _make_event(urgency_score=10, source_count=2)
+    assert state_machine._determine_action(event) == "phone_call"
+
+
+def test_determine_action_critical_single_source_fallback_sms(state_machine, config):
+    """[1.2a] Score 10 under-corroborated -> 'sms' fallback, never push/both."""
+    from sentinel.config import UrgencyLevel
+
+    # critical requires 2 sources; provide only 1.
+    config.alerts.urgency_levels["critical"] = UrgencyLevel(
+        min_score=9, action="phone_call", corroboration_required=2, fallback="sms"
+    )
+    event = _make_event(urgency_score=10, source_count=1)
+    action = state_machine._determine_action(event)
+    assert action == "sms"
+    assert action not in ("push", "both")
+
+
+def test_determine_action_low_logs_only(state_machine, config):
+    """[1.2b, 1.3d] Score below the lowest SMS tier -> 'log_only' (low injected per fixture note)."""
+    from sentinel.config import UrgencyLevel
+
+    config.alerts.urgency_levels["low"] = UrgencyLevel(min_score=1, action="log_only")
+    event = _make_event(urgency_score=3, source_count=1)
+    assert state_machine._determine_action(event) == "log_only"
+
+
+# --------------------------------------------------------------------------
+# Per-tier channel dispatch (process_event)
 # --------------------------------------------------------------------------
 def _make_push_client():
     """Mock ExpoPushClient that returns a push AlertRecord on send."""
@@ -921,8 +988,139 @@ def _enable_push(config):
 
 
 @pytest.mark.asyncio
+async def test_channel_push_sends_push_not_sms(db, mock_twilio, config):
+    """[1.3, 1.3a] high.channel=push: a new score-7 event pushes once and sends no SMS."""
+    _enable_push(config)
+    _set_channel(config, "high", "push")
+    push = _make_push_client()
+    sm = AlertStateMachine(db, mock_twilio, config, push_client=push)
+    event = _make_event(urgency_score=7, source_count=1)
+    db.insert_event(event)
+
+    await sm.process_event(event)
+
+    push.send_push.assert_called_once()
+    mock_twilio.send_sms.assert_not_called()
+    records = db.get_alert_records(event.id)
+    assert len([a for a in records if a.alert_type == "push"]) == 1
+    assert not [a for a in records if a.alert_type == "sms"]
+
+
+@pytest.mark.asyncio
+async def test_channel_both_sends_push_and_sms(db, mock_twilio, config):
+    """[1.3, 1.3a] high.channel=both: a new score-7 event pushes once AND sends one SMS."""
+    _enable_push(config)
+    _set_channel(config, "high", "both")
+    push = _make_push_client()
+    sm = AlertStateMachine(db, mock_twilio, config, push_client=push)
+    event = _make_event(urgency_score=7, source_count=1)
+    db.insert_event(event)
+
+    await sm.process_event(event)
+
+    push.send_push.assert_called_once()
+    mock_twilio.send_sms.assert_called_once()
+    records = db.get_alert_records(event.id)
+    assert len([a for a in records if a.alert_type == "push"]) == 1
+    assert len([a for a in records if a.alert_type == "sms"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_channel_sms_sends_sms_not_push(db, mock_twilio, config):
+    """[1.3a] high.channel=sms: a new score-7 event sends SMS and never pushes."""
+    _enable_push(config)
+    _set_channel(config, "high", "sms")
+    push = _make_push_client()
+    sm = AlertStateMachine(db, mock_twilio, config, push_client=push)
+    event = _make_event(urgency_score=7, source_count=1)
+    db.insert_event(event)
+
+    await sm.process_event(event)
+
+    mock_twilio.send_sms.assert_called_once()
+    push.send_push.assert_not_called()
+
+
+@pytest.mark.asyncio
+@patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
+async def test_critical_event_sends_no_additive_push(_sleep, db, mock_twilio, config):
+    """[1.3b, 1.7] A score-10 corroborated event runs the call flow and never pushes."""
+    _enable_push(config)
+    push = _make_push_client()
+    sm = AlertStateMachine(db, mock_twilio, config, push_client=push)
+    event = _make_event(urgency_score=10, source_count=2)
+    db.insert_event(event)
+
+    await sm.process_event(event)
+
+    assert mock_twilio.make_alert_call.call_count >= 1
+    push.send_push.assert_not_called()
+    assert not [a for a in db.get_alert_records(event.id) if a.alert_type == "push"]
+
+
+@pytest.mark.asyncio
+async def test_push_self_dedup_on_second_cycle(db, mock_twilio, config):
+    """[1.3c] high.channel=push: two cycles for the same event push exactly once."""
+    _enable_push(config)
+    _set_channel(config, "high", "push")
+    push = _make_push_client()
+    sm = AlertStateMachine(db, mock_twilio, config, push_client=push)
+    event = _make_event(urgency_score=7, source_count=1)
+    db.insert_event(event)
+
+    await sm.process_event(event)
+    await sm.process_event(event)
+
+    assert push.send_push.call_count == 1
+    assert len([a for a in db.get_alert_records(event.id) if a.alert_type == "push"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_acknowledged_update_is_sms_only_no_push(db, mock_twilio, config):
+    """[1.4] An acknowledged event whose last_updated_at advanced sends update SMS, no push."""
+    _enable_push(config)
+    push = _make_push_client()
+    sm = AlertStateMachine(db, mock_twilio, config, push_client=push)
+    event = _make_event(urgency_score=10, source_count=2)
+
+    past_time = datetime.now(UTC) - timedelta(hours=1)
+    record = _make_alert_record(
+        event.id,
+        alert_type="phone_call",
+        status="acknowledged",
+        sent_at=past_time,
+    )
+    db.insert_alert_record(record)
+    event.last_updated_at = datetime.now(UTC)
+
+    await sm.process_event(event)
+
+    mock_twilio.send_sms.assert_called_once()
+    push.send_push.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_default_both_with_push_disabled_sends_sms_only(db, mock_twilio, config):
+    """[1.5, AD-4] Shipped default (channel=both, push disabled) is SMS-only, no push."""
+    # config ships push disabled by default; high.channel defaults to "both".
+    push = _make_push_client()
+    sm = AlertStateMachine(db, mock_twilio, config, push_client=push)
+    event = _make_event(urgency_score=7, source_count=1)
+    db.insert_event(event)
+
+    await sm.process_event(event)
+
+    mock_twilio.send_sms.assert_called_once()
+    push.send_push.assert_not_called()
+    assert not [a for a in db.get_alert_records(event.id) if a.alert_type == "push"]
+
+
+# --------------------------------------------------------------------------
+# Push wiring regression coverage (converted to the per-tier channel model)
+# --------------------------------------------------------------------------
+@pytest.mark.asyncio
 async def test_push_disabled_sends_no_push(db, mock_twilio, config):
-    """With push disabled (default), no push is sent even when an SMS fires."""
+    """With push disabled (default), a default-`both` tier sends SMS and no push."""
     push = _make_push_client()
     sm = AlertStateMachine(db, mock_twilio, config, push_client=push)
     event = _make_event(urgency_score=8, source_count=1)
@@ -930,13 +1128,14 @@ async def test_push_disabled_sends_no_push(db, mock_twilio, config):
 
     await sm.process_event(event)
 
+    mock_twilio.send_sms.assert_called_once()
     push.send_push.assert_not_called()
     assert not [a for a in db.get_alert_records(event.id) if a.alert_type == "push"]
 
 
 @pytest.mark.asyncio
 async def test_push_enabled_sends_once_per_event(db, mock_twilio, config):
-    """An alertable event pushes once; a second cycle does not re-push."""
+    """A `both`-tier event pushes once; a second cycle does not re-push (SMS suppressed too)."""
     _enable_push(config)
     push = _make_push_client()
     sm = AlertStateMachine(db, mock_twilio, config, push_client=push)
@@ -944,7 +1143,7 @@ async def test_push_enabled_sends_once_per_event(db, mock_twilio, config):
     db.insert_event(event)
 
     await sm.process_event(event)
-    await sm.process_event(event)  # SMS tier suppressed on re-alert -> no second push
+    await sm.process_event(event)  # SMS suppressed on re-alert, push deduped -> no second push
 
     assert push.send_push.call_count == 1
     push_records = [a for a in db.get_alert_records(event.id) if a.alert_type == "push"]
@@ -967,7 +1166,7 @@ async def test_push_dedup_on_existing_push_record(db, mock_twilio, config):
 
 @pytest.mark.asyncio
 async def test_push_update_bypasses_dedup(db, mock_twilio, config):
-    """An update push fires despite an existing push record (caller-gated)."""
+    """An update push fires despite an existing push record (caller-gated; is_update retained)."""
     _enable_push(config)
     push = _make_push_client()
     sm = AlertStateMachine(db, mock_twilio, config, push_client=push)

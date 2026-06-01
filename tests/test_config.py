@@ -5,7 +5,7 @@ import os
 import pytest
 import yaml
 
-from sentinel.config import ClassificationConfig, ConfigError, SentinelConfig, load_config
+from sentinel.config import ClassificationConfig, ConfigError, SentinelConfig, UrgencyLevel, load_config
 
 
 def test_load_valid_config(monkeypatch):
@@ -272,3 +272,73 @@ def test_syndication_threshold_default_is_90():
     """ClassificationConfig built without syndication_similarity_threshold defaults to 90."""
     cfg = ClassificationConfig()
     assert cfg.syndication_similarity_threshold == 90
+
+
+# --------------------------------------------------------------------------
+# UrgencyLevel.channel — per-tier delivery channel (Phase 1)
+# --------------------------------------------------------------------------
+
+
+def test_channel_field_defaults_to_both():
+    """[1.1] UrgencyLevel without channel defaults to 'both' (SMS-only while push off)."""
+    assert UrgencyLevel(min_score=7, action="sms").channel == "both"
+
+
+def test_channel_accepts_each_valid_value():
+    """[1.1] Each allowed channel constructs and round-trips its value."""
+    for value in ("sms", "push", "both"):
+        level = UrgencyLevel(min_score=7, action="sms", channel=value)
+        assert level.channel == value
+
+
+def test_channel_rejects_invalid_value():
+    """[1.1a] An unknown channel raises a pydantic ValidationError mentioning channel."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="channel"):
+        UrgencyLevel(min_score=7, action="sms", channel="email")
+
+
+def test_config_loads_without_channel_keys(tmp_path):
+    """[1.1b, 1.6] A config whose urgency_levels omit `channel` (incl. critical/low)
+    loads, and the SMS-action tiers default to channel == 'both'."""
+    config_dict = {
+        "monitoring": {
+            "target_countries": [{"code": "PL", "name": "Poland", "name_native": "Polska"}],
+            "aggressor_countries": [{"code": "RU", "name": "Russia", "name_native": "Rosja"}],
+            "keywords": {"en": {"critical": ["military attack"]}},
+        },
+        "sources": {
+            "rss": [{"name": "T", "url": "https://example.com/rss", "language": "en"}],
+            "gdelt": {"themes": ["A"]},
+            "google_news": {"queries": [{"query": "test", "language": "en"}]},
+            "telegram": {"enabled": False},
+        },
+        "classification": {},
+        "alerts": {
+            "phone_number": "+48123456789",
+            "urgency_levels": {
+                "critical": {"min_score": 9, "action": "phone_call", "corroboration_required": 1},
+                "high": {"min_score": 7, "action": "sms", "corroboration_required": 1},
+                "medium": {"min_score": 5, "action": "sms", "corroboration_required": 1},
+                "low": {"min_score": 1, "action": "log_only"},
+            },
+            "acknowledgment": {},
+        },
+        "scheduler": {},
+        "database": {},
+        "logging": {},
+        "testing": {},
+        "processing": {"dedup": {}},
+    }
+    config_path = tmp_path / "no_channel.yaml"
+    with open(config_path, "w") as f:
+        yaml.dump(config_dict, f)
+
+    config = load_config(str(config_path))
+    levels = config.alerts.urgency_levels
+    assert levels["high"].channel == "both"
+    assert levels["medium"].channel == "both"
+    # critical/low load fine even though channel is irrelevant to them.
+    assert levels["critical"].channel == "both"
+    assert levels["low"].channel == "both"

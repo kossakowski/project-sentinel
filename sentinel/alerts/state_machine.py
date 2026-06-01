@@ -210,8 +210,7 @@ class AlertStateMachine:
 
         if self._is_acknowledged(existing_alerts):
             if event.last_updated_at > self._last_alert_time(existing_alerts):
-                await self._send_update_sms(event)
-                await self._maybe_send_push(event, existing_alerts, is_update=True)
+                await self._send_update_sms(event)  # SMS only; no push (AD-3)
             return
 
         # If there are pending call records (initiated but not yet resolved),
@@ -229,23 +228,34 @@ class AlertStateMachine:
             action,
         )
 
-        if action == "sms" and self._user_already_notified(existing_alerts):
+        # Route the resolved action to the per-tier channels. SMS-tier levels
+        # (5-8) resolve to "sms" / "push" / "both" via each level's `channel`;
+        # 9-10 resolves to "phone_call" (call + confirmation SMS, no push, AD-2)
+        # and 1-4 to "log_only".
+        send_push = action in ("push", "both")
+        send_sms = action in ("sms", "both")
+
+        # Existing re-alert suppression, now applied only to the SMS half: a
+        # prior perceivable alert for this event suppresses a redundant re-SMS.
+        # The push half is not gated by this — it self-dedups on a prior push
+        # record inside _maybe_send_push.
+        if send_sms and self._user_already_notified(existing_alerts):
             self.logger.debug(
-                "Event %s already has prior alert; suppressing re-alert",
+                "Event %s already has prior alert; suppressing re-SMS",
                 event.id,
             )
-            return
+            send_sms = False
 
-        # Additive push fires before the (potentially blocking) Twilio dispatch
-        # so it reaches the phone immediately. log_only events get no push.
-        if action != "log_only":
+        # Push reaches the phone immediately and self-dedups on a prior push
+        # record (so call-retry / re-corroboration cycles don't re-push).
+        if send_push:
             await self._maybe_send_push(event, existing_alerts)
 
         if action == "phone_call":
             await self._execute_phone_call(event, existing_alerts)
-        elif action == "sms":
+        elif send_sms:
             await self._execute_sms(event)
-        # action == "log_only" -> do nothing beyond the log above
+        # push-only / suppressed-SMS / log_only -> no Twilio SMS
 
     async def check_pending_calls(self) -> None:
         """Check status of calls that were placed but not yet confirmed.
@@ -259,14 +269,20 @@ class AlertStateMachine:
                 await self._handle_call_result(record, status)
 
     def _determine_action(self, event: Event) -> str:
-        """Determine the alert action based on urgency score and source count.
+        """Resolve the delivery action for an event from the urgency tiers.
+
+        Returns one of: "phone_call", "sms", "push", "both", "log_only".
 
         Decision matrix (from config urgency_levels):
-          9-10 + 2+ sources -> phone_call
-          9-10 + 1 source   -> sms
-          7-8               -> sms
-          5-6               -> sms
+          9-10 + 2+ sources -> phone_call          (never push/both — AD-2)
+          9-10 + 1 source   -> sms                 (existing fallback)
+          7-8               -> high.channel         (sms | push | both)
+          5-6               -> medium.channel       (sms | push | both)
           1-4               -> log_only
+
+        For the SMS-action tiers (5-8) the matched level's `channel` is returned
+        so the operator can route that tier to SMS, push, or both. The 9-10
+        phone_call path ignores `channel` entirely; log_only is returned as-is.
 
         Urgency levels are sorted by min_score descending to avoid
         dependency on dict insertion order.
@@ -287,7 +303,9 @@ class AlertStateMachine:
                         return "phone_call"
                     else:
                         return "sms"
-                return level.action
+                if level.action == "sms":
+                    return level.channel  # "sms" | "push" | "both"
+                return level.action  # e.g. "log_only"
 
         return "log_only"
 
@@ -611,14 +629,17 @@ class AlertStateMachine:
         existing_alerts: list[AlertRecord],
         is_update: bool = False,
     ) -> None:
-        """Send an additive Expo push, recording it as a 'push' alert.
+        """Send an Expo push for the resolved channel, recording it as a 'push' alert.
 
-        No-op when push is disabled or no tokens are configured. The initial
-        alert is deduped on the presence of a prior 'push' record so a critical
-        event's call-retry cycles don't re-push every few minutes. Updates skip
-        that dedup — the caller only invokes them when genuinely new corroboration
-        arrived, and the new record's sent_at rate-limits the next one. The
-        blocking HTTP POST is offloaded to a thread like the Twilio calls.
+        Invoked by process_event when the resolved tier channel is "push" or
+        "both" (per-tier routing). No-op when push is disabled or no tokens are
+        configured. The initial alert is deduped on the presence of a prior
+        'push' record so re-corroboration cycles don't re-push every few minutes.
+        Updates skip that dedup — the caller only invokes them when genuinely new
+        corroboration arrived, and the new record's sent_at rate-limits the next
+        one. The blocking HTTP POST is offloaded to a thread like the Twilio
+        calls. (The is_update path is retained for direct callers/tests; the
+        acknowledged-update branch no longer pushes — AD-3.)
         """
         push_cfg = self.config.alerts.push
         if not push_cfg.enabled or not push_cfg.tokens:

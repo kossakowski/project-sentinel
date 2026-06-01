@@ -538,10 +538,16 @@ alerts:
       min_score: 7
       action: sms
       corroboration_required: 1
+      # Delivery channel for this tier: sms | push | both. "both" is
+      # behavior-preserving while push is disabled (SMS only); switch to "push"
+      # to drop this tier's Twilio SMS cost once a push token is configured.
+      channel: both
     medium:
       min_score: 5
       action: sms
       corroboration_required: 1
+      # Delivery channel: sms | push | both (see `high` above).
+      channel: both
     low:
       min_score: 1
       action: log_only
@@ -565,7 +571,10 @@ alerts:
     call_retry_pause_seconds: 10
 
   # Push notifications via the Expo Push Service (companion mobile app).
-  # Additive channel: fires alongside phone calls / SMS, never replaces them.
+  # Push is one of the per-tier delivery channels: set an urgency tier's
+  # `channel` (above) to push or both to route 5-8 alerts here. Disabled by
+  # default, so a tier set to push/both still sends SMS only until a token is
+  # added; enable it and paste the token to actually deliver pushes.
   # Read the token off the mobile app's notification panel and add it below
   # (literal "ExponentPushToken[...]" or "${EXPO_PUSH_TOKEN}" from the env).
   # Leave tokens empty when disabled — every "${VAR}" here must resolve at load.
