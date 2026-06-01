@@ -210,7 +210,11 @@ class AlertStateMachine:
 
         if self._is_acknowledged(existing_alerts):
             if event.last_updated_at > self._last_alert_time(existing_alerts):
-                await self._send_update_sms(event)  # SMS only; no push (AD-3)
+                # Acknowledged 9-10 escalation update: send the update SMS and an
+                # additive Expo push (AD-3). The is_update dedup-bypass is
+                # intended so each escalation update pushes the latest state.
+                await self._send_update_sms(event)
+                await self._maybe_send_push(event, existing_alerts, is_update=True)
             return
 
         # If there are pending call records (initiated but not yet resolved),
@@ -230,9 +234,9 @@ class AlertStateMachine:
 
         # Route the resolved action to the per-tier channels. SMS-tier levels
         # (5-8) resolve to "sms" / "push" / "both" via each level's `channel`;
-        # 9-10 resolves to "phone_call" (call + confirmation SMS, no push, AD-2)
-        # and 1-4 to "log_only".
-        send_push = action in ("push", "both")
+        # 9-10 resolves to "phone_call" (call + confirmation SMS plus an additive
+        # Expo push, AD-2) and 1-4 to "log_only".
+        send_push = action in ("push", "both", "phone_call")
         send_sms = action in ("sms", "both")
 
         # Existing re-alert suppression, now applied only to the SMS half: a
@@ -632,14 +636,14 @@ class AlertStateMachine:
         """Send an Expo push for the resolved channel, recording it as a 'push' alert.
 
         Invoked by process_event when the resolved tier channel is "push" or
-        "both" (per-tier routing). No-op when push is disabled or no tokens are
-        configured. The initial alert is deduped on the presence of a prior
-        'push' record so re-corroboration cycles don't re-push every few minutes.
-        Updates skip that dedup — the caller only invokes them when genuinely new
-        corroboration arrived, and the new record's sent_at rate-limits the next
-        one. The blocking HTTP POST is offloaded to a thread like the Twilio
-        calls. (The is_update path is retained for direct callers/tests; the
-        acknowledged-update branch no longer pushes — AD-3.)
+        "both" (per-tier routing), additively on the 9-10 "phone_call" action
+        (AD-2), and on acknowledged-event escalation updates (AD-3). No-op when
+        push is disabled or no tokens are configured. The initial alert is deduped
+        on the presence of a prior 'push' record so re-corroboration cycles don't
+        re-push every few minutes. Updates (is_update=True) skip that dedup — the
+        caller only invokes them when genuinely new corroboration arrived, and the
+        new record's sent_at rate-limits the next one. The blocking HTTP POST is
+        offloaded to a thread like the Twilio calls.
         """
         push_cfg = self.config.alerts.push
         if not push_cfg.enabled or not push_cfg.tokens:

@@ -1071,8 +1071,8 @@ async def test_channel_sms_sends_sms_not_push(db, mock_twilio, config):
 
 @pytest.mark.asyncio
 @patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
-async def test_critical_event_sends_no_additive_push(_sleep, db, mock_twilio, config):
-    """[1.3b, 1.7] A score-10 corroborated event runs the call flow and never pushes."""
+async def test_critical_event_sends_additive_push(_sleep, db, mock_twilio, config):
+    """[1.3b, 1.7] A score-10 corroborated event runs the call flow AND fires an additive push."""
     _enable_push(config)
     push = _make_push_client()
     sm = AlertStateMachine(db, mock_twilio, config, push_client=push)
@@ -1082,8 +1082,8 @@ async def test_critical_event_sends_no_additive_push(_sleep, db, mock_twilio, co
     await sm.process_event(event)
 
     assert mock_twilio.make_alert_call.call_count >= 1
-    push.send_push.assert_not_called()
-    assert not [a for a in db.get_alert_records(event.id) if a.alert_type == "push"]
+    push.send_push.assert_called_once()
+    assert len([a for a in db.get_alert_records(event.id) if a.alert_type == "push"]) == 1
 
 
 @pytest.mark.asyncio
@@ -1104,8 +1104,8 @@ async def test_push_self_dedup_on_second_cycle(db, mock_twilio, config):
 
 
 @pytest.mark.asyncio
-async def test_acknowledged_update_is_sms_only_no_push(db, mock_twilio, config):
-    """[1.4] An acknowledged event whose last_updated_at advanced sends update SMS, no push."""
+async def test_acknowledged_update_sends_sms_and_push(db, mock_twilio, config):
+    """[1.4] An acknowledged event whose last_updated_at advanced sends update SMS AND an additive push."""
     _enable_push(config)
     push = _make_push_client()
     sm = AlertStateMachine(db, mock_twilio, config, push_client=push)
@@ -1124,7 +1124,7 @@ async def test_acknowledged_update_is_sms_only_no_push(db, mock_twilio, config):
     await sm.process_event(event)
 
     mock_twilio.send_sms.assert_called_once()
-    push.send_push.assert_not_called()
+    push.send_push.assert_called_once()
 
 
 @pytest.mark.asyncio
