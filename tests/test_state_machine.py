@@ -968,6 +968,34 @@ def test_determine_action_low_logs_only(state_machine, config):
     assert state_machine._determine_action(event) == "log_only"
 
 
+def test_determine_action_order_independent(state_machine, config):
+    """[1.2c] Tier matching sorts by min_score descending, so the resolved action
+    is the same regardless of the urgency_levels dict insertion order.
+
+    Build the dict in a deliberately NON-descending order (low, critical, medium,
+    high) and assert representative scores still resolve to the correct tier. If
+    matching depended on insertion order, score 7 would match `low` (min_score 1,
+    inserted first) instead of `high`.
+    """
+    from sentinel.config import UrgencyLevel
+
+    config.alerts.urgency_levels = {
+        "low": UrgencyLevel(min_score=1, action="log_only"),
+        "critical": UrgencyLevel(min_score=9, action="phone_call", corroboration_required=1, fallback="sms"),
+        "medium": UrgencyLevel(min_score=5, action="sms", corroboration_required=1, channel="sms"),
+        "high": UrgencyLevel(min_score=7, action="sms", corroboration_required=1, channel="push"),
+    }
+
+    # Score 7 must match `high` (its channel), not the earlier-inserted `low`.
+    assert state_machine._determine_action(_make_event(urgency_score=7, source_count=1)) == "push"
+    # Score 10 corroborated must match `critical` -> phone_call.
+    assert state_machine._determine_action(_make_event(urgency_score=10, source_count=1)) == "phone_call"
+    # Score 5 must match `medium` (its channel), not `high` or `critical`.
+    assert state_machine._determine_action(_make_event(urgency_score=5, source_count=1)) == "sms"
+    # Score 3 falls below the lowest SMS tier -> log_only.
+    assert state_machine._determine_action(_make_event(urgency_score=3, source_count=1)) == "log_only"
+
+
 # --------------------------------------------------------------------------
 # Per-tier channel dispatch (process_event)
 # --------------------------------------------------------------------------
@@ -1113,6 +1141,36 @@ async def test_default_both_with_push_disabled_sends_sms_only(db, mock_twilio, c
     mock_twilio.send_sms.assert_called_once()
     push.send_push.assert_not_called()
     assert not [a for a in db.get_alert_records(event.id) if a.alert_type == "push"]
+
+
+@pytest.mark.asyncio
+async def test_push_not_gated_by_sms_suppression(db, mock_twilio, config):
+    """[1.3a] The push half is NOT gated by SMS suppression.
+
+    A single process_event cycle for a `both` tier event that already has a prior
+    `sms` record (but NO prior `push` record): the SMS is suppressed by
+    _user_already_notified, yet the push still fires exactly once. This isolates
+    the "SMS suppressed yet push still fires" path that the two-cycle dedup test
+    cannot exercise (there the second push is blocked by _maybe_send_push's own
+    prior-push dedup, not by SMS suppression).
+    """
+    _enable_push(config)
+    _set_channel(config, "high", "both")
+    push = _make_push_client()
+    sm = AlertStateMachine(db, mock_twilio, config, push_client=push)
+    event = _make_event(urgency_score=7, source_count=1)
+    db.insert_event(event)
+
+    # Pre-existing SMS record triggers re-alert suppression; no prior push record.
+    db.insert_alert_record(_make_alert_record(event.id, alert_type="sms", status="sent"))
+
+    await sm.process_event(event)
+
+    # SMS suppressed (prior sms record) ...
+    mock_twilio.send_sms.assert_not_called()
+    # ... but the push still fires, unaffected by the SMS suppression.
+    push.send_push.assert_called_once()
+    assert len([a for a in db.get_alert_records(event.id) if a.alert_type == "push"]) == 1
 
 
 # --------------------------------------------------------------------------

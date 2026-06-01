@@ -342,3 +342,33 @@ def test_config_loads_without_channel_keys(tmp_path):
     # critical/low load fine even though channel is irrelevant to them.
     assert levels["critical"].channel == "both"
     assert levels["low"].channel == "both"
+
+
+def test_shipped_configs_set_channel_both():
+    """[1.6] The shipped config files route the 5-8 tiers via `channel: both`.
+
+    Parses the raw repo YAML directly (no env credentials / full Settings needed)
+    and asserts: in BOTH config.yaml and config.example.yaml the high and medium
+    urgency levels set `channel: both`; config.example.yaml keeps its
+    alerts.push block disabled; and config.yaml ships NO push block under alerts
+    (the PushConfig `enabled=False` default is the production-matching state).
+    """
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    def _load(relpath):
+        with open(os.path.join(repo_root, relpath)) as f:
+            return yaml.safe_load(f)
+
+    main_cfg = _load("config/config.yaml")
+    example_cfg = _load("config/config.example.yaml")
+
+    for cfg in (main_cfg, example_cfg):
+        levels = cfg["alerts"]["urgency_levels"]
+        assert levels["high"]["channel"] == "both"
+        assert levels["medium"]["channel"] == "both"
+
+    # config.example.yaml ships the push block disabled.
+    assert example_cfg["alerts"]["push"]["enabled"] is False
+
+    # config.yaml has NO push block under alerts (relies on the disabled default).
+    assert "push" not in main_cfg["alerts"]
