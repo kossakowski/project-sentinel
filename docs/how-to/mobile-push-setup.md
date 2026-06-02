@@ -112,6 +112,13 @@ Confirm that:
 
 If both happen, the full path — token → backend → Expo → phone → in-app panel — is verified.
 
+> **Foreground vs. background.** The **OSTATNI PUSH** panel is fed by the foreground
+> received-notification listener, so a push that arrives while the app is **open** shows in the
+> panel immediately. A push delivered while the app is **backgrounded or closed** reaches the panel
+> only after you **tap** the notification (handled by the response listener). To verify cleanly,
+> keep the app open when you fire Step 6 — or tap the notification before checking the panel, so an
+> empty panel is not mistaken for a delivery failure.
+
 ---
 
 ## Notes and caveats
