@@ -158,10 +158,10 @@ Consumed by: `sentinel/alerts/`
 
 | Level | `min_score` | `action` | `channel` | `corroboration_required` | `retry_attempts` | `retry_interval_minutes` | `fallback` |
 |---|---|---|---|---|---|---|---|
-| `critical` | 9 | `phone_call` | (n/a) | 1 | 3 | 5 | `sms` |
+| `critical` | 9 | `phone_call` | (ignored) | 1 | 3 | 5 | `sms` |
 | `high` | 7 | `sms` | `both` | 1 | 0 | 5 | — |
 | `medium` | 5 | `sms` | `both` | 1 | 0 | 5 | — |
-| `low` | 1 | `log_only` | (n/a) | 1 | 0 | 5 | — |
+| `low` | 1 | `log_only` | (ignored) | 1 | 0 | 5 | — |
 
 `action` values: `phone_call`, `sms`, `log_only`.
 
@@ -215,7 +215,7 @@ Python format strings. Override in config to customize; Pydantic provides defaul
 
 Consumed by: `sentinel/alerts/push_client.py` (`ExpoPushClient`) via `sentinel/alerts/state_machine.py`.
 
-Push (Expo) is an **opt-in** channel for the companion mobile app, dispatched (before the Twilio dispatch, after the cooldown/dedup/suppression gates) when the resolved tier `channel` is `push` or `both` for the 5–8 tiers, and **additively** on the urgency 9–10 `phone_call` path and on acknowledged-event updates. For a `both` tier the push fires *alongside* the SMS; for a `push` tier it **replaces** the SMS for that tier (no Twilio SMS is sent). A push does NOT suppress a later SMS (`push` is not in the user-notified-alert-types set), and the push half is bounded only by its own dedup on a prior `push` record. **The live `config/config.yaml` omits this block entirely, so push is OFF by default** (the `enabled=False` Pydantic default is the production-matching disabled state) — with push off, a `both`/`push` tier still sends SMS only, so the deployed behavior is unchanged; `config/config.example.yaml` ships the block disabled (`enabled: false`).
+Push (Expo) is an **opt-in** channel for the companion mobile app, dispatched (before the Twilio dispatch, after the cooldown/dedup/suppression gates) when the resolved tier `channel` is `push` or `both` for the 5–8 tiers, and **additively** on the urgency 9–10 `phone_call` path and on acknowledged-event updates. For a `both` tier the push fires *alongside* the SMS; for a `push` tier (one of the 5–8 SMS tiers) it **replaces** that tier's SMS — no Twilio SMS is sent for that tier. The 9–10 call is never replaced. A push does NOT suppress a later SMS (`push` is not in the user-notified-alert-types set), and the push half is bounded only by its own dedup on a prior `push` record. **The live `config/config.yaml` omits this block entirely, so push is OFF by default** (the `enabled=False` Pydantic default is the production-matching disabled state) — with push off, a `both`/`push` tier still sends SMS only, so the deployed behavior is unchanged; `config/config.example.yaml` ships the block disabled (`enabled: false`).
 
 | YAML key | Type | Live value | Pydantic default | Description |
 |---|---|---|---|---|

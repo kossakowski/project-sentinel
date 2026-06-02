@@ -31,7 +31,7 @@
 | `sentinel/alerts/dispatcher.py` | `AlertDispatcher` | Sorts events by urgency; routes to `AlertStateMachine` or dry-run log |
 | `sentinel/alerts/state_machine.py` | `AlertStateMachine` | Urgency → action decision; async call/SMS execution; cooldown; call polling |
 | `sentinel/alerts/twilio_client.py` | `TwilioClient` | Twilio REST API wrapper: `make_alert_call(phone, message_pl, event_id)` (`twilio_client.py:43`), `send_sms(phone, message, event_id)`, `get_call_status(twilio_sid)` |
-| `sentinel/alerts/push_client.py` | `ExpoPushClient` | Expo push channel: `send_push(title, body, event_id, data)` POSTs to `https://exp.host/--/api/v2/push/send` (optional `EXPO_ACCESS_TOKEN` bearer). Routed per-tier by each SMS-level's `channel` (`sms` / `push` / `both`) and fired additively on the 9–10 call. OFF by default (`alerts.push.enabled: false`); returns a generic `AlertRecord` with `alert_type="push"`. See [`mobile-app.md`](mobile-app.md) for the companion app that registers the device push token. |
+| `sentinel/alerts/push_client.py` | `ExpoPushClient` | Expo push channel: `send_push(title, body, event_id, data)` POSTs to `https://exp.host/--/api/v2/push/send` (optional `EXPO_ACCESS_TOKEN` bearer). Routed per-tier by each SMS-level's `channel` (`sms` / `push` / `both`) and fired additively on the 9–10 call. OFF by default (live `config.yaml` omits the `alerts.push` block; `enabled` defaults to `false`); returns a generic `AlertRecord` with `alert_type="push"`. See [`mobile-app.md`](mobile-app.md) for the companion app that registers the device push token. |
 
 ---
 

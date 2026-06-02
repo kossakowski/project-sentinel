@@ -142,6 +142,7 @@ The alert level assigned to an Event is determined by `alerts/state_machine.py:_
 | Condition (evaluated in order) | Alert level | Reference |
 |--------------------------------|-------------|-----------|
 | `urgency >= 9 AND source_count >= 1` | Phone call + confirmation/stop SMS + additive push | live `classification.corroboration_required = 1` |
+| `urgency >= 9 AND source_count < corroboration_required` | `sms` (fallback — no additive push) | matches `architecture.md` |
 | `urgency >= 7` (no source_count check) | `high.channel` (`sms` / `push` / `both`, default `both`) | `state_machine.py:_determine_action` |
 | `urgency >= 5` | `medium.channel` (`sms` / `push` / `both`, default `both`) | `state_machine.py:_determine_action` |
 | Below threshold | Pending — no alert | |
