@@ -20,9 +20,13 @@ The `mobile/` app exists to solve exactly that bootstrap problem. It:
 1. Registers the physical device for Expo push notifications and **surfaces the resulting
    Expo push token** so you can copy it and paste it into the server's `alerts.push.tokens`
    config list.
-2. **Receives push alerts** once the token is registered server-side, with a MAX-importance
-   Android notification channel so a critical military-threat alert breaks through with
-   sound and a heads-up banner.
+2. **Receives push alerts** once the token is registered server-side. On Android it uses a
+   MAX-importance notification channel so a critical military-threat alert breaks through with
+   sound and a heads-up banner. On **iOS** a normal Expo push does **not** bypass silent mode
+   or Do Not Disturb — it lands as an ordinary notification respecting the phone's ringer/DND
+   state. Breaking through silent mode on iOS requires Apple **Critical Alerts** (a separate
+   entitlement, pending), so on the owner's iPhone the push is supplementary and the Twilio
+   phone call remains the primary 9–10 wake-up.
 
 That is the whole remit. The app holds no monitoring logic, no database, no classifier, no
 Twilio. It is a thin client for the push channel.
@@ -38,8 +42,10 @@ by the per-tier `channel` setting plus the call path:**
   tier's `channel`. A `push` tier sends a push **instead of** the Twilio SMS; a `both` tier
   sends SMS **and** push; an `sms` tier sends SMS only.
 - **Urgency 9–10** — the path keeps its Twilio call + confirmation/stop SMS and **additionally
-  fires an Expo push** (additive — the call remains the primary wake-up). The `channel` field
-  is ignored on this tier.
+  fires an Expo push** (additive — it does **not** replace the call). The `channel` field is
+  ignored on this tier. The additive push is for visibility only: a normal push does **not**
+  bypass silent mode / Do Not Disturb until Apple **Critical Alerts** (a separate entitlement,
+  pending) is active, so the Twilio call remains the primary wake-up.
 - **Acknowledged-event updates** — the update SMS is sent **and** an additive push fires, so
   the phone shows each escalation of an active critical event.
 
