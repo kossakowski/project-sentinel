@@ -10,6 +10,7 @@ unchanged — so the Twilio wrapper mocks stay plain MagicMocks (NOT AsyncMocks)
 """
 
 import json
+import re
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -17,6 +18,8 @@ from uuid import uuid4
 import pytest
 
 from sentinel.alerts.state_machine import (
+    EVENT_TYPE_PL,
+    PUSH_BODY_SUMMARY_MAX_CHARS,
     PUSH_DATA_MAX_BYTES,
     SMS_MAX_CHARS,
     AlertStateMachine,
@@ -1328,21 +1331,43 @@ def test_build_push_data_includes_full_content(db, config):
     assert expected_keys.issubset(data.keys())
 
     assert isinstance(data["message_id"], str) and data["message_id"]
+    # [1.1a] message_id is a uuid4 hex: exactly 32 lowercase hex chars.
+    assert re.fullmatch(r"[0-9a-f]{32}", data["message_id"]), data["message_id"]
     assert data["event_id"] == event.id
     assert data["urgency_score"] == event.urgency_score
     assert data["event_type"] == event.event_type
     assert data["kind"] == "event"
     assert isinstance(data["event_type_pl"], str)
+    # [1.1d] event_type_pl is the server's Polish mapping for a known type.
+    assert data["event_type_pl"] == EVENT_TYPE_PL.get(event.event_type, event.event_type)
+    assert data["event_type_pl"] == "Uderzenie rakietowe"
     assert isinstance(data["affected_countries"], list)
+    # [1.1d] aggressor is a str (never None).
     assert isinstance(data["aggressor"], str)
     assert isinstance(data["summary_pl"], str)
     assert isinstance(data["sources"], list)
     assert isinstance(data["sms_body"], str)
 
-    # first_seen_at parses as ISO-8601 and is UTC.
+    # [1.1d] first_seen_at parses via datetime.fromisoformat to an aware UTC
+    # datetime (utcoffset is exactly zero).
     parsed = datetime.fromisoformat(data["first_seen_at"])
     assert parsed.tzinfo is not None
     assert parsed.utcoffset() == timedelta(0)
+
+
+def test_push_event_type_pl_unknown_passthrough(db, config):
+    """[1.1d] An unknown event_type yields the raw token in event_type_pl (the
+    server's mapping is `.get(event_type, event_type)`), not Polish, not null.
+    """
+    event, _a1, _a2 = _make_event_with_sources(db)
+    event.event_type = "totally_unknown_type"
+
+    data = _build_push_data(event, db, config, is_update=False)
+
+    assert "totally_unknown_type" not in EVENT_TYPE_PL
+    assert data["event_type"] == "totally_unknown_type"
+    assert data["event_type_pl"] == EVENT_TYPE_PL.get("totally_unknown_type", "totally_unknown_type")
+    assert data["event_type_pl"] == "totally_unknown_type"
 
 
 def test_push_sources_carry_urls(db, config):
@@ -1360,6 +1385,53 @@ def test_push_sources_carry_urls(db, config):
     assert sources[1]["url"] is None
     assert sources[0]["name"] == "PAP"
     assert sources[0]["title"] == "Atak rakietowy na Polskę"
+    # [1.1b/1.5] Order matches the article order _build_sources_list walks:
+    # event.article_ids in order. (a1 is article_ids[0], a2 is article_ids[1].)
+    assert [s["name"] for s in sources] == ["PAP", "Reuters"]
+    assert sources[1]["name"] == "Reuters"
+    assert sources[1]["title"] == "Missiles fired toward Poland"
+
+
+def test_push_sources_db_miss_yields_null_url_and_preserves_length(db, config):
+    """[1.1b/1.5] An article_id absent from the DB yields a placeholder source
+    entry with url is None, and the sources length still equals the number of
+    article_ids (the count is never dropped on a DB miss).
+    """
+    # One real article (with URL) followed by an id that is NOT in the DB.
+    real = Article(
+        source_name="PAP",
+        source_url="https://pap.pl/real",
+        source_type="rss",
+        title="Realny artykuł",
+        summary="...",
+        language="pl",
+        published_at=datetime.now(UTC),
+        fetched_at=datetime.now(UTC),
+    )
+    db.insert_article(real)
+    missing_id = str(uuid4())
+
+    event = Event(
+        id=str(uuid4()),
+        event_type="missile_strike",
+        urgency_score=9,
+        affected_countries=["PL"],
+        aggressor="RU",
+        summary_pl="Krótkie podsumowanie.",
+        first_seen_at=datetime.now(UTC),
+        last_updated_at=datetime.now(UTC),
+        source_count=2,
+        article_ids=[real.id, missing_id],
+    )
+
+    data = _build_push_data(event, db, config, is_update=False)
+    sources = data["sources"]
+
+    # Length preserved: one entry per article_id even though one missed the DB.
+    assert len(sources) == len(event.article_ids) == 2
+    assert sources[0]["url"] == real.source_url
+    # The DB-miss entry carries url is None.
+    assert sources[1]["url"] is None
 
 
 def test_push_sms_body_equals_sms_message(db, config):
@@ -1395,6 +1467,35 @@ def test_push_update_kind_and_title(db, config):
     data_event = _build_push_data(event, db, config, is_update=False)
     assert data_event["kind"] == "event"
     assert _format_push(event, False)[0].startswith("🚨 PROJECT SENTINEL: ")
+
+
+@pytest.mark.asyncio
+async def test_maybe_send_push_delivers_format_push_title(db, mock_twilio, config):
+    """[1.1f] The title _maybe_send_push hands to send_push is exactly
+    _format_push(event, is_update)[0] — captured at the boundary, not self-tested.
+    """
+    _enable_push(config)
+    captured: list[str] = []
+
+    def _send(title, body, event_id, data=None):
+        captured.append(title)
+        return _make_alert_record(event_id, alert_type="push", status="sent")
+
+    push = MagicMock()
+    push.send_push.side_effect = _send
+    sm = AlertStateMachine(db, mock_twilio, config, push_client=push)
+
+    # is_update=False: delivered title binds to the event-format title.
+    event = _make_event(urgency_score=9, source_count=2)
+    db.insert_event(event)
+    await sm._maybe_send_push(event, [], is_update=False)
+    assert captured[-1] == _format_push(event, False)[0]
+
+    # is_update=True: delivered title binds to the update-format title.
+    event_u = _make_event(urgency_score=9, source_count=2)
+    db.insert_event(event_u)
+    await sm._maybe_send_push(event_u, [], is_update=True)
+    assert captured[-1] == _format_push(event_u, True)[0]
 
 
 def test_push_data_within_byte_budget_and_trims(db, config):
@@ -1463,61 +1564,135 @@ def test_push_data_within_byte_budget_and_trims(db, config):
     assert data2["urgency_score"] == huge_event.urgency_score
 
 
-@pytest.mark.asyncio
-async def test_push_behavior_preserved(db, mock_twilio, config):
-    """[1.4] Routing/gating/dedup are unchanged; only the data payload is enriched."""
-    # Capture the data dict the push client receives, per send.
-    captured: list[dict | None] = []
+def _fresh_twilio() -> MagicMock:
+    """A standalone Twilio mock identical to the module `mock_twilio` fixture,
+    for sub-cases that need their own isolated client (so SMS-call counts and
+    captured arguments can't bleed across sub-cases).
+    """
+    twilio = MagicMock()
+
+    def _make_call_record(phone, message, event_id):
+        return _make_alert_record(event_id, alert_type="phone_call", status="initiated")
+
+    def _make_sms_record(phone, message, event_id):
+        return _make_alert_record(event_id, alert_type="sms", status="sent")
+
+    twilio.make_alert_call.side_effect = _make_call_record
+    twilio.send_sms.side_effect = _make_sms_record
+    twilio.get_call_status.return_value = {"status": "no-answer", "duration": 0}
+    twilio.client.messages.list.return_value = []
+    twilio.twilio_phone = "+15551234567"
+    return twilio
+
+
+def _fresh_push(captured: list | None = None) -> MagicMock:
+    """A fresh push mock recording (title, body, event_id, data) per send."""
+    push = MagicMock()
 
     def _send(title, body, event_id, data=None):
-        captured.append(data)
+        if captured is not None:
+            captured.append({"title": title, "body": body, "event_id": event_id, "data": data})
         return _make_alert_record(event_id, alert_type="push", status="sent")
 
-    # (a) push disabled -> no push.
-    push = MagicMock()
     push.send_push.side_effect = _send
-    sm = AlertStateMachine(db, mock_twilio, config, push_client=push)
+    return push
+
+
+@pytest.mark.asyncio
+async def test_push_behavior_preserved(config):
+    """[1.4] Routing/gating/dedup are unchanged; only the data payload is enriched.
+
+    Each of the five sub-cases gets its OWN fresh push mock + fresh in-memory DB
+    + fresh Twilio mock, so a missed reset in one sub-case can't mask another.
+    """
     _set_channel(config, "high", "both")
-    event = _make_event(urgency_score=7, source_count=1)
-    db.insert_event(event)
-    await sm.process_event(event)
-    push.send_push.assert_not_called()
 
-    # (a) also sent its SMS (action both, push merely disabled) — the SMS path
-    # is unaffected by the push enrichment. Reset so (b) can assert one new SMS.
-    mock_twilio.send_sms.reset_mock()
+    # ---- (a) push disabled -> no push; AND the empty-tokens path -> no push.
+    # (a1) push.enabled = False (tokens present): no push.
+    config.alerts.push.enabled = False
+    config.alerts.push.tokens = ["ExponentPushToken[x]"]
+    db_a1 = Database(":memory:")
+    twilio_a1 = _fresh_twilio()
+    push_a1 = _fresh_push()
+    sm_a1 = AlertStateMachine(db_a1, twilio_a1, config, push_client=push_a1)
+    event_a1 = _make_event(urgency_score=7, source_count=1)
+    db_a1.insert_event(event_a1)
+    await sm_a1.process_event(event_a1)
+    push_a1.send_push.assert_not_called()
+    # action both + push disabled -> the SMS half still fired (push enrichment
+    # does not affect SMS routing).
+    twilio_a1.send_sms.assert_called_once()
 
-    # (b) enabled + action both -> exactly one push, SMS path unchanged.
+    # (a2) push.enabled = True but NO tokens: still no push.
+    config.alerts.push.enabled = True
+    config.alerts.push.tokens = []
+    db_a2 = Database(":memory:")
+    twilio_a2 = _fresh_twilio()
+    push_a2 = _fresh_push()
+    sm_a2 = AlertStateMachine(db_a2, twilio_a2, config, push_client=push_a2)
+    event_a2 = _make_event(urgency_score=7, source_count=1)
+    db_a2.insert_event(event_a2)
+    await sm_a2.process_event(event_a2)
+    push_a2.send_push.assert_not_called()
+
+    # ---- (b) enabled + action both -> exactly one push; SMS path UNCHANGED in
+    # content/identity (not merely call count): the SMS the operator receives is
+    # byte-identical to _format_sms_message and addressed to the configured phone.
     _enable_push(config)
+    db_b = Database(":memory:")
+    twilio_b = _fresh_twilio()
+    captured_b: list = []
+    push_b = _fresh_push(captured_b)
+    sm_b = AlertStateMachine(db_b, twilio_b, config, push_client=push_b)
     event_b = _make_event(urgency_score=7, source_count=1)
-    db.insert_event(event_b)
-    await sm.process_event(event_b)
-    assert push.send_push.call_count == 1
-    mock_twilio.send_sms.assert_called_once()
-    # The enriched data dict was delivered (carries the new keys).
-    assert captured[-1] is not None
-    assert "message_id" in captured[-1] and "sources" in captured[-1]
-    assert "sms_body" in captured[-1]
+    db_b.insert_event(event_b)
+    await sm_b.process_event(event_b)
+    assert push_b.send_push.call_count == 1
+    twilio_b.send_sms.assert_called_once()
+    # SMS path genuinely unchanged: the exact body/identity passed to send_sms.
+    sms_phone, sms_body, sms_event_id = twilio_b.send_sms.call_args.args
+    assert sms_phone == config.alerts.phone_number
+    assert sms_event_id == event_b.id
+    assert sms_body == _format_sms_message(event_b, db_b, config)
+    # The enriched data dict was delivered to push (carries the new keys).
+    assert captured_b[-1]["data"] is not None
+    assert {"message_id", "sources", "sms_body"} <= captured_b[-1]["data"].keys()
 
-    # (c) a prior push record + is_update=False -> no re-push.
-    existing = [_make_alert_record(event_b.id, alert_type="push", status="sent")]
-    await sm._maybe_send_push(event_b, existing, is_update=False)
-    assert push.send_push.call_count == 1  # still one
+    # ---- (c) a prior push record + is_update=False -> no re-push.
+    db_c = Database(":memory:")
+    twilio_c = _fresh_twilio()
+    push_c = _fresh_push()
+    sm_c = AlertStateMachine(db_c, twilio_c, config, push_client=push_c)
+    event_c = _make_event(urgency_score=7, source_count=1)
+    db_c.insert_event(event_c)
+    existing_c = [_make_alert_record(event_c.id, alert_type="push", status="sent")]
+    await sm_c._maybe_send_push(event_c, existing_c, is_update=False)
+    push_c.send_push.assert_not_called()
 
-    # (d) action phone_call -> an additive push is sent.
-    with patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock):
-        event_c = _make_event(urgency_score=10, source_count=2)
-        db.insert_event(event_c)
-        await sm.process_event(event_c)
-    assert push.send_push.call_count == 2  # additive push for the call
-
-    # (e) is_update=True pushes despite an existing push record.
+    # ---- (d) action phone_call -> an additive push is sent.
+    db_d = Database(":memory:")
+    twilio_d = _fresh_twilio()
+    push_d = _fresh_push()
+    sm_d = AlertStateMachine(db_d, twilio_d, config, push_client=push_d)
     event_d = _make_event(urgency_score=10, source_count=2)
-    db.insert_event(event_d)
-    existing_d = [_make_alert_record(event_d.id, alert_type="push", status="sent")]
-    await sm._maybe_send_push(event_d, existing_d, is_update=True)
-    assert push.send_push.call_count == 3
-    assert captured[-1]["kind"] == "update"
+    db_d.insert_event(event_d)
+    with patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock):
+        await sm_d.process_event(event_d)
+    assert twilio_d.make_alert_call.call_count >= 1
+    push_d.send_push.assert_called_once()  # additive push for the call
+
+    # ---- (e) is_update=True pushes despite an existing push record.
+    db_e = Database(":memory:")
+    twilio_e = _fresh_twilio()
+    captured_e: list = []
+    push_e = _fresh_push(captured_e)
+    sm_e = AlertStateMachine(db_e, twilio_e, config, push_client=push_e)
+    event_e = _make_event(urgency_score=10, source_count=2)
+    db_e.insert_event(event_e)
+    existing_e = [_make_alert_record(event_e.id, alert_type="push", status="sent")]
+    await sm_e._maybe_send_push(event_e, existing_e, is_update=True)
+    push_e.send_push.assert_called_once()
+    assert captured_e[-1]["data"]["kind"] == "update"
 
 
 def test_push_aggressor_is_string(db, config):
@@ -1548,3 +1723,220 @@ def test_push_summary_pl_is_full(db, config):
     # The SMS truncates summary to 600 chars, so its embedded summary is shorter.
     assert len(data["summary_pl"]) > 600
     assert long_summary not in data["sms_body"]
+
+
+# --------------------------------------------------------------------------
+# 11. test_push_body_bounded_total_payload_fits  [1.3b]
+# --------------------------------------------------------------------------
+def test_push_body_bounded_total_payload_fits(db, config):
+    """[1.3b] The visible body's summary is bounded to PUSH_BODY_SUMMARY_MAX_CHARS
+    (codepoint-safe), data.summary_pl stays full/untrimmed, and the assembled
+    Expo message (title + body + data, EXCLUDING the per-recipient `to`)
+    serialized to UTF-8 is <= 4096 bytes with comfortable margin.
+
+    Worst case: an all-emoji summary (each 🚨 is 4 UTF-8 bytes) sized so that the
+    serialized `data` sits right at the 3500-byte budget WITHOUT 1.2 truncating
+    summary_pl. This is the hardest case for the body bound — every body byte
+    counts quadruple — and it must still fit 4096 with margin.
+    """
+    # 760 emoji keeps data at the 3500 budget while leaving summary_pl intact
+    # (8000+ emoji would force a 1.2 truncation; 760 does not).
+    emoji_summary = "🚨" * 760
+    event = Event(
+        id=str(uuid4()),
+        event_type="missile_strike",
+        urgency_score=9,
+        affected_countries=["PL"],
+        aggressor="RU",
+        summary_pl=emoji_summary,
+        first_seen_at=datetime.now(UTC),
+        last_updated_at=datetime.now(UTC),
+        source_count=0,
+        article_ids=[],
+    )
+
+    data = _build_push_data(event, db, config, is_update=False)
+    data_size = len(json.dumps(data, ensure_ascii=False).encode("utf-8"))
+
+    # The data is genuinely near the budget and summary_pl is NOT trimmed by 1.2.
+    assert data_size <= PUSH_DATA_MAX_BYTES
+    assert data_size >= PUSH_DATA_MAX_BYTES - 64, f"data not near budget: {data_size}"
+    assert data["summary_pl"] == emoji_summary  # full, untrimmed (1.3b)
+
+    title, body = _format_push(event)
+
+    # The body's summary portion is bounded to PUSH_BODY_SUMMARY_MAX_CHARS.
+    # The body is "{summary_snippet}\nPilność N/10 · źródła: M"; the snippet is
+    # everything before the "\nPilność" suffix line.
+    summary_snippet = body.split("\nPilność", 1)[0]
+    # Truncated snippet is the bounded head + a trailing ellipsis.
+    assert summary_snippet.endswith("…")
+    head = summary_snippet[:-1]
+    assert len(head) <= PUSH_BODY_SUMMARY_MAX_CHARS
+    # Codepoint-safe: the head is a real prefix of the original summary (no split
+    # multibyte char) and re-encodes to valid UTF-8 cleanly.
+    assert emoji_summary.startswith(head)
+    assert head.encode("utf-8").decode("utf-8") == head
+    assert "�" not in summary_snippet  # no U+FFFD replacement char
+
+    # Assemble the Expo message EXACTLY as push_client does, EXCLUDING `to`.
+    expo_message = {
+        "title": title,
+        "body": body,
+        "sound": "default",
+        "priority": "high",
+        "_contentAvailable": True,
+        "data": data,
+    }
+    total = len(json.dumps(expo_message, ensure_ascii=False).encode("utf-8"))
+    # Fits APNs' ~4096-byte limit with comfortable margin.
+    assert total <= 4096, f"total payload {total} exceeds 4096"
+    assert 4096 - total >= 64, f"insufficient margin: total={total}, margin={4096 - total}"
+
+
+# --------------------------------------------------------------------------
+# 12. test_push_data_trim_order_and_stages  [1.2]
+# --------------------------------------------------------------------------
+def _insert_url_sources(db, n, *, url_len, title):
+    """Insert n articles with long Google-News-style URLs and return their ids."""
+    ids = []
+    for i in range(n):
+        article = Article(
+            source_name=f"Src{i}",
+            source_url="https://news.google.com/rss/articles/" + ("Q" * url_len) + f"?oc=5&i={i}",
+            source_type="google_news",
+            title=f"{title} {i}",
+            summary="s",
+            language="pl",
+            published_at=datetime.now(UTC),
+            fetched_at=datetime.now(UTC),
+        )
+        db.insert_article(article)
+        ids.append(article.id)
+    return ids
+
+
+def test_push_data_trim_order_and_stages(db, config):
+    """[1.2] Strengthens the trim oracle: proves the trim ORDER (sources ->
+    sms_body -> summary_pl), isolates each stage, and guards codepoint-safety.
+
+    The production trim logic is correct; this test pins its observable behavior
+    so a future reader can't silently reorder it.
+    """
+    # ---- (a) sources-first: over budget purely from many sources; dropping
+    # SOME of them makes it fit, leaving sms_body and summary_pl BYTE-IDENTICAL
+    # to their untrimmed values (proves sources are trimmed before the others).
+    short_summary = "Krótkie podsumowanie zdarzenia."
+    a_ids = _insert_url_sources(db, 15, url_len=200, title="Krótki tytuł")
+    event_a = Event(
+        id=str(uuid4()),
+        event_type="missile_strike",
+        urgency_score=9,
+        affected_countries=["PL"],
+        aggressor="RU",
+        summary_pl=short_summary,
+        first_seen_at=datetime.now(UTC),
+        last_updated_at=datetime.now(UTC),
+        source_count=15,
+        article_ids=a_ids,
+    )
+    untrimmed_sms_a = _format_sms_message(event_a, db, config)
+    data_a = _build_push_data(event_a, db, config, is_update=False)
+
+    assert len(json.dumps(data_a, ensure_ascii=False).encode("utf-8")) <= PUSH_DATA_MAX_BYTES
+    # Some — but not all — sources were dropped from the end.
+    assert 0 < len(data_a["sources"]) < len(a_ids)
+    # The earlier sources survive (trailing ones are the ones dropped).
+    assert data_a["sources"][0]["name"] == "Src0"
+    # sms_body and summary_pl are untouched (stage 1 alone sufficed).
+    assert data_a["sms_body"] == untrimmed_sms_a
+    assert data_a["summary_pl"] == short_summary
+
+    # ---- (b) stage-2 isolation: after sources == [], sms_body alone is over
+    # budget with headroom left, so sms_body is head-truncated to a NON-EMPTY
+    # prefix while summary_pl stays intact. Engineered (summary ~590 chars, many
+    # long-URL sources) so the full sms_body pushes `data` over 3500 once sources
+    # are gone, but there is ample remaining budget for a non-empty sms_body head.
+    summary_b = "Ż" * 590
+    b_ids = _insert_url_sources(db, 10, url_len=250, title="Tytuł" * 10)
+    event_b = Event(
+        id=str(uuid4()),
+        event_type="missile_strike",
+        urgency_score=9,
+        affected_countries=["PL"],
+        aggressor="RU",
+        summary_pl=summary_b,
+        first_seen_at=datetime.now(UTC),
+        last_updated_at=datetime.now(UTC),
+        source_count=10,
+        article_ids=b_ids,
+    )
+    untrimmed_sms_b = _format_sms_message(event_b, db, config)
+    data_b = _build_push_data(event_b, db, config, is_update=False)
+
+    assert len(json.dumps(data_b, ensure_ascii=False).encode("utf-8")) <= PUSH_DATA_MAX_BYTES
+    # Stage 1 exhausted all sources...
+    assert data_b["sources"] == []
+    # ...stage 2 head-truncated sms_body to a NON-EMPTY prefix...
+    assert 0 < len(data_b["sms_body"]) < len(untrimmed_sms_b)
+    assert data_b["sms_body"].endswith("…")
+    # ...and stage 3 never fired: summary_pl is fully intact.
+    assert data_b["summary_pl"] == summary_b
+
+    # ---- (c) stage-3 last resort: one pathologically long summary forces
+    # sources == [], sms_body emptied/truncated, and summary_pl truncated; all
+    # scalars survive intact.
+    event_c = Event(
+        id=str(uuid4()),
+        event_type="invasion",
+        urgency_score=10,
+        affected_countries=["PL", "LT"],
+        aggressor="RU",
+        summary_pl="A" * 8000,
+        first_seen_at=datetime.now(UTC),
+        last_updated_at=datetime.now(UTC),
+        source_count=0,
+        article_ids=[],
+    )
+    data_c = _build_push_data(event_c, db, config, is_update=False)
+
+    assert len(json.dumps(data_c, ensure_ascii=False).encode("utf-8")) <= PUSH_DATA_MAX_BYTES
+    assert data_c["sources"] == []
+    assert len(data_c["summary_pl"]) < 8000  # stage 3 truncated it
+    # Scalars and kind never dropped or altered.
+    assert re.fullmatch(r"[0-9a-f]{32}", data_c["message_id"])
+    assert data_c["event_id"] == event_c.id
+    assert data_c["urgency_score"] == 10
+    assert data_c["event_type"] == "invasion"
+    assert data_c["kind"] == "event"
+
+    # ---- (d) codepoint-safety: feed Polish diacritics + emoji into a field that
+    # actually gets truncated (summary_pl, stage 3). The truncated field must be
+    # valid UTF-8 (no split multibyte char): it re-encodes/decodes equal and
+    # carries no U+FFFD replacement char.
+    polish_emoji = "🚨ąęś" * 3000  # 🚨 is 4 bytes; ąęś are 2 bytes each
+    event_d = Event(
+        id=str(uuid4()),
+        event_type="missile_strike",
+        urgency_score=9,
+        affected_countries=["PL"],
+        aggressor="RU",
+        summary_pl=polish_emoji,
+        first_seen_at=datetime.now(UTC),
+        last_updated_at=datetime.now(UTC),
+        source_count=0,
+        article_ids=[],
+    )
+    data_d = _build_push_data(event_d, db, config, is_update=False)
+
+    assert len(json.dumps(data_d, ensure_ascii=False).encode("utf-8")) <= PUSH_DATA_MAX_BYTES
+    truncated = data_d["summary_pl"]
+    assert len(truncated) < len(polish_emoji)  # it was truncated
+    # The truncated value is a valid prefix of the original (modulo the trailing
+    # ellipsis the truncator appends) — no multibyte char was split.
+    assert truncated.endswith("…")
+    head = truncated[:-1].rstrip()
+    assert polish_emoji.startswith(head)
+    # Re-encodes to UTF-8 without error and round-trips back equal; no U+FFFD.
+    assert truncated.encode("utf-8").decode("utf-8") == truncated
+    assert "�" not in truncated

@@ -49,6 +49,24 @@ _SOURCES_TRAILER_RESERVE = 40
 # (sources -> sms_body -> summary_pl) to stay within this limit.
 PUSH_DATA_MAX_BYTES = 3500
 
+# Maximum number of summary characters embedded in the *visible* push `body`
+# (1.3b). The notification banner only needs a short snippet; capping it here
+# keeps the TOTAL Expo/APNs payload (title + body + the <=3500-byte `data` +
+# aps overhead) comfortably under APNs' ~4096-byte limit, so a long-summary
+# event can't push the whole message past the limit and get rejected. The cap
+# is on the body only — `data.summary_pl` still carries the full, untrimmed
+# summary (the inbox renders the full text from `data`, never from `body`), so
+# bounding the body loses no content.
+#
+# Value: 80. The hard worst case is an all-emoji summary (each 🚨 is 4 UTF-8
+# bytes) while `data` sits at the full 3500-byte budget. At 80 chars the body's
+# summary portion is <=320 bytes; the assembled Expo message (excluding the
+# per-recipient `to`) then measures ~3999 bytes — ~97 bytes under the 4096
+# limit. 120 left no margin in that case (it overshot 4096), so the cap was
+# lowered to 80 for comfortable headroom; for normal Polish prose the margin is
+# far larger.
+PUSH_BODY_SUMMARY_MAX_CHARS = 80
+
 
 def _build_sources_list(event: Event, db: Database, max_chars: int | None = None) -> str:
     """Build a formatted source list from event article_ids.
@@ -185,12 +203,24 @@ def _format_update_sms(event: Event, db: Database, config: SentinelConfig) -> st
 
 
 def _format_push(event: Event, is_update: bool = False) -> tuple[str, str]:
-    """Format a short push notification title + body in Polish."""
+    """Format a short push notification title + body in Polish.
+
+    The visible ``body`` embeds only a bounded snippet of ``summary_pl`` —
+    head-sliced to ``PUSH_BODY_SUMMARY_MAX_CHARS`` codepoints (1.3b) so the
+    total Expo/APNs payload stays under the ~4096-byte limit. The slice is on
+    the Python ``str`` (never the encoded bytes), so a multibyte UTF-8 character
+    is never split; a trailing ``…`` is appended only when the summary was
+    actually truncated. The full untrimmed summary still travels in
+    ``data.summary_pl`` (the inbox renders from ``data``, not ``body``).
+    """
     event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
     title = (
         f"ℹ️ SENTINEL — aktualizacja: {event_type_pl}" if is_update else f"\U0001f6a8 PROJECT SENTINEL: {event_type_pl}"
     )
-    body = f"{event.summary_pl}\nPilność {event.urgency_score}/10 · źródła: {event.source_count}"
+    summary = event.summary_pl
+    if len(summary) > PUSH_BODY_SUMMARY_MAX_CHARS:
+        summary = summary[:PUSH_BODY_SUMMARY_MAX_CHARS].rstrip() + "…"
+    body = f"{summary}\nPilność {event.urgency_score}/10 · źródła: {event.source_count}"
     return title, body
 
 
@@ -302,6 +332,11 @@ def _build_push_data(event: Event, db: Database, config: SentinelConfig, is_upda
     while data["sources"] and _data_byte_size(data) > PUSH_DATA_MAX_BYTES:
         data["sources"].pop()
     # (2) Truncate sms_body (head-slice) if still over with no sources left.
+    # Order rationale (DO NOT reorder): sms_body is a redundant *fallback*
+    # mirror of the SMS text — it is only rendered when the structured fields
+    # are missing, so it is sacrificed *before* summary_pl, which is the inbox
+    # Detail screen's primary rendered content. Sacrificing summary_pl first
+    # would silently shorten what the user actually reads.
     if _data_byte_size(data) > PUSH_DATA_MAX_BYTES:
         _truncate_to_byte_budget(data, "sms_body")
     # (3) Truncate summary_pl (head-slice) as the last resort.
