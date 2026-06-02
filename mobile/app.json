@@ -16,7 +16,10 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.kossakowski.sentinel",
       "infoPlist": {
-        "UIBackgroundModes": ["remote-notification"]
+        "UIBackgroundModes": [
+          "remote-notification"
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -31,11 +34,14 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": ["expo-notifications"],
+    "plugins": [
+      "expo-notifications"
+    ],
     "extra": {
       "eas": {
-        "projectId": "00000000-0000-0000-0000-000000000000"
+        "projectId": "d0e215dd-e23f-4d55-a6b1-a919ea75113d"
       }
-    }
+    },
+    "owner": "beepbeepjeep"
   }
 }

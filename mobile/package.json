@@ -13,6 +13,7 @@
     "expo": "~54.0.33",
     "expo-clipboard": "~8.0.8",
     "expo-constants": "~18.0.13",
+    "expo-dev-client": "~6.0.21",
     "expo-device": "~8.0.10",
     "expo-notifications": "~0.32.17",
     "expo-status-bar": "~3.0.9",
