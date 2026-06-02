@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import Original from './designs/Original';
@@ -29,6 +29,11 @@ export default function App() {
   // Registered at the app root so a received push is captured even while the
   // PushPanel overlay is closed; the latest is surfaced for on-device verification.
   const lastPush = usePushReceiver();
+  // A received or tapped push opens the reader so the full message is presented
+  // immediately, without hunting for the PUSH panel.
+  useEffect(() => {
+    if (lastPush) setShowPush(true);
+  }, [lastPush]);
   const current = DESIGNS[i];
   const { Component, dark } = current;
 

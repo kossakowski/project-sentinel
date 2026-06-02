@@ -60,7 +60,19 @@ export default function PushPanel({ onClose, lastPush = null }: Props) {
         <Text style={styles.title}>POWIADOMIENIA PUSH</Text>
         <View style={styles.divider} />
 
-        <Text style={styles.label}>STATUS</Text>
+        <Text style={styles.label}>OSTATNI PUSH</Text>
+        {lastPush ? (
+          <View style={styles.tokenBox}>
+            <Text style={styles.pushTitle}>{lastPush.title ?? '(bez tytulu)'}</Text>
+            <Text style={styles.pushBody}>{lastPush.body ?? '(bez tresci)'}</Text>
+          </View>
+        ) : (
+          <View style={styles.tokenBox}>
+            <Text style={styles.tokenEmpty}>brak (jeszcze nic nie odebrano)</Text>
+          </View>
+        )}
+
+        <Text style={[styles.label, styles.labelSpaced]}>STATUS</Text>
         <Text style={[styles.status, granted ? styles.statusOk : styles.statusBad]}>
           Status: {status}
         </Text>
@@ -92,18 +104,6 @@ export default function PushPanel({ onClose, lastPush = null }: Props) {
           Wklej ten token do konfiguracji serwera, aby to urzadzenie otrzymywalo alerty o
           zagrozeniu militarnym.
         </Text>
-
-        <Text style={[styles.label, styles.labelSpaced]}>OSTATNI PUSH</Text>
-        {lastPush ? (
-          <View style={styles.tokenBox}>
-            <Text style={styles.pushTitle}>{lastPush.title ?? '(bez tytulu)'}</Text>
-            <Text style={styles.pushBody}>{lastPush.body ?? '(bez tresci)'}</Text>
-          </View>
-        ) : (
-          <View style={styles.tokenBox}>
-            <Text style={styles.tokenEmpty}>brak (jeszcze nic nie odebrano)</Text>
-          </View>
-        )}
 
         <Pressable onPress={onClose} style={[styles.button, styles.buttonGhost]}>
           <Text style={[styles.buttonText, styles.buttonTextGhost]}>ZAMKNIJ</Text>
