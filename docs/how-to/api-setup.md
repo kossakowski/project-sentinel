@@ -123,7 +123,7 @@ There is no API key to obtain. The two pieces you provide are:
          - "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]"
    ```
 
-To route a 5–8 tier to push, also set its `channel` — e.g. `alerts.urgency_levels.high.channel: push` (push only, no SMS) or `both` (SMS and push). Until push is enabled, a `both`/`push` tier still sends SMS only, so enabling push is a no-op until both a token and a non-default `channel` are in place. The urgency 9–10 call always fires its additive push once push is enabled (no `channel` needed there).
+The 5–8 tiers default to `channel: both`, so once push is enabled with a token they push immediately (alongside SMS) — no `channel` change is required. To change a tier's delivery, set its `channel` — e.g. `alerts.urgency_levels.high.channel: push` (push only, no SMS) or leave it at `both` (SMS and push). The urgency 9–10 call also fires its additive push as soon as push is enabled with a token (no `channel` needed there). While push is disabled or no token is set, every tier still sends SMS only and the 9–10 push no-ops.
 
 See the [mobile companion app explanation](../explanation/mobile-app.md) for how to obtain a device token, and the [Configuration Reference](../reference/config-reference.md) for the full `alerts.push` block and the `channel` field.
 
