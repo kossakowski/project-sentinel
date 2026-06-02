@@ -1,136 +1,81 @@
-import { useEffect, useState } from 'react';
-import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+/**
+ * App entry — the navigation shell (3.2).
+ *
+ * Renders `SafeAreaProvider` → `NavigationContainer` (`ref={navigationRef}`,
+ * `onReady` flushes any pending cold-start route) → a native-stack with `List`
+ * (initial) and `Detail`. The design-showcase is no longer the entry (designs/
+ * stay in the repo, unused — Non-Goals).
+ *
+ * At the root it wires the reliable capture + routing paths:
+ *  - `attachForegroundCapture()` — foreground-received push → ingest;
+ *  - tray-sweep on `AppState` → 'active' (`sweepPresented`) — the de-facto
+ *    background capture (AD-3);
+ *  - `useNotificationRouting()` — warm + cold tap → ingest → navigate to Detail;
+ *  - `syncBadge(unread)` — badge resync on foreground and after every ingest.
+ * The notification handler + headless background task are registered in
+ * `index.ts` → `bootstrap.ts` (2.5 / 2.8) before this tree mounts.
+ */
+
+import { useCallback, useEffect, useRef } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import Original from './designs/Original';
-import Moro from './designs/Moro';
-import MoroActive from './designs/MoroActive';
-import MoroArctic from './designs/MoroArctic';
-import Tactical from './designs/Tactical';
-import PushPanel from './push/PushPanel';
-import { usePushReceiver } from './push/usePushReceiver';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
-type Design = {
-  name: string;
-  Component: () => React.JSX.Element;
-  dark: boolean;
-};
+import { navigationRef, flushPendingRoute, type RootStackParamList } from './src/navigation/navigationRef';
+import { attachForegroundCapture, sweepPresented } from './src/notifications/capture';
+import { useNotificationRouting } from './src/notifications/useNotificationRouting';
+import { syncBadge } from './src/badge';
+import * as store from './src/messages/store';
+import MessageListScreen from './src/screens/MessageListScreen';
+import MessageDetailScreen from './src/screens/MessageDetailScreen';
 
-const DESIGNS: Design[] = [
-  { name: 'Original', Component: Original, dark: false },
-  { name: 'Moro', Component: Moro, dark: true },
-  { name: 'Moro+', Component: MoroActive, dark: true },
-  { name: 'Arctic', Component: MoroArctic, dark: false },
-  { name: 'Tactical', Component: Tactical, dark: true },
-];
+const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function App() {
-  const [i, setI] = useState(DESIGNS.findIndex((d) => d.name === 'Tactical'));
-  const [showPush, setShowPush] = useState(false);
-  // Registered at the app root so a received push is captured even while the
-  // PushPanel overlay is closed; the latest is surfaced for on-device verification.
-  const lastPush = usePushReceiver();
-  // A received or tapped push opens the reader so the full message is presented
-  // immediately, without hunting for the PUSH panel.
+  // Resync the badge from the store's current unread count (after an ingest/foreground).
+  const resyncBadge = useCallback(() => {
+    void syncBadge(store.unreadCount());
+  }, []);
+
+  // Tap → Detail routing (warm + cold), ingesting before navigating.
+  useNotificationRouting(resyncBadge);
+
+  // Foreground capture: a push received while foregrounded → ingest → badge.
   useEffect(() => {
-    if (lastPush) setShowPush(true);
-  }, [lastPush]);
-  const current = DESIGNS[i];
-  const { Component, dark } = current;
+    const detach = attachForegroundCapture(resyncBadge);
+    return detach;
+  }, [resyncBadge]);
+
+  // Tray-sweep on every foreground transition + once on mount (de-facto background
+  // capture). Also resync the badge on foreground.
+  const appState = useRef<AppStateStatus>(AppState.currentState);
+  useEffect(() => {
+    // Initial sweep at launch (the app may open with tray notifications present).
+    void sweepPresented(resyncBadge).finally(resyncBadge);
+
+    const subscription = AppState.addEventListener('change', (next) => {
+      const prev = appState.current;
+      appState.current = next;
+      if (next === 'active' && prev !== 'active') {
+        void sweepPresented(resyncBadge).finally(resyncBadge);
+      }
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, [resyncBadge]);
 
   return (
-    <View style={[styles.root, dark && styles.rootDark]}>
-      <View style={styles.canvas}>
-        <Component />
-      </View>
-      {showPush && (
-        <View style={styles.overlay}>
-          <PushPanel onClose={() => setShowPush(false)} lastPush={lastPush} />
-        </View>
-      )}
-      <SafeAreaView style={[styles.pickerSafe, dark && styles.pickerSafeDark]}>
-        <View style={[styles.picker, dark && styles.pickerDark]}>
-          {DESIGNS.map((d, idx) => {
-            const active = idx === i;
-            return (
-              <Pressable
-                key={d.name}
-                onPress={() => setI(idx)}
-                style={[
-                  styles.pill,
-                  active && (dark ? styles.pillActiveDark : styles.pillActiveLight),
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.pillText,
-                    dark ? styles.pillTextDark : styles.pillTextLight,
-                    active && (dark ? styles.pillTextActiveDark : styles.pillTextActiveLight),
-                  ]}
-                >
-                  {d.name}
-                </Text>
-              </Pressable>
-            );
-          })}
-          <Pressable
-            onPress={() => setShowPush((v) => !v)}
-            style={[styles.pill, styles.pushPill, showPush && styles.pushPillActive]}
-          >
-            <Text
-              style={[styles.pillText, showPush ? styles.pushPillTextActive : styles.pushPillText]}
-            >
-              PUSH
-            </Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
-      <StatusBar style={dark || showPush ? 'light' : 'dark'} />
-    </View>
+    <SafeAreaProvider>
+      <NavigationContainer ref={navigationRef} onReady={flushPendingRoute}>
+        <Stack.Navigator initialRouteName="List" screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="List" component={MessageListScreen} />
+          <Stack.Screen name="Detail" component={MessageDetailScreen} />
+        </Stack.Navigator>
+      </NavigationContainer>
+      <StatusBar style="light" />
+    </SafeAreaProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#fff' },
-  rootDark: { backgroundColor: '#0a0a0a' },
-  canvas: { flex: 1 },
-  overlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: '#0a0a0a',
-  },
-  pickerSafe: { backgroundColor: '#fff' },
-  pickerSafeDark: { backgroundColor: '#0a0a0a' },
-  picker: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    gap: 4,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#e0e0e0',
-  },
-  pickerDark: { borderTopColor: '#222' },
-  pill: {
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 16,
-    backgroundColor: 'transparent',
-  },
-  pillActiveLight: { backgroundColor: '#1a1a1a' },
-  pillActiveDark: { backgroundColor: '#e8e8e8' },
-  pillText: { fontSize: 11, letterSpacing: 0.3, fontWeight: '500' },
-  pillTextLight: { color: '#888' },
-  pillTextDark: { color: '#777' },
-  pillTextActiveLight: { color: '#fff' },
-  pillTextActiveDark: { color: '#0a0a0a' },
-  pushPill: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#3dff9a',
-  },
-  pushPillActive: { backgroundColor: '#3dff9a' },
-  pushPillText: { color: '#3dff9a' },
-  pushPillTextActive: { color: '#0a0a0a', fontWeight: '700' },
-});

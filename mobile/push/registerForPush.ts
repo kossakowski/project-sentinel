@@ -3,18 +3,10 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 
-// Show notifications even when the app is in the foreground. The
-// NotificationBehavior shape changed across expo-notifications versions; for the
-// SDK 54 line (expo-notifications 0.32.x) the banner/list flags are required and
-// shouldShowAlert is deprecated.
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+// NOTE: the foreground notification handler is registered once, in module scope of
+// `src/notifications/bootstrap.ts` (2.8), so it runs at app load incl. headless
+// launches. It is intentionally NOT registered here anymore — bootstrap.ts is the
+// sole owner. Token-minting below is unchanged (3.12).
 
 export type PushRegistrationResult = {
   token: string | null;
@@ -44,7 +36,13 @@ export async function registerForPushNotificationsAsync(): Promise<PushRegistrat
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
   let finalStatus = existingStatus;
   if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
+    // Request alert + badge + sound explicitly. allowBadge is required so the app
+    // (the sole badge authority, 3.6) can drive the app-icon unread count; without
+    // it setBadgeCountAsync silently no-ops. Adding these permission OPTIONS is not
+    // an alteration to token-minting (3.6a / 3.12).
+    const { status } = await Notifications.requestPermissionsAsync({
+      ios: { allowAlert: true, allowBadge: true, allowSound: true },
+    });
     finalStatus = status;
   }
   if (finalStatus !== 'granted') {
