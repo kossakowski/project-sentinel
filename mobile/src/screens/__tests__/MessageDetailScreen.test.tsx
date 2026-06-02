@@ -97,12 +97,29 @@ describe('MessageDetailScreen', () => {
       'detail-sources',
       'detail-time',
     ];
-    const ys = order.map((id) => {
-      const node = screen.getByTestId(id);
-      return node.props.testID;
-    });
-    // All present and unique, in the declared sequence.
-    expect(ys).toEqual(order);
+    // Real order check: depth-first-walk the rendered tree collecting every
+    // testID in document (render) order, then assert the target rows appear as an
+    // ordered subsequence. This actually fails if the JSX rows are reordered —
+    // unlike `id -> node.props.testID` (which is each node's own id, a tautology).
+    const targetSet = new Set(order);
+    const documentOrder: string[] = [];
+    const walk = (node: { props?: { testID?: unknown }; children?: unknown[] }): void => {
+      const id = node?.props?.testID;
+      if (typeof id === 'string' && targetSet.has(id) && !documentOrder.includes(id)) {
+        documentOrder.push(id);
+      }
+      for (const child of node?.children ?? []) {
+        if (child && typeof child === 'object') {
+          walk(child as { props?: { testID?: unknown }; children?: unknown[] });
+        }
+      }
+    };
+    walk(screen.toJSON() as never);
+
+    // Every declared row is present...
+    expect(new Set(documentOrder)).toEqual(targetSet);
+    // ...and they appear in exactly the declared top-to-bottom sequence in the tree.
+    expect(documentOrder).toEqual(order);
   });
 
   test('test_detail_omits_empty_aggressor', async () => {
