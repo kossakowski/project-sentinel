@@ -44,7 +44,7 @@ The defaults are sensible out of the box. Key settings you may want to customize
 - **RSS sources** -- ~20 feeds preconfigured (Defence24, RMF24, BBC, TASS, etc.); PAP and TVN24 ship disabled (`enabled: false`)
 - **Scan interval** -- dual-lane: fast lane every 3 min (Telegram, Google News, priority-1 RSS), slow lane every 15 min (all enabled sources; GDELT is disabled in production)
 - **Corroboration threshold** -- default is 1 (a single source can trigger a phone call)
-- **Urgency routing** -- critical (9-10) = phone call, high (7-8) = SMS, medium (5-6) = SMS, low (1-4) = log only. An optional Expo **push** channel can fire additively alongside these (off by default)
+- **Urgency routing** -- critical (9-10) = phone call + confirmation/stop SMS + an additive Expo push; high (7-8) and medium (5-6) follow a per-tier `channel` (`sms` / `push` / `both`, default `both`); low (1-4) = log only. Push is **off by default**, so the shipped default (`channel: both`, push disabled) sends SMS only — switching a tier to `push` is what removes its Twilio SMS cost
 
 See [Configuration Reference](../reference/config-reference.md) for every parameter.
 

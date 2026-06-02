@@ -39,7 +39,11 @@ Two independent alert-level decisions exist and can disagree:
    urgency cuts (phone_call ≥ 9 AND `source_count ≥ classification.corroboration_required`; sms ≥ 7;
    sms ≥ 5; else pending; `dry_run` short-circuits).
 2. `AlertStateMachine._determine_action` makes the final channel choice from
-   `alerts.urgency_levels` + each level's `corroboration_required`.
+   `alerts.urgency_levels` + each level's `corroboration_required`. For the SMS-action tiers
+   (5–8) it resolves the delivery channel from that level's `channel` setting (`sms` / `push` /
+   `both`, default `both`), so the operator can route a tier to SMS, push, or both; `channel` is
+   ignored on the `critical` (`phone_call`) and `low` (`log_only`) levels (the 9–10 call fires an
+   additive push regardless). See the [config reference](../../docs/reference/config-reference.md).
 
 Note `classification.corroboration_required` Pydantic default is `2`, but live `config/config.yaml`
 sets `1`.

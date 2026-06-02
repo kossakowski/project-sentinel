@@ -7,10 +7,13 @@
 
 ## Purpose
 
-Project Sentinel's monitoring runtime gained an additive **push** alert channel (Expo
-push notifications) alongside the existing phone call and SMS channels — see the push
-section in [`architecture.md`](architecture.md). To deliver a push, the server needs the
-target device's **Expo push token**, and that token can only be minted *on the device*.
+Project Sentinel's monitoring runtime gained an Expo **push** alert channel (push
+notifications) alongside the existing phone call and SMS channels. Each SMS urgency tier
+(5–8) carries a per-tier `channel` setting (`sms` / `push` / `both`, default `both`) that
+selects how that tier is delivered, and the urgency 9–10 call path additionally fires a push
+— see the push section in [`architecture.md`](architecture.md). To deliver a push, the server
+needs the target device's **Expo push token**, and that token can only be minted *on the
+device*.
 
 The `mobile/` app exists to solve exactly that bootstrap problem. It:
 
@@ -27,12 +30,24 @@ Twilio. It is a thin client for the push channel.
 ## How it relates to the push channel in the runtime
 
 The push channel in the monitoring runtime is implemented by `sentinel/alerts/push_client.py`
-(`ExpoPushClient`), which POSTs to `https://exp.host/--/api/v2/push/send`. It fires
-**additively** for any non-`log_only` event (after the cooldown/dedup/suppression gates),
-reusing the generic `AlertRecord` with `alert_type = "push"` — no DB schema change. The
-channel is **off by default**: the config block `alerts.push` has `enabled: false` and an
-empty `tokens: []` list, and the live `config/config.yaml` omits the block entirely. See
-[`../how-to/api-setup.md`](../how-to/api-setup.md) for enabling it.
+(`ExpoPushClient`), which POSTs to `https://exp.host/--/api/v2/push/send`, reusing the generic
+`AlertRecord` with `alert_type = "push"` — no DB schema change. **Where a push fires is driven
+by the per-tier `channel` setting plus the call path:**
+
+- **Urgency 5–8 (the SMS tiers)** — `AlertStateMachine._determine_action` returns the matched
+  tier's `channel`. A `push` tier sends a push **instead of** the Twilio SMS; a `both` tier
+  sends SMS **and** push; an `sms` tier sends SMS only.
+- **Urgency 9–10** — the path keeps its Twilio call + confirmation/stop SMS and **additionally
+  fires an Expo push** (additive — the call remains the primary wake-up). The `channel` field
+  is ignored on this tier.
+- **Acknowledged-event updates** — the update SMS is sent **and** an additive push fires, so
+  the phone shows each escalation of an active critical event.
+
+The channel is **off by default**: the config block `alerts.push` has `enabled: false` and an
+empty `tokens: []` list, and the live `config/config.yaml` omits the block entirely — so until
+push is enabled, a `both`/`push` tier still sends SMS only and the deployed behavior is
+unchanged. Switching a tier to `channel: push` (with push enabled) is what removes that tier's
+Twilio SMS cost. See [`../how-to/api-setup.md`](../how-to/api-setup.md) for enabling it.
 
 The end-to-end relationship is:
 

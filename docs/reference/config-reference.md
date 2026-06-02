@@ -156,14 +156,34 @@ Consumed by: `sentinel/alerts/`
 
 ### `alerts.urgency_levels` — `UrgencyLevel` (dict keyed by name)
 
-| Level | `min_score` | `action` | `corroboration_required` | `retry_attempts` | `retry_interval_minutes` | `fallback` |
-|---|---|---|---|---|---|---|
-| `critical` | 9 | `phone_call` | 1 | 3 | 5 | `sms` |
-| `high` | 7 | `sms` | 1 | 0 | 5 | — |
-| `medium` | 5 | `sms` | 1 | 0 | 5 | — |
-| `low` | 1 | `log_only` | 1 | 0 | 5 | — |
+| Level | `min_score` | `action` | `channel` | `corroboration_required` | `retry_attempts` | `retry_interval_minutes` | `fallback` |
+|---|---|---|---|---|---|---|---|
+| `critical` | 9 | `phone_call` | (n/a) | 1 | 3 | 5 | `sms` |
+| `high` | 7 | `sms` | `both` | 1 | 0 | 5 | — |
+| `medium` | 5 | `sms` | `both` | 1 | 0 | 5 | — |
+| `low` | 1 | `log_only` | (n/a) | 1 | 0 | 5 | — |
 
 `action` values: `phone_call`, `sms`, `log_only`.
+
+#### `channel` — per-tier delivery channel for the SMS tiers
+
+| YAML key | Type | Allowed values | Pydantic default | Description |
+|---|---|---|---|---|
+| `channel` | str | `sms`, `push`, `both` | `both` | Which delivery channel an **SMS-action tier** uses. A `field_validator` rejects any other value with a `ValueError` at load. |
+
+The `channel` field lets the operator choose, **per urgency tier**, how a 5–8 alert is delivered:
+
+- **`sms`** — Twilio SMS only (the historical behavior).
+- **`push`** — Expo push only; **no Twilio SMS** for that tier (this is what removes the tier's Twilio SMS cost).
+- **`both`** (default) — Twilio SMS **and** an Expo push.
+
+Scope of `channel`:
+
+- It is consulted **only** for the `high` (urgency 7–8) and `medium` (urgency 5–6) tiers — the levels whose `action` is `sms`. `AlertStateMachine._determine_action` returns the matched SMS-tier level's `channel` (`sms` / `push` / `both`).
+- It is **ignored** for the `critical` (`phone_call`) and `low` (`log_only`) levels. The urgency 9–10 path always places the call + confirmation/stop SMS and **additionally fires an Expo push** (additive — the call stays the primary wake-up); urgency 1–4 logs only. Configs may omit `channel` on `critical`/`low` (the default still applies; it is simply unused there).
+- Existing configs that omit `channel` entirely still load — the `both` default applies to `high`/`medium`.
+
+**Behavior-preserving default.** Because the push client no-ops while push is disabled or no tokens are configured (see `alerts.push` below), the shipped default — `channel: both` on `high`/`medium` with `alerts.push` disabled — sends **SMS only**, identical to the historical behavior. Flipping a tier to `channel: push` (with push enabled and a token configured) is what actually removes that tier's Twilio SMS cost.
 
 ### `alerts.acknowledgment` — `AcknowledgmentConfig`
 
@@ -195,7 +215,7 @@ Python format strings. Override in config to customize; Pydantic provides defaul
 
 Consumed by: `sentinel/alerts/push_client.py` (`ExpoPushClient`) via `sentinel/alerts/state_machine.py`.
 
-Push (Expo) is an **additive, opt-in** channel for the companion mobile app. It fires *alongside* the phone call / SMS (before the Twilio dispatch, after the cooldown/dedup/suppression gates) for any non-`log_only` event — it never replaces the Twilio channels. A push does NOT suppress a later SMS (`push` is not in the user-notified-alert-types set). **The live `config/config.yaml` omits this block entirely, so push is OFF by default**; `config/config.example.yaml` ships it as a commented template.
+Push (Expo) is an **opt-in** channel for the companion mobile app, dispatched (before the Twilio dispatch, after the cooldown/dedup/suppression gates) when the resolved tier `channel` is `push` or `both` for the 5–8 tiers, and **additively** on the urgency 9–10 `phone_call` path and on acknowledged-event updates. For a `both` tier the push fires *alongside* the SMS; for a `push` tier it **replaces** the SMS for that tier (no Twilio SMS is sent). A push does NOT suppress a later SMS (`push` is not in the user-notified-alert-types set), and the push half is bounded only by its own dedup on a prior `push` record. **The live `config/config.yaml` omits this block entirely, so push is OFF by default** (the `enabled=False` Pydantic default is the production-matching disabled state) — with push off, a `both`/`push` tier still sends SMS only, so the deployed behavior is unchanged; `config/config.example.yaml` ships the block disabled (`enabled: false`).
 
 | YAML key | Type | Live value | Pydantic default | Description |
 |---|---|---|---|---|

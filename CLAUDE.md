@@ -1,8 +1,10 @@
 # Project Sentinel — Military Alert Monitoring System
 
 Real-time bot that scans PL/EN/UA/RU media for military attacks/invasions targeting Poland and
-the Baltic states and alerts via Twilio **phone call + SMS** (optional additive Expo **push**).
-**Live in production on a Hetzner VPS.**
+the Baltic states and alerts via Twilio **phone call + SMS** plus an optional Expo **push**. Each
+SMS-tier (5–8) carries a per-tier `channel` (`sms` / `push` / `both`, default `both`) so the
+operator can route that tier to SMS, push, or both; the urgency 9–10 call also fires an additive
+push. **Live in production on a Hetzner VPS.**
 
 A separate read-only **Article Dashboard** (`dashboard/`) is local-only and NOT part of the
 monitoring runtime — its rules live in [`dashboard/CLAUDE.md`](dashboard/CLAUDE.md) and load when

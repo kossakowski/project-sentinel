@@ -104,7 +104,7 @@ print(f'SMS sent: {msg.sid}')
 
 ## 3. Expo Push (Optional — Mobile Push Channel)
 
-Expo Push is an **optional, additive** alert channel that fires a push notification alongside the phone call / SMS. It is **off by default** and needs no account or paid plan for basic sends — Expo's push service is free.
+Expo Push is an **optional** alert channel. Each SMS urgency tier (5–8) carries a per-tier `channel` setting (`sms` / `push` / `both`, default `both`) that selects whether that tier is delivered by Twilio SMS, by push, or by both; the urgency 9–10 call also fires a push additively. It is **off by default** and needs no account or paid plan for basic sends — Expo's push service is free.
 
 There is no API key to obtain. The two pieces you provide are:
 
@@ -123,7 +123,9 @@ There is no API key to obtain. The two pieces you provide are:
          - "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]"
    ```
 
-See the [mobile companion app explanation](../explanation/mobile-app.md) for how to obtain a device token, and the [Configuration Reference](../reference/config-reference.md) for the full `alerts.push` block.
+To route a 5–8 tier to push, also set its `channel` — e.g. `alerts.urgency_levels.high.channel: push` (push only, no SMS) or `both` (SMS and push). Until push is enabled, a `both`/`push` tier still sends SMS only, so enabling push is a no-op until both a token and a non-default `channel` are in place. The urgency 9–10 call always fires its additive push once push is enabled (no `channel` needed there).
+
+See the [mobile companion app explanation](../explanation/mobile-app.md) for how to obtain a device token, and the [Configuration Reference](../reference/config-reference.md) for the full `alerts.push` block and the `channel` field.
 
 Test it once configured with `./run.sh --test-alert push`.
 

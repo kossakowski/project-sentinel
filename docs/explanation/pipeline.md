@@ -141,9 +141,9 @@ The alert level assigned to an Event is determined by `alerts/state_machine.py:_
 
 | Condition (evaluated in order) | Alert level | Reference |
 |--------------------------------|-------------|-----------|
-| `urgency >= 9 AND source_count >= 1` | Phone call | live `classification.corroboration_required = 1` |
-| `urgency >= 7` (no source_count check) | SMS | `state_machine.py:_determine_action` |
-| `urgency >= 5` | SMS | `state_machine.py:_determine_action` |
+| `urgency >= 9 AND source_count >= 1` | Phone call + confirmation/stop SMS + additive push | live `classification.corroboration_required = 1` |
+| `urgency >= 7` (no source_count check) | `high.channel` (`sms` / `push` / `both`, default `both`) | `state_machine.py:_determine_action` |
+| `urgency >= 5` | `medium.channel` (`sms` / `push` / `both`, default `both`) | `state_machine.py:_determine_action` |
 | Below threshold | Pending — no alert | |
 
 Note: two parallel urgency decision paths exist (corroborator and state_machine) and can disagree. The **Pydantic default for `corroboration_required` is `2`**, but live `config/config.yaml` sets it to `1` — so in production a single source can trigger a phone call. Always check the live config before assuming corroboration behaviour.
@@ -154,9 +154,15 @@ Events are stored in the database and are not static. As new articles arrive in 
 
 ## Stage 7: Alerts
 
-### Push Notification (additive, fires first)
+### Push Notification (channel-routed for 5–8, additive on 9–10)
 
-For any Event whose action is not `log_only`, an **Expo push notification** is sent to the companion mobile app *before* the (potentially blocking) Twilio dispatch, so it reaches the phone immediately. Push is **additive** — it never replaces the phone call or SMS — and is **off by default**: it only fires when `alerts.push.enabled` is true and at least one Expo token is configured (the live production config omits the block, so push is currently disabled). The initial push is deduplicated against any prior push for the same Event, and because push is not one of the "user already notified" channels, a sent push never suppresses a later SMS. See the [mobile app explainer](mobile-app.md) for how a device registers its push token.
+`process_event` can deliver alerts as a **Twilio SMS**, an **Expo push** to the companion mobile app, or **both**, sent *before* the (potentially blocking) Twilio dispatch so the push reaches the phone immediately. Which one fires depends on the resolved tier `channel` and the call path:
+
+- **Urgency 5–8 (the SMS tiers)** — `_determine_action` returns the matched tier's `channel` (`sms` / `push` / `both`, default `both`). A `push` tier sends a push **instead of** the SMS for that tier; a `both` tier sends SMS **and** push; an `sms` tier sends SMS only.
+- **Urgency 9–10** — the call + confirmation/stop SMS flow runs as before, and an Expo push fires **additively** (the call remains the primary wake-up; the `channel` field is ignored here).
+- **Acknowledged-event updates** — the update SMS is sent **and** an additive push fires (the `is_update` dedup-bypass) so each escalation of an active critical event reaches the phone.
+
+Push is **off by default**: it only fires when `alerts.push.enabled` is true and at least one Expo token is configured (the live production config omits the block, so push is currently disabled). While push is off, a `both`/`push` tier still sends SMS only, so the deployed behavior is unchanged; switching a tier to `push` removes that tier's Twilio SMS cost. The initial push is deduplicated against any prior `push` record for the same Event, and because push is not one of the "user already notified" channels, a sent push does not suppress a later SMS. See the [mobile app explainer](mobile-app.md) for how a device registers its push token.
 
 ### Phone Call (Urgency 9–10 with Independent Corroboration)
 

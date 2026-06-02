@@ -28,7 +28,7 @@ Flags are defined in `sentinel.py:build_parser()`.
 
 With **no flags**, `sentinel.py` runs in **continuous mode**: it starts the pipeline, runs one cycle immediately, then drives the dual-lane APScheduler (fast lane every 3 min, slow lane every 15 min) until interrupted.
 
-> `--test-alert push` only dispatches if `alerts.push.enabled: true` and `alerts.push.tokens` is non-empty; otherwise it prints a configuration hint and returns without sending. There is **no** `whatsapp` choice — that channel was removed.
+> `--test-alert push` calls the Expo push path directly to prove the channel works end-to-end; it does **not** consult `alerts.urgency_levels.*.channel`. In normal operation, push for the SMS tiers (5–8) is routed per-tier by that `channel` setting (`sms` / `push` / `both`), and the urgency 9–10 call fires an additive push — see the [Config Reference](config-reference.md). The flag only dispatches if `alerts.push.enabled: true` and `alerts.push.tokens` is non-empty; otherwise it prints a configuration hint and returns without sending. There is **no** `whatsapp` choice — that channel was removed.
 
 ### Examples
 

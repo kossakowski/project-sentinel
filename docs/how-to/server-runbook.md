@@ -164,7 +164,7 @@ sudo nano /etc/sentinel/config.yaml
 sudo systemctl restart sentinel
 ```
 
-> **Push channel (optional, off by default):** device push tokens for the Expo push channel live in `alerts.push.tokens` (a YAML list) under the `alerts.push` block (`enabled`, `tokens`). The live `/etc/sentinel/config.yaml` omits the block, so push is disabled; add the block and tokens here to enable it. See `config/config.example.yaml` for the shape.
+> **Push channel (optional, off by default):** device push tokens for the Expo push channel live in `alerts.push.tokens` (a YAML list) under the `alerts.push` block (`enabled`, `tokens`). The live `/etc/sentinel/config.yaml` omits the block, so push is disabled; add the block and tokens here to enable it. See `config/config.example.yaml` for the shape. Delivery for the SMS tiers (5–8) is routed per-tier by `alerts.urgency_levels.{high,medium}.channel` (`sms` / `push` / `both`, default `both`) — set a tier to `push` to drop its Twilio SMS cost — while urgency 9–10 keeps its call + confirmation/stop SMS and fires an additive push. With push disabled, a `both`/`push` tier still sends SMS only, so the deployed behavior is unchanged until you enable push.
 
 ## Secrets
 

@@ -31,7 +31,7 @@
 | `sentinel/alerts/dispatcher.py` | `AlertDispatcher` | Sorts events by urgency; routes to `AlertStateMachine` or dry-run log |
 | `sentinel/alerts/state_machine.py` | `AlertStateMachine` | Urgency → action decision; async call/SMS execution; cooldown; call polling |
 | `sentinel/alerts/twilio_client.py` | `TwilioClient` | Twilio REST API wrapper: `make_alert_call(phone, message_pl, event_id)` (`twilio_client.py:43`), `send_sms(phone, message, event_id)`, `get_call_status(twilio_sid)` |
-| `sentinel/alerts/push_client.py` | `ExpoPushClient` | Additive Expo push channel: `send_push(title, body, event_id, data)` POSTs to `https://exp.host/--/api/v2/push/send` (optional `EXPO_ACCESS_TOKEN` bearer). OFF by default (`alerts.push.enabled: false`); returns a generic `AlertRecord` with `alert_type="push"`. See [`mobile-app.md`](mobile-app.md) for the companion app that registers the device push token. |
+| `sentinel/alerts/push_client.py` | `ExpoPushClient` | Expo push channel: `send_push(title, body, event_id, data)` POSTs to `https://exp.host/--/api/v2/push/send` (optional `EXPO_ACCESS_TOKEN` bearer). Routed per-tier by each SMS-level's `channel` (`sms` / `push` / `both`) and fired additively on the 9–10 call. OFF by default (`alerts.push.enabled: false`); returns a generic `AlertRecord` with `alert_type="push"`. See [`mobile-app.md`](mobile-app.md) for the companion app that registers the device push token. |
 
 ---
 
@@ -208,15 +208,17 @@ Pipeline failure: SMS sent after 3 consecutive cycle failures.
 
 Decision matrix driven by `config.alerts.urgency_levels` (sorted by `min_score` desc):
 
-| urgency_score | source_count vs. corroboration_required | action | Event.alert_status set by corroborator |
+| urgency_score | source_count vs. corroboration_required | action returned by `_determine_action` | Event.alert_status set by corroborator |
 |---|---|---|---|
-| ≥ 9 (CRITICAL) | ≥ corroboration_required | `phone_call` | `phone_call` |
+| ≥ 9 (CRITICAL) | ≥ corroboration_required | `phone_call` (never `push`/`both`) | `phone_call` |
 | ≥ 9 (CRITICAL) | < corroboration_required | `sms` (fallback) | `sms` |
-| ≥ 7 (HIGH) | any | `sms` | `sms` |
-| ≥ 5 (MEDIUM) | any | `sms` | `sms` |
+| ≥ 7 (HIGH) | any | `high.channel` → `sms` / `push` / `both` | `sms` |
+| ≥ 5 (MEDIUM) | any | `medium.channel` → `sms` / `push` / `both` | `sms` |
 | ≥ 1 (LOW) | any | `log_only` | `pending` |
 
-**Additive push dispatch.** For any non-`log_only` action, `process_event` fires an Expo push (`_maybe_send_push` → `ExpoPushClient.send_push`) **additively, before** the Twilio dispatch — after the cooldown / acknowledged / pending-call / dedup gates, so it reaches the phone immediately. It is a no-op when `alerts.push.enabled` is false or no tokens are configured (the default). The push is recorded as a separate `AlertRecord` with `alert_type="push"`; the initial push is deduped on the presence of a prior `push` record. Because `push` is NOT in `_USER_NOTIFIED_ALERT_TYPES` (`sms`, `whatsapp`, `phone_call`), a sent push does not suppress a later SMS. See [`mobile-app.md`](mobile-app.md) for the companion app.
+For the SMS-action tiers (5–8), `_determine_action` returns the matched level's per-tier `channel` field (`sms` / `push` / `both`, default `both`); it ignores `channel` on the `critical` (`phone_call`) and `low` (`log_only`) levels.
+
+**Channel routing & additive push dispatch.** `process_event` resolves the action and dispatches: `push`/`both` send an Expo push (`_maybe_send_push` → `ExpoPushClient.send_push`); `sms`/`both` send a Twilio SMS (`push` replaces the SMS for a `push` tier — that is what cuts the tier's Twilio cost). The urgency 9–10 `phone_call` action places the call + confirmation/stop SMS **and additionally fires an Expo push** (additive — the call stays the primary wake-up). Acknowledged-event updates send the update SMS **and** an additive push (the `is_update` dedup-bypass, so each escalation pushes). The push fires **before** the Twilio dispatch — after the cooldown / acknowledged / pending-call / dedup gates — so it reaches the phone immediately, and is a no-op when `alerts.push.enabled` is false or no tokens are configured (the shipped default, where a `both`/`push` tier still sends SMS only). The push is recorded as a separate `AlertRecord` with `alert_type="push"`; the initial push is deduped on the presence of a prior `push` record, and the SMS re-alert suppression (`_user_already_notified`) gates only the SMS half, not the push. Because `push` is NOT in `_USER_NOTIFIED_ALERT_TYPES` (`sms`, `whatsapp`, `phone_call`), a sent push does not suppress a later SMS. See [`mobile-app.md`](mobile-app.md) for the companion app.
 
 Post-alert state transitions (managed by `AlertStateMachine`, not corroborator):
 - `acknowledged`: operator replies to the pre-call SMS with the correct 6-digit confirmation code. `acknowledged_at` is set on the Event. Further source additions trigger `_send_update_sms()`.
@@ -244,6 +246,7 @@ Post-alert state transitions (managed by `AlertStateMachine`, not corroborator):
 | `processing.dedup.cross_source_title_threshold` | `int` | `95` | rapidfuzz score for cross-source dedup |
 | `processing.dedup.lookback_minutes` | `int` | `60` | How far back DB title comparison looks |
 | `alerts.urgency_levels.<name>.corroboration_required` | `int` | `1` | Per-level override for corroboration gate on phone calls |
+| `alerts.urgency_levels.{high,medium}.channel` | `str` | `both` | Per-tier delivery channel for the SMS tiers (5–8): `sms`, `push`, or `both`. Ignored on `critical`/`low`. |
 | `alerts.acknowledgment.call_duration_threshold_seconds` | `int` | `15` | **Dead** — field still defined but read nowhere; the `if False:` block that referenced it was removed. Superseded by SMS-code confirmation. |
 | `alerts.acknowledgment.cooldown_hours` | `int` | `6` | No re-alerts within this window after acknowledgment |
 | `database.article_retention_days` | `int` | `30` | Articles older than this deleted each cycle |
@@ -253,7 +256,7 @@ Post-alert state transitions (managed by `AlertStateMachine`, not corroborator):
 | `sources.telegram.channels[*].keyword_bypass` | `bool` | `false` | Same bypass for Telegram channels |
 | `sources.gdelt.enabled` | `bool` | `false` | GDELT fetcher instantiated only when true; **disabled in production** (IP-throttled) |
 | `sources.gdelt.lookback_minutes` | `int` | `60` | GDELT `TIMESPAN` window (the API rejects < ~30 min). Live config carries a stale `update_interval_minutes: 15` that is a no-op typo for this field |
-| `alerts.push.enabled` | `bool` | `false` | Enables the additive Expo push channel |
+| `alerts.push.enabled` | `bool` | `false` | Enables the Expo push channel (per-tier `channel` for 5–8 + additive on 9–10) |
 | `alerts.push.tokens` | `list[str]` | `[]` | Expo push tokens to deliver to (live `config.yaml` omits the whole block → push off) |
 | `testing.dry_run` | `bool` | `false` | Dispatcher logs intended actions; no Twilio calls made |
 
