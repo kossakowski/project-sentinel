@@ -217,7 +217,7 @@ def _format_push(event: Event, is_update: bool = False) -> tuple[str, str]:
     title = (
         f"ℹ️ SENTINEL — aktualizacja: {event_type_pl}" if is_update else f"\U0001f6a8 PROJECT SENTINEL: {event_type_pl}"
     )
-    summary = event.summary_pl
+    summary = event.summary_pl or ""
     if len(summary) > PUSH_BODY_SUMMARY_MAX_CHARS:
         summary = summary[:PUSH_BODY_SUMMARY_MAX_CHARS].rstrip() + "…"
     body = f"{summary}\nPilność {event.urgency_score}/10 · źródła: {event.source_count}"
@@ -319,8 +319,12 @@ def _build_push_data(event: Event, db: Database, config: SentinelConfig, is_upda
         "event_type_pl": EVENT_TYPE_PL.get(event.event_type, event.event_type),
         "urgency_score": event.urgency_score,
         "affected_countries": list(event.affected_countries),
-        "aggressor": event.aggressor,
-        "summary_pl": event.summary_pl,
+        # 1.1d/1.1: these two fields are typed str and default to "" in the
+        # model, so this coercion is a no-op for all real data. It only hardens
+        # the contract (aggressor/summary_pl are never None on the wire) against
+        # a malformed Event reaching this life-safety push path.
+        "aggressor": event.aggressor or "",
+        "summary_pl": event.summary_pl or "",
         "sources": _build_sources_payload(event, db),
         "sms_body": sms_body,
         "first_seen_at": first_seen_at.isoformat(),
@@ -342,6 +346,23 @@ def _build_push_data(event: Event, db: Database, config: SentinelConfig, is_upda
     # (3) Truncate summary_pl (head-slice) as the last resort.
     if _data_byte_size(data) > PUSH_DATA_MAX_BYTES:
         _truncate_to_byte_budget(data, "summary_pl")
+
+    # No-silent-overflow guard (1.2 honesty). After all three trim stages, the
+    # only remaining content is the undroppable protected scalars (message_id/
+    # event_id/event_type/kind/urgency_score/affected_countries/aggressor). The
+    # spec forbids dropping or truncating those, so in the (unreachable with a
+    # normal UUID event id) degenerate case where they alone exceed the budget,
+    # we must not ship over budget *silently*: log loudly, but still return the
+    # dict unchanged so a real send is never crashed by an adversarial input.
+    final_size = _data_byte_size(data)
+    if final_size > PUSH_DATA_MAX_BYTES:
+        logging.getLogger("sentinel.alerts.state_machine").warning(
+            "Push data for event %s is %d bytes after trimming, over the %d-byte budget; "
+            "protected scalars alone exceed the limit and cannot be dropped, shipping over budget.",
+            event.id,
+            final_size,
+            PUSH_DATA_MAX_BYTES,
+        )
 
     return data
 

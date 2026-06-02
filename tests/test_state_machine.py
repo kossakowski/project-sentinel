@@ -10,6 +10,7 @@ unchanged — so the Twilio wrapper mocks stay plain MagicMocks (NOT AsyncMocks)
 """
 
 import json
+import logging
 import re
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -1562,6 +1563,66 @@ def test_push_data_within_byte_budget_and_trims(db, config):
     assert data2["message_id"]
     assert data2["event_id"] == huge_event.id
     assert data2["urgency_score"] == huge_event.urgency_score
+
+
+def test_format_push_tolerates_none_summary():
+    """Hardening: a malformed Event with summary_pl=None must not crash
+    _format_push (len(None) would raise TypeError); it returns a (title, body)
+    pair of strings. summary_pl is typed str (defaults to "") so this is an
+    off-nominal input on a life-safety push path.
+    """
+    event = Event(
+        id=str(uuid4()),
+        event_type="missile_strike",
+        urgency_score=10,
+        affected_countries=["PL"],
+        aggressor="RU",
+        summary_pl=None,  # off-nominal: bypasses from_dict's str contract
+        first_seen_at=datetime.now(UTC),
+        last_updated_at=datetime.now(UTC),
+        source_count=2,
+        article_ids=[str(uuid4())],
+    )
+
+    result = _format_push(event)
+
+    assert isinstance(result, tuple)
+    title, body = result
+    assert isinstance(title, str)
+    assert isinstance(body, str)
+
+
+def test_build_push_data_logs_and_returns_when_scalars_exceed_budget(db, config, caplog):
+    """Hardening (1.2 honesty): when the undroppable protected scalars alone
+    exceed PUSH_DATA_MAX_BYTES (an unreachable adversarial case — a normal UUID
+    event id is tiny), the builder must not ship over budget silently. It logs
+    a WARNING, returns a dict without raising, and still carries the scalars.
+    """
+    big_id = "Z" * 4000  # blows the budget via event_id alone
+    event = Event(
+        id=big_id,
+        event_type="missile_strike",
+        urgency_score=10,
+        affected_countries=["PL"],
+        aggressor="RU",
+        summary_pl="Rosja wystrzeliła rakiety w kierunku Polski.",
+        first_seen_at=datetime.now(UTC),
+        last_updated_at=datetime.now(UTC),
+        source_count=0,
+        article_ids=[],
+    )
+
+    with caplog.at_level(logging.WARNING, logger="sentinel.alerts.state_machine"):
+        data = _build_push_data(event, db, config, is_update=False)
+
+    # (a) returns a dict without raising
+    assert isinstance(data, dict)
+    # (b) a WARNING was logged on the module logger
+    warnings = [r for r in caplog.records if r.name == "sentinel.alerts.state_machine" and r.levelno == logging.WARNING]
+    assert warnings, "expected an over-budget WARNING when scalars exceed the limit"
+    # (c) the protected scalars are still present
+    assert "message_id" in data
+    assert data["event_id"] == big_id
 
 
 def _fresh_twilio() -> MagicMock:
