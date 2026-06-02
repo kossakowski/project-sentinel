@@ -14,8 +14,10 @@
  *   (7) detail-time      Wykryto: {first_seen_at} in device-local time
  *
  * On mount it marks the message read (`store.markRead`). It provides a delete
- * action (confirm → `store.remove`). When the structured fields are absent (a
- * legacy thin push) it falls back to rendering `sms_body` (or `body`).
+ * action (confirm → `store.remove`). Both mutations resync the app-icon badge from
+ * the store's live unread count (3.6), so dropping the badge does not wait for the
+ * list's next focus pass. When the structured fields are absent (a legacy thin
+ * push) it falls back to rendering `sms_body` (or `body`).
  *
  * The store is consumed via `useMessages()` (the mock seam for tests).
  */
@@ -39,9 +41,11 @@ import {
 } from '@react-navigation/native';
 
 import { useMessages } from '../messages/useMessages';
+import * as store from '../messages/store';
 import type { MessageSource, StoredMessage } from '../messages/types';
 import type { RootStackParamList } from '../navigation/navigationRef';
 import { absolute } from '../utils/datetime';
+import { syncBadge } from '../badge';
 
 function kindEmoji(kind: StoredMessage['kind']): string {
   return kind === 'update' ? 'ℹ️' : '🚨';
@@ -97,8 +101,13 @@ export default function MessageDetailScreen() {
   );
 
   // Mark read on mount (3.9). Keyed on messageId so revisiting another message marks it too.
+  // Resync the badge after the mutation (3.6) — markRead awaits the store write, so
+  // unreadCount() then reflects the decremented count.
   useEffect(() => {
-    void markRead(messageId);
+    void (async () => {
+      await markRead(messageId);
+      void syncBadge(store.unreadCount());
+    })();
   }, [markRead, messageId]);
 
   const confirmDelete = useCallback(() => {
@@ -113,6 +122,9 @@ export default function MessageDetailScreen() {
           onPress: () => {
             void (async () => {
               await remove(messageId);
+              // Resync the badge after the mutation (3.6); removing an unread
+              // message lowers the unread count.
+              void syncBadge(store.unreadCount());
               navigation.goBack();
             })();
           },

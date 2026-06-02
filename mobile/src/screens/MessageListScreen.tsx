@@ -9,7 +9,9 @@
  * for tests).
  *
  * On focus the list refreshes (a tap/foreground may have ingested a new message)
- * and resyncs the app-icon badge.
+ * and resyncs the app-icon badge. Every in-screen store mutation (mark-all-read,
+ * clear) also resyncs the badge directly from the store's live unread count (3.6),
+ * so the icon is correct without waiting for the next focus pass.
  */
 
 import { useCallback, useState } from 'react';
@@ -29,6 +31,7 @@ import MessageTile from '../components/MessageTile';
 import { useMessages } from '../messages/useMessages';
 import type { RootStackParamList } from '../navigation/navigationRef';
 import { syncBadge } from '../badge';
+import * as store from '../messages/store';
 import PushPanel from '../../push/PushPanel';
 
 export type MessageListScreenProps = {
@@ -40,14 +43,16 @@ export default function MessageListScreen({ navigation }: MessageListScreenProps
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Refresh + badge resync whenever the list regains focus (a tap/foreground may
-  // have ingested while we were on Detail or backgrounded).
+  // have ingested while we were on Detail or backgrounded). Read the unread count
+  // from the store AFTER refresh — the destructured `unreadCount` is the stale
+  // render-time closure value and would badge the pre-refresh count.
   useFocusEffect(
     useCallback(() => {
       void (async () => {
         await refresh();
-        void syncBadge(unreadCount);
+        void syncBadge(store.unreadCount());
       })();
-    }, [refresh, unreadCount]),
+    }, [refresh]),
   );
 
   const openDetail = useCallback(
@@ -68,7 +73,12 @@ export default function MessageListScreen({ navigation }: MessageListScreenProps
           text: 'Wyczyść',
           style: 'destructive',
           onPress: () => {
-            void clear();
+            void (async () => {
+              await clear();
+              // Resync the badge after the mutation (3.6) — clear() awaits the
+              // store's read-modify-write, so unreadCount() is now authoritative.
+              void syncBadge(store.unreadCount());
+            })();
           },
         },
       ],
@@ -76,7 +86,11 @@ export default function MessageListScreen({ navigation }: MessageListScreenProps
   }, [messages.length, clear]);
 
   const onMarkAllRead = useCallback(() => {
-    void markAllRead();
+    void (async () => {
+      await markAllRead();
+      // Resync the badge after the mutation (3.6); marking all read drops it to 0.
+      void syncBadge(store.unreadCount());
+    })();
   }, [markAllRead]);
 
   return (

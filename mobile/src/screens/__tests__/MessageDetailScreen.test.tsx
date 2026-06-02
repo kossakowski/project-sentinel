@@ -1,6 +1,8 @@
 /**
  * MessageDetailScreen (3.9 / 3.10). useMessages is the mock seam; navigation hooks
- * and expo-web-browser are mocked. Renders are awaited (React 19).
+ * and expo-web-browser are mocked. The store module and `syncBadge` are mocked so
+ * we can assert the badge is resynced from the store's live unread count (3.6) after
+ * mark-read-on-mount and after a delete. Renders are awaited (React 19).
  */
 
 import { render, fireEvent, screen, waitFor } from '@testing-library/react-native';
@@ -20,11 +22,25 @@ jest.mock('@react-navigation/native', () => ({
 }));
 
 jest.mock('../../messages/useMessages');
+// Mock the store so `store.unreadCount()` (read after each mutation) returns a
+// controllable live value, and syncBadge so we can assert what the screen pushes.
+jest.mock('../../messages/store', () => ({
+  __esModule: true,
+  unreadCount: jest.fn(() => 0),
+}));
+jest.mock('../../badge', () => ({
+  __esModule: true,
+  syncBadge: jest.fn(async () => true),
+}));
 
 import { useMessages } from '../../messages/useMessages';
+import * as store from '../../messages/store';
+import { syncBadge } from '../../badge';
 import MessageDetailScreen from '../MessageDetailScreen';
 
 const mockedUseMessages = useMessages as jest.MockedFunction<typeof useMessages>;
+const mockedUnreadCount = store.unreadCount as jest.MockedFunction<typeof store.unreadCount>;
+const mockedSyncBadge = syncBadge as jest.MockedFunction<typeof syncBadge>;
 const openBrowser = WebBrowser.openBrowserAsync as jest.Mock;
 
 function makeMessage(overrides: Partial<StoredMessage> = {}): StoredMessage {
@@ -68,6 +84,7 @@ function mockHook(messages: StoredMessage[], over: Partial<UseMessages> = {}) {
 beforeEach(() => {
   jest.clearAllMocks();
   mockRoute.params = { messageId: 'm1' };
+  mockedUnreadCount.mockReturnValue(0);
   openBrowser.mockResolvedValue({ type: 'cancel' });
 });
 
@@ -165,6 +182,15 @@ describe('MessageDetailScreen', () => {
     await waitFor(() => expect(surface.markRead).toHaveBeenCalledWith('mark-me'));
   });
 
+  test('marking read on mount resyncs the badge from the live store count', async () => {
+    // markRead drops the live unread count to 0; the badge must follow (3.6).
+    mockedUnreadCount.mockReturnValue(0);
+    mockHook([makeMessage({ message_id: 'mark-me', read: false })]);
+    mockRoute.params = { messageId: 'mark-me' };
+    await render(<MessageDetailScreen />);
+    await waitFor(() => expect(mockedSyncBadge).toHaveBeenCalledWith(0));
+  });
+
   test('test_detail_fallback_to_sms_body', async () => {
     // Missing structured fields (no summary, no sources) -> render sms_body.
     mockRoute.params = { messageId: 'thin' };
@@ -183,19 +209,24 @@ describe('MessageDetailScreen', () => {
     expect(screen.queryByTestId('detail-summary')).toBeNull();
   });
 
-  test('delete confirm calls remove then goes back', async () => {
+  test('delete confirm calls remove, resyncs the badge, then goes back', async () => {
+    mockedUnreadCount.mockReturnValue(0);
     const surface = mockHook([makeMessage({ message_id: 'del' })]);
     mockRoute.params = { messageId: 'del' };
     const { Alert } = require('react-native');
     const alertSpy = jest.spyOn(Alert, 'alert');
 
     await render(<MessageDetailScreen />);
+    mockedSyncBadge.mockClear();
     fireEvent.press(screen.getByTestId('detail-delete'));
 
     const buttons = alertSpy.mock.calls[0][2] as Array<{ text: string; onPress?: () => void }>;
     buttons.find((b) => b.text === 'Usuń')?.onPress?.();
 
     await waitFor(() => expect(surface.remove).toHaveBeenCalledWith('del'));
+    // Removing the message resyncs the badge from the live store count (3.6)
+    // before navigating back.
+    await waitFor(() => expect(mockedSyncBadge).toHaveBeenCalledWith(0));
     await waitFor(() => expect(mockGoBack).toHaveBeenCalled());
     alertSpy.mockRestore();
   });
