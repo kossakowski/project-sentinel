@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { registerForPushNotificationsAsync } from './registerForPush';
+import type { LastPush } from './usePushReceiver';
 
 const MONO = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' });
 
@@ -21,9 +22,10 @@ const BG = '#0a0a0a';
 
 type Props = {
   onClose: () => void;
+  lastPush?: LastPush | null;
 };
 
-export default function PushPanel({ onClose }: Props) {
+export default function PushPanel({ onClose, lastPush = null }: Props) {
   const [token, setToken] = useState<string | null>(null);
   const [status, setStatus] = useState<string>('inicjalizacja...');
   const [copied, setCopied] = useState(false);
@@ -90,6 +92,18 @@ export default function PushPanel({ onClose }: Props) {
           Wklej ten token do konfiguracji serwera, aby to urzadzenie otrzymywalo alerty o
           zagrozeniu militarnym.
         </Text>
+
+        <Text style={[styles.label, styles.labelSpaced]}>OSTATNI PUSH</Text>
+        {lastPush ? (
+          <View style={styles.tokenBox}>
+            <Text style={styles.pushTitle}>{lastPush.title ?? '(bez tytulu)'}</Text>
+            <Text style={styles.pushBody}>{lastPush.body ?? '(bez tresci)'}</Text>
+          </View>
+        ) : (
+          <View style={styles.tokenBox}>
+            <Text style={styles.tokenEmpty}>brak (jeszcze nic nie odebrano)</Text>
+          </View>
+        )}
 
         <Pressable onPress={onClose} style={[styles.button, styles.buttonGhost]}>
           <Text style={[styles.buttonText, styles.buttonTextGhost]}>ZAMKNIJ</Text>
@@ -161,6 +175,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: MONO,
     letterSpacing: 0.5,
+  },
+  pushTitle: {
+    color: TEXT,
+    fontSize: 13,
+    fontFamily: MONO,
+    letterSpacing: 0.5,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  pushBody: {
+    color: GREEN,
+    fontSize: 12,
+    fontFamily: MONO,
+    letterSpacing: 0.5,
+    lineHeight: 18,
   },
   button: {
     marginTop: 18,

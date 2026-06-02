@@ -7,6 +7,7 @@ import MoroActive from './designs/MoroActive';
 import MoroArctic from './designs/MoroArctic';
 import Tactical from './designs/Tactical';
 import PushPanel from './push/PushPanel';
+import { usePushReceiver } from './push/usePushReceiver';
 
 type Design = {
   name: string;
@@ -25,6 +26,9 @@ const DESIGNS: Design[] = [
 export default function App() {
   const [i, setI] = useState(DESIGNS.findIndex((d) => d.name === 'Tactical'));
   const [showPush, setShowPush] = useState(false);
+  // Registered at the app root so a received push is captured even while the
+  // PushPanel overlay is closed; the latest is surfaced for on-device verification.
+  const lastPush = usePushReceiver();
   const current = DESIGNS[i];
   const { Component, dark } = current;
 
@@ -35,7 +39,7 @@ export default function App() {
       </View>
       {showPush && (
         <View style={styles.overlay}>
-          <PushPanel onClose={() => setShowPush(false)} />
+          <PushPanel onClose={() => setShowPush(false)} lastPush={lastPush} />
         </View>
       )}
       <SafeAreaView style={[styles.pickerSafe, dark && styles.pickerSafeDark]}>
