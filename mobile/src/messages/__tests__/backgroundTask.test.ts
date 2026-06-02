@@ -45,7 +45,7 @@ describe('bootstrap', () => {
     jest.clearAllMocks();
   });
 
-  test('test_bootstrap_registers_task_and_handler', () => {
+  test('test_bootstrap_registers_task_and_handler', async () => {
     // Importing bootstrap.ts runs its module-scope side effects (no React tree).
     const { defineTask, registerTaskAsync, setNotificationHandler } =
       importBootstrapIsolated();
@@ -54,11 +54,19 @@ describe('bootstrap', () => {
     expect(registerTaskAsync).toHaveBeenCalled();
     expect(setNotificationHandler).toHaveBeenCalled();
 
-    // The handler returns the spec-required display policy (2.8).
+    // The handler returns the spec-required display policy (2.8). Invoke it to
+    // lock all four flags — notably shouldSetBadge:false, which Phase 3 badge
+    // ownership (3.6) depends on.
     const handlerArg = setNotificationHandler.mock.calls[0][0] as {
       handleNotification: () => Promise<unknown>;
     };
     expect(typeof handlerArg.handleNotification).toBe('function');
+    await expect(handlerArg.handleNotification()).resolves.toEqual({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    });
   });
 
   test('test_background_task_swallows_ingest_error', async () => {
