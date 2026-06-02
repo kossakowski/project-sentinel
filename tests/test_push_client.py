@@ -47,6 +47,24 @@ def test_ok_ticket_returns_record_with_payload_shape(push_config):
     assert body["data"] == {"event_id": "evt-1"}
 
 
+def test_push_payload_sets_content_available(push_config):
+    """[1.3, 1.3a] The Expo message sets top-level "_contentAvailable": True,
+    adds no "content-available" key, and keeps title+body visible (AD-3).
+    """
+    client = ExpoPushClient(push_config)
+    fake = _resp({"data": [{"status": "ok", "id": "ticket-1"}]})
+    with patch("sentinel.alerts.push_client.httpx.post", return_value=fake) as mock_post:
+        client.send_push("Tytuł", "Treść", "evt-1", data={"event_id": "evt-1"})
+
+    _, kwargs = mock_post.call_args
+    body = kwargs["json"]
+    assert body["_contentAvailable"] is True
+    assert "content-available" not in body
+    # The push stays visible (1.3a): title and body are non-empty.
+    assert body["title"] == "Tytuł"
+    assert body["body"] == "Treść"
+
+
 def test_single_ticket_dict_is_handled(push_config):
     """Expo returns a bare dict (not a list) for a single recipient."""
     client = ExpoPushClient(push_config)

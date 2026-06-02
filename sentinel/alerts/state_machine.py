@@ -1,6 +1,8 @@
 import asyncio
+import json
 import logging
 import random
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from sentinel.alerts.push_client import ExpoPushClient
@@ -38,6 +40,14 @@ SMS_SUMMARY_MAX_CHARS = 600
 
 # Reserve room for the "- …i N więcej" trailer when trimming sources.
 _SOURCES_TRAILER_RESERVE = 40
+
+# Maximum serialized size of the push `data` dict, in UTF-8 bytes. APNs caps the
+# whole notification payload at ~4096 bytes; this budget reserves headroom for
+# the visible title/body and the aps overhead. `data` is measured with
+# json.dumps(..., ensure_ascii=False) so Polish letters and emoji count as their
+# real wire bytes, not as 6-char ASCII escapes. The builder trims its content
+# (sources -> sms_body -> summary_pl) to stay within this limit.
+PUSH_DATA_MAX_BYTES = 3500
 
 
 def _build_sources_list(event: Event, db: Database, max_chars: int | None = None) -> str:
@@ -182,6 +192,123 @@ def _format_push(event: Event, is_update: bool = False) -> tuple[str, str]:
     )
     body = f"{event.summary_pl}\nPilność {event.urgency_score}/10 · źródła: {event.source_count}"
     return title, body
+
+
+def _build_sources_payload(event: Event, db: Database) -> list[dict]:
+    """Build the structured source list carried inside the push ``data`` dict.
+
+    Mirrors the article ordering of ``_build_sources_list`` (the SMS string
+    builder): iterates ``event.article_ids`` in order and looks each one up via
+    ``db.get_article_by_id``. Each item is ``{"name", "title", "url"}`` where
+    ``url`` is the article's ``source_url`` or ``None`` when absent/falsy. An
+    article id that misses the DB lookup yields a placeholder entry mirroring the
+    SMS ``- (źródło {id[:8]})`` fallback, so the count stays consistent and the
+    builder never crashes.
+    """
+    sources: list[dict] = []
+    for article_id in event.article_ids:
+        article = db.get_article_by_id(article_id)
+        if article is not None:
+            sources.append(
+                {
+                    "name": article.source_name,
+                    "title": article.title,
+                    "url": article.source_url if article.source_url else None,
+                }
+            )
+        else:
+            sources.append(
+                {
+                    "name": "źródło",
+                    "title": f"(źródło {article_id[:8]})",
+                    "url": None,
+                }
+            )
+    return sources
+
+
+def _data_byte_size(data: dict) -> int:
+    """Serialized UTF-8 byte size of the push ``data`` dict (the 1.2 budget metric)."""
+    return len(json.dumps(data, ensure_ascii=False).encode("utf-8"))
+
+
+def _truncate_to_byte_budget(data: dict, field: str) -> None:
+    """Codepoint-safe head-truncate ``data[field]`` until the whole dict fits.
+
+    Slices the Python ``str`` by characters (never by encoded bytes, so a
+    multibyte UTF-8 character is never split) and re-measures the entire
+    serialized ``data`` after each shrink, since JSON escaping plus the rest of
+    the dict count toward ``PUSH_DATA_MAX_BYTES``. A trailing ``…`` is appended
+    when content is dropped. Binary-searches the codepoint length for speed.
+    """
+    text = data[field]
+    if not text or _data_byte_size(data) <= PUSH_DATA_MAX_BYTES:
+        return
+
+    ellipsis = "…"
+
+    def fits(n: int) -> bool:
+        data[field] = (text[:n].rstrip() + ellipsis) if n > 0 else ""
+        return _data_byte_size(data) <= PUSH_DATA_MAX_BYTES
+
+    # Find the largest head length n (in codepoints) that still fits.
+    lo, hi, best = 0, len(text), 0
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        if fits(mid):
+            best = mid
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    fits(best)
+
+
+def _build_push_data(event: Event, db: Database, config: SentinelConfig, is_update: bool) -> dict:
+    """Assemble the enriched Expo push ``data`` dict for one send (Phase 1).
+
+    A pure, returnable builder (not inlined into the send call) so tests can
+    build the dict directly. It stamps a fresh ``message_id`` per call, preserves
+    the legacy scalars (``event_id``/``urgency_score``/``event_type``), carries
+    the full untrimmed structured content plus ``event_type_pl``, the structured
+    ``sources`` list, the UTC ISO ``first_seen_at``, and ``sms_body`` — the exact
+    SMS string the server produces for this send (``_format_sms_message`` for an
+    event, ``_format_update_sms`` for an update) — then trims the serialized dict
+    to ``PUSH_DATA_MAX_BYTES`` (1.2): sources from the end, then ``sms_body``,
+    then ``summary_pl``; the scalars and ``kind`` are never dropped or truncated.
+    """
+    sms_body = _format_update_sms(event, db, config) if is_update else _format_sms_message(event, db, config)
+
+    first_seen_at = event.first_seen_at
+    first_seen_at = first_seen_at.replace(tzinfo=UTC) if first_seen_at.tzinfo is None else first_seen_at.astimezone(UTC)
+
+    data: dict = {
+        "message_id": uuid.uuid4().hex,
+        "event_id": event.id,
+        "kind": "update" if is_update else "event",
+        "event_type": event.event_type,
+        "event_type_pl": EVENT_TYPE_PL.get(event.event_type, event.event_type),
+        "urgency_score": event.urgency_score,
+        "affected_countries": list(event.affected_countries),
+        "aggressor": event.aggressor,
+        "summary_pl": event.summary_pl,
+        "sources": _build_sources_payload(event, db),
+        "sms_body": sms_body,
+        "first_seen_at": first_seen_at.isoformat(),
+    }
+
+    # Byte-budget trim (1.2), in the mandated order. message_id/event_id/
+    # urgency_score/event_type/kind are never dropped or truncated.
+    # (1) Drop trailing source entries one at a time until it fits.
+    while data["sources"] and _data_byte_size(data) > PUSH_DATA_MAX_BYTES:
+        data["sources"].pop()
+    # (2) Truncate sms_body (head-slice) if still over with no sources left.
+    if _data_byte_size(data) > PUSH_DATA_MAX_BYTES:
+        _truncate_to_byte_budget(data, "sms_body")
+    # (3) Truncate summary_pl (head-slice) as the last resort.
+    if _data_byte_size(data) > PUSH_DATA_MAX_BYTES:
+        _truncate_to_byte_budget(data, "summary_pl")
+
+    return data
 
 
 class AlertStateMachine:
@@ -652,16 +779,13 @@ class AlertStateMachine:
             return
 
         title, body = _format_push(event, is_update=is_update)
+        data = _build_push_data(event, self.db, self.config, is_update)
         record = await asyncio.to_thread(
             self.push.send_push,
             title,
             body,
             event.id,
-            {
-                "event_id": event.id,
-                "urgency_score": event.urgency_score,
-                "event_type": event.event_type,
-            },
+            data,
         )
         if record is not None:
             self.db.insert_alert_record(record)

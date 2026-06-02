@@ -49,6 +49,9 @@ class ExpoPushClient:
             "body": body,
             "sound": "default",
             "priority": "high",
+            # Best-effort background wake (AD-3). Expo derives the APNs
+            # `content-available` key from this; we MUST NOT set that key here.
+            "_contentAvailable": True,
         }
         if data is not None:
             payload["data"] = data
