@@ -17,7 +17,8 @@ When adding a new doc, decide which of these four needs it serves and place it i
 
 - [how-to/api-setup.md](how-to/api-setup.md) — set up Anthropic, Twilio, and Telegram accounts and credentials.
 - [how-to/testing.md](how-to/testing.md) — dry runs, test fixtures, the eval harness, and manual alert testing.
-- [how-to/mobile-push-setup.md](how-to/mobile-push-setup.md) — provision an EAS `projectId`, build the mobile app, and verify a push end-to-end (token → backend → Expo → phone → in-app panel).
+- [how-to/mobile-push-setup.md](how-to/mobile-push-setup.md) — provision an EAS `projectId`, build the mobile app, and verify a push end-to-end (token → backend → Expo → phone).
+- [how-to/mobile-inbox-verification.md](how-to/mobile-inbox-verification.md) — on-device checklist (MA-1…MA-7) for the in-app message inbox: tap-to-Detail, tray-sweep, foreground receive, in-app source links, the app-icon badge, and delete/clear persistence.
 - [how-to/server-runbook.md](how-to/server-runbook.md) — production server access, file layout, service management, deployment, and troubleshooting. Read this first for anything server-related.
 - [how-to/security/vps-hardening.md](how-to/security/vps-hardening.md) — harden the VPS before deployment. (Index: [how-to/security/README.md](how-to/security/README.md).)
 
@@ -31,7 +32,7 @@ When adding a new doc, decide which of these four needs it serves and place it i
 
 - [explanation/architecture.md](explanation/architecture.md) — system design, module map, components, and data flow.
 - [explanation/pipeline.md](explanation/pipeline.md) — step-by-step data flow from source collection to phone alert.
-- [explanation/mobile-app.md](explanation/mobile-app.md) — the `mobile/` Expo companion app and the push-alert channel.
+- [explanation/mobile-app.md](explanation/mobile-app.md) — the `mobile/` Expo companion app: the push-alert channel and the in-app message inbox.
 
 ## Archive
 

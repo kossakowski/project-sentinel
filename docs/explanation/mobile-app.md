@@ -2,8 +2,9 @@
 
 > **Diátaxis: explanation.** This page explains *what* the `mobile/` app is and *why* it
 > exists. It is not the monitoring runtime — it never collects sources, classifies, or
-> decides to alert. It is a small companion app whose only operational job is to hand the
-> server a device's Expo push token and then receive the push alerts the server sends.
+> decides to alert. It is a companion app whose operational jobs are to hand the server a
+> device's Expo push token and to receive, store, and display the push alerts the server
+> sends as an in-app message inbox.
 
 ## Purpose
 
@@ -15,11 +16,12 @@ selects how that tier is delivered, and the urgency 9–10 call path additionall
 needs the target device's **Expo push token**, and that token can only be minted *on the
 device*.
 
-The `mobile/` app exists to solve exactly that bootstrap problem. It:
+The `mobile/` app exists to solve that bootstrap problem **and** to give the owner an in-app,
+SMS-equivalent history of the alerts that land on the phone. It:
 
 1. Registers the physical device for Expo push notifications and **surfaces the resulting
-   Expo push token** so you can copy it and paste it into the server's `alerts.push.tokens`
-   config list.
+   Expo push token** (in the Settings/token panel) so you can copy it and paste it into the
+   server's `alerts.push.tokens` config list.
 2. **Receives push alerts** once the token is registered server-side. On Android it uses a
    MAX-importance notification channel so a critical military-threat alert breaks through with
    sound and a heads-up banner. On **iOS** a normal Expo push does **not** bypass silent mode
@@ -27,14 +29,14 @@ The `mobile/` app exists to solve exactly that bootstrap problem. It:
    state. Breaking through silent mode on iOS requires Apple **Critical Alerts** (a separate
    entitlement, pending), so on the owner's iPhone the push is supplementary and the Twilio
    phone call remains the primary 9–10 wake-up.
-3. **Surfaces the most recently received push** in an **OSTATNI PUSH** ("last push") panel for
-   on-device verification — so the operator can confirm a real push actually landed (title +
-   body), not just that a token was minted. This is observability-only: it never mints or
-   registers tokens. The step-by-step verification path is in
-   [`../how-to/mobile-push-setup.md`](../how-to/mobile-push-setup.md).
+3. **Captures each alert into a persistent on-device inbox** and presents it as a List of
+   SMS-style tiles plus a structured Detail screen — the in-app equivalent of the alert SMS,
+   surviving restarts and viewable offline. An unread **app-icon badge** tracks unread
+   messages, and source article links open in an in-app browser.
 
-That is the whole remit. The app holds no monitoring logic, no database, no classifier, no
-Twilio. It is a thin client for the push channel.
+That is the whole remit. The app holds no monitoring logic, no classifier, and no Twilio. Its
+only persistence is the local inbox; it has no server-side state and never calls back to the
+server. It is a thin client for the push channel plus a local message store.
 
 ## How it relates to the push channel in the runtime
 
@@ -54,6 +56,11 @@ by the per-tier `channel` setting plus the call path:**
 - **Acknowledged-event updates** — the update SMS is sent **and** an additive push fires, so
   the phone shows each escalation of an active critical event.
 
+The push carries a **fat payload**: the alert's structured fields (event type, urgency,
+countries, aggressor, summary, sources, detection time) plus the original SMS body travel
+inside the notification's `data`, so the Detail screen can render the full alert offline with
+no callback to the server (see **AD-1** below).
+
 The channel is **off by default**: the config block `alerts.push` has `enabled: false` and an
 empty `tokens: []` list, and the live `config/config.yaml` omits the block entirely — so until
 push is enabled, a `both`/`push` tier still sends SMS only and the deployed behavior is
@@ -69,19 +76,29 @@ mobile/ app  ──(mints + displays Expo push token)──►  you copy/paste t
 config/config.yaml  alerts.push.tokens: ["ExponentPushToken[…]"]
                                                           │
                                                           ▼
-sentinel/alerts/push_client.py  ──(POST exp.host)──►  mobile/ device receives the alert
+sentinel/alerts/push_client.py  ──(POST exp.host, fat payload)──►  mobile/ device
+                                                          │            receives + stores
+                                                          ▼            the alert
+                                        in-app inbox (List + Detail), app-icon badge
 ```
 
 So the app sits at *both ends* of the push channel but is part of *neither* the collection
-nor the alerting pipeline: it produces the token going in, and it is the recipient coming
-out. It is intentionally decoupled from the server — nothing in the monitoring runtime
-imports or depends on it.
+nor the alerting pipeline: it produces the token going in, and it is the recipient (and now
+the archive) coming out. It is intentionally decoupled from the server — nothing in the
+monitoring runtime imports or depends on it.
 
 ## Stack & key components
 
 - **Expo SDK 54** (`expo ~54.0.33`), React Native `0.81.5`, React `19.1.0`, TypeScript
   (strict), New Architecture enabled (`newArchEnabled: true`). Push plumbing uses
-  `expo-notifications`, `expo-device`, `expo-constants`, and `expo-clipboard`.
+  `expo-notifications`, `expo-device`, `expo-constants`, and `expo-clipboard`. The inbox adds
+  `@react-navigation/native` + `@react-navigation/native-stack` (with `react-native-screens`
+  and `react-native-safe-area-context`) for the List/Detail navigation shell,
+  `expo-web-browser` for in-app source links, `@react-native-async-storage/async-storage` for
+  the persistent store, and `expo-task-manager` for the best-effort background capture task.
+- **The navigation + screen native modules require a fresh dev build** (`eas build` or a local
+  dev build) — Expo Go cannot load them, which is why the on-device inbox checklist is a
+  separate, non-gating runbook (see below).
 - **`AGENTS.md` pins the Expo version** and instructs agents to read the *exact* versioned
   Expo docs at `https://docs.expo.dev/versions/v54.0.0/` before touching any code — the
   `expo-notifications` API shape changes across SDK lines. `mobile/CLAUDE.md` is a one-line
@@ -93,32 +110,91 @@ imports or depends on it.
 
 | File | Role |
 |---|---|
-| `mobile/App.tsx` | Root component. Hosts a **design/theme picker** (a bottom pill bar) plus a `PUSH` toggle pill that overlays the push panel. Mounts `usePushReceiver()` at the root and feeds the latest push down into `PushPanel`. |
-| `mobile/push/PushPanel.tsx` | **The operational screen.** Shows the registration status, the Expo push token in a selectable mono box, a **"KOPIUJ TOKEN"** (copy token) button, and a Polish hint telling you to paste the token into the server config. Also shows an **OSTATNI PUSH** ("last push") box with the most recently received push's title + body (Polish placeholders when a field is missing or nothing has arrived). Logs the token to the Metro console for dev builds. |
-| `mobile/push/usePushReceiver.ts` | Observability-only React hook. Registers both `expo-notifications` listeners — `addNotificationReceivedListener` (foreground arrivals) and `addNotificationResponseReceivedListener` (notification taps) — logs each payload to the Metro console, and returns the last push as `{ title, body, data }`. Removes both subscriptions on unmount. Mints/registers no tokens; does not touch `registerForPush.ts`. |
-| `mobile/push/registerForPush.ts` | The push-registration logic: sets the foreground notification handler (SDK-54 `shouldShowBanner`/`shouldShowList` shape), creates the Android `alerts` channel at MAX importance, requests permission, and calls `getExpoPushTokenAsync({ projectId })`. Short-circuits with a clear status on simulators (`must-use-physical-device`) and on denied permission. |
-| `mobile/designs/` | The cosmetic theme variants selectable from the picker: `Original`, `Moro`, `MoroActive` ("Moro+"), `MoroArctic` ("Arctic"), and `Tactical` (the default). These are presentational mock screens only — they carry no push logic. |
+| `mobile/App.tsx` | Root component and **navigation shell**: `SafeAreaProvider` → `NavigationContainer` → a native-stack with `List` (initial) and `Detail`. At the root it wires the reliable capture + routing paths (foreground capture, tray-sweep on foreground, tap routing, badge resync). The design showcase is no longer the entry point. |
+| `mobile/src/screens/MessageListScreen.tsx` | The inbox **List**: a `FlatList` of SMS-style tiles (newest first), an empty state, and a header with mark-all-read, clear-all (with a confirm), and a Settings entry that opens the push/token panel in a modal. Re-reads the store on focus and resyncs the badge. |
+| `mobile/src/screens/MessageDetailScreen.tsx` | The **Detail** view: the alert's structured fields (header, urgency, countries, aggressor when present, summary, sources, detection time) in a fixed order, marks the message read on mount, supports delete-with-confirm, and falls back to the stored SMS body when structured fields are absent. Source rows open their article URL in the in-app browser. |
+| `mobile/src/components/MessageTile.tsx` | The memoized SMS-style list tile: kind emoji + event type, urgency, a single-line summary snippet, a relative timestamp, and an unread dot. |
+| `mobile/src/messages/` | The persistent data layer (Phase 2): `store.ts` (AsyncStorage source of truth), `parsePayload.ts` (foreground + headless payload adapters), `types.ts`, and the `useMessages()` hook the screens consume. |
+| `mobile/src/notifications/` | The capture + routing layer: `bootstrap.ts` (the single `setNotificationHandler` + the headless background task, registered at module load via `index.ts`), `capture.ts` (foreground-received capture + tray-sweep), `routing.ts` (pure tap-routing decision), and `useNotificationRouting.ts` (warm + cold tap → ingest → navigate). |
+| `mobile/src/navigation/navigationRef.ts` | The navigation ref plus a guarded `navigate()` that queues a single latest-wins pending route when the container is not yet ready, replayed once on `onReady` — so a cold-start tap routes correctly. |
+| `mobile/src/badge.ts` | `syncBadge(unreadCount)` — sets the app-icon badge from the store's unread count, tolerating an ungranted `allowBadge` as a silent no-op. |
+| `mobile/src/utils/datetime.ts` | `relative()` / `absolute()` rendering (store UTC, render device-local), consistent with the project's timezone convention. |
+| `mobile/push/registerForPush.ts` | The push-registration logic: creates the Android `alerts` channel at MAX importance, requests permission (now including iOS alert/badge/sound), and calls `getExpoPushTokenAsync({ projectId })`. Short-circuits with a clear status on simulators (`must-use-physical-device`) and on denied permission. It **no longer** registers the foreground notification handler — that is owned by `bootstrap.ts`. |
+| `mobile/push/PushPanel.tsx` | The **Settings/token panel**, reachable from the List header. Shows the registration status, the Expo push token in a selectable mono box, and a **"KOPIUJ TOKEN"** (copy token) button with a Polish hint to paste it into the server config. |
+| `mobile/push/usePushReceiver.ts` | Legacy observability hook from the push-only phase. The live capture path is now `src/notifications/` + `src/messages/`; `usePushReceiver` is no longer mounted at the App root (only its `LastPush` type is still referenced by `PushPanel`). |
+| `mobile/designs/` | The cosmetic theme mock screens (`Original`, `Moro`, `MoroActive`, `MoroArctic`, `Tactical`). Presentational only; no longer wired into the app entry. |
 
 The UI copy is **in Polish**, consistent with the rest of Sentinel's user-facing alerting.
 
-### Why the push receiver is shaped this way
+### Architecture decisions
 
-**Mount the receiver at the App root, not inside `PushPanel`** — `usePushReceiver()` lives in
-`App.tsx`, above the overlay it feeds.
-- Context: `PushPanel` is an overlay that is closed most of the time. Listeners scoped to it
-  would miss any push that arrived while it was closed, defeating the verification surface.
-- Consequences: the listeners stay alive for the app's whole lifetime, so the latest push is
-  always available when the panel opens — at the cost of one always-mounted hook at the root.
+**AD-1 — Fat push payload, no server callback** — the Detail screen renders entirely from
+the stored notification payload; the app never fetches.
+- Context: the inbox must show full alert content (summary, sources, countries, aggressor,
+  detection time) with tappable article links **offline**, with no HTTP/token API back to the
+  server (single owner, no server ingress opened — same posture as the token paste flow).
+- Consequences: every screen renders purely from the stored payload, and the structured
+  Detail render can be longer than the SMS by design. The original SMS body is stored as a
+  fidelity fallback, rendered only when the structured fields are absent.
 
-**Register both notification listeners** — the hook subscribes to both
-`addNotificationReceivedListener` and `addNotificationResponseReceivedListener`.
-- Context: the *received* listener only fires while the app is foregrounded; a push delivered
-  while the app is backgrounded or closed is not observed by it.
-- Consequences: a foregrounded push shows in **OSTATNI PUSH** immediately, but a
-  backgrounded/closed push surfaces only after the notification is **tapped** (the *response*
-  listener). This is the broadest practical on-device confirmation without a JS test runner;
-  it is not a reliable cold-start replay path. The runbook's Step 7 documents this caveat so an
-  empty panel is not mistaken for a delivery failure.
+**AD-2 — React Navigation (native-stack), added additively for two screens** — `List`
+(initial) and `Detail`.
+- Context: tap-to-Detail and back need real navigation, without migrating to expo-router or a
+  web build and without disturbing the existing push/token panel.
+- Consequences: `App.tsx` becomes the nav shell and the design showcase is no longer the
+  entry. Taps route by the alert's stored `message_id` through a navigation ref, not URL
+  schemes. The added native modules (`react-native-screens`, `react-native-safe-area-context`)
+  require a fresh dev build, so the automated gates stay JS-only and on-device behaviour is
+  verified by a separate manual checklist.
+
+**AD-3 — Visible push is primary; reliable capture is foreground-listener + tap handler +
+tray-sweep-on-open; the background headless task is non-gating.**
+- Context: for a **visible** (title + body) push, iOS will usually **not** run the headless
+  background task, and Apple throttles/skips silent wakes and will not wake a force-quit app —
+  so guaranteed background capture is impossible.
+- Consequences: `App.tsx` sweeps the notification tray on every foreground transition (and
+  once on mount), which is the de-facto capture path; the headless task is a best-effort
+  bonus. The urgency 9–10 Twilio call stays the guaranteed wake-up — the inbox is visibility +
+  history only.
+
+**AD-4 — `data.message_id` is the cross-delivery dedup key; one tap's cold + warm double-fire
+is collapsed in-session only.**
+- Context: one physical tap can surface twice (the cold `useLastNotificationResponse` plus the
+  warm response listener), and the OS notification identifier is a fresh UUID per delivery,
+  unusable for dedup.
+- Consequences: a pure routing decision plus an in-memory last-handled `message_id` suppress
+  the second navigation, and the store dedups interleaved foreground/tray-sweep deliveries of
+  the same alert into a single tile. An **event update** is a distinct `message_id`, so it
+  correctly gets its own tile.
+
+**AD-5 — AsyncStorage is the single source of truth** — one JSON blob, newest-first, capped at
+a fixed maximum; no hidden in-memory cache.
+- Context: the inbox must survive restarts, and the headless and foreground capture paths can
+  interleave writes.
+- Consequences: screens read only via `useMessages()`; the badge is resynced from the store's
+  live unread count after each awaited write; dedup self-heals interleaved duplicates on the
+  next sweep. The List re-reads on focus after returning from Detail.
+
+**Single notification-handler registration centralized in `bootstrap.ts`** — `registerForPush.ts`
+no longer sets the handler, and the iOS badge permission was added.
+- Context: a headless launch needs the handler at module load (before the React tree mounts),
+  two registrations would conflict, and the app-icon badge silently no-ops unless `allowBadge`
+  is granted.
+- Consequences: `bootstrap.ts` owns `setNotificationHandler` (with `shouldSetBadge: false` —
+  the app is the sole badge authority via `syncBadge`), and `registerForPush.ts` requests
+  iOS alert/badge/sound while keeping its token-minting intact.
+
+### Conventions
+
+- **AsyncStorage is the single source of truth**; the UI consumes it only through
+  `useMessages()`, which is the mock seam in the screen tests.
+- **Capture and badge side effects are fault-isolated**: every payload parse, store write,
+  presented-notifications read, badge set, and in-app-browser open is wrapped so a failure can
+  never crash a foreground transition or a screen.
+- **Store UTC, render device-local** (the project-wide timezone convention) extends to the app
+  via `datetime.ts`; `relative()` accepts an injected "now" for deterministic tests.
+- **Native-module versions follow the SDK-54 `npx expo install` resolution** rather than literal
+  version pins, so the inbox's navigation modules stay ABI-compatible with the Expo SDK.
 
 ### Configuration notes
 
@@ -137,16 +213,17 @@ This is a standard Expo app. From `mobile/`:
 ```bash
 cd mobile
 npm install          # first time only
-npm start            # expo start — opens Metro + a QR code for Expo Go / a dev build
+npm start            # expo start — opens Metro + a QR code for a dev build
 # or target a platform directly:
 npm run ios          # expo start --ios
 npm run android      # expo start --android
 ```
 
-**You must run on a physical device** — Expo push tokens are not issued on simulators or
-emulators (`registerForPush.ts` short-circuits with `must-use-physical-device` there). Open
-the app, tap the **PUSH** pill, grant the notification permission, then copy the token shown
-in the panel.
+**You must run on a physical device with a fresh dev build** — Expo push tokens are not issued
+on simulators or emulators (`registerForPush.ts` short-circuits with `must-use-physical-device`
+there), and the navigation/web-browser native modules cannot load under Expo Go. Open the app,
+open **Settings** from the inbox header, grant the notification permission (alert + badge +
+sound), then copy the token shown in the panel.
 
 **Builds (EAS).** `eas.json` defines `development`, `preview`, and `production` profiles.
 A development/preview build is distributed internally; production auto-increments the
@@ -156,6 +233,12 @@ version. Building requires Expo CLI `>= 16.0.0` and a configured EAS project. Ty
 npx eas build --profile development --platform ios   # or android
 ```
 
+**Tests.** The app's logic is covered by a Jest suite (`npm test` from `mobile/`) that runs
+JS-only — the capture, routing, navigation-ref, badge, datetime, store, and screen behaviours.
+The on-device behaviours that need native modules (tap-to-Detail, tray-sweep, badge, in-app
+browser, delete/clear persistence) are verified by hand against the
+[mobile-inbox-verification.md](../how-to/mobile-inbox-verification.md) checklist (MA-1…MA-7).
+
 ## What this app is NOT
 
 - **Not part of the monitoring runtime.** It does not run on the production VPS, is not
@@ -164,14 +247,31 @@ npx eas build --profile development --platform ios   # or android
 - **Not a dashboard.** The read-only Article Dashboard is a separate local subsystem under
   `dashboard/` (see [`../../SPEC.md`](../../SPEC.md)); the mobile app is unrelated to it.
 - **Not a control surface.** It cannot acknowledge alerts, change config, or trigger
-  anything on the server. (Phone-call acknowledgment is still the 6-digit confirmation-SMS
-  reply flow — see [`architecture.md`](architecture.md).)
+  anything on the server. The inbox is read/manage-only over locally stored alerts.
+  (Phone-call acknowledgment is still the 6-digit confirmation-SMS reply flow — see
+  [`architecture.md`](architecture.md).)
+
+## Known limitations
+
+- **Background capture is best-effort only (AD-3).** With a visible push, iOS usually will not
+  run the headless task, so in practice capture is the tray-sweep on app open; the headless
+  payload shape is assumed-from-docs and unverified on-device. The urgency 9–10 Twilio call
+  remains the guaranteed wake-up.
+- **On-device verification (MA-1…MA-7) is pending.** The navigation + web-browser native
+  modules require a fresh dev build, so these behaviours cannot be confirmed by the JS-only
+  automated gates — they are checked by hand per
+  [mobile-inbox-verification.md](../how-to/mobile-inbox-verification.md).
+- **The inbox starts empty with no historical backfill**, and is **single owner / single
+  iPhone** only — the push payload budget assumes one device and would need revisiting for
+  multiple tokens.
 
 ## See also
 
 - [`../how-to/mobile-push-setup.md`](../how-to/mobile-push-setup.md) — the manual runbook for
   provisioning the EAS `projectId`, building the app, and verifying a push end-to-end on the
   device.
+- [`../how-to/mobile-inbox-verification.md`](../how-to/mobile-inbox-verification.md) — the
+  non-gating on-device checklist (MA-1…MA-7) for the in-app inbox.
 - [`../how-to/api-setup.md`](../how-to/api-setup.md) — enabling and configuring the push
   channel (`alerts.push`) server-side.
 - [`architecture.md`](architecture.md) — the push channel inside the alerting pipeline and
