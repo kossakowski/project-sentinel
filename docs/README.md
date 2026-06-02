@@ -17,6 +17,7 @@ When adding a new doc, decide which of these four needs it serves and place it i
 
 - [how-to/api-setup.md](how-to/api-setup.md) — set up Anthropic, Twilio, and Telegram accounts and credentials.
 - [how-to/testing.md](how-to/testing.md) — dry runs, test fixtures, the eval harness, and manual alert testing.
+- [how-to/mobile-push-setup.md](how-to/mobile-push-setup.md) — provision an EAS `projectId`, build the mobile app, and verify a push end-to-end (token → backend → Expo → phone → in-app panel).
 - [how-to/server-runbook.md](how-to/server-runbook.md) — production server access, file layout, service management, deployment, and troubleshooting. Read this first for anything server-related.
 - [how-to/security/vps-hardening.md](how-to/security/vps-hardening.md) — harden the VPS before deployment. (Index: [how-to/security/README.md](how-to/security/README.md).)
 

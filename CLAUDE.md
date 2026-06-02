@@ -42,7 +42,7 @@ you work in that subtree.
 - **Server ops / deploy / troubleshooting:** [docs/how-to/server-runbook.md](docs/how-to/server-runbook.md) — **read first for anything server-related**
 - Architecture → [docs/explanation/architecture.md](docs/explanation/architecture.md) · Pipeline → [docs/explanation/pipeline.md](docs/explanation/pipeline.md) · Mobile app → [docs/explanation/mobile-app.md](docs/explanation/mobile-app.md)
 - Config params → [docs/reference/config-reference.md](docs/reference/config-reference.md) · Sources → [docs/reference/sources.md](docs/reference/sources.md) · CLI → [docs/reference/cli.md](docs/reference/cli.md)
-- Local setup → [docs/tutorials/getting-started.md](docs/tutorials/getting-started.md) · API setup → [docs/how-to/api-setup.md](docs/how-to/api-setup.md) · Testing → [docs/how-to/testing.md](docs/how-to/testing.md) · VPS hardening → [docs/how-to/security/vps-hardening.md](docs/how-to/security/vps-hardening.md)
+- Local setup → [docs/tutorials/getting-started.md](docs/tutorials/getting-started.md) · API setup → [docs/how-to/api-setup.md](docs/how-to/api-setup.md) · Testing → [docs/how-to/testing.md](docs/how-to/testing.md) · Mobile push verification → [docs/how-to/mobile-push-setup.md](docs/how-to/mobile-push-setup.md) · VPS hardening → [docs/how-to/security/vps-hardening.md](docs/how-to/security/vps-hardening.md)
 - Dashboard spec (living) → [SPEC.md](SPEC.md) · Backlog → [TODO.md](TODO.md) · Historic specs → [docs/archive/](docs/archive/README.md)
 
 ## Gotcha: project rename history

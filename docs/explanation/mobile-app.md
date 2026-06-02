@@ -27,6 +27,11 @@ The `mobile/` app exists to solve exactly that bootstrap problem. It:
    state. Breaking through silent mode on iOS requires Apple **Critical Alerts** (a separate
    entitlement, pending), so on the owner's iPhone the push is supplementary and the Twilio
    phone call remains the primary 9–10 wake-up.
+3. **Surfaces the most recently received push** in an **OSTATNI PUSH** ("last push") panel for
+   on-device verification — so the operator can confirm a real push actually landed (title +
+   body), not just that a token was minted. This is observability-only: it never mints or
+   registers tokens. The step-by-step verification path is in
+   [`../how-to/mobile-push-setup.md`](../how-to/mobile-push-setup.md).
 
 That is the whole remit. The app holds no monitoring logic, no database, no classifier, no
 Twilio. It is a thin client for the push channel.
@@ -88,12 +93,32 @@ imports or depends on it.
 
 | File | Role |
 |---|---|
-| `mobile/App.tsx` | Root component. Hosts a **design/theme picker** (a bottom pill bar) plus a `PUSH` toggle pill that overlays the push panel. |
-| `mobile/push/PushPanel.tsx` | **The operational screen.** Shows the registration status, the Expo push token in a selectable mono box, a **"KOPIUJ TOKEN"** (copy token) button, and a Polish hint telling you to paste the token into the server config. Logs the token to the Metro console for dev builds. |
+| `mobile/App.tsx` | Root component. Hosts a **design/theme picker** (a bottom pill bar) plus a `PUSH` toggle pill that overlays the push panel. Mounts `usePushReceiver()` at the root and feeds the latest push down into `PushPanel`. |
+| `mobile/push/PushPanel.tsx` | **The operational screen.** Shows the registration status, the Expo push token in a selectable mono box, a **"KOPIUJ TOKEN"** (copy token) button, and a Polish hint telling you to paste the token into the server config. Also shows an **OSTATNI PUSH** ("last push") box with the most recently received push's title + body (Polish placeholders when a field is missing or nothing has arrived). Logs the token to the Metro console for dev builds. |
+| `mobile/push/usePushReceiver.ts` | Observability-only React hook. Registers both `expo-notifications` listeners — `addNotificationReceivedListener` (foreground arrivals) and `addNotificationResponseReceivedListener` (notification taps) — logs each payload to the Metro console, and returns the last push as `{ title, body, data }`. Removes both subscriptions on unmount. Mints/registers no tokens; does not touch `registerForPush.ts`. |
 | `mobile/push/registerForPush.ts` | The push-registration logic: sets the foreground notification handler (SDK-54 `shouldShowBanner`/`shouldShowList` shape), creates the Android `alerts` channel at MAX importance, requests permission, and calls `getExpoPushTokenAsync({ projectId })`. Short-circuits with a clear status on simulators (`must-use-physical-device`) and on denied permission. |
 | `mobile/designs/` | The cosmetic theme variants selectable from the picker: `Original`, `Moro`, `MoroActive` ("Moro+"), `MoroArctic` ("Arctic"), and `Tactical` (the default). These are presentational mock screens only — they carry no push logic. |
 
 The UI copy is **in Polish**, consistent with the rest of Sentinel's user-facing alerting.
+
+### Why the push receiver is shaped this way
+
+**Mount the receiver at the App root, not inside `PushPanel`** — `usePushReceiver()` lives in
+`App.tsx`, above the overlay it feeds.
+- Context: `PushPanel` is an overlay that is closed most of the time. Listeners scoped to it
+  would miss any push that arrived while it was closed, defeating the verification surface.
+- Consequences: the listeners stay alive for the app's whole lifetime, so the latest push is
+  always available when the panel opens — at the cost of one always-mounted hook at the root.
+
+**Register both notification listeners** — the hook subscribes to both
+`addNotificationReceivedListener` and `addNotificationResponseReceivedListener`.
+- Context: the *received* listener only fires while the app is foregrounded; a push delivered
+  while the app is backgrounded or closed is not observed by it.
+- Consequences: a foregrounded push shows in **OSTATNI PUSH** immediately, but a
+  backgrounded/closed push surfaces only after the notification is **tapped** (the *response*
+  listener). This is the broadest practical on-device confirmation without a JS test runner;
+  it is not a reliable cold-start replay path. The runbook's Step 7 documents this caveat so an
+  empty panel is not mistaken for a delivery failure.
 
 ### Configuration notes
 
@@ -144,6 +169,9 @@ npx eas build --profile development --platform ios   # or android
 
 ## See also
 
+- [`../how-to/mobile-push-setup.md`](../how-to/mobile-push-setup.md) — the manual runbook for
+  provisioning the EAS `projectId`, building the app, and verifying a push end-to-end on the
+  device.
 - [`../how-to/api-setup.md`](../how-to/api-setup.md) — enabling and configuring the push
   channel (`alerts.push`) server-side.
 - [`architecture.md`](architecture.md) — the push channel inside the alerting pipeline and
