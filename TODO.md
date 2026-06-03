@@ -92,6 +92,18 @@ Every classification step must be saved to the database — not just the final r
 - Native app (React Native / Flutter) vs PWA? PWA is cheaper to build and maintain but push notification support varies by platform.
 - Notification infrastructure: Firebase Cloud Messaging (FCM) for Android, APNs for iOS? Or a unified service like OneSignal / Expo Push?
 
+### 3.1 — Shipped inbox app: bugs queued for the next dev-build rebuild
+
+> The in-app SMS-equivalent message inbox shipped and went **live in production 2026-06-03** (server push enabled; standalone `preview` build on the iPhone). See `mobile/INBOX_APP_SPEC.md`. The items below are post-launch bugs found on-device. **Batch them:** each fix is JS-only, but *seeing* it on the phone needs a fresh `eas build --profile preview --platform ios` (~15 min) + reinstall — so collect a batch before rebuilding, rather than rebuilding per fix.
+
+1. **Deleting an unread message leaves a stale app-icon badge.** _(minor — cosmetic)_
+   - **Symptom:** deleting a message you haven't read yet does **not** decrease (or clear) the red unread count on the iOS home-screen icon. Since the message is now gone it can never be marked read, so the inflated badge persists indefinitely.
+   - **Repro:** receive a push (badge = N unread) → delete that message from the list **without opening it** → badge still shows N (should be N−1).
+   - **Expected:** removing an unread message decrements the unread count and re-syncs the badge.
+   - **Likely cause:** the list delete path (`store.remove` from `MessageListScreen` / `useMessages`) doesn't re-run `syncBadge(unreadCount)` with the freshly recomputed count after removal — spec **3.6** requires a badge resync after *every* mutation; the `markRead`/ingest paths do it, delete-of-unread apparently doesn't. Cf. the Phase-3 resolver's noted Low finding about a "stale `unreadCount` captured in the focus-effect closure."
+   - **Fix direction:** after `store.remove` / `store.clear`, recompute `store.unreadCount()` from the persisted store and call `syncBadge(...)` with that value (don't reuse a stale closure count). Add a test: ingest an unread message → `remove` → assert `setBadgeCountAsync` called with the decremented count.
+   - **Never affects SMS or the 9–10 call** — visibility-only.
+
 ---
 
 ## 4. Productize Sentinel — strategy & roadmap
