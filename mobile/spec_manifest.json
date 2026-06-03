@@ -1,0 +1,145 @@
+{
+  "spec_file": "PUSH_APP_SPEC.md",
+  "mode": "interactive",
+  "phases": [
+    {
+      "id": 1,
+      "title": "Backend per-tier channel routing",
+      "depends_on": [],
+      "owned_files": [
+        "sentinel/config.py",
+        "sentinel/alerts/state_machine.py",
+        "sentinel/alerts/push_client.py",
+        "config/config.yaml",
+        "config/config.example.yaml",
+        "tests/test_config.py",
+        "tests/test_state_machine.py"
+      ],
+      "exported_interfaces": ["UrgencyLevel.channel", "AlertStateMachine._determine_action"],
+      "parallelizable_with": [3],
+      "requirement_count": 17
+    },
+    {
+      "id": 2,
+      "title": "Documentation rewrite",
+      "depends_on": [1],
+      "owned_files": [
+        "docs/reference/config-reference.md",
+        "docs/explanation/mobile-app.md",
+        "docs/explanation/pipeline.md",
+        "docs/explanation/architecture.md",
+        "docs/how-to/api-setup.md",
+        "docs/how-to/server-runbook.md",
+        "docs/reference/cli.md",
+        "docs/tutorials/getting-started.md",
+        "CLAUDE.md",
+        ".claude/rules/corroboration.md"
+      ],
+      "exported_interfaces": [],
+      "parallelizable_with": [],
+      "requirement_count": 6
+    },
+    {
+      "id": 3,
+      "title": "Mobile push-receipt observability + on-device verification runbook",
+      "depends_on": [],
+      "owned_files": [
+        "mobile/push/usePushReceiver.ts",
+        "mobile/push/PushPanel.tsx",
+        "mobile/App.tsx",
+        "mobile/package.json",
+        "docs/how-to/mobile-push-setup.md"
+      ],
+      "exported_interfaces": ["usePushReceiver"],
+      "parallelizable_with": [1],
+      "requirement_count": 7,
+      "notes": "Code/docs deliverables depend on nothing; the manual MA-1 step exercises Phase 1 backend and must run after Phase 1."
+    }
+  ],
+  "requirements": [
+    {"id": "1.1", "severity": "MUST", "statement": "UrgencyLevel gains a field channel: str = \"both\".", "test_ids": ["test_channel_field_defaults_to_both", "test_channel_accepts_each_valid_value"], "provenance": "user-decision"},
+    {"id": "1.1a", "severity": "MUST", "statement": "A field_validator on channel raises ValueError for any value not in {sms, push, both}.", "test_ids": ["test_channel_rejects_invalid_value"], "provenance": "user-decision"},
+    {"id": "1.1b", "severity": "MUST", "statement": "Configs omitting channel still load; channel is not required on critical/low.", "test_ids": ["test_config_loads_without_channel_keys"], "provenance": "research"},
+    {"id": "1.2", "severity": "MUST", "statement": "_determine_action returns the matched SMS-tier level's channel (sms|push|both) for the 5-8 tiers.", "test_ids": ["test_determine_action_high_returns_channel", "test_determine_action_medium_returns_channel"], "provenance": "user-decision"},
+    {"id": "1.2a", "severity": "MUST", "statement": "Critical level returns phone_call (corroborated) else sms fallback; never push/both.", "test_ids": ["test_determine_action_critical_call_when_corroborated", "test_determine_action_critical_single_source_fallback_sms"], "provenance": "user-decision"},
+    {"id": "1.2b", "severity": "MUST", "statement": "Scores below the lowest SMS tier return log_only.", "test_ids": ["test_determine_action_low_logs_only"], "provenance": "research"},
+    {"id": "1.2c", "severity": "MUST", "statement": "Level matching remains order-independent (sort by min_score desc).", "test_ids": ["test_determine_action_high_returns_channel"], "provenance": "research"},
+    {"id": "1.3", "severity": "MUST", "statement": "process_event sends push via _maybe_send_push when resolved action is push or both.", "test_ids": ["test_channel_push_sends_push_not_sms", "test_channel_both_sends_push_and_sms"], "provenance": "user-decision"},
+    {"id": "1.3a", "severity": "MUST", "statement": "Resolved action sms/both sends Twilio SMS via _execute_sms, suppressed when _user_already_notified; the push half is not gated by this SMS suppression (bounded only by 1.3c dedup).", "test_ids": ["test_channel_both_sends_push_and_sms", "test_channel_sms_sends_sms_not_push"], "provenance": "research"},
+    {"id": "1.3b", "severity": "MUST", "statement": "phone_call action places the call AND sends an additive push via _maybe_send_push (AD-2); confirmation/stop SMS unchanged.", "test_ids": ["test_critical_event_sends_additive_push"], "provenance": "user-decision"},
+    {"id": "1.3c", "severity": "MUST", "statement": "A second cycle for the same event does not re-push (existing _maybe_send_push dedup on a prior push record preserved).", "test_ids": ["test_push_self_dedup_on_second_cycle"], "provenance": "research"},
+    {"id": "1.3d", "severity": "MUST", "statement": "log_only sends neither SMS nor push.", "test_ids": ["test_determine_action_low_logs_only"], "provenance": "research"},
+    {"id": "1.4", "severity": "MUST", "statement": "Acknowledged-event update branch sends update SMS AND an additive push via _maybe_send_push(is_update=True) (AD-3); is_update dedup-bypass intended so each update pushes; is_update parameter retained.", "test_ids": ["test_acknowledged_update_sends_sms_and_push", "test_push_update_bypasses_dedup"], "provenance": "user-decision"},
+    {"id": "1.5", "severity": "MUST", "statement": "With push disabled/empty tokens, a both/push tier sends no push and both still sends SMS (behavior-preserving default).", "test_ids": ["test_default_both_with_push_disabled_sends_sms_only"], "provenance": "user-decision"},
+    {"id": "1.6", "severity": "MUST", "statement": "config.yaml and config.example.yaml set channel: both on high and medium; example keeps its push block disabled; config.yaml stays without a push block (default disabled).", "test_ids": ["test_config_loads_without_channel_keys"], "provenance": "user-decision"},
+    {"id": "1.7", "severity": "MUST", "statement": "The critical/phone_call call placement, confirmation/stop SMS, retry loop, cooldown, and acknowledgment are unchanged; the only addition to that flow is the additive push (1.3b).", "test_ids": ["test_critical_flow_unchanged_regression"], "provenance": "user-decision"},
+    {"id": "1.8", "severity": "MUST", "statement": "Stale 'additive / never replaces' wording in push_client.py (class/send_push docstrings), _maybe_send_push docstring, and the process_event dispatch comment is corrected to the channel model; 'never replaces' no longer appears under sentinel/.", "test_ids": ["gate_no_never_replaces_in_code"], "provenance": "research"},
+    {"id": "2.1", "severity": "MUST", "statement": "config-reference.md documents the channel field: values sms/push/both, default both, applies to high/medium, ignored for critical/log_only.", "test_ids": ["doc_channel_field_documented"], "provenance": "user-decision"},
+    {"id": "2.2", "severity": "MUST NOT", "statement": "No file under docs/ or sentinel/, nor CLAUDE.md, retains the claim that push 'never replaces' the Twilio channels.", "test_ids": ["doc_no_never_replaces"], "provenance": "user-decision"},
+    {"id": "2.3", "severity": "MUST", "statement": "mobile-app.md, pipeline.md, architecture.md describe routing 5-8 by channel and that 9-10 sends call+SMS plus an additive push (AD-2) and acknowledged updates send SMS plus an additive push (AD-3).", "test_ids": ["doc_explanations_reference_channel"], "provenance": "user-decision"},
+    {"id": "2.4", "severity": "SHOULD", "statement": "Docs state the shipped default (channel both, push disabled) is SMS-only and that switching to push removes the Twilio SMS cost.", "test_ids": ["doc_channel_field_documented"], "provenance": "user-decision"},
+    {"id": "2.5", "severity": "MUST", "statement": "CLAUDE.md no longer calls push 'additive Expo push'; reflects the per-tier channel.", "test_ids": ["doc_claudemd_updated"], "provenance": "user-decision"},
+    {"id": "2.6", "severity": "SHOULD", "statement": ".claude/rules/corroboration.md notes _determine_action now resolves channel from each SMS-tier level's channel setting.", "test_ids": ["doc_explanations_reference_channel"], "provenance": "research"},
+    {"id": "3.1", "severity": "MUST", "statement": "mobile/package.json defines a typecheck script running tsc --noEmit.", "test_ids": ["gate_typecheck_script"], "provenance": "research"},
+    {"id": "3.2", "severity": "MUST", "statement": "All mobile TypeScript type-checks cleanly under strict mode (tsc --noEmit exits 0).", "test_ids": ["gate_typecheck_passes"], "provenance": "research"},
+    {"id": "3.3", "severity": "SHOULD", "statement": "usePushReceiver registers received + response listeners (v54.0.0 API), logs payload, removes listeners on cleanup. No automated behavioral oracle (no JS test runner); verified by review + MA-1.", "test_ids": ["MA-1"], "provenance": "user-decision"},
+    {"id": "3.4", "severity": "SHOULD", "statement": "PushPanel displays the most recently received push title+body (or placeholder). No automated behavioral oracle; verified by review + MA-1.", "test_ids": ["MA-1"], "provenance": "user-decision"},
+    {"id": "3.5", "severity": "MUST", "statement": "mobile-push-setup.md documents the full manual e2e: eas projectId, dev build, permission, copy token, paste+enable, set channel, --test-alert push, confirm receipt.", "test_ids": ["gate_runbook_exists", "gate_runbook_covers_provisioning"], "provenance": "user-decision"},
+    {"id": "3.6", "severity": "MUST", "statement": "Runbook states steps 1-2 are manual interactive (eas/Apple) and that the projectId placeholder is replaced by eas, not hardcoded.", "test_ids": ["gate_runbook_covers_provisioning"], "provenance": "research"},
+    {"id": "3.7", "severity": "MUST", "statement": "Mobile changes do not alter registerForPush.ts token minting or the copy flow (additive only). Verified by review/diff and MA-1 (a broken mint fails MA-1).", "test_ids": ["MA-1"], "provenance": "research"}
+  ],
+  "tests": [
+    {"name": "test_channel_field_defaults_to_both", "type": "unit", "requirement_ids": ["1.1"], "gate_command": ".venv/bin/pytest tests/test_config.py -v", "assertion": "UrgencyLevel(min_score=7, action='sms').channel == 'both'"},
+    {"name": "test_channel_accepts_each_valid_value", "type": "unit", "requirement_ids": ["1.1"], "gate_command": ".venv/bin/pytest tests/test_config.py -v", "assertion": "channel in {sms,push,both} constructs and round-trips"},
+    {"name": "test_channel_rejects_invalid_value", "type": "unit", "requirement_ids": ["1.1a"], "gate_command": ".venv/bin/pytest tests/test_config.py -v", "assertion": "channel='email' raises ValidationError mentioning channel"},
+    {"name": "test_config_loads_without_channel_keys", "type": "unit", "requirement_ids": ["1.1b", "1.6"], "gate_command": ".venv/bin/pytest tests/test_config.py -v", "assertion": "config without channel loads; high/medium default to 'both'"},
+    {"name": "test_determine_action_high_returns_channel", "type": "unit", "requirement_ids": ["1.2", "1.2c"], "gate_command": ".venv/bin/pytest tests/test_state_machine.py -v", "assertion": "score 7 returns high.channel (push/both/sms as configured)"},
+    {"name": "test_determine_action_medium_returns_channel", "type": "unit", "requirement_ids": ["1.2"], "gate_command": ".venv/bin/pytest tests/test_state_machine.py -v", "assertion": "score 5 returns medium.channel (medium level injected per fixture note)"},
+    {"name": "test_determine_action_critical_call_when_corroborated", "type": "unit", "requirement_ids": ["1.2a"], "gate_command": ".venv/bin/pytest tests/test_state_machine.py -v", "assertion": "score 10, sources 2, corr 1 -> 'phone_call'"},
+    {"name": "test_determine_action_critical_single_source_fallback_sms", "type": "unit", "requirement_ids": ["1.2a"], "gate_command": ".venv/bin/pytest tests/test_state_machine.py -v", "assertion": "score 10, sources 1, corr 2 -> 'sms' (never push/both)"},
+    {"name": "test_determine_action_low_logs_only", "type": "unit", "requirement_ids": ["1.2b", "1.3d"], "gate_command": ".venv/bin/pytest tests/test_state_machine.py -v", "assertion": "score 3 -> 'log_only' (low level injected per fixture note)"},
+    {"name": "test_channel_push_sends_push_not_sms", "type": "integration", "requirement_ids": ["1.3", "1.3a"], "gate_command": ".venv/bin/pytest tests/test_state_machine.py -v", "assertion": "high.channel=push, push enabled, score7: send_push called once, send_sms not called; one push record, no sms record"},
+    {"name": "test_channel_both_sends_push_and_sms", "type": "integration", "requirement_ids": ["1.3", "1.3a"], "gate_command": ".venv/bin/pytest tests/test_state_machine.py -v", "assertion": "high.channel=both, push enabled, score7: send_push once AND send_sms once; one push + one sms record"},
+    {"name": "test_channel_sms_sends_sms_not_push", "type": "integration", "requirement_ids": ["1.3a"], "gate_command": ".venv/bin/pytest tests/test_state_machine.py -v", "assertion": "high.channel=sms, push enabled, score7: send_sms called, send_push not called"},
+    {"name": "test_critical_event_sends_additive_push", "type": "integration", "requirement_ids": ["1.3b", "1.7"], "gate_command": ".venv/bin/pytest tests/test_state_machine.py -v", "assertion": "push enabled+token, score10 sources2: call flow runs AND send_push called once; one push record exists"},
+    {"name": "test_push_self_dedup_on_second_cycle", "type": "integration", "requirement_ids": ["1.3c"], "gate_command": ".venv/bin/pytest tests/test_state_machine.py -v", "assertion": "high.channel=push, push enabled, process_event twice same event: send_push called exactly once"},
+    {"name": "test_acknowledged_update_sends_sms_and_push", "type": "integration", "requirement_ids": ["1.4"], "gate_command": ".venv/bin/pytest tests/test_state_machine.py -v", "assertion": "push enabled, acknowledged event updated: _send_update_sms fires AND send_push called (is_update bypass)"},
+    {"name": "test_push_update_bypasses_dedup", "type": "integration", "requirement_ids": ["1.4"], "gate_command": ".venv/bin/pytest tests/test_state_machine.py -v", "assertion": "EXISTING test must keep passing: _maybe_send_push(..., is_update=True) still calls send_push once (is_update param retained)"},
+    {"name": "test_default_both_with_push_disabled_sends_sms_only", "type": "integration", "requirement_ids": ["1.5"], "gate_command": ".venv/bin/pytest tests/test_state_machine.py -v", "assertion": "push disabled, high.channel=both, score7: send_sms once, send_push not called, no push record"},
+    {"name": "test_critical_flow_unchanged_regression", "type": "integration", "requirement_ids": ["1.7"], "gate_command": ".venv/bin/pytest tests/test_state_machine.py -v", "assertion": "existing critical-call lifecycle tests pass under new code"},
+    {"name": "gate_no_never_replaces_in_code", "type": "e2e", "requirement_ids": ["1.8"], "gate_command": "! grep -rIn \"never replaces\" sentinel/", "assertion": "phrase 'never replaces' absent under sentinel/ after docstring/comment fixes"},
+    {"name": "doc_channel_field_documented", "type": "e2e", "requirement_ids": ["2.1", "2.4"], "gate_command": "grep -nF '`channel`' docs/reference/config-reference.md && grep -nF '`both`' docs/reference/config-reference.md", "assertion": "config-reference documents the channel field and the both value as code spans (neither pre-exists)"},
+    {"name": "doc_no_never_replaces", "type": "e2e", "requirement_ids": ["2.2"], "gate_command": "! grep -rIn \"never replaces\" docs/ sentinel/ CLAUDE.md", "assertion": "phrase 'never replaces' absent from docs/, sentinel/, CLAUDE.md (currently in config-reference.md, pipeline.md, push_client.py)"},
+    {"name": "doc_explanations_reference_channel", "type": "e2e", "requirement_ids": ["2.3", "2.6"], "gate_command": "grep -qF '`channel`' docs/explanation/mobile-app.md && grep -qF '`channel`' docs/explanation/pipeline.md && grep -qF '`channel`' docs/explanation/architecture.md", "assertion": "each of the three explanation docs references the backticked channel field (none does today)"},
+    {"name": "doc_claudemd_updated", "type": "e2e", "requirement_ids": ["2.5"], "gate_command": "! grep -nI \"additive Expo\" CLAUDE.md", "assertion": "CLAUDE.md no longer says 'additive Expo' (today line 4: 'optional additive Expo **push**')"},
+    {"name": "gate_typecheck_script", "type": "e2e", "requirement_ids": ["3.1"], "gate_command": "grep -q '\"typecheck\"' mobile/package.json", "assertion": "package.json defines a typecheck script (absent today)"},
+    {"name": "gate_typecheck_passes", "type": "e2e", "requirement_ids": ["3.2"], "gate_command": "npm --prefix mobile run typecheck", "assertion": "tsc --noEmit exits 0 under strict mode (type-correctness only; does not verify listener/panel behavior)"},
+    {"name": "gate_runbook_exists", "type": "e2e", "requirement_ids": ["3.5"], "gate_command": "test -f docs/how-to/mobile-push-setup.md", "assertion": "runbook file exists"},
+    {"name": "gate_runbook_covers_provisioning", "type": "e2e", "requirement_ids": ["3.5", "3.6"], "gate_command": "grep -niE \"eas|projectId|test-alert push\" docs/how-to/mobile-push-setup.md", "assertion": "runbook covers eas provisioning + the test command"},
+    {"name": "MA-1", "type": "e2e", "requirement_ids": ["3.3", "3.4", "3.7"], "gate_command": null, "assertion": "MANUAL, NON-GATING: on the physical iPhone, ./run.sh --test-alert push shows a notification that appears in PushPanel; requires real projectId + dev build + Phase 1 backend"}
+  ],
+  "gate_criteria": {
+    "1": [
+      "python -m venv .venv && .venv/bin/pip install -q -r requirements.txt ruff",
+      ".venv/bin/python -c \"from sentinel.config import UrgencyLevel; assert UrgencyLevel(min_score=7, action='sms').channel == 'both'\"",
+      ".venv/bin/pytest tests/test_config.py tests/test_state_machine.py tests/test_push_client.py -v",
+      ".venv/bin/ruff check sentinel/config.py sentinel/alerts/state_machine.py sentinel/alerts/push_client.py tests/test_config.py tests/test_state_machine.py",
+      "! grep -rIn \"never replaces\" sentinel/"
+    ],
+    "2": [
+      "grep -nF '`channel`' docs/reference/config-reference.md",
+      "grep -nF '`both`' docs/reference/config-reference.md",
+      "! grep -rIn \"never replaces\" docs/ sentinel/ CLAUDE.md",
+      "grep -nF '`channel`' docs/explanation/mobile-app.md",
+      "grep -nF '`channel`' docs/explanation/pipeline.md",
+      "grep -nF '`channel`' docs/explanation/architecture.md",
+      "! grep -nI \"additive Expo\" CLAUDE.md"
+    ],
+    "3": [
+      "npm --prefix mobile install",
+      "npm --prefix mobile run typecheck",
+      "test -f docs/how-to/mobile-push-setup.md",
+      "grep -niE \"eas|projectId|test-alert push\" docs/how-to/mobile-push-setup.md"
+    ]
+  }
+}
