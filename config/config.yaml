@@ -549,6 +549,13 @@ alerts:
     max_call_retries: 5
     retry_interval_minutes: 5
     cooldown_hours: 6
+  push:
+    enabled: true
+    # Real token lives in /etc/sentinel/sentinel.env (EXPO_PUSH_TOKEN) and is
+    # substituted at load time (config.py _substitute_env_vars). NEVER hardcode
+    # it here — this is a PUBLIC repo and Expo's push API is unauthenticated.
+    tokens:
+      - "${EXPO_PUSH_TOKEN}"
 scheduler:
   fast_interval_minutes: 3
   interval_minutes: 15
