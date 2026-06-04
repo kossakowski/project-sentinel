@@ -499,16 +499,17 @@ alerts:
       min_score: 7
       action: sms
       corroboration_required: 1
-      # Delivery channel for this tier: sms | push | both. "both" is
-      # behavior-preserving while push is disabled (SMS only); switch to "push"
-      # to drop this tier's Twilio SMS cost once a push token is configured.
-      channel: both
+      # Delivery channel for this tier: sms | push | both. Set to "push":
+      # tiers 5-8 (medium + high) deliver via app push only — no Twilio SMS.
+      # Only the critical 9-10 call keeps an SMS fallback. Push token is
+      # configured in prod (/etc/sentinel/config.yaml is the live source).
+      channel: push
     medium:
       min_score: 5
       action: sms
       corroboration_required: 1
       # Delivery channel: sms | push | both (see `high` above).
-      channel: both
+      channel: push
     low:
       min_score: 1
       action: log_only
