@@ -200,10 +200,15 @@ on the 9–10 path (new corroborated critical events + acknowledged updates), an
   or `"push"` MUST behave as it does today: no push is sent, and a `"both"` tier still sends its
   Twilio SMS. _(Rationale: AD-4 — committed default is behavior-preserving.)_
 
-**1.6** — `config/config.yaml` and `config/config.example.yaml` MUST set `channel: both` on the
-  `high` and `medium` urgency levels with a brief explanatory comment. `config.example.yaml` MUST
-  keep its `alerts.push` block disabled (`enabled: false`); `config.yaml` MUST remain without a
-  `push:` block (the `enabled=False` default is the production-matching disabled state).
+**1.6** — `config/config.example.yaml` (the template for a fresh deploy) MUST set `channel: both`
+  on the `high` and `medium` urgency levels and keep its `alerts.push` block disabled
+  (`enabled: false`), so a new install is behavior-preserving (SMS) until a push token is
+  configured. `config/config.yaml` (the production-matching tracked config) MUST set `channel: push`
+  on `high` and `medium` and include an enabled `alerts.push` block whose `tokens` is the
+  `${EXPO_PUSH_TOKEN}` env-var placeholder — the raw Expo token MUST NEVER be committed (this is a
+  PUBLIC repo and Expo's push API is unauthenticated; the token is resolved from
+  `/etc/sentinel/sentinel.env` at load time). _(As of 2026-06-04 tiers 5-8 are push-only in
+  production; only the 9-10 call keeps an SMS fallback.)_
 
 **1.7** — The revised `process_event`/`_determine_action` MUST NOT alter the **call placement,
   confirmation/stop SMS, retry loop, cooldown, or acknowledgment** behavior of the `critical`/`phone_call`

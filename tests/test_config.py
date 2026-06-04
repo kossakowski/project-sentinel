@@ -344,14 +344,19 @@ def test_config_loads_without_channel_keys(tmp_path):
     assert levels["low"].channel == "both"
 
 
-def test_shipped_configs_set_channel_both():
-    """[1.6] The shipped config files route the 5-8 tiers via `channel: both`.
+def test_shipped_configs_channel_routing():
+    """[1.6] example.yaml is the safe SMS default; config.yaml is production push-only.
 
     Parses the raw repo YAML directly (no env credentials / full Settings needed)
-    and asserts: in BOTH config.yaml and config.example.yaml the high and medium
-    urgency levels set `channel: both`; config.example.yaml keeps its
-    alerts.push block disabled; and config.yaml ships NO push block under alerts
-    (the PushConfig `enabled=False` default is the production-matching state).
+    and asserts the two shipped configs play distinct roles:
+
+    - config.example.yaml (template for a fresh deploy): high/medium stay on
+      `channel: both` with the `alerts.push` block disabled, so a new install is
+      behavior-preserving (SMS) until a push token is configured.
+    - config.yaml (production-matching tracked config): high/medium are
+      `channel: push` and an `alerts.push` block is enabled, with the Expo token
+      as the `${EXPO_PUSH_TOKEN}` env-var placeholder — NEVER a raw token, since
+      this is a PUBLIC repo (resolved from /etc/sentinel/sentinel.env at load).
     """
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -362,13 +367,16 @@ def test_shipped_configs_set_channel_both():
     main_cfg = _load("config/config.yaml")
     example_cfg = _load("config/config.example.yaml")
 
-    for cfg in (main_cfg, example_cfg):
-        levels = cfg["alerts"]["urgency_levels"]
-        assert levels["high"]["channel"] == "both"
-        assert levels["medium"]["channel"] == "both"
-
-    # config.example.yaml ships the push block disabled.
+    # config.example.yaml — safe template default: SMS ("both"), push disabled.
+    ex_levels = example_cfg["alerts"]["urgency_levels"]
+    assert ex_levels["high"]["channel"] == "both"
+    assert ex_levels["medium"]["channel"] == "both"
     assert example_cfg["alerts"]["push"]["enabled"] is False
 
-    # config.yaml has NO push block under alerts (relies on the disabled default).
-    assert "push" not in main_cfg["alerts"]
+    # config.yaml — production: push-only tiers 5-8, push enabled, env-var token.
+    main_levels = main_cfg["alerts"]["urgency_levels"]
+    assert main_levels["high"]["channel"] == "push"
+    assert main_levels["medium"]["channel"] == "push"
+    main_push = main_cfg["alerts"]["push"]
+    assert main_push["enabled"] is True
+    assert main_push["tokens"] == ["${EXPO_PUSH_TOKEN}"]  # placeholder, not a raw token
