@@ -16,6 +16,12 @@
  * Both paths resolve `message_id` identically (via `parsePayload` → `data.message_id`)
  * and dedup in the store, so a push that is foregrounded and then swept yields ONE
  * inbox entry.
+ *
+ * After a successful ingest each path also `dismissFromTray()`s the OS notification:
+ * once a message lives in the store (the source of truth), its tray copy is
+ * redundant, and leaving it there is what lets a deleted message resurface — the
+ * cold-launch tray sweep would re-ingest the undismissed copy because the store
+ * keeps no deletion tombstone.
  */
 
 import * as Notifications from 'expo-notifications';
@@ -25,6 +31,24 @@ import * as store from '../messages/store';
 
 /** A callback fired after a successful ingest so the caller can resync the badge. */
 export type OnIngest = () => void;
+
+/**
+ * Remove a notification from the OS tray once it is safely in the inbox store, so a
+ * later cold-launch tray sweep cannot re-ingest a message the user has already
+ * triaged (read or deleted). Best-effort and fully fault-isolated: a missing
+ * identifier is a no-op and a rejected `dismissNotificationAsync` is swallowed —
+ * the store remains the source of truth regardless (3.14).
+ */
+export async function dismissFromTray(
+  identifier: string | null | undefined,
+): Promise<void> {
+  if (typeof identifier !== 'string' || identifier.length === 0) return;
+  try {
+    await Notifications.dismissNotificationAsync(identifier);
+  } catch (err) {
+    console.warn('[inbox] dismiss from tray failed', err);
+  }
+}
 
 /**
  * Subscribe to foreground-received pushes: parse → ingest. Returns an unsubscribe
@@ -37,6 +61,7 @@ export function attachForegroundCapture(onIngest?: OnIngest): () => void {
       try {
         const message = parseForeground(notification);
         await store.ingest(message);
+        await dismissFromTray(notification?.request?.identifier);
         onIngest?.();
       } catch (err) {
         console.warn('[inbox] foreground capture failed', err);
@@ -74,6 +99,7 @@ export async function sweepPresented(onIngest?: OnIngest): Promise<void> {
       if (data == null) continue;
       const message = parseForeground(notification);
       await store.ingest(message);
+      await dismissFromTray(notification?.request?.identifier);
       ingestedAny = true;
     } catch (err) {
       console.warn('[inbox] tray sweep entry failed', err);

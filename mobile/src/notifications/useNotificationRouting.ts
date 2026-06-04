@@ -21,6 +21,7 @@ import * as Notifications from 'expo-notifications';
 import { parseForeground } from '../messages/parsePayload';
 import * as store from '../messages/store';
 import { navigate } from '../navigation/navigationRef';
+import { dismissFromTray } from './capture';
 import { decideRoute } from './routing';
 
 /** Optional callback fired after an ingest so the caller can resync the badge. */
@@ -41,6 +42,7 @@ export function useNotificationRouting(onIngest?: OnRouteIngest): void {
       }
       const message = parseForeground(response.notification);
       await store.ingest(message);
+      await dismissFromTray(response.notification?.request?.identifier);
       onIngestRef.current?.();
       const decision = decideRoute(message.message_id, lastHandledRef.current);
       if (decision.navigate && decision.messageId) {

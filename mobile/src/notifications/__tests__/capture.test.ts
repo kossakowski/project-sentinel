@@ -12,6 +12,7 @@ import * as store from '../../messages/store';
 
 const addReceived = Notifications.addNotificationReceivedListener as jest.Mock;
 const getPresented = Notifications.getPresentedNotificationsAsync as jest.Mock;
+const dismiss = Notifications.dismissNotificationAsync as jest.Mock;
 
 /** A foreground/tray notification carrying the given data + body. */
 function notif(messageId: string, body = 'b') {
@@ -32,6 +33,8 @@ beforeEach(async () => {
   await store.load();
   addReceived.mockReset();
   getPresented.mockReset();
+  dismiss.mockReset();
+  dismiss.mockResolvedValue(undefined);
 });
 
 describe('attachForegroundCapture', () => {
@@ -58,6 +61,25 @@ describe('attachForegroundCapture', () => {
     detach();
   });
 
+  test('test_foreground_dismisses_tray_copy_after_ingest', async () => {
+    // Once a push is in the store, its tray copy is dismissed so a later cold
+    // sweep cannot re-ingest a message the user has since deleted (resurface bug).
+    let captured: ((n: unknown) => void) | undefined;
+    addReceived.mockImplementation((cb: (n: unknown) => void) => {
+      captured = cb;
+      return { remove: jest.fn() };
+    });
+    attachForegroundCapture();
+
+    const n = notif('m1');
+    n.request.identifier = 'os-fixed-1';
+    captured!(n);
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(await store.load()).toHaveLength(1);
+    expect(dismiss).toHaveBeenCalledWith('os-fixed-1');
+  });
+
   test('detach removes the subscription without throwing', () => {
     const remove = jest.fn();
     addReceived.mockReturnValue({ remove });
@@ -82,6 +104,29 @@ describe('sweepPresented', () => {
     expect(all).toHaveLength(1);
     expect(all[0].message_id).toBe('valid');
     expect(onIngest).toHaveBeenCalledTimes(1);
+  });
+
+  test('test_sweep_dismisses_each_ingested_tray_entry', async () => {
+    // The sweep dismisses every entry it ingests; with the tray cleared, a deleted
+    // message has nothing to resurface from on the next cold launch.
+    const n = notif('valid');
+    n.request.identifier = 'os-sweep-1';
+    getPresented.mockResolvedValueOnce([n]);
+
+    await sweepPresented();
+
+    expect(await store.load()).toHaveLength(1);
+    expect(dismiss).toHaveBeenCalledWith('os-sweep-1');
+  });
+
+  test('a dismiss failure does not abort the sweep or lose the ingest', async () => {
+    const n = notif('valid');
+    n.request.identifier = 'os-sweep-2';
+    getPresented.mockResolvedValueOnce([n]);
+    dismiss.mockRejectedValueOnce(new Error('dismiss boom'));
+
+    await expect(sweepPresented()).resolves.toBeUndefined();
+    expect(await store.load()).toHaveLength(1);
   });
 
   test('a rejected getPresentedNotificationsAsync is swallowed', async () => {
