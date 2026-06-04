@@ -24,6 +24,11 @@ EVENT_TYPE_PL = {
     "troop_movement": "Ruchy wojsk",
     "artillery_shelling": "Ostrzał artyleryjski",
     "drone_attack": "Atak dronów",
+    # Fallback enum values from the classifier (classifier.py) that lack a specific
+    # category. Without these, EVENT_TYPE_PL.get(type, type) leaks the raw English
+    # token ("other"/"none") into the push title, SMS body, and call script.
+    "other": "Inny incydent",
+    "none": "Brak zagrożenia",
 }
 
 # Twilio rejects a concatenated SMS body over 1600 characters. Cap below that
