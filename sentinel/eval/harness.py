@@ -22,7 +22,7 @@ from sentinel.classification.classifier import Classifier
 from sentinel.config import SentinelConfig
 from sentinel.models import Article, ClassificationResult
 
-MONITORED_COUNTRIES = {"PL", "LT", "LV", "EE"}
+MONITORED_COUNTRIES = {"PL", "LT", "LV", "EE", "RO"}
 
 # Haiku 4.5 pricing (USD per million tokens)
 HAIKU_INPUT_PRICE_PER_M = 0.80

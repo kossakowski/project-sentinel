@@ -12,6 +12,9 @@ monitoring:
   - code: EE
     name: Estonia
     name_native: Estonia
+  - code: RO
+    name: Romania
+    name_native: Rumunia
   aggressor_countries:
   - code: RU
     name: Russia
@@ -245,6 +248,28 @@ monitoring:
       - гибридная война
       - шпионаж
       - ГРУ
+    ro:
+      critical:
+      - atac militar
+      - invazie
+      - atac cu rachete
+      - bombardament
+      - declarație de război
+      - atac armat
+      - operațiune ofensivă
+      - Articolul 5
+      high:
+      - încălcarea spațiului aerian
+      - dronă
+      - drone
+      - mobilizare
+      - escaladare
+      - incident la frontieră
+      - atac cibernetic
+      - Shahed
+      - Geran
+      - sabotaj
+      - manevre suspecte
   exclude_keywords:
     en:
     - exercise
@@ -288,6 +313,18 @@ monitoring:
     - recenzja
     - opinia
     - felieton
+geography:
+  # Whole countries treated as HIGH geo-tier: a military strike anywhere on their
+  # soil (including their capital) is call-tier-eligible. Romania joined the
+  # monitored HIGH set 2026-07. Country resolution stays LLM-driven and
+  # country-level -- there is NO gazetteer/city list (a strike in "Galați"
+  # resolves to Romania exactly as "Warsaw" resolves to Poland).
+  high_tier_countries:
+  - PL
+  - LT
+  - LV
+  - EE
+  - RO
 sources:
   rss:
   - name: PAP
@@ -437,6 +474,10 @@ sources:
       language: pl
     - query: дрони Польща
       language: uk
+    - query: atac Rusia România
+      language: ro
+    - query: dronă spațiul aerian România
+      language: ro
   telegram:
     enabled: true
     channels:
@@ -563,3 +604,8 @@ logging:
   backup_count: 5
 testing:
   dry_run: false
+  # Owner correctness gate: the blind human-labeled set (`./run.sh --eval`).
+  eval_set_file: tests/fixtures/eval_set_human.yaml
+  # Report-only regression set (frozen past classifier behavior); run non-gating
+  # alongside the gate eval.
+  regression_eval_set_file: tests/fixtures/eval_set.yaml

@@ -87,6 +87,23 @@ class MonitoringConfig(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Geography models
+# ---------------------------------------------------------------------------
+
+
+class GeographyConfig(BaseModel):
+    """Country-level geography tiers.
+
+    Country resolution stays LLM-driven and country-level; this block carries
+    NO city/town/place list or gazetteer -- only whole-country codes.
+    """
+
+    # Whole countries whose soil is HIGH geo-tier (call-tier-eligible for a strike
+    # anywhere on their territory, including the capital).
+    high_tier_countries: list[str] = ["PL", "LT", "LV", "EE", "RO"]
+
+
+# ---------------------------------------------------------------------------
 # Alert models
 # ---------------------------------------------------------------------------
 
@@ -218,6 +235,9 @@ class LoggingConfig(BaseModel):
 class TestingConfig(BaseModel):
     dry_run: bool = False
     eval_set_file: str = "tests/fixtures/eval_set.yaml"
+    # Report-only regression eval set (frozen past classifier behavior), run
+    # non-gating alongside the gate eval (eval_set_file).
+    regression_eval_set_file: str = "tests/fixtures/eval_set.yaml"
 
 
 class ProcessingDedup(BaseModel):
@@ -237,6 +257,7 @@ class ProcessingConfig(BaseModel):
 
 class SentinelConfig(BaseModel):
     monitoring: MonitoringConfig
+    geography: GeographyConfig = GeographyConfig()
     sources: SourcesConfig
     classification: ClassificationConfig
     alerts: AlertsConfig

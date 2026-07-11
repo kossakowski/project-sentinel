@@ -80,8 +80,9 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="?",
         const="DEFAULT",
         metavar="PATH",
-        help="Run classification eval against a YAML eval set "
-        "(default: tests/fixtures/eval_set.yaml). "
+        help="Run classification eval against a YAML eval set. With no PATH, runs the "
+        "configured gate set (testing.eval_set_file, the human correctness set) plus a "
+        "non-gating regression run (testing.regression_eval_set_file). "
         "Hits the live API. Saves a JSON report to data/eval/.",
     )
     return parser
@@ -242,9 +243,15 @@ def main() -> None:
 
     # Eval mode — run classifier against labeled eval set
     if args.eval is not None:
-        eval_path = args.eval if args.eval != "DEFAULT" else config.testing.eval_set_file
-        _run_eval(eval_path, config, logger)
-        # _run_eval handles its own exit code
+        if args.eval != "DEFAULT":
+            # Explicit path: run only that set (gating), preserving prior behavior.
+            _run_eval(args.eval, config, logger)
+            # _run_eval handles its own exit code
+        else:
+            # Default: run the report-only regression set first (non-gating), then
+            # the human correctness gate (which handles its own exit code).
+            _run_regression_eval(config.testing.regression_eval_set_file, config, logger)
+            _run_eval(config.testing.eval_set_file, config, logger)
 
     # Mode: health check
     if args.health:
@@ -397,6 +404,26 @@ def _run_eval(eval_set_path: str, config, logger) -> None:
 
     # Exit 0 if all pass, 1 otherwise — useful for CI gating.
     sys.exit(0 if report.metrics.get("overall_pass_rate", 0) == 1.0 else 1)
+
+
+def _run_regression_eval(eval_set_path: str, config, logger) -> None:
+    """Run the regression eval (report-only, non-gating): print its report, never exit.
+
+    This is the frozen past-behavior set. It runs alongside the human correctness
+    gate but does NOT affect the exit code — drift here is diagnostic, not a fail.
+    """
+    from sentinel.eval.harness import format_report, run_eval, save_report_json
+
+    if not os.path.exists(eval_set_path):
+        print(f"Warning: regression eval set not found: {eval_set_path}", file=sys.stderr)
+        return
+
+    logger.info("Regression eval mode (non-gating): %s", eval_set_path)
+    print("\n=== Regression eval (report-only, non-gating) ===")
+    report = asyncio.run(run_eval(eval_set_path, config))
+    print(format_report(report))
+    json_path = save_report_json(report)
+    print(f"Regression report: {json_path}")
 
 
 def _run_test_alert(alert_type: str, config, logger) -> None:
