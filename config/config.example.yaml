@@ -24,6 +24,9 @@ monitoring:
     - code: EE
       name: Estonia
       name_native: Estonia
+    - code: RO
+      name: Romania
+      name_native: Rumunia
 
   # Potential aggressors
   aggressor_countries:
@@ -239,6 +242,51 @@ monitoring:
         - "шпионаж"
         - "ГРУ"
 
+    # Romanian is word-boundary matched (not substring like the Slavic sets above),
+    # so list inflected/definite-article forms explicitly (drona/dronei, invazia,
+    # bombardamentul, atacul cu rachete) plus a few diacritic-free variants.
+    ro:
+      critical:
+        - "atac militar"
+        - "atacul militar"
+        - "invazie"
+        - "invazia"
+        - "invaziei"
+        - "atac cu rachete"
+        - "atacul cu rachete"
+        - "atacuri cu rachete"
+        - "rachetă"
+        - "racheta"
+        - "rachete"
+        - "bombardament"
+        - "bombardamentul"
+        - "bombardamente"
+        - "declarație de război"
+        - "declaratie de razboi"
+        - "atac armat"
+        - "atacul armat"
+        - "operațiune ofensivă"
+        - "operatiune ofensiva"
+        - "Articolul 5"
+      high:
+        - "încălcarea spațiului aerian"
+        - "incalcarea spatiului aerian"
+        - "dronă"
+        - "drona"
+        - "drone"
+        - "dronele"
+        - "dronei"
+        - "mobilizare"
+        - "mobilizarea"
+        - "escaladare"
+        - "escaladarea"
+        - "incident la frontieră"
+        - "atac cibernetic"
+        - "Shahed"
+        - "Geran"
+        - "sabotaj"
+        - "manevre suspecte"
+
   # Articles matching these keywords (without critical match) are filtered out
   exclude_keywords:
     en:
@@ -283,6 +331,22 @@ monitoring:
       - "recenzja"
       - "opinia"
       - "felieton"
+
+# -----------------------------------------------------------------------------
+# GEOGRAPHY -- Country-level geo tiers (no gazetteer / city list)
+# -----------------------------------------------------------------------------
+geography:
+  # Whole countries treated as HIGH geo-tier: a military strike anywhere on their
+  # soil (including their capital) is call-tier-eligible. Romania joined the
+  # monitored HIGH set 2026-07. Country resolution stays LLM-driven and
+  # country-level -- there is NO gazetteer/city list (a strike in "Galați"
+  # resolves to Romania exactly as "Warsaw" resolves to Poland).
+  high_tier_countries:
+    - PL
+    - LT
+    - LV
+    - EE
+    - RO
 
 # -----------------------------------------------------------------------------
 # SOURCES -- Where we scan
@@ -452,6 +516,10 @@ sources:
       # requests. Route PAP content through Google News site: operator.
       - query: "site:pap.pl"
         language: pl
+      - query: "atac Rusia România"
+        language: ro
+      - query: "dronă spațiul aerian România"
+        language: ro
 
   # --- Telegram ---
   telegram:
@@ -615,4 +683,8 @@ logging:
 # -----------------------------------------------------------------------------
 testing:
   dry_run: false
-  eval_set_file: tests/fixtures/eval_set.yaml
+  # Owner correctness gate: the blind human-labeled set (`./run.sh --eval`).
+  eval_set_file: tests/fixtures/eval_set_human.yaml
+  # Report-only regression set (frozen past classifier behavior); run non-gating
+  # alongside the gate eval.
+  regression_eval_set_file: tests/fixtures/eval_set.yaml

@@ -249,21 +249,44 @@ monitoring:
       - шпионаж
       - ГРУ
     ro:
+      # Romanian is word-boundary matched (not substring like the Slavic sets), so
+      # citation forms alone miss the enclitic definite article and plurals common in
+      # headlines. List the inflected/definite forms explicitly (e.g. drona/dronei,
+      # invazia, bombardamentul, atacul cu rachete) plus a few diacritic-free variants.
       critical:
       - atac militar
+      - atacul militar
       - invazie
+      - invazia
+      - invaziei
       - atac cu rachete
+      - atacul cu rachete
+      - atacuri cu rachete
+      - rachetă
+      - racheta
+      - rachete
       - bombardament
+      - bombardamentul
+      - bombardamente
       - declarație de război
+      - declaratie de razboi
       - atac armat
+      - atacul armat
       - operațiune ofensivă
+      - operatiune ofensiva
       - Articolul 5
       high:
       - încălcarea spațiului aerian
+      - incalcarea spatiului aerian
       - dronă
+      - drona
       - drone
+      - dronele
+      - dronei
       - mobilizare
+      - mobilizarea
       - escaladare
+      - escaladarea
       - incident la frontieră
       - atac cibernetic
       - Shahed

@@ -205,3 +205,41 @@ def test_prompt_json_example_includes_ro():
     """[0.6] The affected_countries JSON example lists RO so the model is not biased against it."""
     prompt = _full_prompt()
     assert '"affected_countries": ["PL", "LT", "LV", "EE", "RO"]' in prompt
+
+
+# ---------------------------------------------------------------------------
+# 0.14 — R2's airspace escalation must not give Romania the Baltic shelter-order
+# ->9 shortcut; Romania follows its own ladder (minor 6 / injuries 7-8 / massive 9).
+# ---------------------------------------------------------------------------
+
+
+def test_prompt_r2_romania_no_shelter_shortcut():
+    """[0.14] R2 scores Romania airspace on its own ladder, not the Baltic shelter escalation."""
+    prompt = _full_prompt()
+    # The Baltic shelter-order->9 escalation stays scoped to LT/LV/EE only.
+    assert "Over the Baltic states (LT/LV/EE), a lone/minor airspace incident = 6-7" in prompt
+    # Romania scored on its own ladder, with no shelter-order shortcut to 9.
+    assert "Over Romania, a minor airspace incident = 6" in prompt
+    assert "Romania has no shelter-order shortcut to 9" in prompt
+    # The old lumped 'Baltic states or Romania' escalation is gone.
+    assert "Over the Baltic states or Romania" not in prompt
+
+
+# ---------------------------------------------------------------------------
+# 0.14 — the user-prompt urgency scale must not contradict the geography ladder
+# (air-raid alerts belong at the 9-10 call band, not 7-8; no flat single-drone 5-6).
+# ---------------------------------------------------------------------------
+
+
+def test_prompt_urgency_scale_aligns_with_ladder():
+    """[0.14] The urgency-scale anchors follow the ladder rather than contradicting it."""
+    prompt = _full_prompt()
+    # Air-raid / shelter alerts escalate to the call band, never capped at 7-8.
+    assert "air alerts in Baltic states" not in prompt
+    assert "shelter orders or air-raid alerts issued in a monitored country" in prompt
+    # The stale flat single-drone 5-6 anchor is gone.
+    assert "single drone found near border" not in prompt
+    # The 7-8 band now carries the ladder's real-strike anchors.
+    assert "a real strike on Baltic soil = 8" in prompt
+    assert "a strike with injuries on Romanian soil = 7-8" in prompt
+    assert "inert debris found in Poland = 8" in prompt

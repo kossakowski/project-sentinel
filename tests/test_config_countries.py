@@ -113,6 +113,16 @@ def test_config_romanian_source_queries(raw_config):
     assert ro_queries, "no Romanian-language Google News query configured"
 
 
+def test_config_romanian_keywords_include_inflected_forms(loaded_config):
+    """[0.4] Romanian is word-boundary matched, so definite-article/inflected headline
+    forms (not just citation forms) must be listed or real RO headlines drop pre-classification."""
+    ro_keywords = loaded_config.monitoring.keywords["ro"]
+    all_ro = {kw.lower() for kw in (ro_keywords.critical + ro_keywords.high)}
+    # Enclitic definite-article / inflected forms common in Romanian headlines.
+    for form in ("drona", "dronei", "invazia", "bombardamentul", "atacul cu rachete"):
+        assert form in all_ro, f"Romanian inflected form missing from keywords: {form!r}"
+
+
 # ---------------------------------------------------------------------------
 # 0.10 / 0.11 — eval gate + regression wiring
 # ---------------------------------------------------------------------------
