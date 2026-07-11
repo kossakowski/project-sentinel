@@ -419,13 +419,16 @@ class AlertStateMachine:
         )
 
     async def process_event(self, event: Event) -> None:
-        """Determine and execute the appropriate alert action for an event."""
-        # Terminal after exhausting the bounded retry rounds (1.2): the failure
-        # is already durably recorded; stop re-entering the retry loop.
-        if event.alert_status == "failed_terminal":
-            self.logger.debug("Event %s is failed_terminal, skipping", event.id)
-            return
+        """Determine and execute the appropriate alert action for an event.
 
+        A ``failed_terminal`` event is NOT blanket-skipped here: the bounded
+        retry cap (1.2) is enforced per-channel inside ``_execute_phone_call``
+        (which stops re-placing calls once the durable round counter reaches the
+        cap), so new content merged into a still-live incident — a fresh
+        escalation, an additive push — can still fire its appropriate alert
+        instead of being silenced for the whole ~retry window (prime directive:
+        fail toward firing, never toward suppression).
+        """
         if self._is_in_cooldown(event):
             self.logger.debug("Event %s in cooldown, skipping", event.id)
             return
@@ -578,7 +581,18 @@ class AlertStateMachine:
         Calls up to max_call_retries times in a tight loop, polling Twilio
         for call status between attempts. If the entire round fails, sends
         an SMS and sets status to retry_pending so the next pipeline cycle
-        triggers another round. Never stops until acknowledged.
+        triggers another round.
+
+        Retry-cap semantics (1.2): the durable ``alert_round_count`` counter — and
+        thus the ``alerts.retry.max_rounds`` cap that ends in ``failed_terminal`` —
+        advances ONLY for a fully-FAILED round, i.e. a round in which no call was
+        successfully initiated (Twilio accepted none; the transport-outage case).
+        A round in which at least one call WAS successfully initiated (delivered,
+        the phone rang) but the user simply has not acknowledged yet does NOT
+        advance the counter: a DELIVERED life-safety call keeps ringing across
+        cycles until acknowledged (spaced by ``retry_interval_minutes``, bounded
+        per-round only by ``max_call_retries``). Only undelivered rounds are
+        bounded by ``max_rounds``.
         """
         if existing_alerts is None:
             existing_alerts = self.db.get_alert_records(event.id)
@@ -614,15 +628,16 @@ class AlertStateMachine:
                 )
                 return
 
-        # Commit to a round: increment the durable per-event round counter (1.2).
-        round_number = current.alert_round_count + 1
-        self.db.update_event(event.id, alert_round_count=round_number)
-
         phone_number = self.config.alerts.phone_number
         message = _format_call_message(event, self.config)
         max_per_round = self.config.alerts.acknowledgment.max_call_retries
         total_attempts = len(call_records)
         call_placed_at = datetime.now(UTC)
+
+        # Track whether Twilio accepted at least one call this round. The durable
+        # round counter (1.2) advances only on a fully-FAILED round (none accepted);
+        # a delivered-but-unacknowledged round must NOT count toward failed_terminal.
+        call_initiated_this_round = False
 
         # Send SMS confirmation code — this is the ONLY confirmation mechanism
         await self._send_confirmation_sms(event)
@@ -664,6 +679,7 @@ class AlertStateMachine:
                 )
                 continue
 
+            call_initiated_this_round = True
             self.db.insert_alert_record(record)
             self.db.update_event(event.id, alert_status="call_placed")
 
@@ -693,6 +709,20 @@ class AlertStateMachine:
         if await self._check_sms_confirmation(call_placed_at, event.id):
             await self._acknowledge_event(event, total_attempts)
             return
+
+        # Advance the durable retry counter (1.2) ONLY on a fully-FAILED round —
+        # no call was successfully initiated this round (transport outage). A
+        # round where Twilio accepted a call but the user hasn't acknowledged is
+        # a DELIVERED alert that must keep ringing until acknowledged, so it must
+        # not tick toward failed_terminal.
+        if not call_initiated_this_round:
+            self.db.update_event(event.id, alert_round_count=current.alert_round_count + 1)
+            self.logger.warning(
+                "Event %s: failed round (no call initiated), round count now %d/%d",
+                event.id[:8],
+                current.alert_round_count + 1,
+                max_rounds,
+            )
 
         # Still not confirmed — mark for retry on next cycle
         self.logger.warning(

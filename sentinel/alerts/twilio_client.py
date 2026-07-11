@@ -4,25 +4,60 @@ from datetime import UTC, datetime
 from uuid import uuid4
 from xml.sax.saxutils import escape as xml_escape
 
+import requests
 from twilio.base.exceptions import TwilioRestException
 from twilio.rest import Client
 
 from sentinel.config import SentinelConfig
 from sentinel.models import AlertRecord
 
+# Transport-layer failures raised beneath the Twilio SDK. TwilioRestException is
+# minted ONLY for non-2xx API responses; a network-level fault (DNS, connection
+# reset, read timeout) surfaces as a requests.exceptions.RequestException and
+# must be caught too, or dispatch aborts mid-cycle with zero durable rows
+# (Phase 1, req 1.4 — transport errors are caught and surfaced, never swallowed).
+_TWILIO_SEND_ERRORS = (TwilioRestException, requests.exceptions.RequestException)
 
-def _twilio_error_code(exc: TwilioRestException) -> str:
-    """Derive a non-null error code from a Twilio exception.
 
-    Prefers the Twilio API error code (e.g. ``21211``); falls back to the HTTP
-    status (``twilio_401``) so a failed send always carries a non-null
-    ``error_code`` for the durable failure record (Phase 1, req 1.1).
+def _twilio_error_code(exc: Exception) -> str:
+    """Derive a non-null error code from a Twilio API error or a transport error.
+
+    Prefers the Twilio API error code (e.g. ``21211``); then the HTTP status
+    (``twilio_401``). A network-level transport error
+    (``requests.exceptions.RequestException`` — ConnectionError/Timeout/…) carries
+    neither, so its exception class name (e.g. ``ConnectionError``) is used, so a
+    failed send always carries a non-null ``error_code`` for the durable failure
+    record (Phase 1, req 1.1/1.4).
     """
     code = getattr(exc, "code", None)
     if code is not None:
         return str(code)
     status = getattr(exc, "status", None)
-    return f"twilio_{status}" if status is not None else "twilio_error"
+    if status is not None:
+        return f"twilio_{status}"
+    return type(exc).__name__
+
+
+def _failed_send_record(alert_type: str, event_id: str, message: str, exc: Exception) -> AlertRecord:
+    """Build a ``status="failed"`` AlertRecord from a Twilio or transport error.
+
+    Returned to the caller on a failed send (in place of a bare ``None``) so the
+    failure is durably recordable with its ``error_code``/``error_detail`` and is
+    never a silent drop (Phase 1, req 1.1/1.3/1.4).
+    """
+    return AlertRecord(
+        id=str(uuid4()),
+        event_id=event_id,
+        alert_type=alert_type,
+        twilio_sid="",
+        status="failed",
+        duration_seconds=None,
+        attempt_number=1,
+        sent_at=datetime.now(UTC),
+        message_body=message,
+        error_code=_twilio_error_code(exc),
+        error_detail=str(exc),
+    )
 
 
 class TwilioClient:
@@ -45,8 +80,9 @@ class TwilioClient:
 
         Returns an AlertRecord in every case (Phase 1, req 1.4): a
         ``status="initiated"`` record on success, or a ``status="failed"``
-        record carrying ``error_code``/``error_detail`` on a Twilio transport
-        error — the caller persists it so a failed alert is never a silent drop.
+        record carrying ``error_code``/``error_detail`` on a Twilio API error OR
+        a network-level transport error — the caller persists it so a failed
+        alert is never a silent drop.
         """
         safe_message = xml_escape(message_pl)
 
@@ -75,21 +111,9 @@ class TwilioClient:
                 to=phone_number,
                 twiml=twiml,
             )
-        except TwilioRestException as exc:
+        except _TWILIO_SEND_ERRORS as exc:
             self.logger.error("Twilio call failed for event %s: %s", event_id, exc)
-            return AlertRecord(
-                id=str(uuid4()),
-                event_id=event_id,
-                alert_type="phone_call",
-                twilio_sid="",
-                status="failed",
-                duration_seconds=None,
-                attempt_number=1,
-                sent_at=datetime.now(UTC),
-                message_body=message_pl,
-                error_code=_twilio_error_code(exc),
-                error_detail=str(exc),
-            )
+            return _failed_send_record("phone_call", event_id, message_pl, exc)
 
         record = AlertRecord(
             id=str(uuid4()),
@@ -112,7 +136,8 @@ class TwilioClient:
 
         Returns an AlertRecord in every case (Phase 1, req 1.4): a
         ``status="sent"`` record on success, or a ``status="failed"`` record
-        carrying ``error_code``/``error_detail`` on a Twilio transport error.
+        carrying ``error_code``/``error_detail`` on a Twilio API error OR a
+        network-level transport error.
         """
         if len(message) > 1600:
             message = message[:1597] + "..."
@@ -123,21 +148,9 @@ class TwilioClient:
                 to=phone_number,
                 body=message,
             )
-        except TwilioRestException as exc:
+        except _TWILIO_SEND_ERRORS as exc:
             self.logger.error("Twilio SMS failed for event %s: %s", event_id, exc)
-            return AlertRecord(
-                id=str(uuid4()),
-                event_id=event_id,
-                alert_type="sms",
-                twilio_sid="",
-                status="failed",
-                duration_seconds=None,
-                attempt_number=1,
-                sent_at=datetime.now(UTC),
-                message_body=message,
-                error_code=_twilio_error_code(exc),
-                error_detail=str(exc),
-            )
+            return _failed_send_record("sms", event_id, message, exc)
 
         record = AlertRecord(
             id=str(uuid4()),
@@ -165,7 +178,7 @@ class TwilioClient:
                 "duration": int(call.duration) if call.duration else 0,
                 "answered_by": getattr(call, "answered_by", None),
             }
-        except TwilioRestException as exc:
+        except _TWILIO_SEND_ERRORS as exc:
             self.logger.error(
                 "Twilio call status fetch failed for SID %s: %s",
                 twilio_sid,

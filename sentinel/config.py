@@ -3,7 +3,7 @@ import re
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, HttpUrl, field_validator, model_validator
+from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
 
 
 class ConfigError(Exception):
@@ -149,9 +149,13 @@ class RetryConfig(BaseModel):
     moves to a terminal ``failed_terminal`` status and stops re-entering the
     retry loop. Wires the previously-dead ``urgency_levels.critical.retry_attempts``
     intent. Life-safety: keep this high enough that a real 9-10 keeps calling.
+
+    Constrained to ``>= 1`` so a mistyped ``0``/negative fails fast at config
+    load rather than silently satisfying ``alert_round_count >= max_rounds`` on
+    first touch and disabling every call-tier alert system-wide.
     """
 
-    max_rounds: int = 10
+    max_rounds: int = Field(default=10, ge=1)
 
 
 class AlertTemplates(BaseModel):

@@ -25,10 +25,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+import requests
+from pydantic import ValidationError
 from twilio.base.exceptions import TwilioRestException
 
 from sentinel.alerts.state_machine import AlertStateMachine
 from sentinel.alerts.twilio_client import TwilioClient
+from sentinel.config import RetryConfig
 from sentinel.database import Database
 from sentinel.models import AlertRecord, Event
 
@@ -373,3 +376,175 @@ def test_migration_adds_columns_preserves_rows(tmp_path):
         assert event.alert_round_count == 0
     finally:
         database.close()
+
+
+# --------------------------------------------------------------------------
+# 7. test_network_transport_failure_is_recorded  [1.1, 1.4]
+# --------------------------------------------------------------------------
+def test_network_transport_failure_is_recorded(config, db):
+    """A network-level transport error is caught and surfaced, never raised.
+
+    The Twilio SDK mints ``TwilioRestException`` only for non-2xx API responses;
+    a DNS/connection/timeout fault surfaces as a
+    ``requests.exceptions.RequestException`` from the underlying transport. It
+    MUST NOT propagate and abort dispatch for the rest of the cycle — the client
+    returns a structured ``status="failed"`` record with a non-null
+    ``error_code`` so the caller persists a durable failure row (req 1.1/1.4).
+    """
+    with (
+        patch.dict(
+            os.environ,
+            {
+                "TWILIO_ACCOUNT_SID": "ACtest",
+                "TWILIO_AUTH_TOKEN": "tok",
+                "TWILIO_PHONE_NUMBER": "+15551234567",
+            },
+        ),
+        patch("sentinel.alerts.twilio_client.Client"),
+    ):
+        client = TwilioClient(config)
+        client.client = MagicMock()
+        client.client.calls.create.side_effect = requests.exceptions.ConnectionError("connection reset")
+        client.client.messages.create.side_effect = requests.exceptions.ConnectTimeout("timed out")
+        client.client.calls.return_value.fetch.side_effect = requests.exceptions.ConnectionError("reset")
+
+        call_result = client.make_alert_call("+48123456789", "Alert", "evt-net")
+        sms_result = client.send_sms("+48123456789", "Alert", "evt-net")
+        status_result = client.get_call_status("CA_missing")
+
+    # make_alert_call: structured failure, not an exception, non-null error_code.
+    assert call_result is not None, "a network fault must return a record, not raise (req 1.4)"
+    assert call_result.status == "failed"
+    assert call_result.error_code == "ConnectionError"
+    assert call_result.error_detail
+
+    # send_sms: same contract.
+    assert sms_result.status == "failed"
+    assert sms_result.error_code == "ConnectTimeout"
+    assert sms_result.error_detail
+
+    # get_call_status swallows the transport fault to its documented None.
+    assert status_result is None
+
+    # The transport error code lands on the durable alert_records row.
+    db.insert_alert_record(call_result)
+    rows = db.get_alert_records("evt-net")
+    assert len(rows) == 1
+    assert rows[0].status == "failed"
+    assert rows[0].error_code == "ConnectionError"
+
+
+# --------------------------------------------------------------------------
+# 8. test_failed_terminal_still_alerts_new_content  [1.2, prime directive]
+# --------------------------------------------------------------------------
+@pytest.mark.asyncio
+@patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
+async def test_failed_terminal_still_alerts_new_content(_sleep, state_machine, db, mock_twilio, config):
+    """A ``failed_terminal`` event is not blanket-skipped: new content still alerts.
+
+    The bounded retry cap terminates only the failed phone-retry re-entry (the
+    per-channel cap lives in ``_execute_phone_call``). A genuinely new escalation
+    merged into the still-live incident — here delivered via the additive push
+    channel — MUST still fire instead of being silenced for the whole retry
+    window (prime directive: fail toward firing, never toward suppression).
+    """
+    config.alerts.retry.max_rounds = 1
+    config.alerts.acknowledgment.max_call_retries = 1
+    config.alerts.acknowledgment.retry_interval_minutes = 0
+    config.alerts.push.enabled = False
+    _fail_calls(mock_twilio)
+
+    event = _make_event(urgency_score=10)
+    db.insert_event(event)
+
+    # Drive the event to failed_terminal via persistent call failures (push off,
+    # so no push record exists yet).
+    for _ in range(5):
+        current = db.get_event_by_id(event.id)
+        if current.alert_status == "failed_terminal":
+            break
+        await state_machine.process_event(current)
+    assert db.get_event_by_id(event.id).alert_status == "failed_terminal"
+
+    calls_before = mock_twilio.make_alert_call.call_count
+
+    # A new escalation arrives and the push channel is now available.
+    config.alerts.push.enabled = True
+    config.alerts.push.tokens = ["ExponentPushToken[test]"]
+    push_record = AlertRecord(
+        event_id=event.id,
+        alert_type="push",
+        twilio_sid="ticket-1",
+        status="sent",
+        attempt_number=1,
+        sent_at=datetime.now(UTC),
+        message_body="body",
+    )
+    state_machine.push.send_push = MagicMock(return_value=push_record)
+
+    await state_machine.process_event(db.get_event_by_id(event.id))
+
+    # The push fired (blanket skip would have dropped it) ...
+    state_machine.push.send_push.assert_called_once()
+    push_rows = [r for r in db.get_alert_records(event.id) if r.alert_type == "push" and r.status == "sent"]
+    assert push_rows, "a failed_terminal event must still deliver a new-content push"
+    # ... while the phone path stays capped (no new call placed).
+    assert mock_twilio.make_alert_call.call_count == calls_before
+
+
+# --------------------------------------------------------------------------
+# 9. test_delivered_round_does_not_advance_cap  [1.2, prime directive]
+# --------------------------------------------------------------------------
+@pytest.mark.asyncio
+@patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
+async def test_delivered_round_does_not_advance_cap(_sleep, state_machine, db, mock_twilio, config):
+    """A DELIVERED-but-unacknowledged round must not tick toward failed_terminal.
+
+    ``alert_round_count`` — and thus ``max_rounds`` → ``failed_terminal`` —
+    advances ONLY on a fully-FAILED round (no call initiated). A round where
+    Twilio accepted a call (the phone rang) but the user has not acknowledged
+    yet keeps ringing and MUST NOT advance the counter; only a subsequent
+    fully-failed round does.
+    """
+    config.alerts.retry.max_rounds = 3
+    config.alerts.acknowledgment.max_call_retries = 1
+    config.alerts.acknowledgment.retry_interval_minutes = 0
+    # Default mock_twilio: make_alert_call succeeds; user never replies (no ACK).
+
+    event = _make_event(urgency_score=10)
+    db.insert_event(event)
+
+    # Several successful-but-unacknowledged rounds: none may advance the counter.
+    for _ in range(3):
+        await state_machine.process_event(db.get_event_by_id(event.id))
+
+    mid = db.get_event_by_id(event.id)
+    assert mid.alert_round_count == 0, "delivered rounds must not advance the cap counter"
+    assert mid.alert_status != "failed_terminal"
+    assert mock_twilio.make_alert_call.call_count >= 3
+
+    # Now the transport goes down: a fully-failed round DOES advance the counter.
+    _fail_calls(mock_twilio)
+    await state_machine.process_event(db.get_event_by_id(event.id))
+
+    after = db.get_event_by_id(event.id)
+    assert after.alert_round_count == 1, "a fully-failed round must advance the cap counter"
+
+
+# --------------------------------------------------------------------------
+# 10. test_max_rounds_lower_bound_enforced  [1.6]
+# --------------------------------------------------------------------------
+@pytest.mark.parametrize("bad", [0, -1, -10])
+def test_max_rounds_lower_bound_enforced(bad):
+    """``alerts.retry.max_rounds`` below 1 fails fast at config load.
+
+    A mistyped ``0``/negative would satisfy ``alert_round_count >= max_rounds``
+    on first touch and silently mark every call-tier event ``failed_terminal``,
+    disabling the life-safety phone channel system-wide. The Pydantic ``ge=1``
+    bound rejects it at load instead.
+    """
+    with pytest.raises(ValidationError):
+        RetryConfig(max_rounds=bad)
+
+    # A valid value still constructs.
+    assert RetryConfig(max_rounds=1).max_rounds == 1
