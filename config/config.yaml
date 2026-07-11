@@ -614,9 +614,14 @@ alerts:
     cooldown_hours: 6
   # Cross-cycle phone-call retry bound. Each retry round (one sweep of
   # max_call_retries call attempts with no SMS acknowledgment) increments the
-  # durable per-event events.alert_round_count; at max_rounds the event moves to
-  # alert_status="failed_terminal" and stops re-entering the retry loop. Wires
-  # the previously-dead urgency_levels.critical.retry_attempts intent.
+  # durable per-event events.alert_round_count exactly once — whatever the
+  # transport outcome: a full transport outage, a carrier-fault round, and a
+  # delivered-but-never-answered round all count the same, so no failure mode
+  # loops forever. At max_rounds the event moves to alert_status="failed_terminal"
+  # and stops re-entering the retry loop (new content still falls back to SMS +
+  # push). Wires the previously-dead urgency_levels.critical.retry_attempts
+  # intent. Life-safety: keep this high enough that a real 9-10 keeps calling —
+  # total call attempts before terminal are up to max_rounds x max_call_retries.
   retry:
     max_rounds: 10
 scheduler:

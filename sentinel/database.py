@@ -235,6 +235,21 @@ class Database:
         )
         return [Event.from_row(row) for row in cursor.fetchall()]
 
+    def get_events_by_alert_status(self, status: str) -> list[Event]:
+        """Return all events currently in the given ``alert_status``.
+
+        Used by the alert state machine's cycle-driven retry sweep to re-enter
+        events left in ``retry_pending`` after a failed phone round, so a
+        fully-failed round is retried every cycle (bounded by the durable
+        ``alert_round_count`` counter) even when no new article merges into the
+        event. Ordered oldest-first so the longest-waiting event retries first.
+        """
+        cursor = self.conn.execute(
+            "SELECT * FROM events WHERE alert_status = ? ORDER BY last_updated_at ASC",
+            (status,),
+        )
+        return [Event.from_row(row) for row in cursor.fetchall()]
+
     def insert_alert_record(self, record: AlertRecord) -> None:
         """Insert an alert record."""
         data = record.to_dict()

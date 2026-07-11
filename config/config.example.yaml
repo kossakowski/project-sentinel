@@ -640,12 +640,17 @@ alerts:
 
   # Cross-cycle phone-call retry bound. Each retry round (one sweep of
   # max_call_retries call attempts with no SMS acknowledgment) increments the
-  # durable per-event events.alert_round_count. When it reaches max_rounds the
-  # event moves to alert_status="failed_terminal" and stops re-entering the
-  # retry loop, so a permanently unreachable phone can't loop forever — while a
-  # transport outage is still recorded (never a silent drop). Wires the
-  # previously-dead urgency_levels.critical.retry_attempts intent. Life-safety:
-  # keep this high enough that a real 9-10 keeps calling.
+  # durable per-event events.alert_round_count exactly once — whatever the
+  # transport outcome. A full transport outage, a carrier-fault round (a call was
+  # accepted but ended in a terminal Twilio failure), and a delivered-but-never-
+  # answered round all count the same, so no failure mode loops forever. When the
+  # counter reaches max_rounds the event moves to alert_status="failed_terminal"
+  # and stops re-entering the retry loop (a permanently unreachable phone can't
+  # loop forever); new content that merges into a terminal event still falls back
+  # to SMS + push. Every failed send is durably recorded (never a silent drop).
+  # Wires the previously-dead urgency_levels.critical.retry_attempts intent.
+  # Life-safety: keep this high enough that a real 9-10 keeps calling — total call
+  # attempts before terminal are up to max_rounds x max_call_retries.
   retry:
     max_rounds: 10
 

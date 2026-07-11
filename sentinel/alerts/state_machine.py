@@ -422,12 +422,14 @@ class AlertStateMachine:
         """Determine and execute the appropriate alert action for an event.
 
         A ``failed_terminal`` event is NOT blanket-skipped here: the bounded
-        retry cap (1.2) is enforced per-channel inside ``_execute_phone_call``
-        (which stops re-placing calls once the durable round counter reaches the
-        cap), so new content merged into a still-live incident — a fresh
-        escalation, an additive push — can still fire its appropriate alert
-        instead of being silenced for the whole ~retry window (prime directive:
-        fail toward firing, never toward suppression).
+        retry cap (1.2) terminates only the phone-call channel. Once that cap is
+        exhausted the call channel is dead, so a call-tier event with new merged
+        content is routed to the SMS + dedup-bypassing push fallback
+        (``_send_capped_fallback``) instead of being fully silenced — otherwise a
+        post-cap escalation would produce zero perceivable output (no call by the
+        cap, no SMS because the ``phone_call`` action carries none, no push once
+        any earlier push succeeded). Prime directive: fail toward firing, never
+        toward suppression.
         """
         if self._is_in_cooldown(event):
             self.logger.debug("Event %s in cooldown, skipping", event.id)
@@ -458,6 +460,16 @@ class AlertStateMachine:
             event.source_count,
             action,
         )
+
+        # Post-cap fallback (prime directive): a call-tier event whose phone-retry
+        # cap (1.2) is already exhausted has a dead call channel. New content that
+        # merged into it must still reach the user via SMS + a dedup-bypassing
+        # push, or a post-cap escalation is fully silenced (call suppressed by the
+        # cap; the phone_call action carries no SMS; the push self-dedups on any
+        # prior successful push). This never re-opens the spec-mandated call cap.
+        if action == "phone_call" and self._call_cap_reached(event):
+            await self._send_capped_fallback(event, existing_alerts)
+            return
 
         # Route the resolved action to the per-tier channels. SMS-tier levels
         # (5-8) resolve to "sms" / "push" / "both" via each level's `channel`;
@@ -491,13 +503,38 @@ class AlertStateMachine:
     async def check_pending_calls(self) -> None:
         """Check status of calls that were placed but not yet confirmed.
 
-        Called on each scheduler cycle.
+        Called on each scheduler cycle. After polling in-flight calls it runs the
+        cycle-driven retry sweep (1.3) so a fully-failed round — which leaves no
+        in-flight call record for the poll above to pick up — is still retried
+        every cycle, not only when a new article happens to merge into the event.
         """
         pending_calls = self.db.get_pending_call_records()
         for record in pending_calls:
             status = await asyncio.to_thread(self.twilio.get_call_status, record.twilio_sid)
             if status is not None:
                 await self._handle_call_result(record, status)
+
+        await self.retry_pending_calls()
+
+    async def retry_pending_calls(self) -> None:
+        """Re-enter the bounded phone-retry loop for events left in retry_pending.
+
+        A phone-call round that completes without acknowledgment leaves the event
+        in ``alert_status="retry_pending"`` (``_execute_phone_call`` /
+        ``_handle_call_result``) but produces no ``initiated``/``ringing`` call
+        record, so ``check_pending_calls``'s poll — which only sees in-flight
+        calls — never re-touches it. Without this cycle-driven sweep a fully-failed
+        round would be retried only if a NEW article merged into the event: a
+        single-source urgency-9 event whose call round fails at transport would be
+        durably recorded (1.1) yet never retried (1.3 — fail-loud, never
+        fail-silent). This drives each retry_pending event back through
+        ``_execute_phone_call`` every cycle, where the durable ``alert_round_count``
+        enforces the ``max_rounds`` cap (1.2) and moves the event to
+        ``failed_terminal`` once exhausted. The per-event ``retry_interval_minutes``
+        gate inside ``_execute_phone_call`` still spaces out delivered calls.
+        """
+        for event in self.db.get_events_by_alert_status("retry_pending"):
+            await self._execute_phone_call(event)
 
     def _determine_action(self, event: Event) -> str:
         """Resolve the delivery action for an event from the urgency tiers.
@@ -575,24 +612,93 @@ class AlertStateMachine:
             return datetime.min.replace(tzinfo=UTC)
         return max(a.sent_at for a in alerts)
 
+    def _mark_failed_terminal(self, event: Event) -> None:
+        """Move an event to the terminal ``failed_terminal`` status (idempotent).
+
+        Called once the durable retry-round counter reaches
+        ``alerts.retry.max_rounds`` (1.2). Fail-loud: logs an error so an
+        exhausted life-safety call channel leaves a durable, visible trace instead
+        of a silent drop. Reached from both re-entry paths — ``_execute_phone_call``
+        (the retry sweep) and ``_send_capped_fallback`` (a new-content dispatch) —
+        so the transition is consistent whichever path observes the cap first.
+        """
+        current = self.db.get_event_by_id(event.id) or event
+        if current.alert_status != "failed_terminal":
+            self.db.update_event(event.id, alert_status="failed_terminal")
+            self.logger.error(
+                "Event %s: %d retry rounds exhausted, marking failed_terminal (fail-loud, no silent drop)",
+                event.id[:8],
+                self.config.alerts.retry.max_rounds,
+            )
+
+    def _call_cap_reached(self, event: Event) -> bool:
+        """True when the phone-call retry cap (1.2) is exhausted for this event.
+
+        Reads the durable round counter from the DB (survives restarts). Catches
+        both the already-terminal state and the transition entry where the counter
+        has reached the cap but the status has not yet been flipped, so a
+        new-content dispatch routes to the fallback instead of calling
+        ``_execute_phone_call``, which would refuse the call anyway.
+        """
+        max_rounds = self.config.alerts.retry.max_rounds
+        current = self.db.get_event_by_id(event.id) or event
+        return current.alert_status == "failed_terminal" or current.alert_round_count >= max_rounds
+
+    async def _send_capped_fallback(self, event: Event, existing_alerts: list[AlertRecord]) -> None:
+        """Deliver new content on a call-capped event via SMS + a dedup-bypassing push.
+
+        Once the phone-call retry cap (1.2) is exhausted the call channel is dead,
+        so a fresh escalation/corroboration merged into the event would otherwise
+        be fully silenced. This fires an additive push (``is_update=True`` bypasses
+        the prior-push dedup so it shows even when an earlier push succeeded) and
+        an SMS, without re-opening the spec-mandated call cap. The SMS is sent
+        directly (not via ``_execute_sms``) so it does not overwrite the
+        ``failed_terminal`` status. Ensures the event is marked terminal first so
+        the state is consistent no matter which path first observes the cap.
+        """
+        self._mark_failed_terminal(event)
+        self.logger.warning(
+            "Event %s: phone-call cap exhausted (failed_terminal); routing new content to SMS + push fallback",
+            event.id[:8],
+        )
+        # Additive push, bypassing the prior-push dedup so a post-cap escalation is
+        # visible even when an earlier push already succeeded.
+        await self._maybe_send_push(event, existing_alerts, is_update=True)
+
+        # SMS fallback for the dead call channel. Sent directly so the
+        # failed_terminal status is preserved (unlike _execute_sms, which flips it).
+        phone_number = self.config.alerts.phone_number
+        message = _format_sms_message(event, self.db, self.config)
+        record = self._as_record(
+            await asyncio.to_thread(self.twilio.send_sms, phone_number, message, event.id),
+            "sms",
+            event.id,
+            message,
+        )
+        self.db.insert_alert_record(record)
+        if record.status == "failed":
+            self.logger.error(
+                "Event %s: post-cap fallback SMS failed to send (error_code=%s)",
+                event.id[:8],
+                record.error_code,
+            )
+
     async def _execute_phone_call(self, event: Event, existing_alerts: list[AlertRecord] | None = None) -> None:
         """Place a phone call alert with aggressive immediate retries.
 
         Calls up to max_call_retries times in a tight loop, polling Twilio
-        for call status between attempts. If the entire round fails, sends
-        an SMS and sets status to retry_pending so the next pipeline cycle
-        triggers another round.
+        for call status between attempts. If the entire round completes without
+        an SMS acknowledgment, sets status to retry_pending so the next pipeline
+        cycle triggers another round.
 
-        Retry-cap semantics (1.2): the durable ``alert_round_count`` counter — and
-        thus the ``alerts.retry.max_rounds`` cap that ends in ``failed_terminal`` —
-        advances ONLY for a fully-FAILED round, i.e. a round in which no call was
-        successfully initiated (Twilio accepted none; the transport-outage case).
-        A round in which at least one call WAS successfully initiated (delivered,
-        the phone rang) but the user simply has not acknowledged yet does NOT
-        advance the counter: a DELIVERED life-safety call keeps ringing across
-        cycles until acknowledged (spaced by ``retry_interval_minutes``, bounded
-        per-round only by ``max_call_retries``). Only undelivered rounds are
-        bounded by ``max_rounds``.
+        Retry-cap semantics (1.2): the durable ``alert_round_count`` counter is
+        incremented exactly once per completed-but-unacknowledged round, whatever
+        the transport outcome — a full transport outage (Twilio accepted no call),
+        a carrier-fault round (a call was accepted but ended in a terminal Twilio
+        failure), and a delivered-but-never-answered round all count the same. At
+        ``alerts.retry.max_rounds`` the event moves to ``failed_terminal`` and
+        stops re-entering the retry loop, so no failure mode can loop forever. An
+        acknowledged round returns before the increment and never counts.
         """
         if existing_alerts is None:
             existing_alerts = self.db.get_alert_records(event.id)
@@ -604,13 +710,7 @@ class AlertStateMachine:
         max_rounds = self.config.alerts.retry.max_rounds
         current = self.db.get_event_by_id(event.id) or event
         if current.alert_round_count >= max_rounds:
-            if current.alert_status != "failed_terminal":
-                self.db.update_event(event.id, alert_status="failed_terminal")
-                self.logger.error(
-                    "Event %s: %d retry rounds exhausted, marking failed_terminal (fail-loud, no silent drop)",
-                    event.id[:8],
-                    max_rounds,
-                )
+            self._mark_failed_terminal(event)
             return
 
         # Enforce retry interval: if there was a previous *successful* call from a
@@ -633,11 +733,6 @@ class AlertStateMachine:
         max_per_round = self.config.alerts.acknowledgment.max_call_retries
         total_attempts = len(call_records)
         call_placed_at = datetime.now(UTC)
-
-        # Track whether Twilio accepted at least one call this round. The durable
-        # round counter (1.2) advances only on a fully-FAILED round (none accepted);
-        # a delivered-but-unacknowledged round must NOT count toward failed_terminal.
-        call_initiated_this_round = False
 
         # Send SMS confirmation code — this is the ONLY confirmation mechanism
         await self._send_confirmation_sms(event)
@@ -679,7 +774,6 @@ class AlertStateMachine:
                 )
                 continue
 
-            call_initiated_this_round = True
             self.db.insert_alert_record(record)
             self.db.update_event(event.id, alert_status="call_placed")
 
@@ -710,25 +804,18 @@ class AlertStateMachine:
             await self._acknowledge_event(event, total_attempts)
             return
 
-        # Advance the durable retry counter (1.2) ONLY on a fully-FAILED round —
-        # no call was successfully initiated this round (transport outage). A
-        # round where Twilio accepted a call but the user hasn't acknowledged is
-        # a DELIVERED alert that must keep ringing until acknowledged, so it must
-        # not tick toward failed_terminal.
-        if not call_initiated_this_round:
-            self.db.update_event(event.id, alert_round_count=current.alert_round_count + 1)
-            self.logger.warning(
-                "Event %s: failed round (no call initiated), round count now %d/%d",
-                event.id[:8],
-                current.alert_round_count + 1,
-                max_rounds,
-            )
-
-        # Still not confirmed — mark for retry on next cycle
+        # Advance the durable retry counter (1.2) once for this completed-but-
+        # unacknowledged round, whatever the transport outcome — a transport
+        # outage, a carrier-fault round (call accepted then ended 'failed'), and a
+        # delivered-but-never-answered round all count the same, so no failure
+        # mode loops forever. An acknowledged round returns above and never reaches
+        # here. The next entry sees the cap and moves the event to failed_terminal.
+        self.db.update_event(event.id, alert_round_count=current.alert_round_count + 1)
         self.logger.warning(
-            "Event %s: %d calls this round, no SMS confirmation, retry in %d min",
+            "Event %s: round complete without SMS confirmation, round count now %d/%d, retry in %d min",
             event.id[:8],
-            max_per_round,
+            current.alert_round_count + 1,
+            max_rounds,
             self.config.alerts.acknowledgment.retry_interval_minutes,
         )
         self.db.update_event(event.id, alert_status="retry_pending")

@@ -493,42 +493,45 @@ async def test_failed_terminal_still_alerts_new_content(_sleep, state_machine, d
 
 
 # --------------------------------------------------------------------------
-# 9. test_delivered_round_does_not_advance_cap  [1.2, prime directive]
+# 9. test_every_round_advances_cap  [1.2]
 # --------------------------------------------------------------------------
 @pytest.mark.asyncio
 @patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
-async def test_delivered_round_does_not_advance_cap(_sleep, state_machine, db, mock_twilio, config):
-    """A DELIVERED-but-unacknowledged round must not tick toward failed_terminal.
+async def test_every_round_advances_cap(_sleep, state_machine, db, mock_twilio, config):
+    """Each unacknowledged round advances the counter once (spec 1.2 'once per round').
 
-    ``alert_round_count`` — and thus ``max_rounds`` → ``failed_terminal`` —
-    advances ONLY on a fully-FAILED round (no call initiated). A round where
-    Twilio accepted a call (the phone rang) but the user has not acknowledged
-    yet keeps ringing and MUST NOT advance the counter; only a subsequent
-    fully-failed round does.
+    ``alert_round_count`` increments exactly once for every completed-but-
+    unacknowledged round regardless of transport outcome: a delivered-but-never-
+    answered round (Twilio accepts the call, the phone rings, the user does not
+    reply) ticks the counter just like a transport-outage round. At ``max_rounds``
+    the event goes ``failed_terminal`` and places no further call — so a
+    never-answered phone cannot loop forever any more than an unreachable one can.
     """
     config.alerts.retry.max_rounds = 3
     config.alerts.acknowledgment.max_call_retries = 1
     config.alerts.acknowledgment.retry_interval_minutes = 0
-    # Default mock_twilio: make_alert_call succeeds; user never replies (no ACK).
+    # Default mock_twilio: make_alert_call succeeds (the phone rings) but the user
+    # never replies, so no round is ever acknowledged.
 
     event = _make_event(urgency_score=10)
     db.insert_event(event)
 
-    # Several successful-but-unacknowledged rounds: none may advance the counter.
-    for _ in range(3):
-        await state_machine.process_event(db.get_event_by_id(event.id))
+    for _ in range(10):
+        current = db.get_event_by_id(event.id)
+        if current.alert_status == "failed_terminal":
+            break
+        await state_machine.process_event(current)
 
-    mid = db.get_event_by_id(event.id)
-    assert mid.alert_round_count == 0, "delivered rounds must not advance the cap counter"
-    assert mid.alert_status != "failed_terminal"
-    assert mock_twilio.make_alert_call.call_count >= 3
+    final = db.get_event_by_id(event.id)
+    # Three delivered-but-unacknowledged rounds each ticked the counter once.
+    assert final.alert_round_count == 3, "each unacknowledged round must advance the cap counter once"
+    assert final.alert_status == "failed_terminal"
 
-    # Now the transport goes down: a fully-failed round DOES advance the counter.
-    _fail_calls(mock_twilio)
+    # No further call is placed once terminal (the cap holds even though calls
+    # were being accepted by Twilio).
+    before = mock_twilio.make_alert_call.call_count
     await state_machine.process_event(db.get_event_by_id(event.id))
-
-    after = db.get_event_by_id(event.id)
-    assert after.alert_round_count == 1, "a fully-failed round must advance the cap counter"
+    assert mock_twilio.make_alert_call.call_count == before
 
 
 # --------------------------------------------------------------------------
@@ -548,3 +551,113 @@ def test_max_rounds_lower_bound_enforced(bad):
 
     # A valid value still constructs.
     assert RetryConfig(max_rounds=1).max_rounds == 1
+
+
+# --------------------------------------------------------------------------
+# 11. test_retry_pending_swept_across_cycles  [1.2, 1.3]
+# --------------------------------------------------------------------------
+@pytest.mark.asyncio
+@patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
+async def test_retry_pending_swept_across_cycles(_sleep, state_machine, db, mock_twilio, config):
+    """A failed round is retried each cycle even when no new article merges.
+
+    ``check_pending_calls`` sweeps events left in ``retry_pending`` (a fully-failed
+    round leaves no in-flight call record for its poll to pick up) back through the
+    bounded retry loop, so a single-source urgency-9 event whose call round fails
+    at transport is retried up to the cap (1.3 — fail-loud, never fail-silent)
+    instead of only when a new article happens to merge into it.
+    """
+    config.alerts.retry.max_rounds = 3
+    config.alerts.acknowledgment.max_call_retries = 1
+    config.alerts.acknowledgment.retry_interval_minutes = 0
+    _fail_calls(mock_twilio)
+
+    # A call-tier event that will not attract further corroborating articles: the
+    # only thing that can retry its failed round is the cycle-driven sweep.
+    event = _make_event(urgency_score=10, source_count=2)
+    db.insert_event(event)
+
+    # One dispatch places the first (failed) round and leaves the event pending.
+    await state_machine.process_event(event)
+    assert db.get_event_by_id(event.id).alert_status == "retry_pending"
+    assert db.get_event_by_id(event.id).alert_round_count == 1
+    calls_after_first = mock_twilio.make_alert_call.call_count
+
+    # No new article merges — only the cycle-driven sweep runs. It must keep
+    # retrying and drive the event to the terminal cap.
+    for _ in range(10):
+        if db.get_event_by_id(event.id).alert_status == "failed_terminal":
+            break
+        await state_machine.check_pending_calls()
+
+    final = db.get_event_by_id(event.id)
+    assert final.alert_status == "failed_terminal"
+    assert final.alert_round_count == 3
+    # The sweep placed the additional rounds — more calls than the lone dispatch.
+    assert mock_twilio.make_alert_call.call_count > calls_after_first
+
+
+# --------------------------------------------------------------------------
+# 12. test_failed_terminal_escalation_alerts_despite_prior_push  [1.3, prime directive]
+# --------------------------------------------------------------------------
+@pytest.mark.asyncio
+@patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
+async def test_failed_terminal_escalation_alerts_despite_prior_push(_sleep, state_machine, db, mock_twilio, config):
+    """A post-cap escalation still alerts even when an earlier push already succeeded.
+
+    The silencing chain being closed: at the phone-call cap the call is suppressed,
+    the ``phone_call`` action carries no SMS, and ``_maybe_send_push`` dedups on any
+    prior successful push — so with one earlier push a post-cap escalation would be
+    fully silenced. The fallback MUST still deliver it: an additive push (dedup
+    bypassed) AND an SMS, while the call cap holds (prime directive).
+    """
+    config.alerts.retry.max_rounds = 1
+    config.alerts.acknowledgment.max_call_retries = 1
+    config.alerts.acknowledgment.retry_interval_minutes = 0
+    config.alerts.push.enabled = True
+    config.alerts.push.tokens = ["ExponentPushToken[test]"]
+    _fail_calls(mock_twilio)
+
+    def _push_ok(title, body, event_id, data):
+        return AlertRecord(
+            event_id=event_id,
+            alert_type="push",
+            twilio_sid=f"ticket-{uuid4().hex[:6]}",
+            status="sent",
+            attempt_number=1,
+            sent_at=datetime.now(UTC),
+            message_body=body,
+        )
+
+    state_machine.push.send_push = MagicMock(side_effect=_push_ok)
+
+    event = _make_event(urgency_score=10)
+    db.insert_event(event)
+
+    # First cycles: a prior successful push is recorded, the call fails, and with
+    # max_rounds=1 the event reaches failed_terminal.
+    for _ in range(4):
+        current = db.get_event_by_id(event.id)
+        if current.alert_status == "failed_terminal":
+            break
+        await state_machine.process_event(current)
+    assert db.get_event_by_id(event.id).alert_status == "failed_terminal"
+    prior_push = [r for r in db.get_alert_records(event.id) if r.alert_type == "push" and r.status == "sent"]
+    assert prior_push, "a prior successful push must exist for this scenario"
+
+    push_before = state_machine.push.send_push.call_count
+    sms_before = mock_twilio.send_sms.call_count
+    calls_before = mock_twilio.make_alert_call.call_count
+
+    # A fresh escalation merges into the failed_terminal event.
+    escalated = db.get_event_by_id(event.id)
+    escalated.summary_pl = "Nowa eskalacja: druga fala uderzeń rakietowych."
+    escalated.last_updated_at = datetime.now(UTC)
+    await state_machine.process_event(escalated)
+
+    # Something perceivable fired despite the prior push and the call cap.
+    assert state_machine.push.send_push.call_count > push_before, (
+        "a post-cap escalation must still push even when an earlier push succeeded"
+    )
+    assert mock_twilio.send_sms.call_count > sms_before, "a post-cap escalation must fall back to SMS"
+    assert mock_twilio.make_alert_call.call_count == calls_before, "the phone-call cap must still hold"
