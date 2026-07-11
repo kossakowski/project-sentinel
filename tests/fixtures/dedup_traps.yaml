@@ -1,0 +1,1500 @@
+meta:
+  title: Owner-labeled over-merge ground truth (Quiz 2)
+  reconciled: '2026-07-11'
+  rubric_version: 2
+  labeler: owner — sole ground truth; never pre-fill, bootstrap, or override
+  bands:
+    none: urgency <= 4
+    sms: urgency 5-8
+    call: urgency 9-10
+  authoring_intent_disclaimer: authoring_intent is the trap-writer intent, NOT ground truth; where the owner label
+    deviates, the label wins
+  sealed_reserve: piles 33-62 (UI 31-60) intentionally unlabeled — held back as a blind check; do not add without
+    owner grading
+  grouping_gate: over-merge count vs label.events must be 0 (any merge of two labeled events fails)
+  owner_notes_caveat: owner_notes are verbatim dictation from grading time and may predate reconciliation edits
+    (e.g. pile-04 note says 5, label is 2/none; pile-20 note says 8/sms, label is 9/call). The label fields are
+    authoritative; notes are rationale color only.
+piles:
+- id: pile-03
+  ui_number: 1
+  when: 29 May 2026, over ~4 hours
+  authoring_intent: must-merge
+  authoring_note: Galați real-incident burst
+  stories:
+  - n: 1
+    time: 00:26
+    lang: en
+    source: Google News / Russia-NATO
+    title: Multiple injured after drone smashes into block of flats in Romania — NATO scrambles fighter jets
+  - n: 2
+    time: 01:40
+    lang: en
+    source: Google News / Russia-NATO
+    title: Romania Confirms Russian Drone Struck Galați High-Rise, Wounding Two on NATO Soil
+  - n: 3
+    time: 02:14
+    lang: pl
+    source: Google News / drony Polska
+    title: Rumunia. Dron uderzył w blok mieszkalny, są ranni
+  - n: 4
+    time: 02:31
+    lang: pl
+    source: Rzeczpospolita
+    title: Rosyjski dron wleciał do Rumunii, uderzył w blok mieszkalny. Są ranni
+  - n: 5
+    time: 03:03
+    lang: en
+    source: Google News / Russia-NATO
+    title: Russian Drone Crashes into Romanian Apartment Building Injuring Two
+  - n: 6
+    time: 03:34
+    lang: pl
+    source: Onet Wiadomości
+    title: Rosyjski dron spada na dom w Rumunii. Dwóch rannych w Gałaczu
+  - n: 7
+    time: 03:49
+    lang: en
+    source: CNN (Google News)
+    title: Drone hits apartment block in Romania during Russian attack on nearby Ukrainian port
+  - n: 8
+    time: 04:11
+    lang: pl
+    source: Onet Wiadomości
+    title: Pożar na Mazowszu. Rosyjski dron spadł na blok w Rumunii. Podsumowanie nocy
+  label:
+    separate_events: 2
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 2
+      - 3
+      - 4
+      - 5
+      - 6
+      - 7
+      urgency: 8
+      action: sms
+    - event: 2
+      stories:
+      - 8
+      urgency: 6
+      action: sms
+    owner_notes: The grouping is obvious here, however, the evaluation is not. I say it's an 8 because it's a single
+      drone, which stems from the headlines, and it's not an attack on Poland. This is my logic behind the decision.
+- id: pile-04
+  ui_number: 2
+  when: 1 May 2026
+  authoring_intent: must-merge-no-call
+  authoring_note: Tarnopil UA-interior
+  stories:
+  - n: 1
+    time: 09:08
+    lang: uk
+    source: DeepStateUA
+    title: Russian missiles and drones strike Ternopil, multiple casualties reported
+  - n: 2
+    time: 09:14
+    lang: en
+    source: Google News / Russia-NATO
+    title: Tarnopil under massive Russian attack — dozens killed in western Ukraine
+  - n: 3
+    time: 09:31
+    lang: pl
+    source: Google News / drony Polska
+    title: Rosyjski atak na Tarnopol. Zginęło wiele osób
+  - n: 4
+    time: '10:22'
+    lang: pl
+    source: Google News / przestrzeń powietrzna
+    title: Masowy atak na zachodnią Ukrainę. Tarnopol pod ostrzałem
+  - n: 5
+    time: '11:05'
+    lang: en
+    source: Kyiv Independent
+    title: Ternopil hit in one of largest strikes on western Ukraine this year
+  label:
+    separate_events: 1
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 2
+      - 3
+      - 4
+      - 5
+      urgency: 2
+      action: none
+    owner_notes: The evaluation is 5 because it's in Ukraine, which has regular attacks, and due to its severity
+      it has a high number, but the place of the attack decides that it's not above 5.
+- id: pile-05
+  ui_number: 3
+  when: 2 April 2026
+  authoring_intent: judgment
+  authoring_note: Ukrainian drones on PL soil
+  stories:
+  - n: 1
+    time: 06:35
+    lang: en
+    source: Google News / Russia-NATO
+    title: Three Ukrainian drones fell on Polish territory during attacks on Ukrainian targets
+  - n: 2
+    time: 07:35
+    lang: pl
+    source: Google News / drony Polska
+    title: Trzy ukraińskie drony spadły na terytorium Polski podczas ataków
+  - n: 3
+    time: 08:10
+    lang: pl
+    source: Google News / przestrzeń powietrzna
+    title: Ukraińskie drony nad Polską. Wojsko wyjaśnia
+  - n: 4
+    time: 09:02
+    lang: en
+    source: Google News / Russia-NATO
+    title: Ukrainian drones crash in eastern Poland amid Russian strikes on Ukraine
+  label:
+    separate_events: 1
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 2
+      - 3
+      - 4
+      urgency: 9
+      action: call
+    owner_notes: It's about drones flying into Poland, which is always very high, but the headlines suggest that
+      these were Ukrainian drones and this was a mistake, so it's not a ten.
+- id: pile-06
+  ui_number: 4
+  when: 20 May 2026
+  authoring_intent: must-separate
+  authoring_note: 20-May multi-country Baltic night
+  stories:
+  - n: 1
+    time: 05:51
+    lang: et
+    source: DeepStateUA
+    title: Drone violated Estonia airspace, likely due to Russian jamming
+  - n: 2
+    time: 06:40
+    lang: pl
+    source: Google News / drony Polska
+    title: Łotwa wezwała rosyjskiego dyplomatę w związku z incydentem dronowym
+  - n: 3
+    time: 08:18
+    lang: lt
+    source: Google News / Russia-NATO
+    title: Air raid alarm over Lithuania. President Nausėda and PM convene emergency meeting
+  - n: 4
+    time: '12:29'
+    lang: pl
+    source: Google News / przestrzeń powietrzna
+    title: Premier potwierdza drony w krajach bałtyckich i ostrzega przed eskalacją
+  - n: 5
+    time: '13:18'
+    lang: lt
+    source: Google News / Russia-NATO
+    title: Lithuania scrambles jets amid air alarm; Vilnius reports drone incursion
+  - n: 6
+    time: '17:50'
+    lang: pl
+    source: Google News / drony Polska
+    title: 'ISW: Rosja przygotowuje grunt pod agresję na państwa bałtyckie'
+  label:
+    separate_events: 5
+    events:
+    - event: 1
+      stories:
+      - 1
+      urgency: 8
+      action: sms
+    - event: 2
+      stories:
+      - 2
+      urgency: 4
+      action: none
+    - event: 3
+      stories:
+      - 3
+      - 5
+      urgency: 8
+      action: sms
+    - event: 4
+      stories:
+      - 4
+      urgency: 6
+      action: sms
+    - event: 5
+      stories:
+      - 6
+      urgency: 3
+      action: none
+    owner_notes: 'This one was tricky. I separated the drone inclusions into 3 events, as they are connected with
+      3 countries: Lithuania, Latvia, and Estonia. Event number 4 is connected with events 1, 2, and 3, as it is
+      the prime minister most likely talking about these events. I would give it a separate event because it''s
+      not an intrusion, it''s not something else, it''s someone talking about something. As this is a Polish prime
+      minister, it''s quite high because I gave it an six evaluation which prompts an SMS. Event number five is
+      pure speculation, so I guess this would be kind of a number three event. This is a real intrusion into speculation
+      about something.'
+- id: pile-07
+  ui_number: 5
+  when: 18 May 2026
+  authoring_intent: judgment
+  authoring_note: Latvia crash/debris
+  stories:
+  - n: 1
+    time: '14:10'
+    lang: en
+    source: Google News / Russia-NATO
+    title: Drone strikes Latvia, complicating US-China relations
+  - n: 2
+    time: '14:34'
+    lang: lv
+    source: DeepStateUA
+    title: Explosion reported in eastern Latvia near Russian border, drone debris found
+  - n: 3
+    time: '15:30'
+    lang: pl
+    source: Google News / drony Polska
+    title: Dron spadł na Łotwie. Trwa wyjaśnianie okoliczności
+  - n: 4
+    time: '16:12'
+    lang: en
+    source: Google News / Russia-NATO
+    title: Latvia investigates drone crash near border with Russia
+  label:
+    separate_events: 2
+    events:
+    - event: 1
+      stories:
+      - 1
+      urgency: 2
+      action: none
+    - event: 2
+      stories:
+      - 2
+      - 3
+      - 4
+      urgency: 8
+      action: sms
+    owner_notes: I was generally thinking about whether to make this into one event, but I made two because the
+      first one, "Drone strikes Latvia, complicated US-China relations," is most likely about China-US relations.
+      It's more like the other subject, on the subject of the US-China relations, and not about the drone strike.
+      I considered it as a separate event, and the others, like number two, three, and four, are even two because
+      they report about this Latvia crash of the drone, which was easy.
+- id: pile-08
+  ui_number: 6
+  when: 29 May 2026, night into morning
+  authoring_intent: judgment
+  authoring_note: same-city 2nd strike
+  stories:
+  - n: 1
+    time: '22:10'
+    lang: pl
+    source: Google News / drony Polska
+    title: Rosyjski dron uderzył w blok mieszkalny w Gałaczu. Są ranni
+  - n: 2
+    time: '22:25'
+    lang: en
+    source: Google News / Russia-NATO
+    title: Russian drone strikes apartment building in Galați, Romania
+  - n: 3
+    time: 01:40
+    lang: pl
+    source: Google News / drony Polska
+    title: Kolejny dron uderzył w Gałacz — druga eksplozja tej nocy
+  - n: 4
+    time: 01:55
+    lang: en
+    source: Google News / Russia-NATO
+    title: Second Russian drone hits Galați hours after first strike
+  label:
+    separate_events: 2
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 2
+      urgency: 8
+      action: sms
+    - event: 2
+      stories:
+      - 3
+      - 4
+      urgency: 8
+      action: sms
+    owner_notes: Titles indicate two different strikes with two different drones, so these are two events.
+- id: pile-09
+  ui_number: 7
+  when: 12 April 2026
+  authoring_intent: must-separate
+  authoring_note: debris then deliberate strike
+  stories:
+  - n: 1
+    time: 07:20
+    lang: pl
+    source: Google News / przestrzeń powietrzna
+    title: Szczątki drona znalezione na polu pod Lublinem. Trwa dochodzenie
+  - n: 2
+    time: 07:35
+    lang: en
+    source: Google News / Russia-NATO
+    title: Drone debris discovered in field near Lublin, Poland; police investigating
+  - n: 3
+    time: '19:50'
+    lang: pl
+    source: Defence24
+    title: Rakieta uderzyła w Rzeszów. Eksplozje w mieście, są ranni
+  - n: 4
+    time: '20:05'
+    lang: en
+    source: Google News / Russia-NATO
+    title: Missile hits Rzeszów, Poland — explosions reported, casualties
+  label:
+    separate_events: 2
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 2
+      urgency: 8
+      action: sms
+    - event: 2
+      stories:
+      - 3
+      - 4
+      urgency: 10
+      action: call
+    owner_notes: Event one concerns debris, so it's not a real attack that is ongoing, or I guess one drone. As
+      this concerns Poland, this is an 8 but doesn't prompt a call, as this is not an event. Number two is a direct
+      strike in Poland in Dreschów and deserves a 10 and a call.
+- id: pile-10
+  ui_number: 8
+  when: 15 May 2026
+  authoring_intent: must-separate
+  authoring_note: airspace violation then kinetic
+  stories:
+  - n: 1
+    time: 03:10
+    lang: pl
+    source: Google News / przestrzeń powietrzna
+    title: Naruszenie przestrzeni powietrznej nad Suwałkami. Wojsko monitoruje
+  - n: 2
+    time: 03:18
+    lang: en
+    source: Google News / Russia-NATO
+    title: Airspace violation reported over Suwałki, Poland; no impact
+  - n: 3
+    time: 05:40
+    lang: pl
+    source: Defence24
+    title: Eksplozja w Suwałkach — pocisk uderzył w infrastrukturę
+  - n: 4
+    time: 05:52
+    lang: en
+    source: Google News / Russia-NATO
+    title: Explosion in Suwałki as missile strikes Polish town
+  label:
+    separate_events: 2
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 2
+      urgency: 9
+      action: call
+    - event: 2
+      stories:
+      - 3
+      - 4
+      urgency: 10
+      action: call
+    owner_notes: 'These are two separate events:
+
+      1. Military incursion or a violation of airspace and then an explosion, so a direct attack or something similar
+      in Suwalki. The first one is concerning because it concerns Poland, but it''s not a real attack, only an airspace
+      violation, so it''s a 9. The other is a direct attack. Hit in Suwalki, so it''s a 10.'
+- id: pile-11
+  ui_number: 9
+  when: 10 May 2026, one night
+  authoring_intent: must-separate-no-call
+  authoring_note: two distinct UA strikes
+  stories:
+  - n: 1
+    time: '23:10'
+    lang: uk
+    source: DeepStateUA
+    title: Russian missiles strike Kharkiv, several buildings damaged
+  - n: 2
+    time: '23:20'
+    lang: pl
+    source: Google News / drony Polska
+    title: Rosyjski atak rakietowy na Charków. Zniszczenia w mieście
+  - n: 3
+    time: '23:45'
+    lang: uk
+    source: DeepStateUA
+    title: Odesa port hit by Russian drones overnight
+  - n: 4
+    time: '23:55'
+    lang: en
+    source: Google News / Russia-NATO
+    title: Russian drone attack on Odesa damages port infrastructure
+  label:
+    separate_events: 2
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 2
+      urgency: 2
+      action: none
+    - event: 2
+      stories:
+      - 3
+      - 4
+      urgency: 2
+      action: none
+    owner_notes: These are two events of attacks in Ukraine, one for Odessa and the other in Kharkiv, as Ukraine
+      attacks are regular. This shouldn't prompt an SMS, so it should be below five. There is regular warfare, so
+      there is no need to bump it to five or more. I guess anything in Ukraine usually should not be more than five.
+- id: pile-12
+  ui_number: 10
+  when: 22 May 2026
+  authoring_intent: must-separate
+  authoring_note: Moldova vs Romania border
+  stories:
+  - n: 1
+    time: 02:10
+    lang: en
+    source: Google News / Russia-NATO
+    title: Drone explodes in Chișinău, Moldova; authorities investigate
+  - n: 2
+    time: 02:22
+    lang: en
+    source: Google News / Russia-NATO
+    title: Explosion in central Moldova as drone crashes near the capital
+  - n: 3
+    time: 04:30
+    lang: en
+    source: Google News / Russia-NATO
+    title: Russian drone strikes Romanian village near the Moldovan border
+  - n: 4
+    time: 04:40
+    lang: pl
+    source: Google News / drony Polska
+    title: Rosyjski dron uderzył w rumuńską wieś przy granicy z Mołdawią
+  label:
+    separate_events: 2
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 2
+      urgency: 6
+      action: sms
+    - event: 2
+      stories:
+      - 3
+      - 4
+      urgency: 6
+      action: sms
+    owner_notes: 'This is a 6, although it''s not intensive. It concerns a country different than Ukraine, which
+      is being attacked and wasn''t part of the war. I think we should group this all in one event because the title
+      is just one event, and I think we should be less granular or more granular, basically grouping more events
+      together if the attack is less severe or if it doesn''t concern Poland or the Baltics, because we basically
+      care less about it.
+
+
+      There''s no need, if Moldova, four villages are struck, maybe there is more sense to group them in one event
+      than to do four events. In Poland, the logic is different. If four cities are struck, we need to group them
+      in four events. This is my kind of justification.
+
+
+      In case if this was Romania, this would be eight, as Romania is part of NATO and Moldova is not, as it''s
+      not part of NATO; it''s a six.'
+- id: pile-13
+  ui_number: 11
+  when: 29 May 2026
+  authoring_intent: must-separate
+  authoring_note: Galați + Lithuania same night
+  stories:
+  - n: 1
+    time: 00:30
+    lang: en
+    source: Google News / Russia-NATO
+    title: Russian drone strikes apartment block in Galați, Romania
+  - n: 2
+    time: 00:45
+    lang: pl
+    source: Google News / drony Polska
+    title: Dron uderzył w blok w Gałaczu w Rumunii. Są ranni
+  - n: 3
+    time: 06:15
+    lang: lt
+    source: Google News / Russia-NATO
+    title: Air raid sirens in Vilnius as drones reported over Lithuania
+  - n: 4
+    time: 06:25
+    lang: en
+    source: Google News / Russia-NATO
+    title: Lithuania under drone threat — Vilnius residents told to shelter
+  label:
+    separate_events: 2
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 2
+      urgency: 8
+      action: sms
+    - event: 2
+      stories:
+      - 3
+      - 4
+      urgency: 8
+      action: sms
+    owner_notes: Two events, but completely different because of geographical difference, Romania and Lithuania.
+      However, the severity is close, so both deserve an SMS and 8.
+- id: pile-14
+  ui_number: 12
+  when: 17 May 2026
+  authoring_intent: must-merge
+  authoring_note: cross-language Białystok
+  stories:
+  - n: 1
+    time: '14:00'
+    lang: pl
+    source: Defence24
+    title: Rosyjski dron uderzył w Białystok. Eksplozja w pobliżu centrum miasta
+  - n: 2
+    time: '14:08'
+    lang: en
+    source: Google News / Russia-NATO
+    title: Russian drone hits Białystok in eastern Poland; explosion downtown
+  - n: 3
+    time: '14:15'
+    lang: uk
+    source: DeepStateUA
+    title: Russian drone strikes Białystok, Poland — blast reported near city centre
+  - n: 4
+    time: '14:30'
+    lang: ru
+    source: Google News / Russia-NATO
+    title: Российский дрон ударил по Белостоку в Польше
+  label:
+    separate_events: 1
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 2
+      - 3
+      - 4
+      urgency: 10
+      action: call
+    owner_notes: Direct Russian attack on Poland deserves a ten. All one event.
+- id: pile-15
+  ui_number: 13
+  when: 3 March 2026
+  authoring_intent: must-merge
+  authoring_note: writer A
+  stories:
+  - n: 1
+    time: 02:14
+    lang: pl
+    source: Google News / drony Polska
+    title: Eksplozja w Rzeszowie w nocy, służby na miejscu
+  - n: 2
+    time: 02:31
+    lang: pl
+    source: RMF24
+    title: 'Rzeszów: potężny wybuch na obrzeżach miasta, ranni mieszkańcy'
+  - n: 3
+    time: 02:48
+    lang: en
+    source: Reuters
+    title: Russian drone strikes Polish city of Rzeszów, casualties reported
+  - n: 4
+    time: 03:05
+    lang: en
+    source: BBC World
+    title: Explosion hits Rzeszów in eastern Poland overnight, NATO informed
+  - n: 5
+    time: 03:22
+    lang: pl
+    source: TVN24
+    title: Atak rakietowy na Rzeszów? Wojsko potwierdza uderzenie
+  - n: 6
+    time: 03:40
+    lang: uk
+    source: Kyiv Independent
+    title: Російський дрон влучив у Жешув у Польщі, є постраждалі
+  - n: 7
+    time: 04:11
+    lang: ru
+    source: TASS
+    title: В Жешуве на востоке Польши прогремел взрыв, идёт расследование
+  label:
+    separate_events: 2
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 2
+      - 4
+      urgency: 9
+      action: call
+    - event: 2
+      stories:
+      - 3
+      - 5
+      - 6
+      - 7
+      urgency: 10
+      action: call
+    owner_notes: 'I''ll classify this as two events:
+
+      1. Explosion
+
+      2. Direct drone strike
+
+      I kind of suspect that this is the same event, but in the case of Poland I guess we need to be more granular
+      with these events and not general. Both of them are high in severity, 9 and 10. Because you can still fall
+      into any direct attack, the first attack was more of an explosion, but I think this is justified to classify
+      it as an attack, as a 9. Even if you get two falls, I think this is such an important event that it makes
+      sense to make it'
+- id: pile-16
+  ui_number: 14
+  when: 3 March 2026
+  authoring_intent: must-separate-temporal
+  authoring_note: writer B
+  stories:
+  - n: 1
+    time: 08:10
+    lang: pl
+    source: Google News / drony Polska
+    title: 'Szczątki drona znalezione na polu pod Hrubieszowem. Wojsko: prawdopodobnie zabłąkana maszyna rozbiła
+      się w nocy'
+  - n: 2
+    time: 09:25
+    lang: pl
+    source: RMF24
+    title: 'Hrubieszów: rolnik znalazł resztki bezzałogowca na polu. Nikt nie został ranny, teren zabezpieczono'
+  - n: 3
+    time: '20:40'
+    lang: pl
+    source: Defence24
+    title: Eksplozje w Hrubieszowie. Dron uderzył w budynek mieszkalny w centrum miasta, są ranni
+  - n: 4
+    time: '21:15'
+    lang: en
+    source: Reuters
+    title: Drone strikes residential building in Polish town of Hrubieszow, casualties reported, officials say
+  label:
+    separate_events: 2
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 2
+      urgency: 8
+      action: sms
+    - event: 2
+      stories:
+      - 3
+      - 4
+      urgency: 10
+      action: call
+    owner_notes: Again, debris is not a direct attack, so I think it should be an 8. It, of course, concerns Poland,
+      so the severity is high, and the second event is a much more severe direct down strike on Kubieszew, so it
+      should be a 10. These are two events because one concerns Poland but one concerns debris and the other is
+      a direct attack.
+- id: pile-17
+  ui_number: 15
+  when: 22 May 2026
+  authoring_intent: must-separate-geography
+  authoring_note: writer C
+  stories:
+  - n: 1
+    time: 01:55
+    lang: pl
+    source: Google News / drony Polska
+    title: Eksplozje nad Rzeszowem w nocy. Mieszkańcy słyszeli huk, służby na nogach
+  - n: 2
+    time: 02:20
+    lang: en
+    source: Reuters
+    title: Drone explosion reported over Rzeszów in eastern Poland, residents report blasts
+  - n: 3
+    time: 03:10
+    lang: lt
+    source: LRT Lithuania
+    title: Dronas nukrito netoli Vilniaus oro uosto, sostinėje girdėti sprogimai
+  - n: 4
+    time: 03:40
+    lang: en
+    source: BBC World
+    title: Drone crashes near Vilnius airport in Lithuania as airspace closed overnight
+  - n: 5
+    time: 05:15
+    lang: pl
+    source: RMF24
+    title: 'Dwie stolice regionu zaalarmowane jednej nocy: Rzeszów i Wilno'
+  label:
+    separate_events: 3
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 2
+      urgency: 9
+      action: call
+    - event: 2
+      stories:
+      - 3
+      - 4
+      urgency: 8
+      action: sms
+    - event: 3
+      stories:
+      - 5
+      urgency: 7
+      action: sms
+    owner_notes: Interesting case. One event concerns an explosion in Poland, which should be a 9 because of the
+      location and the fact that it's an explosion. It's not a 10 because it doesn't specifically say it's a direct
+      attack. The other is an event in Lithuania and should be lower because of the localization. The third event
+      is some kind of summation of the two attacks. I think this should be a separate event with a 7, I think, some
+      kind of thumbs up. For all the events, I kind of have a hard time classifying these.
+- id: pile-18
+  ui_number: 16
+  when: 3 May 2026
+  authoring_intent: judgment-no-call
+  authoring_note: writer D
+  stories:
+  - n: 1
+    time: 02:14
+    lang: uk
+    source: DeepStateUA
+    title: 'Масований ракетний удар по Львову: вибухи в кількох районах міста'
+  - n: 2
+    time: 02:31
+    lang: pl
+    source: RMF24
+    title: Potężny atak rakietowy na Lwów. Eksplozje słychać blisko granicy z Polską
+  - n: 3
+    time: 02:47
+    lang: pl
+    source: Google News / przestrzeń powietrzna
+    title: Polskie myśliwce poderwane w nocy w związku z atakiem Rosji na zachodnią Ukrainę
+  - n: 4
+    time: 03:05
+    lang: en
+    source: Kyiv Independent
+    title: Russia hammers Lviv with cruise missiles; Polish jets scrambled near border
+  - n: 5
+    time: 03:38
+    lang: uk
+    source: DeepStateUA
+    title: 'Львів: щонайменше дев''ять прильотів, пошкоджено енергетичну інфраструктуру'
+  label:
+    separate_events: 2
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 2
+      - 5
+      urgency: 2
+      action: none
+    - event: 2
+      stories:
+      - 3
+      - 4
+      urgency: 7
+      action: sms
+    owner_notes: Event 1 is a fight because it doesn't concern Poland. It's not very close to Poland, and it's a
+      drone invasion on a native nation, but it's not important or close to the nation sometimes. Event number 2
+      is a bit higher because it concerns Poland and it concerns Polish military posts.
+- id: pile-19
+  ui_number: 17
+  when: 3 March 2026
+  authoring_intent: must-merge
+  authoring_note: writer A
+  stories:
+  - n: 1
+    time: '19:02'
+    lang: pl
+    source: Google News / przestrzeń powietrzna
+    title: Wybuch w Białymstoku, słychać było huk w całym mieście
+  - n: 2
+    time: '19:18'
+    lang: pl
+    source: Onet Wiadomości
+    title: 'Białystok: rakieta spadła na dzielnicę mieszkaniową, są zabici'
+  - n: 3
+    time: '19:33'
+    lang: en
+    source: Reuters
+    title: Missile hits residential area of Białystok, Poland; fatalities reported
+  - n: 4
+    time: '19:55'
+    lang: pl
+    source: Defence24
+    title: Uderzenie drona na Białystok — dowództwo potwierdza ofiary
+  - n: 5
+    time: '20:40'
+    lang: en
+    source: BBC World
+    title: Deadly strike on Polish city Białystok, emergency response underway
+  label:
+    separate_events: 1
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 2
+      - 3
+      - 4
+      - 5
+      urgency: 9
+      action: call
+    owner_notes: This is a call because of direct military action against the Polish city, missile action, casualties.
+- id: pile-20
+  ui_number: 18
+  when: 9 March 2026
+  authoring_intent: must-separate-temporal
+  authoring_note: writer B
+  stories:
+  - n: 1
+    time: 06:55
+    lang: pl
+    source: Google News / przestrzeń powietrzna
+    title: Naruszenie polskiej przestrzeni powietrznej pod Suwałkami. Obiekt opuścił rejon, brak zniszczeń
+  - n: 2
+    time: 07:30
+    lang: en
+    source: Google News / Russia-NATO
+    title: Polish jets scrambled after airspace violation near Suwalki; no impact recorded
+  - n: 3
+    time: '18:20'
+    lang: pl
+    source: TVN24
+    title: 'Suwałki: rakieta spadła na osiedle, płonie kamienica. Służby mówią o rannych'
+  - n: 4
+    time: '19:05'
+    lang: pl
+    source: Onet Wiadomości
+    title: Trafienie w Suwałkach. Zniszczony blok, ewakuacja mieszkańców, akcja ratunkowa trwa
+  label:
+    separate_events: 2
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 2
+      urgency: 9
+      action: call
+    - event: 2
+      stories:
+      - 3
+      - 4
+      urgency: 10
+      action: call
+    owner_notes: 'Okay, these are two events.
+
+      1. First of all, the timing is important. Event number one is less severe, that''s why it''s an 8 on the SMS,
+      because it''s just a violation of the Polish border.
+
+      2. Event number two is more severe and a press pro because it''s a direct strike and it is a strike in Poland.'
+- id: pile-21
+  ui_number: 19
+  when: 3 June 2026
+  authoring_intent: must-separate-geography
+  authoring_note: writer C
+  stories:
+  - n: 1
+    time: 00:40
+    lang: ro
+    source: Google News / Russia-NATO
+    title: Explozii la Galați, pe malul Dunării. Resturi de dronă căzute pe teritoriul României
+  - n: 2
+    time: 01:05
+    lang: en
+    source: Reuters
+    title: Drone debris falls on Galați in Romania near Ukrainian border, NATO member on alert
+  - n: 3
+    time: 02:30
+    lang: ro
+    source: Google News / Russia-NATO
+    title: 'Atac cu drone la Chișinău: explozii raportate în capitala Republicii Moldova'
+  - n: 4
+    time: 03:00
+    lang: en
+    source: BBC World
+    title: Explosions hit Chișinău overnight as drones strike Moldova's capital
+  - n: 5
+    time: 04:20
+    lang: ro
+    source: Reuters
+    title: 'O noapte cu două atacuri: Galați în România și Chișinău în Moldova'
+  label:
+    separate_events: 3
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 2
+      urgency: 6
+      action: sms
+    - event: 2
+      stories:
+      - 3
+      - 4
+      urgency: 6
+      action: sms
+    - event: 3
+      stories:
+      - 5
+      urgency: 6
+      action: sms
+- id: pile-22
+  ui_number: 20
+  when: 7 May 2026
+  authoring_intent: judgment-no-call
+  authoring_note: writer D
+  stories:
+  - n: 1
+    time: '23:50'
+    lang: ru
+    source: TASS
+    title: 'Минобороны: над Московским регионом сбито 14 украинских беспилотников'
+  - n: 2
+    time: 00:12
+    lang: en
+    source: Reuters
+    title: Ukrainian drones target Moscow; airports halt flights amid air defence activity
+  - n: 3
+    time: 00:34
+    lang: pl
+    source: Onet Wiadomości
+    title: Rój dronów nad Moskwą. Rosyjska obrona przeciwlotnicza w akcji
+  - n: 4
+    time: 01:09
+    lang: ru
+    source: TASS
+    title: 'Собянин: обломки беспилотника упали на жилой дом, есть повреждения'
+  label:
+    separate_events: 1
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 2
+      - 3
+      - 4
+      urgency: 1
+      action: none
+- id: pile-23
+  ui_number: 21
+  when: 4 March 2026
+  authoring_intent: must-merge
+  authoring_note: writer A
+  stories:
+  - n: 1
+    time: 05:10
+    lang: pl
+    source: Google News / drony Polska
+    title: Dron uderzył w magazyn pod Lublinem, pożar gaszony przez strażaków
+  - n: 2
+    time: 05:29
+    lang: pl
+    source: WP Wiadomości
+    title: 'Lublin: eksplozja w strefie przemysłowej, ewakuacja okolicznych domów'
+  - n: 3
+    time: 06:02
+    lang: en
+    source: Reuters
+    title: Drone explosion at warehouse near Lublin, Poland; no deaths confirmed
+  - n: 4
+    time: 07:15
+    lang: pl
+    source: Rzeczpospolita
+    title: Atak na Lublin — śledczy badają szczątki bezzałogowca
+  label:
+    separate_events: 1
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 2
+      - 3
+      - 4
+      urgency: 9
+      action: call
+    owner_notes: All are events and all are severe. They concern Poland and concern a direct attack on Polish territory
+      in Lublin, so it warrants a nine and a call.
+- id: pile-24
+  ui_number: 22
+  when: 14 March 2026
+  authoring_intent: must-separate-temporal
+  authoring_note: writer B
+  stories:
+  - n: 1
+    time: 05:40
+    lang: lt
+    source: LRT Lithuania
+    title: Virš Vilniaus pastebėtas vienas nežinomas dronas, žala nefiksuojama
+  - n: 2
+    time: 06:10
+    lang: en
+    source: Google News / drony Polska
+    title: Single drone spotted over Vilnius overnight, no damage, Lithuanian military monitoring
+  - n: 3
+    time: '21:50'
+    lang: lt
+    source: LRT Lithuania
+    title: Vilniuje – sprogimai, gyventojai raginami slėptis, pranešama apie aukas
+  - n: 4
+    time: '22:30'
+    lang: en
+    source: BBC World
+    title: Vilnius hit by major strike, shelter orders issued, casualties feared
+  - n: 5
+    time: '23:10'
+    lang: lt
+    source: ERR Estonia
+    title: Vilniaus centre – didelis sprogimas, sugriautas gyvenamasis namas, dirba gelbėtojai
+  label:
+    separate_events: 2
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 2
+      urgency: 6
+      action: sms
+    - event: 2
+      stories:
+      - 3
+      - 4
+      - 5
+      urgency: 8
+      action: sms
+    owner_notes: 'These are two events:
+
+      1. The event of spotting the drones, which is severe because it concerns the European state Lithuania.
+
+      2. A direct attack, which is much more severe.'
+- id: pile-25
+  ui_number: 23
+  when: 15 April 2026
+  authoring_intent: must-separate-geography
+  authoring_note: writer C
+  stories:
+  - n: 1
+    time: '22:10'
+    lang: uk
+    source: Kyiv Independent
+    title: 'Дрони атакували нафтобазу в Ростові: над містом піднявся стовп диму'
+  - n: 2
+    time: '22:45'
+    lang: en
+    source: Reuters
+    title: Drones strike oil depot in Rostov, Russia; large fire reported
+  - n: 3
+    time: '23:30'
+    lang: ru
+    source: TASS
+    title: 'Минобороны: атака беспилотников на топливный объект в Ростовской области'
+  - n: 4
+    time: 01:50
+    lang: pl
+    source: Google News / przestrzeń powietrzna
+    title: Naruszenie przestrzeni powietrznej nad Suwałkami, poderwano myśliwce NATO
+  - n: 5
+    time: 02:25
+    lang: en
+    source: BBC World
+    title: NATO scrambles jets after airspace violation near Suwałki gap in Poland
+  label:
+    separate_events: 2
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 2
+      - 3
+      urgency: 1
+      action: none
+    - event: 2
+      stories:
+      - 4
+      - 5
+      urgency: 9
+      action: call
+    owner_notes: Okay, two separate attacks. Clearly, one concerns Russia and an attack on Rostov or something similar.
+      It's a one, because attacks on Russia are always ones and twos. We don't care. We care about attacks on our
+      soil, and it doesn't work. The call the airspace valuation on Suwalki is nine because it's direct, the valuation
+      of the airspace in Poland and concerns Poland.
+- id: pile-26
+  ui_number: 24
+  when: 11 May 2026
+  authoring_intent: judgment-no-call
+  authoring_note: writer D
+  stories:
+  - n: 1
+    time: '10:03'
+    lang: en
+    source: BBC World
+    title: Putin warns Baltic states will 'face consequences' over NATO troop buildup
+  - n: 2
+    time: '10:40'
+    lang: lt
+    source: LRT Lithuania
+    title: Lietuvos URM sukvietė Rusijos ambasadorių dėl Putino grasinimų
+  - n: 3
+    time: '11:22'
+    lang: pl
+    source: Rzeczpospolita
+    title: Groźby Putina pod adresem państw bałtyckich. MSZ reaguje
+  - n: 4
+    time: '12:15'
+    lang: et
+    source: ERR Estonia
+    title: 'Kaja Kallas: Putini ähvardused ei muuda NATO idatiiva kaitseplaane'
+  label:
+    separate_events: 3
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 3
+      urgency: 6
+      action: sms
+    - event: 2
+      stories:
+      - 2
+      urgency: 4
+      action: none
+    - event: 3
+      stories:
+      - 4
+      urgency: 4
+      action: none
+    owner_notes: 'Although related, these are three separate events. One describes Putin threatening states.1. The
+      second one describes the Lithuanian reaction to the threats.
+
+      2. The third one is the reaction of Kaya Kalac, a politician from the European Union.
+
+      3. The first one, the threat by Putin, is a sixth because it''s not imminent. It''s just political politics
+      talking, but it is somewhat worth noticing, so it deserves an SMS. It''s somewhat related to a direct threat
+      of a very, very important country and another state, especially nations.
+
+      4. The others are fourths because it''s not related to a threat, like a response to a threat.'
+- id: pile-27
+  ui_number: 25
+  when: 5 March 2026
+  authoring_intent: must-merge
+  authoring_note: writer A
+  stories:
+  - n: 1
+    time: '23:40'
+    lang: pl
+    source: RMF24
+    title: Wybuch w Przemyślu tuż przy granicy, mieszkańcy zgłaszają huk
+  - n: 2
+    time: '23:58'
+    lang: pl
+    source: Google News / przestrzeń powietrzna
+    title: 'Przemyśl: dron spadł na teren kolejowy, ruch pociągów wstrzymany'
+  - n: 3
+    time: 00:21
+    lang: en
+    source: BBC World
+    title: Explosion near rail hub in Przemyśl, southeastern Poland
+  - n: 4
+    time: 00:44
+    lang: pl
+    source: Defence24
+    title: Uderzenie rakietowe na węzeł kolejowy w Przemyślu — komunikat sztabu
+  - n: 5
+    time: 01:30
+    lang: uk
+    source: Kyiv Independent
+    title: Вибух у Перемишлі біля кордону з Україною, рух поїздів зупинено
+  - n: 6
+    time: 02:10
+    lang: ru
+    source: TASS
+    title: В польском Перемышле повреждён железнодорожный узел после взрыва
+  label:
+    separate_events: 1
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 2
+      - 3
+      - 4
+      - 5
+      - 6
+      urgency: 9
+      action: call
+    owner_notes: This is all one event and has high severity because it concerns Poland and its direct military
+      attack on Poland. It's a 9 and requires the court.
+- id: pile-28
+  ui_number: 26
+  when: 21 March 2026
+  authoring_intent: must-separate-temporal
+  authoring_note: writer B
+  stories:
+  - n: 1
+    time: 04:30
+    lang: pl
+    source: Defence24
+    title: Atak rakietowy na Rzeszów. Uszkodzony węzeł kolejowy, trwa akcja służb
+  - n: 2
+    time: 05:15
+    lang: en
+    source: Reuters
+    title: Missile strike reported in Rzeszow, eastern Poland; rail infrastructure damaged
+  - n: 3
+    time: '13:40'
+    lang: pl
+    source: RMF24
+    title: Eksplozje w Lublinie. Rakieta uderzyła w dzielnicę przemysłową, są ranni
+  - n: 4
+    time: '14:20'
+    lang: pl
+    source: Rzeczpospolita
+    title: Lublin pod ostrzałem. Płonie hala, ewakuacja pracowników, służby na miejscu
+  label:
+    separate_events: 2
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 2
+      urgency: 9
+      action: call
+    - event: 2
+      stories:
+      - 3
+      - 4
+      urgency: 10
+      action: call
+    owner_notes: 'Events, because two cities are hit:
+
+
+      *   Rzeszów: nine, because it''s a direct hit on Polish soil, but it''s on a railway station. It doesn''t
+      seem that it''s a single hit.
+
+      *   Lublin: more severe, because there are people who are injured.'
+- id: pile-29
+  ui_number: 27
+  when: 27 June 2026
+  authoring_intent: must-separate-geography
+  authoring_note: writer C
+  stories:
+  - n: 1
+    time: 02:05
+    lang: ru
+    source: TASS
+    title: Силы ПВО отразили атаку дронов в Подмосковье, обломки упали под Москвой
+  - n: 2
+    time: 02:40
+    lang: en
+    source: Reuters
+    title: Ukrainian drones target Moscow region overnight, Russian air defences engaged
+  - n: 3
+    time: 03:15
+    lang: uk
+    source: Kyiv Independent
+    title: 'Безпілотники атакували Московську область: вибухи лунали біля столиці РФ'
+  - n: 4
+    time: 04:30
+    lang: et
+    source: ERR Estonia
+    title: Narva piiril tuvastati droon, Eesti õhuruumi rikuti öösel
+  - n: 5
+    time: 05:00
+    lang: en
+    source: BBC World
+    title: Drone detected at Narva border breaches Estonian airspace overnight
+  label:
+    separate_events: 2
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 2
+      - 3
+      urgency: 1
+      action: none
+    - event: 2
+      stories:
+      - 4
+      - 5
+      urgency: 6
+      action: sms
+- id: pile-30
+  ui_number: 28
+  when: 14 May 2026
+  authoring_intent: judgment-no-call
+  authoring_note: writer D
+  stories:
+  - n: 1
+    time: 08:00
+    lang: pl
+    source: Defence24
+    title: Rosja i Białoruś rozpoczynają ćwiczenia Zapad-2026 przy granicy z Polską i Litwą
+  - n: 2
+    time: 08:45
+    lang: en
+    source: Reuters
+    title: Russia, Belarus kick off large-scale Zapad-2026 military drills near NATO border
+  - n: 3
+    time: 09:30
+    lang: lt
+    source: LRT Lithuania
+    title: 'Pratybos Zapad-2026: Lietuvos kariuomenė stebi padėtį pasienyje'
+  - n: 4
+    time: '10:12'
+    lang: pl
+    source: Google News / Russia-NATO
+    title: 'Manewry Zapad-2026. Eksperci: scenariusz ćwiczeń obejmuje przesmyk suwalski'
+  - n: 5
+    time: '11:00'
+    lang: ru
+    source: TASS
+    title: 'Шойгу: учения «Запад-2026» носят сугубо оборонительный характер'
+  label:
+    separate_events: 3
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 2
+      urgency: 6
+      action: sms
+    - event: 2
+      stories:
+      - 3
+      urgency: 3
+      action: none
+    - event: 3
+      stories:
+      - 4
+      - 5
+      urgency: 3
+      action: none
+- id: pile-31
+  ui_number: 29
+  when: 7 March 2026
+  authoring_intent: must-merge
+  authoring_note: writer A
+  stories:
+  - n: 1
+    time: 01:03
+    lang: ro
+    source: Google News / Russia-NATO
+    title: Explozie la Tulcea, locuitorii raportează un bubuit puternic
+  - n: 2
+    time: 01:19
+    lang: ro
+    source: Google News / Russia-NATO
+    title: Dronă rusească căzută la Tulcea, pompierii intervin la fața locului
+  - n: 3
+    time: 01:35
+    lang: en
+    source: Reuters
+    title: Russian drone crashes near Tulcea in Romania, NATO member
+  - n: 4
+    time: 01:52
+    lang: en
+    source: BBC World
+    title: Explosion reported in Tulcea, Romania, along Danube border
+  - n: 5
+    time: 02:14
+    lang: ro
+    source: Google News / Russia-NATO
+    title: 'Tulcea: atac cu dronă lângă port, autoritățile evaluează pagubele'
+  - n: 6
+    time: 02:40
+    lang: uk
+    source: Kyiv Independent
+    title: Російський дрон упав у румунській Тулчі поблизу кордону
+  - n: 7
+    time: 03:11
+    lang: ru
+    source: TASS
+    title: В румынской Тулче упал беспилотник, пострадавших нет
+  - n: 8
+    time: 04:05
+    lang: en
+    source: Reuters
+    title: Romania scrambles jets after drone strike near Tulcea
+  label:
+    separate_events: 2
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 2
+      - 3
+      - 4
+      - 6
+      - 7
+      - 8
+      urgency: 6
+      action: sms
+    - event: 2
+      stories:
+      - 5
+      urgency: 6
+      action: sms
+- id: pile-32
+  ui_number: 30
+  when: 27 March 2026
+  authoring_intent: must-separate-temporal
+  authoring_note: writer B
+  stories:
+  - n: 1
+    time: '21:00'
+    lang: ro
+    source: Google News / Russia-NATO
+    title: 'Explozie la Constanța: o rachetă a lovit zona portuară, pagube și răniți'
+  - n: 2
+    time: '21:40'
+    lang: en
+    source: Reuters
+    title: Missile hits port area of Constanta, Romania; injuries reported
+  - n: 3
+    time: 02:30
+    lang: ro
+    source: Google News / przestrzeń powietrzna
+    title: 'Nou atac la Constanța: a doua rachetă a lovit orașul, incendii în cartierul rezidențial'
+  - n: 4
+    time: 03:05
+    lang: ro
+    source: BBC World
+    title: A doua lovitură asupra Constanței în aceeași noapte, pompierii intervin la mai multe incendii
+  label:
+    separate_events: 2
+    events:
+    - event: 1
+      stories:
+      - 1
+      - 2
+      urgency: 7
+      action: sms
+    - event: 2
+      stories:
+      - 3
+      - 4
+      urgency: 7
+      action: sms
