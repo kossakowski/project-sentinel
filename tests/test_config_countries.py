@@ -158,3 +158,68 @@ def test_harness_does_not_write_fixtures():
         if "fixtures" not in line:
             continue
         assert not re.search(r"[\"'](?:w|a|x)[\"']", line), f"harness may write a fixtures file: {line.strip()}"
+
+
+# ---------------------------------------------------------------------------
+# 0.4 — Romanian-language Google News fetch actually resolves to a RO edition
+# ---------------------------------------------------------------------------
+
+
+def test_google_news_lang_map_has_romanian():
+    """[0.4] The Google News language map resolves 'ro' to a Romanian edition (not the en-US fallback)."""
+    from sentinel.fetchers.google_news import LANG_MAP
+
+    assert "ro" in LANG_MAP
+    assert LANG_MAP["ro"] == ("ro", "RO")
+
+
+# ---------------------------------------------------------------------------
+# 0.15 — the new event types render in Polish in the alert templates
+# ---------------------------------------------------------------------------
+
+
+def test_event_type_pl_covers_new_types():
+    """[0.15] debris_found + official_statement have non-English Polish renderings (alerts are in Polish)."""
+    from sentinel.alerts.state_machine import EVENT_TYPE_PL
+
+    for event_type in ("debris_found", "official_statement"):
+        assert event_type in EVENT_TYPE_PL, f"{event_type} missing a Polish rendering"
+        rendering = EVENT_TYPE_PL[event_type]
+        assert rendering and rendering != event_type, f"{event_type} falls back to a raw English token"
+
+
+# ---------------------------------------------------------------------------
+# 0.11 — the report-only regression eval never crashes the gate run
+# ---------------------------------------------------------------------------
+
+
+def _load_sentinel_cli():
+    """Load the shadowed sentinel.py CLI script under a distinct module name."""
+    import importlib.util
+    import os
+
+    script_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "sentinel.py")
+    spec = importlib.util.spec_from_file_location("sentinel_cli_entry_cfg", script_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_regression_eval_survives_broken_set(tmp_path):
+    """[0.11] A malformed/empty regression set is non-gating: it must NOT raise out of the runner."""
+    import asyncio
+    from unittest.mock import MagicMock
+
+    cli = _load_sentinel_cli()
+
+    # An empty YAML file makes load_eval_set raise ValueError BEFORE any classifier
+    # call, so this stays fully offline. The runner must swallow it (report-only).
+    broken = tmp_path / "broken_regression.yaml"
+    broken.write_text("", encoding="utf-8")
+
+    try:
+        # Must return normally (no exception) despite the broken set.
+        cli._run_regression_eval(str(broken), MagicMock(), MagicMock())
+    finally:
+        # asyncio.run closes/clears the loop; restore a fresh one for the session.
+        asyncio.set_event_loop(asyncio.new_event_loop())

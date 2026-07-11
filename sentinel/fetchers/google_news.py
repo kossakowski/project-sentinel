@@ -1,14 +1,14 @@
 import asyncio
 import urllib.parse
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import feedparser
 import httpx
 
 from sentinel.config import GoogleNewsQuery, SentinelConfig
 from sentinel.fetchers.base import BaseFetcher
-from sentinel.utils import strip_html
 from sentinel.models import Article
+from sentinel.utils import strip_html
 
 # Language to (hl, gl) mapping for Google News RSS
 LANG_MAP = {
@@ -16,6 +16,7 @@ LANG_MAP = {
     "pl": ("pl", "PL"),
     "uk": ("uk", "UA"),
     "ru": ("ru", "RU"),
+    "ro": ("ro", "RO"),
 }
 
 
@@ -36,11 +37,7 @@ class GoogleNewsFetcher(BaseFetcher):
         """Build Google News RSS URL from a query config."""
         encoded_query = urllib.parse.quote(query.query)
         hl, gl = LANG_MAP.get(query.language, ("en", "US"))
-        return (
-            f"https://news.google.com/rss/search"
-            f"?q={encoded_query}+when:1h"
-            f"&hl={hl}&gl={gl}&ceid={gl}:{hl}"
-        )
+        return f"https://news.google.com/rss/search?q={encoded_query}+when:1h&hl={hl}&gl={gl}&ceid={gl}:{hl}"
 
     async def fetch(self) -> list[Article]:
         """Fetch articles from all configured Google News queries concurrently."""
@@ -51,9 +48,7 @@ class GoogleNewsFetcher(BaseFetcher):
         if not queries:
             return []
 
-        results = await asyncio.gather(
-            *(self._fetch_query_safe(query) for query in queries)
-        )
+        results = await asyncio.gather(*(self._fetch_query_safe(query) for query in queries))
 
         all_articles: list[Article] = []
         for articles in results:
@@ -65,9 +60,7 @@ class GoogleNewsFetcher(BaseFetcher):
         try:
             return await self._fetch_query(query)
         except Exception as exc:
-            self.logger.error(
-                "Google News query '%s' failed: %s", query.query, exc
-            )
+            self.logger.error("Google News query '%s' failed: %s", query.query, exc)
             return []
 
     async def _fetch_query(self, query: GoogleNewsQuery) -> list[Article]:
@@ -85,9 +78,7 @@ class GoogleNewsFetcher(BaseFetcher):
             )
 
         if response.status_code == 429:
-            self.logger.warning(
-                "Google News query '%s': rate limited (429)", query.query
-            )
+            self.logger.warning("Google News query '%s': rate limited (429)", query.query)
             return []
 
         if response.status_code >= 500:
@@ -103,12 +94,10 @@ class GoogleNewsFetcher(BaseFetcher):
         feed = feedparser.parse(response.text)
 
         if feed.bozo and not feed.entries:
-            self.logger.error(
-                "Google News query '%s': malformed XML", query.query
-            )
+            self.logger.error("Google News query '%s': malformed XML", query.query)
             return []
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         articles: list[Article] = []
 
         for entry in feed.entries:
@@ -130,9 +119,7 @@ class GoogleNewsFetcher(BaseFetcher):
         return articles
 
     @staticmethod
-    def _entry_to_article(
-        entry, query: GoogleNewsQuery, now: datetime
-    ) -> Article:
+    def _entry_to_article(entry, query: GoogleNewsQuery, now: datetime) -> Article:
         """Convert a feedparser entry to an Article."""
         import calendar
 
@@ -147,7 +134,7 @@ class GoogleNewsFetcher(BaseFetcher):
             if parsed:
                 try:
                     ts = calendar.timegm(parsed)
-                    published_at = datetime.fromtimestamp(ts, tz=timezone.utc)
+                    published_at = datetime.fromtimestamp(ts, tz=UTC)
                     break
                 except (ValueError, OverflowError, TypeError):
                     continue

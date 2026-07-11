@@ -24,6 +24,8 @@ EVENT_TYPE_PL = {
     "troop_movement": "Ruchy wojsk",
     "artillery_shelling": "Ostrzał artyleryjski",
     "drone_attack": "Atak dronów",
+    "debris_found": "Znalezione szczątki",
+    "official_statement": "Oświadczenie oficjalne",
 }
 
 # Twilio rejects a concatenated SMS body over 1600 characters. Cap below that

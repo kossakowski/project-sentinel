@@ -420,10 +420,17 @@ def _run_regression_eval(eval_set_path: str, config, logger) -> None:
 
     logger.info("Regression eval mode (non-gating): %s", eval_set_path)
     print("\n=== Regression eval (report-only, non-gating) ===")
-    report = asyncio.run(run_eval(eval_set_path, config))
-    print(format_report(report))
-    json_path = save_report_json(report)
-    print(f"Regression report: {json_path}")
+    # Non-gating by contract: a malformed/empty regression set (ValueError from
+    # load_eval_set, KeyError from a bad case) or any transport error MUST NOT crash
+    # the process, because the regression run precedes the human correctness gate.
+    try:
+        report = asyncio.run(run_eval(eval_set_path, config))
+        print(format_report(report))
+        json_path = save_report_json(report)
+        print(f"Regression report: {json_path}")
+    except Exception as exc:
+        logger.warning("Regression eval failed (non-gating, ignored): %s", exc)
+        print(f"Warning: regression eval failed (non-gating, ignored): {exc}", file=sys.stderr)
 
 
 def _run_test_alert(alert_type: str, config, logger) -> None:

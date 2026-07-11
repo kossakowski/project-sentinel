@@ -151,3 +151,57 @@ def test_prompt_debris_and_statement_types():
     assert "foreign reaction = around 4" in prompt
     # Both keep is_military_event: true so they survive the pre-dedup gate.
     assert "KEEP is_military_event: true" in prompt
+
+
+# ---------------------------------------------------------------------------
+# 0.5 / 0.6 / 0.14 — calibration rules must not contradict the target-country
+# gate or the geography ladder. These guard against the CALIBRATION/CRITICAL
+# rules re-introducing an unnamed-NATO auto-9 or a universal strike floor.
+# ---------------------------------------------------------------------------
+
+
+def test_prompt_no_unnamed_nato_auto_high():
+    """[0.5, 0.6] No calibration example commands >=9 for an UNNAMED NATO reference."""
+    prompt = _full_prompt()
+    # The old unnamed-NATO >=9 examples must be gone.
+    assert "'Drones violating airspace of NATO state' with shelter warnings = 9" not in prompt
+    assert "'Russian strike on NATO border' = 9" not in prompt
+    # The rules now explicitly route an unnamed NATO reference to the gate (not 9).
+    assert "An unnamed 'a NATO state' does NOT qualify" in prompt
+    assert "An unnamed 'a NATO border' does NOT qualify" in prompt
+
+
+def test_prompt_strike_rule_defers_to_ladder():
+    """[0.14] R3's strike scoring follows the ladder (Baltic 8 / Romania 7-8), not a universal MIN 9."""
+    prompt = _full_prompt()
+    assert "score MINIMUM 9 for Poland" in prompt
+    assert "a real strike on Baltic (LT/LV/EE) soil = 8" in prompt
+    assert "a strike with injuries on Romanian soil = 7-8" in prompt
+
+
+def test_prompt_reaction_rule_has_polish_government_exception():
+    """[0.14] R6's reaction cap carves out the Polish-government reaction at ~6 (not capped at 4)."""
+    prompt = _full_prompt()
+    assert (
+        "a reaction or statement BY the Polish government / Polish authorities is its own "
+        "event_type 'official_statement' scored around 6 per the GEOGRAPHY LADDER, NOT capped at 4"
+    ) in prompt
+
+
+def test_prompt_crash_rule_has_debris_carveout():
+    """[0.14, 0.15] R7's 4-max crash cap carves out debris found on monitored soil (PL debris = 8)."""
+    prompt = _full_prompt()
+    assert "debris DISCOVERED on the soil of a monitored country is event_type 'debris_found'" in prompt
+    assert "debris found in Poland = 8; debris found on Baltic or Romanian soil per the ladder" in prompt
+
+
+def test_prompt_moldova_exempt_from_nonmonitored_cap():
+    """[0.14] The non-monitored 1-3/5-max cap carves out Moldova (~6 per the ladder)."""
+    prompt = _full_prompt()
+    assert "the article concerns Moldova (incidents on Moldovan soil = around 6" in prompt
+
+
+def test_prompt_json_example_includes_ro():
+    """[0.6] The affected_countries JSON example lists RO so the model is not biased against it."""
+    prompt = _full_prompt()
+    assert '"affected_countries": ["PL", "LT", "LV", "EE", "RO"]' in prompt
