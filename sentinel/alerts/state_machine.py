@@ -384,9 +384,48 @@ class AlertStateMachine:
         self.config = config
         self.push = push_client or ExpoPushClient(config)
         self.logger = logging.getLogger("sentinel.alerts.state_machine")
+        # Per-event confirmation state (1.5): keyed by event_id so a reply to one
+        # event's code can never acknowledge a different event. Previously bare
+        # instance attributes, which were only safe because dispatch is serialized.
+        self._confirmation_codes: dict[str, str] = {}
+        self._confirmation_sms_sids: dict[str, str] = {}
+
+    def _as_record(
+        self,
+        raw: AlertRecord | None,
+        alert_type: str,
+        event_id: str,
+        message_body: str,
+    ) -> AlertRecord:
+        """Normalize a client send result into a concrete AlertRecord (never None).
+
+        The Twilio/push clients now return a ``status="failed"`` record on a
+        transport error (1.4). A bare ``None`` can still arrive (a legacy/unexpected
+        return) — turn it into a synthesized failure record so the failure is
+        always durably recordable and never a silent drop (1.1/1.3).
+        """
+        if raw is not None:
+            return raw
+        return AlertRecord(
+            event_id=event_id,
+            alert_type=alert_type,
+            twilio_sid="",
+            status="failed",
+            attempt_number=1,
+            sent_at=datetime.now(UTC),
+            message_body=message_body,
+            error_code="unknown",
+            error_detail="alert client returned no result",
+        )
 
     async def process_event(self, event: Event) -> None:
         """Determine and execute the appropriate alert action for an event."""
+        # Terminal after exhausting the bounded retry rounds (1.2): the failure
+        # is already durably recorded; stop re-entering the retry loop.
+        if event.alert_status == "failed_terminal":
+            self.logger.debug("Event %s is failed_terminal, skipping", event.id)
+            return
+
         if self._is_in_cooldown(event):
             self.logger.debug("Event %s in cooldown, skipping", event.id)
             return
@@ -516,8 +555,12 @@ class AlertStateMachine:
     _USER_NOTIFIED_ALERT_TYPES = ("sms", "whatsapp", "phone_call")
 
     def _user_already_notified(self, alerts: list[AlertRecord]) -> bool:
-        """True if any prior alert that the user can perceive exists."""
-        return any(a.alert_type in self._USER_NOTIFIED_ALERT_TYPES for a in alerts)
+        """True if any prior *delivered* alert that the user can perceive exists.
+
+        Failed sends don't count — a call/SMS that never left Twilio hasn't
+        notified anyone, so it must not suppress a fallback notification.
+        """
+        return any(a.alert_type in self._USER_NOTIFIED_ALERT_TYPES and a.status != "failed" for a in alerts)
 
     def _is_acknowledged(self, alerts: list[AlertRecord]) -> bool:
         """Check if any alert for this event was acknowledged."""
@@ -540,9 +583,27 @@ class AlertStateMachine:
         if existing_alerts is None:
             existing_alerts = self.db.get_alert_records(event.id)
 
-        # Enforce retry interval: if there was a previous call from a prior
-        # cycle, check that enough time has elapsed
-        call_records = [a for a in existing_alerts if a.alert_type == "phone_call"]
+        # Bounded cross-cycle retry rounds (1.2). Read the durable round counter
+        # from the DB so the cap survives restarts and is never trusted from a
+        # possibly-stale event argument. When it reaches the config cap, the event
+        # moves to a terminal failed status and stops re-entering the retry loop.
+        max_rounds = self.config.alerts.retry.max_rounds
+        current = self.db.get_event_by_id(event.id) or event
+        if current.alert_round_count >= max_rounds:
+            if current.alert_status != "failed_terminal":
+                self.db.update_event(event.id, alert_status="failed_terminal")
+                self.logger.error(
+                    "Event %s: %d retry rounds exhausted, marking failed_terminal (fail-loud, no silent drop)",
+                    event.id[:8],
+                    max_rounds,
+                )
+            return
+
+        # Enforce retry interval: if there was a previous *successful* call from a
+        # prior cycle, check that enough time has elapsed. Failed-to-initiate
+        # records don't count — a call that never left the ground shouldn't gate
+        # the next round.
+        call_records = [a for a in existing_alerts if a.alert_type == "phone_call" and a.status != "failed"]
         if call_records:
             last_call_time = max(a.sent_at for a in call_records)
             retry_interval = timedelta(minutes=self.config.alerts.acknowledgment.retry_interval_minutes)
@@ -552,6 +613,10 @@ class AlertStateMachine:
                     event.id,
                 )
                 return
+
+        # Commit to a round: increment the durable per-event round counter (1.2).
+        round_number = current.alert_round_count + 1
+        self.db.update_event(event.id, alert_round_count=round_number)
 
         phone_number = self.config.alerts.phone_number
         message = _format_call_message(event, self.config)
@@ -567,7 +632,7 @@ class AlertStateMachine:
         # Call loop — calls are alarms only, not confirmation
         for attempt in range(1, max_per_round + 1):
             # Check SMS reply before each call
-            if await self._check_sms_confirmation(call_placed_at):
+            if await self._check_sms_confirmation(call_placed_at, event.id):
                 await self._acknowledge_event(event, total_attempts)
                 return
 
@@ -581,12 +646,24 @@ class AlertStateMachine:
                 total_attempts,
             )
 
-            record = await asyncio.to_thread(self.twilio.make_alert_call, phone_number, message, event.id)
-            if record is None:
-                self.logger.error("Event %s: Twilio call failed to initiate", event.id[:8])
+            record = self._as_record(
+                await asyncio.to_thread(self.twilio.make_alert_call, phone_number, message, event.id),
+                "phone_call",
+                event.id,
+                message,
+            )
+            record.attempt_number = total_attempts
+            if record.status == "failed":
+                # Fail-loud (1.1/1.3): persist a durable failure row with the
+                # transport error code instead of a bare log line + zero rows.
+                self.db.insert_alert_record(record)
+                self.logger.error(
+                    "Event %s: Twilio call failed to initiate (error_code=%s)",
+                    event.id[:8],
+                    record.error_code,
+                )
                 continue
 
-            record.attempt_number = total_attempts
             self.db.insert_alert_record(record)
             self.db.update_event(event.id, alert_status="call_placed")
 
@@ -594,13 +671,13 @@ class AlertStateMachine:
             await self._wait_for_call_and_check_sms(record, call_placed_at)
 
             # Check SMS reply after call ends
-            if await self._check_sms_confirmation(call_placed_at):
+            if await self._check_sms_confirmation(call_placed_at, event.id):
                 await self._acknowledge_event(event, total_attempts)
                 return
 
             # After first call, verify confirmation SMS was delivered; resend if failed
             if attempt == 1:
-                delivery = await self._check_confirmation_sms_delivered()
+                delivery = await self._check_confirmation_sms_delivered(event.id)
                 if delivery is False:
                     self.logger.warning(
                         "Event %s: confirmation SMS failed to deliver, resending",
@@ -613,7 +690,7 @@ class AlertStateMachine:
                 await asyncio.sleep(retry_pause)
 
         # Round exhausted — check SMS one more time
-        if await self._check_sms_confirmation(call_placed_at):
+        if await self._check_sms_confirmation(call_placed_at, event.id):
             await self._acknowledge_event(event, total_attempts)
             return
 
@@ -645,30 +722,43 @@ class AlertStateMachine:
         phone_number = self.config.alerts.phone_number
         event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
 
-        # Generate random 6-digit code, store it for verification
-        self._confirmation_code = f"{random.randint(100000, 999999)}"
+        # Generate a random 6-digit code, stored per-event (1.5) so a reply to
+        # one event's code can never acknowledge a different event.
+        code = f"{random.randint(100000, 999999)}"
+        self._confirmation_codes[event.id] = code
 
         message = (
             f"PROJECT SENTINEL: {event_type_pl}\n\n"
             f"{event.summary_pl}\n\n"
-            f"Odpowiedz kodem aby potwierdzic odbior alertu: {self._confirmation_code}\n\n"
+            f"Odpowiedz kodem aby potwierdzic odbior alertu: {code}\n\n"
             f"Telefon bedzie dzwonil dopoki nie potwierdzisz."
         )
-        record = await asyncio.to_thread(self.twilio.send_sms, phone_number, message, event.id)
-        if record is not None:
-            self._confirmation_sms_sid = record.twilio_sid
-            self.db.insert_alert_record(record)
+        record = self._as_record(
+            await asyncio.to_thread(self.twilio.send_sms, phone_number, message, event.id),
+            "sms",
+            event.id,
+            message,
+        )
+        self.db.insert_alert_record(record)
+        if record.status != "failed":
+            self._confirmation_sms_sids[event.id] = record.twilio_sid
             self.logger.info(
                 "SMS confirmation request sent for event %s (code=%s, SID=%s)",
                 event.id[:8],
-                self._confirmation_code,
+                code,
                 record.twilio_sid,
             )
+        else:
+            self.logger.error(
+                "Event %s: confirmation SMS failed to send (error_code=%s)",
+                event.id[:8],
+                record.error_code,
+            )
 
-    async def _check_sms_confirmation(self, since: datetime) -> bool:
-        """Check if the user replied with the correct 6-digit code via SMS."""
+    async def _check_sms_confirmation(self, since: datetime, event_id: str) -> bool:
+        """Check if the user replied with the correct 6-digit code for this event."""
         phone_number = self.config.alerts.phone_number
-        code = getattr(self, "_confirmation_code", None)
+        code = self._confirmation_codes.get(event_id)
         if not code:
             return False
 
@@ -697,12 +787,12 @@ class AlertStateMachine:
             self.logger.warning("Failed to check SMS confirmations: %s", exc)
         return False
 
-    async def _check_confirmation_sms_delivered(self) -> bool | None:
-        """Check if the confirmation SMS was delivered.
+    async def _check_confirmation_sms_delivered(self, event_id: str) -> bool | None:
+        """Check if this event's confirmation SMS was delivered.
 
         Returns True if delivered, False if failed/undelivered, None if still pending.
         """
-        sid = getattr(self, "_confirmation_sms_sid", None)
+        sid = self._confirmation_sms_sids.get(event_id)
         if not sid:
             return None
         try:
@@ -733,7 +823,7 @@ class AlertStateMachine:
             waited += poll_interval
 
             # Check SMS while call is in progress
-            if await self._check_sms_confirmation(sms_since):
+            if await self._check_sms_confirmation(sms_since, record.event_id):
                 return
 
             # Check if call is done
@@ -756,10 +846,17 @@ class AlertStateMachine:
         phone_number = self.config.alerts.phone_number
         message = _format_sms_message(event, self.db, self.config)
 
-        record = await asyncio.to_thread(self.twilio.send_sms, phone_number, message, event.id)
-        if record is not None:
-            self.db.insert_alert_record(record)
+        record = self._as_record(
+            await asyncio.to_thread(self.twilio.send_sms, phone_number, message, event.id),
+            "sms",
+            event.id,
+            message,
+        )
+        self.db.insert_alert_record(record)
+        if record.status != "failed":
             self.db.update_event(event.id, alert_status="sms_sent")
+        else:
+            self.logger.error("Event %s: SMS alert failed to send (error_code=%s)", event.id[:8], record.error_code)
 
     async def _handle_call_result(self, record: AlertRecord, status: dict) -> None:
         """Handle the result of a previously placed phone call.
@@ -799,18 +896,31 @@ class AlertStateMachine:
 
         phone_number = self.config.alerts.phone_number
         message = _format_sms_message(event, self.db, self.config)
-        record = await asyncio.to_thread(self.twilio.send_sms, phone_number, message, event_id)
-        if record is not None:
-            self.db.insert_alert_record(record)
+        record = self._as_record(
+            await asyncio.to_thread(self.twilio.send_sms, phone_number, message, event_id),
+            "sms",
+            event_id,
+            message,
+        )
+        self.db.insert_alert_record(record)
+        if record.status == "failed":
+            self.logger.error("Event %s: follow-up SMS failed to send (error_code=%s)", event_id[:8], record.error_code)
 
     async def _send_update_sms(self, event: Event) -> None:
         """Send an SMS update for an event that was already acknowledged."""
         phone_number = self.config.alerts.phone_number
         message = _format_update_sms(event, self.db, self.config)
-        record = await asyncio.to_thread(self.twilio.send_sms, phone_number, message, event.id)
-        if record is not None:
-            self.db.insert_alert_record(record)
+        record = self._as_record(
+            await asyncio.to_thread(self.twilio.send_sms, phone_number, message, event.id),
+            "sms",
+            event.id,
+            message,
+        )
+        self.db.insert_alert_record(record)
+        if record.status != "failed":
             self.logger.info("Update SMS sent for acknowledged event %s", event.id)
+        else:
+            self.logger.error("Event %s: update SMS failed to send (error_code=%s)", event.id[:8], record.error_code)
 
     async def _maybe_send_push(
         self,
@@ -833,7 +943,9 @@ class AlertStateMachine:
         push_cfg = self.config.alerts.push
         if not push_cfg.enabled or not push_cfg.tokens:
             return
-        if not is_update and any(a.alert_type == "push" for a in existing_alerts):
+        # Dedup only on a *successful* prior push — a failed push must not
+        # suppress a later retry.
+        if not is_update and any(a.alert_type == "push" and a.status != "failed" for a in existing_alerts):
             return
 
         title, body = _format_push(event, is_update=is_update)
@@ -845,9 +957,16 @@ class AlertStateMachine:
             event.id,
             data,
         )
-        if record is not None:
-            self.db.insert_alert_record(record)
+        # None is the no-op case (push disabled / no tokens) — nothing to record.
+        # A transport failure now returns a status="failed" record, persisted
+        # like a success so a failed push is never a silent drop (1.1/1.3).
+        if record is None:
+            return
+        self.db.insert_alert_record(record)
+        if record.status != "failed":
             self.logger.info("Push alert recorded for event %s", event.id[:8])
+        else:
+            self.logger.error("Event %s: push failed to send (error_code=%s)", event.id[:8], record.error_code)
 
     def _update_alert_record(
         self,

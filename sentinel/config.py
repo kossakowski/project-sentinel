@@ -140,6 +140,20 @@ class AcknowledgmentConfig(BaseModel):
     call_retry_pause_seconds: int = 10
 
 
+class RetryConfig(BaseModel):
+    """Cross-cycle phone-call retry bound (Phase 1).
+
+    ``max_rounds`` caps how many retry rounds a single event may run across
+    scheduler cycles, enforced against the durable ``events.alert_round_count``
+    counter (never in-memory state). When the counter reaches this cap the event
+    moves to a terminal ``failed_terminal`` status and stops re-entering the
+    retry loop. Wires the previously-dead ``urgency_levels.critical.retry_attempts``
+    intent. Life-safety: keep this high enough that a real 9-10 keeps calling.
+    """
+
+    max_rounds: int = 10
+
+
 class AlertTemplates(BaseModel):
     call: str = (
         "{event_type_pl} wykryte. {summary_pl}. Źródła potwierdzające: {source_count}. Pilność: {urgency_score} na 10."
@@ -177,6 +191,7 @@ class AlertsConfig(BaseModel):
     language: str = "pl"
     urgency_levels: dict[str, UrgencyLevel]
     acknowledgment: AcknowledgmentConfig
+    retry: RetryConfig = RetryConfig()
     templates: AlertTemplates = AlertTemplates()
     push: PushConfig = PushConfig()
 

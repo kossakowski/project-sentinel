@@ -638,6 +638,17 @@ alerts:
     call_poll_interval_seconds: 5
     call_retry_pause_seconds: 10
 
+  # Cross-cycle phone-call retry bound. Each retry round (one sweep of
+  # max_call_retries call attempts with no SMS acknowledgment) increments the
+  # durable per-event events.alert_round_count. When it reaches max_rounds the
+  # event moves to alert_status="failed_terminal" and stops re-entering the
+  # retry loop, so a permanently unreachable phone can't loop forever — while a
+  # transport outage is still recorded (never a silent drop). Wires the
+  # previously-dead urgency_levels.critical.retry_attempts intent. Life-safety:
+  # keep this high enough that a real 9-10 keeps calling.
+  retry:
+    max_rounds: 10
+
   # Push notifications via the Expo Push Service (companion mobile app).
   # Push is one of the per-tier delivery channels: set an urgency tier's
   # `channel` (above) to push or both to route 5-8 alerts here. Disabled by

@@ -35,9 +35,13 @@ class ExpoPushClient:
     ) -> AlertRecord | None:
         """Send one push to every configured Expo token.
 
-        Returns an AlertRecord when at least one ticket is accepted; None when
-        push is disabled, no tokens are configured, the HTTP call fails, or every
-        ticket is rejected. Mirrors the failure contract of the Twilio methods.
+        Returns an AlertRecord in the send cases (Phase 1, req 1.4): a
+        ``status="sent"`` record when at least one ticket is accepted, or a
+        ``status="failed"`` record carrying ``error_code``/``error_detail`` when
+        the HTTP call fails or every ticket is rejected — so a failed push is
+        durably recordable, mirroring the Twilio methods. Returns ``None`` only
+        for the no-op case (push disabled or no tokens configured): nothing was
+        attempted, so there is no failure to record.
         """
         push_cfg = self.config.alerts.push
         if not push_cfg.enabled or not push_cfg.tokens:
@@ -66,7 +70,7 @@ class ExpoPushClient:
             tickets = response.json().get("data", [])
         except (httpx.HTTPError, ValueError) as exc:
             self.logger.error("Expo push failed for event %s: %s", event_id, exc)
-            return None
+            return self._failure_record(event_id, body, type(exc).__name__, str(exc))
 
         # The Expo API returns a single ticket dict for one recipient, or a list
         # of tickets (one per token) when `to` is an array.
@@ -74,7 +78,8 @@ class ExpoPushClient:
             tickets = [tickets]
 
         ok_ids = [t.get("id", "") for t in tickets if t.get("status") == "ok"]
-        for err in (t for t in tickets if t.get("status") != "ok"):
+        error_tickets = [t for t in tickets if t.get("status") != "ok"]
+        for err in error_tickets:
             self.logger.warning(
                 "Expo push ticket error for event %s: %s (%s)",
                 event_id,
@@ -84,7 +89,13 @@ class ExpoPushClient:
 
         if not ok_ids:
             self.logger.error("Expo push for event %s: no tickets accepted", event_id)
-            return None
+            first = error_tickets[0] if error_tickets else {}
+            return self._failure_record(
+                event_id,
+                body,
+                first.get("message") or "expo_ticket_error",
+                str(first.get("details") or first.get("message") or "no tickets accepted"),
+            )
 
         self.logger.info(
             "Push sent for event %s to %d token(s), ticket=%s",
@@ -100,4 +111,18 @@ class ExpoPushClient:
             attempt_number=1,
             sent_at=datetime.now(UTC),
             message_body=body,
+        )
+
+    def _failure_record(self, event_id: str, body: str, error_code: str, error_detail: str) -> AlertRecord:
+        """Build a ``status="failed"`` push AlertRecord for a durable failure row."""
+        return AlertRecord(
+            event_id=event_id,
+            alert_type="push",
+            twilio_sid="",
+            status="failed",
+            attempt_number=1,
+            sent_at=datetime.now(UTC),
+            message_body=body,
+            error_code=error_code,
+            error_detail=error_detail,
         )

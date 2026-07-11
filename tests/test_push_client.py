@@ -95,28 +95,38 @@ def test_auth_header_when_env_set(push_config, monkeypatch):
     assert kwargs["headers"]["Authorization"] == "Bearer secret-xyz"
 
 
-def test_all_error_tickets_returns_none(push_config):
+def test_all_error_tickets_returns_failure_record(push_config):
+    """Every ticket rejected -> a structured status="failed" record with a
+    non-null error_code (req 1.4), so the failed push is durably recordable."""
     client = ExpoPushClient(push_config)
     fake = _resp({"data": [{"status": "error", "message": "DeviceNotRegistered", "details": {}}]})
     with patch("sentinel.alerts.push_client.httpx.post", return_value=fake):
         record = client.send_push("T", "B", "e")
-    assert record is None
+    assert record is not None
+    assert record.status == "failed"
+    assert record.error_code is not None
 
 
-def test_network_error_returns_none(push_config):
+def test_network_error_returns_failure_record(push_config):
+    """A transport error is surfaced as a failed record, not swallowed (req 1.4)."""
     client = ExpoPushClient(push_config)
     with patch("sentinel.alerts.push_client.httpx.post", side_effect=httpx.ConnectError("boom")):
         record = client.send_push("T", "B", "e")
-    assert record is None
+    assert record is not None
+    assert record.status == "failed"
+    assert record.error_code is not None
 
 
-def test_http_status_error_returns_none(push_config):
+def test_http_status_error_returns_failure_record(push_config):
+    """An HTTP error status is surfaced as a failed record (req 1.4)."""
     client = ExpoPushClient(push_config)
     err = httpx.HTTPStatusError("500", request=MagicMock(), response=MagicMock())
     fake = _resp({}, raise_exc=err)
     with patch("sentinel.alerts.push_client.httpx.post", return_value=fake):
         record = client.send_push("T", "B", "e")
-    assert record is None
+    assert record is not None
+    assert record.status == "failed"
+    assert record.error_code is not None
 
 
 def test_disabled_returns_none_without_network(config):

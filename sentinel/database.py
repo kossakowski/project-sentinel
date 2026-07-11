@@ -22,6 +22,7 @@ class Database:
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
         self._create_tables()
+        self._migrate_schema()
         self.logger.debug("Database initialized: %s", db_path)
 
     def _create_tables(self) -> None:
@@ -79,7 +80,8 @@ class Database:
                     source_count INTEGER NOT NULL DEFAULT 1,
                     article_ids TEXT NOT NULL,
                     alert_status TEXT NOT NULL DEFAULT 'pending',
-                    acknowledged_at TEXT
+                    acknowledged_at TEXT,
+                    alert_round_count INTEGER NOT NULL DEFAULT 0
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_events_alert_status ON events(alert_status);
@@ -95,11 +97,39 @@ class Database:
                     duration_seconds INTEGER,
                     attempt_number INTEGER NOT NULL DEFAULT 1,
                     sent_at TEXT NOT NULL,
-                    message_body TEXT
+                    message_body TEXT,
+                    error_code TEXT,
+                    error_detail TEXT
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_alerts_event_id ON alert_records(event_id);
             """)
+
+    def _table_columns(self, table: str) -> set[str]:
+        """Return the set of column names currently present on ``table``."""
+        cursor = self.conn.execute(f"PRAGMA table_info({table})")
+        return {row["name"] for row in cursor.fetchall()}
+
+    def _migrate_schema(self) -> None:
+        """Additively bring an existing on-disk database up to the current schema.
+
+        `_create_tables` uses ``CREATE TABLE IF NOT EXISTS``, so a database that
+        predates these columns keeps its old shape; this adds the missing
+        columns with ``ALTER TABLE ADD COLUMN`` (a non-destructive SQLite
+        operation that leaves existing rows intact and back-fills the declared
+        default). Every column is added only when absent, so this is idempotent
+        and safe to run on every startup.
+        """
+        migrations = [
+            ("alert_records", "error_code", "TEXT"),
+            ("alert_records", "error_detail", "TEXT"),
+            ("events", "alert_round_count", "INTEGER NOT NULL DEFAULT 0"),
+        ]
+        with self.conn:
+            for table, column, decl in migrations:
+                if column not in self._table_columns(table):
+                    self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+                    self.logger.info("Schema migration: added %s.%s", table, column)
 
     def insert_article(self, article: Article) -> bool:
         """Insert an article. Returns False if URL hash already exists (duplicate)."""

@@ -138,17 +138,24 @@ def test_get_call_status(twilio_client):
 # 8. test_twilio_error_handled
 # --------------------------------------------------------------------------
 def test_twilio_error_handled(twilio_client):
-    """TwilioRestException is logged but not raised."""
+    """A TwilioRestException is logged (not raised) and surfaced as a structured
+    failure AlertRecord carrying a non-null error_code, so the caller can persist
+    a durable failure row instead of silently dropping the alert (req 1.4)."""
     twilio_client.client.calls.create.side_effect = TwilioRestException(status=500, uri="/test", msg="Server error")
 
-    # Should not raise
+    # Should not raise; returns a failed record, not None.
     record = twilio_client.make_alert_call("+48123456789", "Test", "evt-err")
-    assert record is None
+    assert record is not None
+    assert record.status == "failed"
+    assert record.error_code is not None
+    assert record.error_detail
 
     # SMS error
     twilio_client.client.messages.create.side_effect = TwilioRestException(status=500, uri="/test", msg="Server error")
     record = twilio_client.send_sms("+48123456789", "Test", "evt-err2")
-    assert record is None
+    assert record is not None
+    assert record.status == "failed"
+    assert record.error_code is not None
 
 
 # --------------------------------------------------------------------------

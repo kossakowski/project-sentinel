@@ -612,6 +612,13 @@ alerts:
     max_call_retries: 5
     retry_interval_minutes: 5
     cooldown_hours: 6
+  # Cross-cycle phone-call retry bound. Each retry round (one sweep of
+  # max_call_retries call attempts with no SMS acknowledgment) increments the
+  # durable per-event events.alert_round_count; at max_rounds the event moves to
+  # alert_status="failed_terminal" and stops re-entering the retry loop. Wires
+  # the previously-dead urgency_levels.critical.retry_attempts intent.
+  retry:
+    max_rounds: 10
 scheduler:
   fast_interval_minutes: 3
   interval_minutes: 15

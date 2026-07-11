@@ -177,6 +177,11 @@ class Event:
     article_ids: list[str]
     alert_status: str = "pending"
     acknowledged_at: datetime | None = None
+    # Durable cross-cycle phone-retry round counter (Phase 1). Incremented once
+    # per retry round in the alert state machine and compared against
+    # alerts.retry.max_rounds; survives restarts because it is persisted here,
+    # never held only in memory.
+    alert_round_count: int = 0
     id: str = field(default_factory=lambda: str(uuid4()))
 
     def to_dict(self) -> dict:
@@ -193,6 +198,7 @@ class Event:
             "article_ids": list_to_json(self.article_ids),
             "alert_status": self.alert_status,
             "acknowledged_at": _dt_to_iso(self.acknowledged_at),
+            "alert_round_count": self.alert_round_count,
         }
 
     @classmethod
@@ -209,6 +215,7 @@ class Event:
             article_ids=_json_to_list(d.get("article_ids")),
             alert_status=d.get("alert_status", "pending"),
             acknowledged_at=_iso_to_dt(d.get("acknowledged_at")),
+            alert_round_count=d.get("alert_round_count") or 0,
             id=d.get("id", str(uuid4())),
         )
 
@@ -227,6 +234,12 @@ class AlertRecord:
     sent_at: datetime
     message_body: str
     duration_seconds: int | None = None
+    # Failure diagnostics (Phase 1). On a failed send these carry the transport
+    # error code (e.g. a Twilio error code, an HTTP status, or an Expo ticket
+    # error) and a human-readable detail, so a failed alert leaves a durable,
+    # inspectable row instead of only a log line. Null on a successful send.
+    error_code: str | None = None
+    error_detail: str | None = None
     id: str = field(default_factory=lambda: str(uuid4()))
 
     def to_dict(self) -> dict:
@@ -240,6 +253,8 @@ class AlertRecord:
             "attempt_number": self.attempt_number,
             "sent_at": _dt_to_iso(self.sent_at),
             "message_body": self.message_body,
+            "error_code": self.error_code,
+            "error_detail": self.error_detail,
         }
 
     @classmethod
@@ -253,6 +268,8 @@ class AlertRecord:
             sent_at=_iso_to_dt(d["sent_at"]),
             message_body=d.get("message_body", ""),
             duration_seconds=d.get("duration_seconds"),
+            error_code=d.get("error_code"),
+            error_detail=d.get("error_detail"),
             id=d.get("id", str(uuid4())),
         )
 
