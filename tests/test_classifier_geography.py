@@ -62,6 +62,22 @@ def test_prompt_target_country_gate():
     assert "EXPLICITLY named" in prompt
 
 
+def test_prompt_named_city_resolves_to_country():
+    """[0.5, 0.8] The gate carves out named cities/regions that identify a monitored country.
+
+    Guards against under-alerting: a headline naming a monitored-country city (e.g. Rzeszow) but not
+    the country word must still attribute the country via physical location, while the gate keeps
+    fully suppressing GENERIC references ('a NATO country'). This closes the city-only suppression
+    gap without weakening the 0.5 false-positive gate.
+    """
+    prompt = _full_prompt()
+    # Named place counts as explicitly naming the country (physical-location attribution).
+    assert "Rzeszow -> Poland" in prompt
+    assert "count as explicitly naming that country via its physical location" in prompt
+    # The carve-out explicitly does NOT loosen the generic-reference gate.
+    assert "does NOT apply to generic category references" in prompt
+
+
 # ---------------------------------------------------------------------------
 # 0.7 — R4 demoted to confirmed-PL tie-break
 # ---------------------------------------------------------------------------
@@ -234,12 +250,48 @@ def test_prompt_r2_romania_no_shelter_shortcut():
 def test_prompt_urgency_scale_aligns_with_ladder():
     """[0.14] The urgency-scale anchors follow the ladder rather than contradicting it."""
     prompt = _full_prompt()
-    # Air-raid / shelter alerts escalate to the call band, never capped at 7-8.
+    # Poland shelter/air-raid orders belong at the 9-10 call band (an active aerial threat over Poland)...
+    assert "shelter or air-raid orders issued in Poland" in prompt
+    # ...but a Baltic/Romanian strike or shelter order is NOT auto-9-10 -- it follows the ladder.
+    assert "a strike or shelter order there is NOT automatically 9-10" in prompt
     assert "air alerts in Baltic states" not in prompt
-    assert "shelter orders or air-raid alerts issued in a monitored country" in prompt
+    # The old blanket "monitored country" shelter->9-10 anchor is gone (it would call Baltic/RO 8s).
+    assert "shelter orders or air-raid alerts issued in a monitored country" not in prompt
     # The stale flat single-drone 5-6 anchor is gone.
     assert "single drone found near border" not in prompt
-    # The 7-8 band now carries the ladder's real-strike anchors.
+    # The 7-8 band still carries the ladder's real-strike anchors.
     assert "a real strike on Baltic soil = 8" in prompt
     assert "a strike with injuries on Romanian soil = 7-8" in prompt
     assert "inert debris found in Poland = 8" in prompt
+
+
+def test_prompt_shelter_floor_scoped_to_poland():
+    """[0.14, 0.6] R1's unconditional MIN-9 shelter floor is scoped to Poland; Baltic/RO defer to the ladder.
+
+    Guards the owner ground truth (Vilnius strike with shelter orders = 8/sms): a shelter order in a
+    Baltic/Romanian context must not unconditionally floor urgency to 9 -- only Poland gets that floor.
+    """
+    prompt = _full_prompt()
+    # Poland keeps the non-negotiable shelter/air-raid MIN-9 floor.
+    assert "If authorities in POLAND issue shelter-in-place orders" in prompt
+    assert "This is non-negotiable for Poland:" in prompt
+    # Baltic/Romania shelter orders are a ladder-scored escalation factor, not an unconditional 9.
+    assert "a shelter order is an escalation FACTOR scored by the GEOGRAPHY LADDER, NOT an unconditional 9" in prompt
+    # The old blanket "in a monitored country = 9-10" shelter floor is gone.
+    assert "in a monitored country = 9-10" not in prompt
+
+
+def test_prompt_deliberate_baltic_attack_reaches_9():
+    """[0.14 + prime directive] A deliberate Baltic attack with shelter orders (not only casualties) still reaches 9.
+
+    Guards against dangerous under-alerting: the calibration rules must NOT gate the Baltic 9 tier
+    to confirmed casualties only. A deliberate Russian attack with shelter orders but no casualty
+    count yet must still be call-tier, matching the ladder ("casualties or shelter orders = 9").
+    """
+    prompt = _full_prompt()
+    # The ladder's deliberate-attack 9 path (casualties OR shelter orders) is intact.
+    assert "a deliberate Russian attack with casualties or shelter orders = 9" in prompt
+    # R2 and R3 both route the Baltic 9 tier through the deliberate-attack path with BOTH escalators.
+    assert prompt.count("a deliberate Russian attack (with casualties or shelter orders)") >= 2
+    # The stale casualties-ONLY gating (which would suppress a shelter-only deliberate attack) is gone.
+    assert "only for a deliberate Russian attack with casualties" not in prompt
