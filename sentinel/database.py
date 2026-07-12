@@ -235,7 +235,9 @@ class Database:
         )
         return [Event.from_row(row) for row in cursor.fetchall()]
 
-    def get_events_by_alert_status(self, status: str, within_minutes: int | None = None) -> list[Event]:
+    def get_events_by_alert_status(
+        self, status: str, within_minutes: int | None = None, older_than_minutes: int | None = None
+    ) -> list[Event]:
         """Return events currently in the given ``alert_status``.
 
         Used by the alert state machine's cycle-driven retry sweep to re-enter
@@ -243,6 +245,13 @@ class Database:
         fully-failed round is retried every cycle (bounded by the durable
         ``alert_round_count`` counter) even when no new article merges into the
         event. Ordered oldest-first so the longest-waiting event retries first.
+
+        ``within_minutes`` and ``older_than_minutes`` are mutually exclusive recency
+        filters on the event's LAST activity (``last_updated_at``).
+        ``within_minutes`` returns rows INSIDE the window (the sweep's normal
+        re-call set); ``older_than_minutes`` returns rows OUTSIDE it (events
+        stranded by a process outage longer than the window, which the sweep
+        finalizes fail-loud instead of leaving in limbo).
 
         When ``within_minutes`` is given, only events whose LAST activity
         (``last_updated_at``) falls inside that window are returned. The sweep
@@ -263,16 +272,22 @@ class Database:
         threshold and pass the filter regardless of age, defeating the recency
         bound. Matching the stored format keeps the age window correct.
         """
-        if within_minutes is None:
-            cursor = self.conn.execute(
-                "SELECT * FROM events WHERE alert_status = ? ORDER BY last_updated_at ASC",
-                (status,),
-            )
-        else:
+        if within_minutes is not None:
             cutoff = (datetime.now(UTC) - timedelta(minutes=within_minutes)).isoformat()
             cursor = self.conn.execute(
                 "SELECT * FROM events WHERE alert_status = ? AND last_updated_at > ? ORDER BY last_updated_at ASC",
                 (status, cutoff),
+            )
+        elif older_than_minutes is not None:
+            cutoff = (datetime.now(UTC) - timedelta(minutes=older_than_minutes)).isoformat()
+            cursor = self.conn.execute(
+                "SELECT * FROM events WHERE alert_status = ? AND last_updated_at <= ? ORDER BY last_updated_at ASC",
+                (status, cutoff),
+            )
+        else:
+            cursor = self.conn.execute(
+                "SELECT * FROM events WHERE alert_status = ? ORDER BY last_updated_at ASC",
+                (status,),
             )
         return [Event.from_row(row) for row in cursor.fetchall()]
 

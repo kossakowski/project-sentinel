@@ -547,19 +547,20 @@ async def test_failed_terminal_still_alerts_new_content(_sleep, state_machine, d
 
 
 # --------------------------------------------------------------------------
-# 9. test_every_round_advances_cap  [1.2]
+# 9. test_delivered_rounds_never_silence_the_call  [1.2, 1.3, prime directive]
 # --------------------------------------------------------------------------
 @pytest.mark.asyncio
 @patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
-async def test_every_round_advances_cap(_sleep, state_machine, db, mock_twilio, config):
-    """Each unacknowledged round advances the counter once (spec 1.2 'once per round').
+async def test_delivered_rounds_never_silence_the_call(_sleep, state_machine, db, mock_twilio, config):
+    """A DELIVERED-but-unacknowledged 9-10 call keeps ringing; it never caps out.
 
-    ``alert_round_count`` increments exactly once for every completed-but-
-    unacknowledged round regardless of transport outcome: a delivered-but-never-
-    answered round (Twilio accepts the call, the phone rings, the user does not
-    reply) ticks the counter just like a transport-outage round. At ``max_rounds``
-    the event goes ``failed_terminal`` and places no further call — so a
-    never-answered phone cannot loop forever any more than an unreachable one can.
+    The retry cap (1.2) bounds ONLY the transport-FAILURE loop. A round where
+    Twilio accepted the call and the phone rang (the operator simply has not
+    replied yet) must NOT advance ``alert_round_count`` — silencing a delivered
+    urgency-9/10 alarm after a fixed number of unanswered rounds violates the prime
+    directive and the confirmation SMS's promise that the phone rings until
+    confirmed. The event stays ``retry_pending`` and is re-called every cycle,
+    indefinitely, and never reaches ``failed_terminal`` on delivery alone.
     """
     config.alerts.retry.max_rounds = 3
     config.alerts.acknowledgment.max_call_retries = 1
@@ -570,22 +571,20 @@ async def test_every_round_advances_cap(_sleep, state_machine, db, mock_twilio, 
     event = _make_event(urgency_score=10)
     db.insert_event(event)
 
+    # Far more cycles than max_rounds — a delivered-but-unanswered call must keep
+    # ringing well past the transport-failure cap, never falling silent.
     for _ in range(10):
         current = db.get_event_by_id(event.id)
-        if current.alert_status == "failed_terminal":
-            break
+        assert current.alert_status != "failed_terminal", "a delivered call must never be silenced"
         await state_machine.process_event(current)
 
     final = db.get_event_by_id(event.id)
-    # Three delivered-but-unacknowledged rounds each ticked the counter once.
-    assert final.alert_round_count == 3, "each unacknowledged round must advance the cap counter once"
-    assert final.alert_status == "failed_terminal"
-
-    # No further call is placed once terminal (the cap holds even though calls
-    # were being accepted by Twilio).
-    before = mock_twilio.make_alert_call.call_count
-    await state_machine.process_event(db.get_event_by_id(event.id))
-    assert mock_twilio.make_alert_call.call_count == before
+    # Delivered-but-unacknowledged rounds do NOT advance the transport-failure cap.
+    assert final.alert_round_count == 0, "delivered rounds must not advance the cap counter"
+    assert final.alert_status == "retry_pending"
+    # The phone kept ringing every cycle — one delivered call per cycle, far past
+    # the 3-round transport-failure cap.
+    assert mock_twilio.make_alert_call.call_count == 10
 
 
 # --------------------------------------------------------------------------
@@ -759,12 +758,15 @@ def test_merge_preserves_retry_pending_status(db, config):
 # 14. test_merge_preserves_failed_terminal_status  [1.2, 1.3]
 # --------------------------------------------------------------------------
 def test_merge_preserves_failed_terminal_status(db, config):
-    """A merge into a failed_terminal event must not erase its terminal marker.
+    """A new critical article must spawn its own event past a dead call channel.
 
-    ``failed_terminal`` is the terminal state that keeps ``process_event``'s
-    post-cap SMS+push fallback routing genuinely new content. A later merged
-    article must not knock the event back to a live phone-call status, which
-    would re-open the exhausted retry loop and lose the fallback marker.
+    ``failed_terminal`` means the phone-retry cap is exhausted — the call channel
+    is dead and new content routes only to the SMS+push fallback. A genuinely new
+    critical (phone-call-eligible) escalation (e.g. a second missile wave) must
+    therefore spawn its OWN event and its own call rather than be silently absorbed
+    into the terminal event, whose marker stays intact. This mirrors the
+    acknowledged-event life-safety guard (a fresh escalation can't be silenced by an
+    earlier event's spent call channel).
     """
     corroborator = Corroborator(db, config)
     assert not corroborator.dry_run, "guard test needs a real (non-dry-run) status derivation"
@@ -777,11 +779,16 @@ def test_merge_preserves_failed_terminal_status(db, config):
     db.insert_article(new_article)
     classification = _corr_classification(new_article, event.summary_pl)
 
-    corroborator.process_classifications([classification])
+    produced = corroborator.process_classifications([classification])
 
-    merged = db.get_event_by_id(event.id)
-    assert new_article.id in merged.article_ids
-    assert merged.alert_status == "failed_terminal"
+    # The terminal event is untouched — the new critical article did NOT merge in.
+    terminal = db.get_event_by_id(event.id)
+    assert terminal.alert_status == "failed_terminal"
+    assert new_article.id not in terminal.article_ids
+    # A distinct NEW event carries the fresh escalation, so it gets its own call.
+    new_events = [e for e in produced if e.id != event.id and new_article.id in e.article_ids]
+    assert new_events, "a new critical escalation must spawn its own event, not merge into a terminal one"
+    assert new_events[0].alert_status != "failed_terminal"
 
 
 # --------------------------------------------------------------------------
@@ -968,13 +975,15 @@ async def test_transport_failed_rounds_are_interval_spaced(_sleep, state_machine
 @pytest.mark.asyncio
 @patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
 async def test_sweep_ignores_stale_retry_pending(_sleep, state_machine, db, mock_twilio, config):
-    """A SAME-UTC-DAY stale ``retry_pending`` row beyond the window is NOT swept.
+    """A SAME-UTC-DAY stale ``retry_pending`` row beyond the window is not RE-CALLED.
 
     ``get_events_by_alert_status`` had no recency bound, so on the first post-deploy
     cycle every historical ``retry_pending`` event still within DB retention would
     restart phone rounds at once (a call storm), as would an unacknowledged
-    ``--test-alert`` leftover. The sweep is bounded by
-    ``alerts.retry.sweep_max_age_minutes``.
+    ``--test-alert`` leftover. The sweep never re-CALLS a row beyond
+    ``alerts.retry.sweep_max_age_minutes`` (no phone storm); instead it finalizes
+    it FAIL-LOUD to ``failed_terminal`` (with the SMS+push fallback) so a genuinely
+    stranded 9-10 is not silently lost in ``retry_pending`` limbo.
 
     This exercises the format-consistency of that bound. The stored column holds
     ISO timestamps with a 'T' separator; comparing them against SQLite's
@@ -1012,8 +1021,10 @@ async def test_sweep_ignores_stale_retry_pending(_sleep, state_machine, db, mock
         calls_before = mock_twilio.make_alert_call.call_count
         await state_machine.retry_pending_calls()
         assert mock_twilio.make_alert_call.call_count == calls_before, (
-            "a same-UTC-day row older than the window must NOT be swept"
+            "a same-UTC-day row older than the window must NOT be re-called (no phone storm)"
         )
+        # ...but it is finalized fail-loud, not left silently in retry_pending limbo.
+        assert db.get_event_by_id("stale").alert_status == "failed_terminal"
 
         # A fresh retry_pending event within the window IS swept.
         fresh = _make_event(urgency_score=10, event_id="fresh")
@@ -1340,3 +1351,202 @@ async def test_sweep_skips_event_with_inflight_call(_sleep, state_machine, db, m
     assert mock_twilio.make_alert_call.call_count == calls_before, (
         "an event with an in-flight call must not be re-called by the sweep"
     )
+
+
+# --------------------------------------------------------------------------
+# 27. test_transport_failure_cap_notifies_at_terminal  [1.3, F6]
+# --------------------------------------------------------------------------
+@pytest.mark.asyncio
+@patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
+async def test_transport_failure_cap_notifies_at_terminal(_sleep, state_machine, db, mock_twilio, config):
+    """Reaching failed_terminal notifies via the SMS+push fallback, not a silent flip.
+
+    When transport failures exhaust the cap the call channel is dead. The terminal
+    transition must fire the SMS + additive push fallback (the push travels a
+    different transport and may reach the operator even during a Twilio outage) so
+    the operator hears about it — fail-loud (1.3), never a silent status flip.
+    """
+    config.alerts.retry.max_rounds = 3
+    config.alerts.acknowledgment.max_call_retries = 1
+    config.alerts.acknowledgment.retry_interval_minutes = 0
+    config.alerts.push.enabled = True
+    config.alerts.push.tokens = ["ExponentPushToken[test]"]
+    state_machine.push.send_push = MagicMock(
+        side_effect=lambda title, body, event_id, data: AlertRecord(
+            event_id=event_id,
+            alert_type="push",
+            twilio_sid="tk",
+            status="sent",
+            attempt_number=1,
+            sent_at=datetime.now(UTC),
+            message_body=body,
+        )
+    )
+
+    # Event already at the cap after transport-failure rounds, awaiting finalization.
+    event = _make_event(urgency_score=10)
+    event.alert_status = "retry_pending"
+    event.alert_round_count = 3
+    db.insert_event(event)
+
+    sms_before = mock_twilio.send_sms.call_count
+    await state_machine.retry_pending_calls()
+
+    final = db.get_event_by_id(event.id)
+    assert final.alert_status == "failed_terminal"
+    # No call placed at the cap; the operator is notified via SMS + push instead.
+    assert mock_twilio.make_alert_call.call_count == 0
+    assert mock_twilio.send_sms.call_count == sms_before + 1
+    assert state_machine.push.send_push.call_count == 1
+
+
+# --------------------------------------------------------------------------
+# 28. test_outage_stranded_event_finalized_fail_loud  [1.3, F2]
+# --------------------------------------------------------------------------
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stranded_status", ["retry_pending", "call_placed", "phone_call"])
+@patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
+async def test_outage_stranded_event_finalized_fail_loud(
+    _sleep, stranded_status, state_machine, db, mock_twilio, config
+):
+    """An event stranded beyond the sweep window by an outage is finalized fail-loud.
+
+    A process outage longer than ``sweep_max_age_minutes`` leaves an active
+    call-tier event too old to safely re-call, but leaving it in ``retry_pending``
+    limbo until the 90-day cleanup is a silent 9-10 miss (1.3). The sweep marks it
+    ``failed_terminal`` AND fires the SMS + push fallback so the operator hears
+    about it — without restarting a phone storm.
+    """
+    config.alerts.retry.sweep_max_age_minutes = 60
+    config.alerts.push.enabled = True
+    config.alerts.push.tokens = ["ExponentPushToken[test]"]
+    state_machine.push.send_push = MagicMock(
+        side_effect=lambda title, body, event_id, data: AlertRecord(
+            event_id=event_id,
+            alert_type="push",
+            twilio_sid="tk",
+            status="sent",
+            attempt_number=1,
+            sent_at=datetime.now(UTC),
+            message_body=body,
+        )
+    )
+
+    event = _make_event(urgency_score=10)
+    event.alert_status = stranded_status
+    event.last_updated_at = datetime.now(UTC) - timedelta(minutes=90)  # beyond the 60-min window
+    db.insert_event(event)
+
+    await state_machine.retry_pending_calls()
+
+    final = db.get_event_by_id(event.id)
+    assert final.alert_status == "failed_terminal", "a stranded event must be finalized, not left in limbo"
+    assert mock_twilio.make_alert_call.call_count == 0, "no phone storm on aged-out rows"
+    assert mock_twilio.send_sms.call_count >= 1, "the operator must be notified (fail-loud)"
+    assert state_machine.push.send_push.call_count >= 1
+
+
+# --------------------------------------------------------------------------
+# 29. test_confirmation_code_recovered_after_restart  [1.5, F3]
+# --------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_confirmation_code_recovered_after_restart(state_machine, db, mock_twilio, config):
+    """A correct reply is honored across a restart via durable code recovery.
+
+    The per-event confirmation codes live in memory and don't survive a restart.
+    A delivered code persisted in its confirmation-SMS row must still match a reply
+    after the process (and its in-memory state) is gone — otherwise the operator's
+    correct answer is silently lost and, under the cap, the phone keeps ringing on
+    an event they already confirmed. A code from a FAILED (undelivered) send is NOT
+    recoverable — the operator never received it.
+    """
+    event = _make_event(event_id="evt-restart")
+    db.insert_event(event)
+
+    # Round 1: confirmation SMS delivered with code 555555.
+    with patch("sentinel.alerts.state_machine.random.randint", return_value=555555):
+        await state_machine._send_confirmation_sms(event)
+
+    # Round 2: confirmation SMS send FAILS, would have carried 666666.
+    def _fail_sms(phone, message, event_id):
+        return AlertRecord(
+            event_id=event_id,
+            alert_type="sms",
+            twilio_sid="",
+            status="failed",
+            attempt_number=1,
+            sent_at=datetime.now(UTC),
+            message_body=message,
+            error_code="30008",
+            error_detail="delivery error",
+        )
+
+    mock_twilio.send_sms.side_effect = _fail_sms
+    with patch("sentinel.alerts.state_machine.random.randint", return_value=666666):
+        await state_machine._send_confirmation_sms(event)
+
+    # Simulate a restart: a fresh state machine with EMPTY in-memory confirmation state.
+    restarted = AlertStateMachine(db, mock_twilio, config)
+    assert not restarted._confirmation_code_history, "restart must start with empty in-memory code state"
+
+    since = datetime.now(UTC) - timedelta(minutes=5)
+
+    # The DELIVERED code still acknowledges after restart (recovered from the DB).
+    reply_ok = MagicMock()
+    reply_ok.body = "Potwierdzam 555555"
+    mock_twilio.client.messages.list.return_value = [reply_ok]
+    assert await restarted._check_sms_confirmation(since, event.id) is True
+
+    # The UNDELIVERED code does NOT — it was never received, so never made matchable.
+    reply_bad = MagicMock()
+    reply_bad.body = "666666"
+    mock_twilio.client.messages.list.return_value = [reply_bad]
+    assert await restarted._check_sms_confirmation(since, event.id) is False
+
+
+# --------------------------------------------------------------------------
+# 30. test_sweep_skips_acknowledged_event  [one-call-per-event, F5]
+# --------------------------------------------------------------------------
+@pytest.mark.asyncio
+@patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
+async def test_sweep_skips_acknowledged_event(_sleep, state_machine, db, mock_twilio, config):
+    """The sweep never re-calls an event the operator already acknowledged.
+
+    An ACK matched between rounds sets ``events.acknowledged_at`` but marks no
+    in-flight call record, so the record-based check alone can miss it. Even if a
+    later merge left the event in a sweep-eligible status, the sweep must skip it on
+    the durable ``acknowledged_at`` flag (one-call-per-event).
+    """
+    event = _make_event(urgency_score=10)
+    event.alert_status = "phone_call"  # e.g. a stale status a merge might present
+    event.acknowledged_at = datetime.now(UTC)
+    db.insert_event(event)
+
+    await state_machine.retry_pending_calls()
+    assert mock_twilio.make_alert_call.call_count == 0, "an acknowledged event must not be re-called"
+
+
+# --------------------------------------------------------------------------
+# 31. test_sweep_bounded_per_cycle  [F9]
+# --------------------------------------------------------------------------
+@pytest.mark.asyncio
+@patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
+async def test_sweep_bounded_per_cycle(_sleep, state_machine, db, mock_twilio, config):
+    """The sweep drives at most sweep_max_events_per_cycle call rounds per cycle.
+
+    A crisis leaving many events retry_pending must not stall article fetch/
+    classification for the whole cycle; the sweep bounds how many events it drives
+    through a (blocking) call round per cycle and defers the rest to the next.
+    """
+    config.alerts.retry.sweep_max_events_per_cycle = 2
+    config.alerts.acknowledgment.max_call_retries = 1
+    config.alerts.acknowledgment.retry_interval_minutes = 0
+
+    for i in range(4):
+        ev = _make_event(urgency_score=10, event_id=f"evt-bound-{i}")
+        ev.alert_status = "retry_pending"
+        db.insert_event(ev)
+
+    await state_machine.retry_pending_calls()
+    # Only 2 of the 4 retry-pending events got a call round this cycle.
+    assert mock_twilio.make_alert_call.call_count == 2

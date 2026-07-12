@@ -31,11 +31,14 @@ _MIN_EVENT_URGENCY = 5
 # loop. A merge must NOT re-derive an event's alert_status while it sits in one of
 # these: ``retry_pending`` is the sole signal the cycle-driven retry sweep
 # (AlertStateMachine.retry_pending_calls, via get_events_by_alert_status) uses to
-# keep driving a failed call up to alerts.retry.max_rounds, and ``failed_terminal``
-# is the terminal marker that routes genuinely new content to the post-cap SMS+push
-# fallback. Overwriting either during a merge would silently strand a failed
-# urgency-9/10 call (prime-directive miss), so these statuses are preserved.
-_RETRY_LIFECYCLE_STATUSES: frozenset[str] = frozenset({"retry_pending", "failed_terminal"})
+# keep driving a failed call up to alerts.retry.max_rounds; ``failed_terminal`` is
+# the terminal marker that routes genuinely new content to the post-cap SMS+push
+# fallback; and ``acknowledged`` marks an event the operator already confirmed.
+# Overwriting any of these during a merge would either silently strand a failed
+# urgency-9/10 call (prime-directive miss) or knock an acknowledged event back to
+# ``phone_call`` — where the sweep would re-call an already-confirmed event
+# (one-call-per-event violation) — so these statuses are preserved.
+_RETRY_LIFECYCLE_STATUSES: frozenset[str] = frozenset({"retry_pending", "failed_terminal", "acknowledged"})
 
 
 class Corroborator:
@@ -113,12 +116,17 @@ class Corroborator:
                 continue
 
             # SAFETY: a critical (phone-call-eligible) article must never be absorbed
-            # into an event that has already been acknowledged -- such an event is in
-            # (or past) its post-alert cooldown and would silently swallow the new
-            # article, so a genuinely new critical escalation could be suppressed.
-            # Force it to spawn its own event -- and its own phone call. This mirrors
+            # into an event whose call channel is already spent -- one that has been
+            # acknowledged (in/past its post-alert cooldown) OR that exhausted its
+            # phone-retry cap (``failed_terminal``, call transport dead, new content
+            # routed only to the SMS+push fallback). Either way the event would
+            # silently swallow the new article and a genuinely new critical
+            # escalation (e.g. a second missile wave) would never get its own phone
+            # call. Force it to spawn its own event -- and its own call. This mirrors
             # the no-concrete-country critical guard in _countries_compatible.
-            if result.urgency_score >= phone_threshold and event.acknowledged_at is not None:
+            if result.urgency_score >= phone_threshold and (
+                event.acknowledged_at is not None or event.alert_status == "failed_terminal"
+            ):
                 continue
 
             # Sliding time window: measure recency from the event's LAST activity

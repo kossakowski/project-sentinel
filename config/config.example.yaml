@@ -638,21 +638,32 @@ alerts:
     call_poll_interval_seconds: 5
     call_retry_pause_seconds: 10
 
-  # Cross-cycle phone-call retry bound. Each retry round (one sweep of
-  # max_call_retries call attempts with no SMS acknowledgment) increments the
-  # durable per-event events.alert_round_count exactly once — whatever the
-  # transport outcome. A full transport outage, a carrier-fault round (a call was
-  # accepted but ended in a terminal Twilio failure), and a delivered-but-never-
-  # answered round all count the same, so no failure mode loops forever. When the
-  # counter reaches max_rounds the event moves to alert_status="failed_terminal"
-  # and stops re-entering the retry loop (a permanently unreachable phone can't
-  # loop forever); new content that merges into a terminal event still falls back
-  # to SMS + push. Every failed send is durably recorded (never a silent drop).
-  # Wires the previously-dead urgency_levels.critical.retry_attempts intent.
-  # Life-safety: keep this high enough that a real 9-10 keeps calling — total call
-  # attempts before terminal are up to max_rounds x max_call_retries.
+  # Cross-cycle phone-call retry bound. The durable per-event
+  # events.alert_round_count bounds ONLY the transport-FAILURE retry loop: a round
+  # in which no call reached the user (a full Twilio/network outage — every
+  # placement failed) increments the counter, and at max_rounds the event moves to
+  # alert_status="failed_terminal" so a permanently unreachable phone can't loop
+  # forever. A DELIVERED-but-unacknowledged round (Twilio accepted the call, the
+  # phone rang, the operator has not replied yet) does NOT count toward the cap and
+  # keeps ringing every interval until acknowledged — a delivered urgency-9/10
+  # alarm must never fall silent after a fixed number of unanswered rounds. When an
+  # event does reach failed_terminal it (and any new content merging into it) still
+  # falls back to SMS + additive push. Every failed send is durably recorded (never
+  # a silent drop). Wires the previously-dead urgency_levels.critical.retry_attempts
+  # intent. Life-safety: keep max_rounds high enough that a real 9-10 survives a
+  # transient outage — total transport-failure call attempts before terminal are up
+  # to max_rounds x max_call_retries.
+  # sweep_max_age_minutes bounds the cycle-driven retry sweep by recency: only
+  # events whose last activity falls within the window are re-called; an event
+  # stranded beyond it by a process outage is finalized fail-loud (terminal + SMS/
+  # push fallback), never left in limbo. sweep_max_events_per_cycle caps how many
+  # events the sweep drives through a (blocking) call round per scheduler cycle so a
+  # crisis cannot stall article fetch/classification; the rest wait for next cycle
+  # (0 disables the bound).
   retry:
     max_rounds: 10
+    sweep_max_age_minutes: 180
+    sweep_max_events_per_cycle: 3
 
   # Push notifications via the Expo Push Service (companion mobile app).
   # Push is one of the per-tier delivery channels: set an urgency tier's

@@ -163,11 +163,21 @@ class RetryConfig(BaseModel):
     otherwise a deploy would re-activate every historical ``retry_pending`` row at
     once (a call storm). Keep it comfortably larger than
     ``max_rounds * acknowledgment.retry_interval_minutes`` so a legitimately
-    in-progress retry never ages out mid-sequence.
+    in-progress retry never ages out mid-sequence. An event stranded BEYOND this
+    window by a process outage longer than the window is not silently abandoned:
+    the sweep finalizes it fail-loud (terminal + SMS/push fallback) rather than
+    leave it in ``retry_pending`` limbo.
+
+    ``sweep_max_events_per_cycle`` bounds how many events the sweep may drive
+    through a (blocking) call round in a single scheduler cycle, so a crisis that
+    leaves many events retry-pending cannot stall article fetch/classification for
+    the whole cycle; the remainder are picked up on the next cycle. Oldest-waiting
+    events are processed first. ``0`` disables the bound (process all).
     """
 
     max_rounds: int = Field(default=10, ge=1)
     sweep_max_age_minutes: int = Field(default=180, ge=1)
+    sweep_max_events_per_cycle: int = Field(default=3, ge=0)
 
 
 class AlertTemplates(BaseModel):

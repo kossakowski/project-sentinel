@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import random
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -11,6 +12,13 @@ from sentinel.config import SentinelConfig
 from sentinel.database import Database
 from sentinel.models import AlertRecord, Event
 from sentinel.utils.datetime import format_warsaw
+
+# Confirmation-code label used in the acknowledgment SMS. Kept as a module
+# constant so the send path and the durable-recovery extractor (which rebuilds the
+# matchable codes from persisted confirmation-SMS rows after a restart) agree on
+# the exact wording.
+_CONFIRMATION_CODE_LABEL = "Odpowiedz kodem aby potwierdzic odbior alertu:"
+_CONFIRMATION_CODE_RE = re.compile(re.escape(_CONFIRMATION_CODE_LABEL) + r"\s*(\d{6})")
 
 # Event type translations for Polish alert messages
 EVENT_TYPE_PL = {
@@ -601,8 +609,51 @@ class AlertStateMachine:
             return
 
         window = self.config.alerts.retry.sweep_max_age_minutes
+        budget = self.config.alerts.retry.sweep_max_events_per_cycle
+        processed = 0
+
+        # Pass 1 — FAIL-LOUD finalization of events stranded BEYOND the sweep window
+        # (1.3). A process outage longer than ``window`` leaves an active
+        # ``retry_pending`` / mid-round event too old to safely re-call (re-calling
+        # every historical row on restart would storm), yet leaving it in limbo
+        # until the 90-day cleanup is a silent 9-10 miss. Finalize it terminally and
+        # notify via the SMS + additive push fallback so the disposition is durable
+        # and the operator still hears about it — never a silent drop.
+        for status in self._RETRY_SWEEP_STATUSES:
+            for event in self.db.get_events_by_alert_status(status, older_than_minutes=window):
+                if event.acknowledged_at is not None:
+                    continue
+                existing_alerts = self.db.get_alert_records(event.id)
+                if self._is_acknowledged(existing_alerts):
+                    continue
+                if budget and processed >= budget:
+                    self.logger.warning(
+                        "Retry sweep hit the per-cycle budget (%d) finalizing stranded events; "
+                        "deferring the rest to the next cycle",
+                        budget,
+                    )
+                    return
+                self.logger.warning(
+                    "Event %s: stranded in %s beyond the %d-min sweep window — finalizing fail-loud",
+                    event.id[:8],
+                    status,
+                    window,
+                )
+                await self._send_capped_fallback(event, existing_alerts)
+                processed += 1
+
+        # Pass 2 — re-enter fresh (within-window) events into the bounded retry
+        # loop. Bounded by ``sweep_max_events_per_cycle`` so a crisis leaving many
+        # events retry-pending cannot stall article fetch/classification for the
+        # whole cycle; the remainder are picked up next cycle (oldest-first).
         for status in self._RETRY_SWEEP_STATUSES:
             for event in self.db.get_events_by_alert_status(status, within_minutes=window):
+                # Never re-call an acknowledged event (one-call-per-event). The
+                # durable ``acknowledged_at`` is authoritative: an ACK matched
+                # between rounds marks no in-flight call record, so the record-based
+                # ``_is_acknowledged`` below can miss it — check the event flag too.
+                if event.acknowledged_at is not None:
+                    continue
                 if self._is_in_cooldown(event):
                     continue
                 existing_alerts = self.db.get_alert_records(event.id)
@@ -610,7 +661,15 @@ class AlertStateMachine:
                     continue
                 if any(a.alert_type == "phone_call" and a.status in ("initiated", "ringing") for a in existing_alerts):
                     continue
+                if budget and processed >= budget:
+                    self.logger.warning(
+                        "Retry sweep hit the per-cycle budget (%d); deferring the remaining "
+                        "retry-pending events to the next cycle",
+                        budget,
+                    )
+                    return
                 await self._execute_phone_call(event, existing_alerts)
+                processed += 1
 
     def _determine_action(self, event: Event) -> str:
         """Resolve the delivery action for an event from the urgency tiers.
@@ -813,22 +872,28 @@ class AlertStateMachine:
         an SMS acknowledgment, sets status to retry_pending so the next pipeline
         cycle triggers another round.
 
-        Retry-cap semantics (1.2): the durable ``alert_round_count`` counter is
-        incremented exactly once per completed-but-unacknowledged round, whatever
-        the transport outcome — a full transport outage (Twilio accepted no call),
-        a carrier-fault round (a call was accepted but ended in a terminal Twilio
-        failure), and a delivered-but-never-answered round all count the same. At
-        ``alerts.retry.max_rounds`` the event moves to ``failed_terminal`` and
-        stops re-entering the retry loop, so no failure mode can loop forever. An
-        acknowledged round returns before the increment and never counts.
+        Retry-cap semantics (1.2, prime directive): the durable
+        ``alert_round_count`` counter bounds ONLY the transport-failure retry loop.
+        A round in which NO call reached the user (a full Twilio/network outage —
+        every placement ``status="failed"``) increments the counter; at
+        ``alerts.retry.max_rounds`` the event moves to ``failed_terminal`` so a
+        persistent OUTAGE cannot loop forever. A DELIVERED-but-unacknowledged round
+        (Twilio accepted the call, the phone rang, the sleeping operator has not yet
+        replied) does NOT increment the counter and keeps the event in
+        ``retry_pending`` so it rings again next interval — a delivered urgency-9/10
+        alarm MUST ring until acknowledged (the confirmation SMS promises exactly
+        that), never fall silent after a fixed number of unanswered rounds. An
+        acknowledged round returns before either path and never counts.
         """
         if existing_alerts is None:
             existing_alerts = self.db.get_alert_records(event.id)
 
         # Bounded cross-cycle retry rounds (1.2). Read the durable round counter
         # from the DB so the cap survives restarts and is never trusted from a
-        # possibly-stale event argument. When it reaches the config cap, the event
-        # moves to a terminal failed status and stops re-entering the retry loop.
+        # possibly-stale event argument. The cap counts transport-FAILURE rounds
+        # only (see the end-of-round disposition below); when it reaches the config
+        # cap the call transport is dead, so the event moves to a terminal failed
+        # status and stops re-entering the retry loop.
         max_rounds = self.config.alerts.retry.max_rounds
         current = self.db.get_event_by_id(event.id) or event
         if current.alert_round_count >= max_rounds:
@@ -842,7 +907,11 @@ class AlertStateMachine:
             if await self._check_sms_confirmation(datetime.now(UTC), event.id):
                 await self._acknowledge_event(event, current.alert_round_count)
                 return
-            self._mark_failed_terminal(event)
+            # Cap already exhausted by transport failures — ensure the event is
+            # terminal AND the user was notified (fail-loud, 1.3), not just a silent
+            # status flip. _send_capped_fallback idempotently marks terminal and
+            # throttles the SMS/push, so a repeat re-entry cannot re-spam.
+            await self._send_capped_fallback(event, existing_alerts)
             return
 
         # Enforce the retry interval by the last call ATTEMPT time regardless of
@@ -885,6 +954,14 @@ class AlertStateMachine:
 
         retry_pause = self.config.alerts.acknowledgment.call_retry_pause_seconds
 
+        # Track whether ANY call reached the user this round. A round that placed
+        # at least one call (Twilio accepted it, the phone rang) is a DELIVERED
+        # round: the alarm is working and simply unacknowledged, so it must keep
+        # ringing and MUST NOT advance the transport-failure cap (1.2/prime
+        # directive). Only a round where every placement failed at transport counts
+        # toward the bound.
+        round_delivered_call = False
+
         # Call loop — calls are alarms only, not confirmation
         for attempt in range(1, max_per_round + 1):
             # Check SMS reply before each call
@@ -922,6 +999,7 @@ class AlertStateMachine:
 
             self.db.insert_alert_record(record)
             self.db.update_event(event.id, alert_status="call_placed")
+            round_delivered_call = True
 
             # Wait for call to finish, polling SMS in the meantime
             await self._wait_for_call_and_check_sms(record, call_placed_at)
@@ -950,19 +1028,40 @@ class AlertStateMachine:
             await self._acknowledge_event(event, total_attempts)
             return
 
-        # Advance the durable retry counter (1.2) once for this completed-but-
-        # unacknowledged round, whatever the transport outcome — a transport
-        # outage, a carrier-fault round (call accepted then ended 'failed'), and a
-        # delivered-but-never-answered round all count the same, so no failure
-        # mode loops forever. An acknowledged round returns above and never reaches
-        # here. The next entry sees the cap and moves the event to failed_terminal.
-        self.db.update_event(event.id, alert_round_count=current.alert_round_count + 1)
+        retry_interval = self.config.alerts.acknowledgment.retry_interval_minutes
+        if round_delivered_call:
+            # DELIVERED-but-unacknowledged round: the alarm reached the user (the
+            # phone rang) and simply was not answered yet. Per the prime directive a
+            # delivered urgency-9/10 call MUST keep ringing until acknowledged — the
+            # confirmation SMS promises "Telefon bedzie dzwonil dopoki nie
+            # potwierdzisz" — so this round does NOT advance the transport-failure
+            # cap. Leave the event in retry_pending; the interval-spaced sweep rings
+            # it again next cycle, indefinitely, until the operator confirms.
+            self.db.update_event(event.id, alert_status="retry_pending")
+            self.logger.warning(
+                "Event %s: delivered round unacknowledged — phone keeps ringing "
+                "(not counted toward the %d-round transport-failure cap), retry in %d min",
+                event.id[:8],
+                max_rounds,
+                retry_interval,
+            )
+            return
+
+        # PURE TRANSPORT-FAILURE round: no call reached the user this round (a full
+        # Twilio/network outage). Advance the durable cap (1.2) so a persistent
+        # outage cannot loop forever. Leave the event in retry_pending even at the
+        # cap: the terminal transition is applied on the NEXT re-entry by the
+        # top-of-method guard, which FIRST honors a correct reply that may have
+        # landed just after this round's final SMS check, then (if none) marks the
+        # event failed_terminal AND notifies via the SMS+push fallback (1.3/F6).
+        new_count = current.alert_round_count + 1
+        self.db.update_event(event.id, alert_round_count=new_count)
         self.logger.warning(
-            "Event %s: round complete without SMS confirmation, round count now %d/%d, retry in %d min",
+            "Event %s: transport-failure round complete (no call delivered), round count now %d/%d, retry in %d min",
             event.id[:8],
-            current.alert_round_count + 1,
+            new_count,
             max_rounds,
-            self.config.alerts.acknowledgment.retry_interval_minutes,
+            retry_interval,
         )
         self.db.update_event(event.id, alert_status="retry_pending")
 
@@ -1011,7 +1110,7 @@ class AlertStateMachine:
         message = (
             f"PROJECT SENTINEL: {event_type_pl}\n\n"
             f"{event.summary_pl}\n\n"
-            f"Odpowiedz kodem aby potwierdzic odbior alertu: {code}\n\n"
+            f"{_CONFIRMATION_CODE_LABEL} {code}\n\n"
             f"Telefon bedzie dzwonil dopoki nie potwierdzisz."
         )
         record = self._as_record(
@@ -1038,6 +1137,34 @@ class AlertStateMachine:
                 record.error_code,
             )
 
+    def _recover_confirmation_state(self, event_id: str) -> tuple[set[str], datetime | None]:
+        """Rebuild the matchable confirmation codes + scan-window start from the DB.
+
+        The per-event confirmation code history (``_confirmation_code_history``)
+        and window start (``_confirmation_window_start``) live in memory and do NOT
+        survive a restart. Every confirmation SMS persists its 6-digit code inside
+        its ``message_body`` on a durable ``alert_records`` row, so after a restart
+        the codes and the earliest send time are recoverable from that durable
+        state — letting a correct reply carrying a pre-restart code still
+        acknowledge the event.
+        """
+        codes: set[str] = set()
+        earliest: datetime | None = None
+        for rec in self.db.get_alert_records(event_id):
+            # Only successfully-DELIVERED confirmation SMSes carry a code the
+            # operator actually holds — a failed send never reached them, so its
+            # code must not become matchable (mirrors _send_confirmation_sms, which
+            # registers a code only on a successful send).
+            if rec.alert_type != "sms" or rec.status == "failed":
+                continue
+            match = _CONFIRMATION_CODE_RE.search(rec.message_body or "")
+            if match is None:
+                continue
+            codes.add(match.group(1))
+            if earliest is None or rec.sent_at < earliest:
+                earliest = rec.sent_at
+        return codes, earliest
+
     async def _check_sms_confirmation(self, since: datetime, event_id: str) -> bool:
         """Check if the user replied with a valid confirmation code for this event.
 
@@ -1053,13 +1180,25 @@ class AlertStateMachine:
         ``call_placed_at``, so filtering only by the current ``since`` would exclude
         it on the timestamp axis. Codes are per-event, so widening the window can
         never acknowledge a different event.
+
+        The matchable codes and the window start live in memory and do NOT survive
+        a restart. When that in-memory state is missing (e.g. the process restarted
+        mid-retry), they are reconstructed from the durable confirmation-SMS rows so
+        a correct operator reply carrying a pre-restart code is still honored rather
+        than lost — which, with the bounded cap, would otherwise keep the phone
+        ringing on an event the operator already confirmed.
         """
         phone_number = self.config.alerts.phone_number
-        codes = self._confirmation_code_history.get(event_id)
+        codes = set(self._confirmation_code_history.get(event_id) or ())
+        window_start = self._confirmation_window_start.get(event_id)
+        if not codes or window_start is None:
+            recovered_codes, recovered_start = self._recover_confirmation_state(event_id)
+            codes |= recovered_codes
+            if window_start is None:
+                window_start = recovered_start
         if not codes:
             return False
 
-        window_start = self._confirmation_window_start.get(event_id)
         effective_since = min(since, window_start) if window_start is not None else since
 
         try:

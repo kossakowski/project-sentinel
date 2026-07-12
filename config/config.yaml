@@ -612,28 +612,37 @@ alerts:
     max_call_retries: 5
     retry_interval_minutes: 5
     cooldown_hours: 6
-  # Cross-cycle phone-call retry bound. Each retry round (one sweep of
-  # max_call_retries call attempts with no SMS acknowledgment) increments the
-  # durable per-event events.alert_round_count exactly once — whatever the
-  # transport outcome: a full transport outage, a carrier-fault round, and a
-  # delivered-but-never-answered round all count the same, so no failure mode
-  # loops forever. At max_rounds the event moves to alert_status="failed_terminal"
-  # and stops re-entering the retry loop (new content still falls back to SMS +
-  # push). Wires the previously-dead urgency_levels.critical.retry_attempts
-  # intent. Life-safety: keep this high enough that a real 9-10 keeps calling —
-  # total call attempts before terminal are up to max_rounds x max_call_retries.
+  # Cross-cycle phone-call retry bound. The durable per-event
+  # events.alert_round_count bounds ONLY the transport-FAILURE retry loop: a round
+  # in which no call reached the user (a full Twilio/network outage — every
+  # placement failed) increments the counter, and at max_rounds the event moves to
+  # alert_status="failed_terminal" so a permanently unreachable phone can't loop
+  # forever. A DELIVERED-but-unacknowledged round (Twilio accepted the call, the
+  # phone rang, the operator has not replied yet) does NOT count and keeps ringing
+  # every interval until acknowledged — a delivered urgency-9/10 alarm must never
+  # fall silent after a fixed number of unanswered rounds. A terminal event (and
+  # new content merging into it) still falls back to SMS + additive push. Wires the
+  # previously-dead urgency_levels.critical.retry_attempts intent. Life-safety: keep
+  # max_rounds high enough that a real 9-10 survives a transient outage — total
+  # transport-failure call attempts before terminal are up to
+  # max_rounds x max_call_retries.
   #
   # sweep_max_age_minutes bounds the cycle-driven retry sweep by recency: only
-  # retry_pending events whose LAST activity (last_updated_at) is within this
-  # window are re-entered. An actively-retrying event bumps last_updated_at every
-  # round so it stays in-window; a stale retry_pending row left by a historical
-  # event or an unacknowledged --test-alert (still inside DB retention) ages out
-  # and is NOT swept, so a deploy can't re-activate every historical row at once.
-  # Keep it well above max_rounds x retry_interval_minutes so a real in-progress
-  # retry never ages out mid-sequence.
+  # events whose LAST activity (last_updated_at) is within this window are
+  # re-called. An actively-retrying event bumps last_updated_at every round so it
+  # stays in-window; a stale row left by a historical event or an unacknowledged
+  # --test-alert (still inside DB retention) ages out and is NOT re-called, so a
+  # deploy can't re-activate every historical row at once. An event stranded beyond
+  # the window by a process outage is finalized fail-loud (terminal + SMS/push
+  # fallback), never left in limbo. Keep the window well above
+  # max_rounds x retry_interval_minutes so a real in-progress retry never ages out
+  # mid-sequence. sweep_max_events_per_cycle caps how many events the sweep drives
+  # through a (blocking) call round per scheduler cycle so a crisis cannot stall
+  # article fetch/classification; the rest wait for the next cycle (0 disables).
   retry:
     max_rounds: 10
     sweep_max_age_minutes: 180
+    sweep_max_events_per_cycle: 3
 scheduler:
   fast_interval_minutes: 3
   interval_minutes: 15
