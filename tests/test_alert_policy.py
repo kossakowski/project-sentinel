@@ -88,6 +88,28 @@ def test_same_already_alerted_suppresses(policy):
 
 
 # --------------------------------------------------------------------------
+# 3b. [2.3] already_alerted_at=NONE means "nothing dispatched" -- it must NOT suppress.
+# --------------------------------------------------------------------------
+def test_same_never_alerted_is_not_suppressed(policy):
+    """ChannelClass.NONE is a "decided, nothing dispatched" sentinel, not "already alerted".
+
+    2.3 permits no-alert only for a SAME relation on an ALREADY-alerted event.
+    Treating the NONE sentinel as an alert would silence a never-alerted event.
+    """
+    for already in (None, ChannelClass.NONE):
+        intent = policy.decide(_new(Relation.SAME), urgency=7, geo_tier=GeoTier.HIGH, already_alerted_at=already)
+        assert intent.channel_class is ChannelClass.NOTIFY, already
+
+    # And a call-tier SAME on a never-alerted event still fires its first call.
+    assert (
+        policy.decide(
+            _new(Relation.SAME), urgency=10, geo_tier=GeoTier.HIGH, already_alerted_at=ChannelClass.NONE
+        ).channel_class
+        is ChannelClass.CALL
+    )
+
+
+# --------------------------------------------------------------------------
 # 4. [2.2] NEW, urgency 9, geo HIGH, single source -> still CALL; no corroboration key in config.
 # --------------------------------------------------------------------------
 def test_no_corroboration_gate(policy, config):
@@ -145,6 +167,32 @@ def test_thresholds_config_driven(config):
     assert call_tier_min(config) == 10
     assert raised.decide(_new(), urgency=9, geo_tier=GeoTier.HIGH).channel_class is ChannelClass.NOTIFY
     assert raised.decide(_new(), urgency=10, geo_tier=GeoTier.HIGH).channel_class is ChannelClass.CALL
+
+
+# --------------------------------------------------------------------------
+# 11b. [2.8] ONE call-tier source of truth: the corroborator's life-safety merge
+#      guards read the same call tier AlertPolicy dispatches on.
+# --------------------------------------------------------------------------
+def test_call_tier_has_a_single_source(db, config):
+    """Moving alerts.channel_bands moves the corroborator's call-tier guards with it.
+
+    The guards ("never absorb a call-eligible article into an acknowledged /
+    failed_terminal event", "a call-eligible article needs a concrete country
+    match") must key off the SAME call tier the policy calls on. If the corroborator
+    derived it independently (e.g. from alerts.urgency_levels), lowering the call
+    tier in one knob would let a call-band article merge into an acknowledged event
+    and be silenced by its cooldown.
+    """
+    corroborator = Corroborator(db, config)
+    assert corroborator._phone_call_threshold() == call_tier_min(config) == 9
+
+    config.alerts.channel_bands = [
+        ChannelBand(min_score=8, channel_class="call"),
+        ChannelBand(min_score=5, channel_class="notify"),
+        ChannelBand(min_score=1, channel_class="none"),
+    ]
+    assert call_tier_min(config) == 8
+    assert Corroborator(db, config)._phone_call_threshold() == 8
 
 
 # --------------------------------------------------------------------------
@@ -245,12 +293,28 @@ def _insert_article(db, url):
 
 
 def _statement_result(article_id, urgency, *, is_military=True, summary="Oświadczenie rządu."):
+    return _result(article_id, urgency, "official_statement", is_military=is_military, summary=summary)
+
+
+def _result(
+    article_id,
+    urgency,
+    event_type,
+    *,
+    is_military=True,
+    summary="Oświadczenie rządu.",
+    affected=("PL",),
+    target_country="PL",
+    attacker_is_nato=False,
+):
     return ClassificationResult(
         article_id=article_id,
         is_military_event=is_military,
-        event_type="official_statement",
+        event_type=event_type,
         urgency_score=urgency,
-        affected_countries=["PL"],
+        affected_countries=list(affected),
+        target_country=target_country,
+        attacker_is_nato=attacker_is_nato,
         aggressor="RU",
         is_new_event=True,
         confidence=0.9,
@@ -284,6 +348,89 @@ def test_min_event_urgency_config_driven(db, config):
         [_statement_result(art3.id, 6, is_military=False, summary="Oświadczenie C.")]
     )
     assert len(events3) == 1
+
+
+# --------------------------------------------------------------------------
+# 16b. [2.13] A call-tier classification survives the pre-event gate even when the
+#      model contradicts itself with is_military_event=false.
+# --------------------------------------------------------------------------
+def test_alert_band_survives_military_flag_contradiction(db, config, caplog):
+    """An urgency-10 missile strike with is_military_event=false MUST still create an event.
+
+    The gate runs before any event row exists -- before dedup, before dispatch. One
+    disobedient boolean must never be able to kill a call-tier article; the drop is
+    reserved for the none band (where the article produces no alert anyway).
+    """
+    art = _insert_article(db, "https://example.com/critical")
+    result = _result(art.id, 10, "missile_strike", is_military=False, summary="Rosyjski atak rakietowy na Polskę.")
+
+    with caplog.at_level("WARNING"):
+        events = Corroborator(db, config).process_classifications([result])
+
+    assert len(events) == 1
+    assert events[0].urgency_score == 10
+    # And the same contradiction inside the NONE band still drops (banding), loudly enough
+    # to be seen: the drop is logged, never silent at DEBUG.
+    art2 = _insert_article(db, "https://example.com/noise")
+    caplog.clear()
+    with caplog.at_level("INFO"):
+        dropped = Corroborator(db, config).process_classifications(
+            [_result(art2.id, 3, "other", is_military=False, summary="Komentarz publicystyczny.")]
+        )
+    assert dropped == []
+    assert any("Pre-event gate dropped classification" in r.message for r in caplog.records)
+
+
+def test_alert_band_drop_logs_warning(db, config, caplog):
+    """A drop of an ALERT-BAND classification (a suppression) is logged at WARNING."""
+    config.dedup.min_event_urgency = 8  # operator misconfig: an sms-tier event dies pre-event
+    art = _insert_article(db, "https://example.com/sms-tier")
+
+    with caplog.at_level("WARNING"):
+        events = Corroborator(db, config).process_classifications(
+            [_result(art.id, 6, "official_statement", summary="Oświadczenie premiera.")]
+        )
+
+    assert events == []
+    warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert any("ALERT-BAND" in r.message for r in warnings)
+
+
+# --------------------------------------------------------------------------
+# 1b. [2.5] The RU + NATO-attacker HIGH rule is reachable on the LIVE path:
+#     target_country / attacker_is_nato are persisted and consumed at dispatch.
+# --------------------------------------------------------------------------
+def test_nato_attacks_russia_calls_on_live_path(db, config):
+    """A NATO strike on Russian soil at urgency 9 reaches the CALL tier end to end."""
+    art = _insert_article(db, "https://example.com/nato-ru")
+    result = _result(
+        art.id,
+        9,
+        "missile_strike",
+        summary="NATO przeprowadziło uderzenie na terytorium Rosji.",
+        affected=["RU"],
+        target_country="RU",
+        attacker_is_nato=True,
+    )
+
+    events = Corroborator(db, config).process_classifications([result])
+    assert len(events) == 1
+    event = events[0]
+
+    # Persisted on the event (and reloaded from the DB, not just held in memory).
+    stored = db.get_event_by_id(event.id)
+    assert stored.target_country == "RU"
+    assert stored.attacker_is_nato is True
+    assert stored.alert_status == "phone_call"
+
+    # And the state machine's live decision agrees: a call, not an SMS.
+    sm = AlertStateMachine(db, MagicMock(), config, push_client=MagicMock())
+    assert sm._determine_action(stored) == "phone_call"
+
+    # Without the NATO attacker the same strike on Russian soil is LOW -> demoted to
+    # the NOTIFY band (delivered on the matched tier's channel), never a call.
+    stored.attacker_is_nato = False
+    assert sm._determine_action(stored) in ("sms", "push", "both")
 
 
 # --------------------------------------------------------------------------

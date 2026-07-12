@@ -364,6 +364,20 @@ geography:
   # (carried by the classifier prompt + eval gates, not a universal floor).
   floor_countries:
   - PL
+  # Countries the classifier may name that are KNOWN but not HIGH: their soil is
+  # LOW geo tier (interior Ukraine / Moldova / Russia). Only a country listed here
+  # (or above) can demote a 9-10 to an SMS -- an UNRECOGNIZED country token is
+  # UNKNOWN and fails OPEN to a phone call. Add a country here only if you want a
+  # call-urgency event on its soil to become an SMS.
+  low_tier_countries:
+  - UA
+  - MD
+  - RU
+  - BY
+  # Countries whose soil, when attacked BY a NATO member, is HIGH geo tier (the
+  # R11 case: NATO is now kinetically engaged with Russia).
+  nato_attack_targets:
+  - RU
 sources:
   rss:
   - name: PAP
@@ -562,7 +576,6 @@ classification:
   # lower threshold = more aggressive grouping (tune here without a code deploy).
   summary_similarity_metric: token_set_ratio
   summary_similarity_threshold: 50
-  syndication_similarity_threshold: 90
 alerts:
   phone_number: ${ALERT_PHONE_NUMBER}
   language: pl
@@ -577,13 +590,14 @@ alerts:
     channel_class: notify
   - min_score: 1
     channel_class: none
+  # Delivery routing per tier. The CLASS (call / notify / none) is decided by
+  # channel_bands above -- these levels only carry the fine-grained delivery
+  # channel for a NOTIFY-band event (sms | push | both).
   urgency_levels:
     critical:
       min_score: 9
       action: phone_call
-      retry_attempts: 3
       retry_interval_minutes: 5
-      fallback: sms
     high:
       min_score: 7
       action: sms
@@ -644,8 +658,8 @@ alerts:
   # phone rang, the operator has not replied yet) does NOT count and keeps ringing
   # every interval until acknowledged — a delivered urgency-9/10 alarm must never
   # fall silent after a fixed number of unanswered rounds. A terminal event (and
-  # new content merging into it) still falls back to SMS + additive push. Wires the
-  # previously-dead urgency_levels.critical.retry_attempts intent. Life-safety: keep
+  # new content merging into it) still falls back to SMS + additive push. This is
+  # the ONLY retry bound in the system. Life-safety: keep
   # max_rounds high enough that a real 9-10 survives a transient outage — total
   # transport-failure call attempts before terminal are up to
   # max_rounds x max_call_retries.

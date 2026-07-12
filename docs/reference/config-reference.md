@@ -106,7 +106,10 @@ Consumed by: `sentinel/scheduler.py`, `sentinel/classification/classifier.py`
 | `keywords` | dict[str, KeywordSet] | Per-language keyword lists; structure: `{lang: {critical: [], high: []}}` |
 | `exclude_keywords` | dict[str, list[str]] | Per-language exclusion terms |
 
-Live `target_countries`: PL, LT, LV, EE. Live `aggressor_countries`: RU, BY.
+Live `target_countries`: PL, LT, LV, EE, RO. Live `aggressor_countries`: RU, BY.
+
+Each country's `code`, `name` and `name_native` are also the token set the `GeoWeighter` resolves a
+classifier country label against (so `PL`, `Poland` and `Polska` all resolve to `PL`).
 
 **Keyword matching rules:**
 - `critical` keywords: case-insensitive; override `exclude_keywords` (article passes even if both match)
@@ -118,28 +121,61 @@ Live keyword languages: `en`, `pl`, `uk`, `ru`. Live `exclude_keywords` language
 
 ---
 
+## `geography` — `GeographyConfig`
+
+Consumed by: `sentinel/classification/geo_weighter.py` (the deterministic post-LLM geo weighting the
+`AlertPolicy` call gate consumes). Country-level only — **no gazetteer / city list**: a strike in
+"Galați" resolves to Romania exactly as "Warsaw" resolves to Poland, via the LLM.
+
+| YAML key | Type | Live value | Pydantic default | Description |
+|---|---|---|---|---|
+| `high_tier_countries` | list[str] | `PL, LT, LV, EE, RO` | same | Whole countries whose soil is **HIGH** geo tier: a strike anywhere on their territory (capital included) is call-tier-eligible. |
+| `kinetic_event_types` | list[str] | `invasion, airstrike, missile_strike, artillery_shelling, drone_attack` | same | Classifier `event_type` values that count as a **kinetic strike**. Deliberately excludes `debris_found` and `official_statement` (inert-debris recovery and reaction stories are not strikes — debris in Poland is 8/sms). |
+| `floor_countries` | list[str] | `PL` | `PL` | Countries whose soil, when a **kinetic** strike lands on it, floors the event's urgency to the call tier (≥ 9) regardless of the LLM's number. Poland only: every kinetic strike on Polish soil in the labeled ground truth is 9–10/call, while Baltic/Romanian call-tier is scenario-conditional. |
+| `low_tier_countries` | list[str] | `UA, MD, RU, BY` | same | Countries that are **known but not HIGH** — their soil is LOW geo tier. Membership is load-bearing: only a country listed here (or in `high_tier_countries`) can **demote** an urgency 9–10 to an SMS. An *unrecognized* country token is UNKNOWN and fails **open** to a phone call. |
+| `nato_attack_targets` | list[str] | `RU` | `RU` | Countries whose soil, when attacked **by a NATO member**, is HIGH geo tier (the "NATO attacks Russia" case — the alliance is kinetically engaged). |
+
+**Geo tier resolution (`GeoWeighter`):**
+- The classifier emits `target_country` (the single country whose soil is physically attacked) and
+  `attacker_is_nato`; both are persisted on the classification and on the event.
+- HIGH if the target is in `high_tier_countries`, or the target is in `nato_attack_targets` **and**
+  `attacker_is_nato` — or if any *affected* country is HIGH (a botched target never demotes a
+  Poland-affected 9).
+- LOW only for a **resolved** non-HIGH country (interior UA/MD/RU). UNKNOWN otherwise — and UNKNOWN
+  at call urgency fails **open** to a call (prime directive).
+- The kinetic floor is applied to `target_country` when it resolves, falling back to the affected
+  countries only when it does not (so a strike targeting Ukraine that merely lists Poland among the
+  affected countries is not floored into a phone call).
+
+---
+
 ## `classification` — `ClassificationConfig`
 
 Consumed by: `sentinel/classification/classifier.py`
 
-Consumed by: `sentinel/classification/classifier.py` (LLM call) and `sentinel/classification/corroborator.py` (event grouping / corroboration).
+Consumed by: `sentinel/classification/classifier.py` (LLM call) and `sentinel/classification/corroborator.py` (event grouping).
+
+**Corroboration is gone.** No source-count / independent-source gate can suppress or delay an alert;
+deduplication is the only mechanism that may suppress an alert-eligible event. The
+`classification.corroboration_required`, `alerts.urgency_levels.*.corroboration_required` and
+`classification.syndication_similarity_threshold` keys **no longer exist** — the
+`corroboration_window_minutes` / `corroboration_max_age_minutes` keys below keep their historical
+names but are purely **event-grouping windows**.
 
 | YAML key | Type | Live value | Pydantic default | Description |
 |---|---|---|---|---|
 | `model` | str | `claude-haiku-4-5-20251001` | `claude-haiku-4-5-20251001` | Anthropic model ID. Also used by the enricher's vagueness/quality gate. |
 | `max_tokens` | int | `512` | `512` | Max output tokens per classification call |
 | `temperature` | float | `0.0` | `0.0` | LLM temperature (0 = deterministic) |
-| `corroboration_required` | int | `1` | `2` | Min independent sources for a phone-call-eligible event. **Live config sets `1`**; the Pydantic default is `2`. (The per-level `alerts.urgency_levels.*.corroboration_required` is the value the state machine actually gates on; this top-level key feeds the corroborator's alertable check.) |
 | `corroboration_window_minutes` | int | `360` | `360` | **Sliding** window (minutes) for grouping a new article into an existing event, measured from that event's `last_updated_at` (its **last activity**), not `first_seen_at`. So a multi-hour incident that keeps drawing fresh articles stays ONE event. Live & default `360` (6h). |
 | `corroboration_max_age_minutes` | int | `2880` | `2880` | Absolute lifetime cap (minutes) measured from `first_seen_at`. Once an event is older than this it stops absorbing articles — a fresh article spawns a NEW event — so a perpetually-updated event can't chain-merge genuinely distinct incidents. `0` disables the cap. Live & default `2880` (48h). |
 | `summary_similarity_metric` | str | `token_set_ratio` | `token_set_ratio` | Which `rapidfuzz.fuzz` function compares a new summary to an existing event's summary. **Validated against an allow-list**: `ratio`, `partial_ratio`, `token_sort_ratio`, `token_set_ratio`, `WRatio`, `QRatio` (any other value raises `ConfigError` at load). `token_set_ratio` is length-robust — a short wire headline and a long elaboration of the same incident still score high — unlike the length-sensitive `token_sort_ratio`. |
 | `summary_similarity_threshold` | int | `50` | `50` | Score (0-100) from the metric above, at/above which a new summary is treated as the same event. Lower = more aggressive merging. Live & default `50`. Tune in config without a code deploy. |
-| `syndication_similarity_threshold` | int | `90` | `90` | Source-independence guard. A source counts as *independent* only if it is a different domain AND its (normalized) title similarity to an already-counted source is `< 90` (`fuzz.ratio`), checked across all source types to catch wire/syndication reuse. Range 0-100. |
 
 **Event-grouping notes (corroborator):**
 - **Sliding window + max-age cap together:** the 6h window is re-anchored on every update, so the 48h cap is what ultimately retires a long-running event.
-- **Country gate:** at/above the phone-call urgency threshold (9), a match requires a concrete-country intersection — a Poland-critical article whose country wasn't extracted spawns its OWN event/call (empty/"unknown" does NOT relax the gate at critical urgency). Below the threshold, empty/"unknown" labels don't block a merge, but two concrete-but-different country sets (e.g. PL vs RO) stay separate. Countries are normalized (uppercased; blank/"unknown" dropped) on merge.
-- **Critical-urgency safety guard:** a phone-call-eligible article is NEVER absorbed into an event that already has `acknowledged_at` set (already alerted / in cooldown). It forces a NEW event and a NEW call so a fresh escalation can't be silenced by an earlier event's cooldown.
+- **Country gate:** at/above the call tier (the lowest `alerts.channel_bands` `call` band — the single call-tier source of truth), a match requires a concrete-country intersection — a Poland-critical article whose country wasn't extracted spawns its OWN event/call (empty/"unknown" does NOT relax the gate at critical urgency). Below the call tier, empty/"unknown" labels don't block a merge, but two concrete-but-different country sets (e.g. PL vs RO) stay separate. Countries are normalized (uppercased; placeholder tokens dropped) on merge.
+- **Critical-urgency safety guard:** a phone-call-eligible article is NEVER absorbed into an event that already has `acknowledged_at` set (already alerted / in cooldown) or that reached `failed_terminal`. It forces a NEW event and a NEW call so a fresh escalation can't be silenced by an earlier event's cooldown.
 
 ---
 
@@ -154,16 +190,40 @@ Consumed by: `sentinel/alerts/`
 | `phone_number` | str | `${ALERT_PHONE_NUMBER}` | Destination for all alert channels |
 | `language` | str | `pl` | Alert language code |
 
+### `alerts.channel_bands` — `ChannelBand` (list) — **the single alert-band map**
+
+`AlertPolicy` (`sentinel/alerts/policy.py`) reads the entire alert decision out of this list; it is
+the only source of truth for "what counts as call tier" (the corroborator's grouping guards and the
+`GeoWeighter` floor derive it from here too, so the call tier can never diverge between two knobs).
+
+| Band | `min_score` | `channel_class` | Meaning |
+|---|---|---|---|
+| call | 9 | `call` | urgency 9–10 → phone call (+ additive push) — requires geo tier HIGH or UNKNOWN |
+| notify | 5 | `notify` | urgency 5–8 → SMS / push (routed by the matched tier's `channel`, below) |
+| none | 1 | `none` | urgency 1–4 → classification persisted, **no alert** (banding, not suppression) |
+
+`channel_class` values: `call`, `notify`, `none` (a `field_validator` rejects anything else).
+
+**Load-time validation (fail fast — a typo here could silence every phone call):** the list must be
+non-empty, contain a `call` band, use unique `min_score` values inside the 1–10 urgency scale, start
+at `min_score: 1` (full coverage — no urgency may fall through to no band), and escalate with urgency
+(call above notify above none). Any violation raises `ConfigError` at load.
+
 ### `alerts.urgency_levels` — `UrgencyLevel` (dict keyed by name)
 
-| Level | `min_score` | `action` | `channel` | `corroboration_required` | `retry_attempts` | `retry_interval_minutes` | `fallback` |
-|---|---|---|---|---|---|---|---|
-| `critical` | 9 | `phone_call` | (ignored) | 1 | 3 | 5 | `sms` |
-| `high` | 7 | `sms` | `both` | 1 | 0 | 5 | — |
-| `medium` | 5 | `sms` | `both` | 1 | 0 | 5 | — |
-| `low` | 1 | `log_only` | (ignored) | 1 | 0 | 5 | — |
+Delivery **routing** only. The channel *class* is decided by `alerts.channel_bands` above; these
+levels carry the fine-grained delivery channel for a NOTIFY-band event.
 
-`action` values: `phone_call`, `sms`, `log_only`.
+| Level | `min_score` | `action` | `channel` | `retry_interval_minutes` |
+|---|---|---|---|---|
+| `critical` | 9 | `phone_call` | (ignored) | 5 |
+| `high` | 7 | `sms` | `both` | 5 |
+| `medium` | 5 | `sms` | `both` | 5 |
+| `low` | 1 | `log_only` | (ignored) | 5 |
+
+`action` values: `phone_call`, `sms`, `log_only`. (The old `corroboration_required`, `retry_attempts`
+and `fallback` keys are removed — corroboration is gone and `alerts.retry.max_rounds` is the only
+retry bound.)
 
 #### `channel` — per-tier delivery channel for the SMS tiers
 
@@ -252,6 +312,31 @@ Consumed by: `sentinel/processing/deduplicator.py`
 | `processing.dedup.same_source_title_threshold` | int | `85` | `85` | Fuzzy match % to deduplicate same-source articles |
 | `processing.dedup.cross_source_title_threshold` | int | `95` | `95` | Fuzzy match % to deduplicate cross-source articles |
 | `processing.dedup.lookback_minutes` | int | `60` | `60` | How far back to scan for fuzzy duplicates |
+
+Note: `processing.dedup` is **article-level** dedup (URL + fuzzy title). The `dedup` block below is
+**event-level**.
+
+---
+
+## `dedup` — `DedupConfig`
+
+Consumed by: `sentinel/classification/corroborator.py` (the pre-event gate).
+
+| YAML key | Type | Live value | Pydantic default | Description |
+|---|---|---|---|---|
+| `min_event_urgency` | int | `5` | `5` | Pre-dedup **event-creation gate**: a classification below this urgency creates no event row (the classification itself is still persisted and auditable). |
+
+**Load-time cross-check:** `dedup.min_event_urgency` must be **≤ the lowest alerting
+`alerts.channel_bands` `min_score`** (5 by default). A higher value would drop alert-band events
+*before* an event row exists — before dedup, before dispatch, before any alert — so it raises
+`ConfigError` at load.
+
+**`is_military_event` drop:** applies only **inside the none band**. An alert-band (5–10)
+classification always creates an event, even if the model contradicts itself and returns
+`is_military_event: false` on an urgency-10 strike — one disobedient boolean must never kill a
+call-tier article. `debris_found` and `official_statement` stories are exempt from the flag drop
+outright. Every pre-event drop is logged; a drop of an **alert-band** classification is logged at
+`WARNING`.
 
 ---
 

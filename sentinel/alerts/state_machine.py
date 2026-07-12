@@ -662,14 +662,13 @@ class AlertStateMachine:
                     continue
                 if any(a.alert_type == "phone_call" and a.status in ("initiated", "ringing") for a in existing_alerts):
                     continue
-                # Re-check the call-tier gate before re-calling. The corroborator's
-                # ``phone_call`` status and the state machine's ``_determine_action``
-                # are independent decisions that can disagree (see
-                # .claude/rules/corroboration.md): an event left in ``phone_call``
-                # whose action resolves to a non-call tier (e.g. corroboration knobs
-                # diverge, or an SMS-tier event was mis-parked) must not be swept into
-                # a real phone call. Honor the same corroboration gate a fresh
-                # dispatch would apply.
+                # Re-check the call-tier gate before re-calling. ``alert_status`` is a
+                # STORED value that can go stale relative to the live decision: an
+                # event parked in ``phone_call`` whose action now resolves to a
+                # non-call tier (the operator retuned the bands, the event's geo tier
+                # resolved to LOW, or an SMS-tier event was mis-parked) must not be
+                # swept into a real phone call. Ask the single AlertPolicy authority
+                # the same question a fresh dispatch would.
                 if self._determine_action(event) != "phone_call":
                     continue
                 # An event whose retry interval has not elapsed is a no-op re-entry
@@ -768,9 +767,11 @@ class AlertStateMachine:
 
         The CALL / NOTIFY / NONE channel-class decision comes from the single
         AlertPolicy authority (corroboration removed -- no source-count gate). The
-        geo tier is derived from the event's affected countries (fail-open toward
-        HIGH for an unresolved call-urgency event). The class then maps back to the
-        state machine's fine-grained action vocabulary:
+        geo tier is derived from the classifier's explicit ``target_country`` +
+        ``attacker_is_nato`` (so an attack BY NATO on Russia weighs HIGH here), with
+        the event's affected countries as the fail-open fallback (an unresolved
+        call-urgency event fails toward HIGH). The class then maps back to the state
+        machine's fine-grained action vocabulary:
 
           CALL   -> "phone_call"   (never push/both -- AD-2)
           NOTIFY -> the matched SMS tier's channel ("sms" | "push" | "both")
@@ -779,7 +780,11 @@ class AlertStateMachine:
         The per-tier ``channel`` routing for NOTIFY is preserved so an operator can
         still send a tier to SMS, push, or both.
         """
-        geo_tier = self.geo_weighter.tier_for_affected(event.affected_countries)
+        geo_tier = self.geo_weighter.event_tier(
+            event.target_country,
+            event.affected_countries,
+            event.attacker_is_nato,
+        )
         intent = self.policy.decide(
             EventDecision(Relation.NEW),
             urgency=event.urgency_score,

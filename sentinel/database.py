@@ -55,6 +55,8 @@ class Database:
                     event_type TEXT,
                     urgency_score INTEGER NOT NULL,
                     affected_countries TEXT,
+                    target_country TEXT,
+                    attacker_is_nato INTEGER NOT NULL DEFAULT 0,
                     aggressor TEXT,
                     is_new_event INTEGER NOT NULL,
                     confidence REAL NOT NULL,
@@ -73,6 +75,8 @@ class Database:
                     event_type TEXT NOT NULL,
                     urgency_score INTEGER NOT NULL,
                     affected_countries TEXT NOT NULL,
+                    target_country TEXT,
+                    attacker_is_nato INTEGER NOT NULL DEFAULT 0,
                     aggressor TEXT,
                     summary_pl TEXT NOT NULL,
                     first_seen_at TEXT NOT NULL,
@@ -124,6 +128,15 @@ class Database:
             ("alert_records", "error_code", "TEXT"),
             ("alert_records", "error_detail", "TEXT"),
             ("events", "alert_round_count", "INTEGER NOT NULL DEFAULT 0"),
+            # Phase 2 geography seam: the classifier's explicit target country and
+            # the NATO-attacker flag, persisted on both the audit row and the event
+            # so the alert decision reads the LLM's target instead of approximating
+            # it. Existing rows keep NULL / 0 (unresolved target, non-NATO attacker),
+            # which the GeoWeighter treats as UNKNOWN -> fail-open at call urgency.
+            ("classifications", "target_country", "TEXT"),
+            ("classifications", "attacker_is_nato", "INTEGER NOT NULL DEFAULT 0"),
+            ("events", "target_country", "TEXT"),
+            ("events", "attacker_is_nato", "INTEGER NOT NULL DEFAULT 0"),
         ]
         with self.conn:
             for table, column, decl in migrations:

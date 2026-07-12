@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 
 from rapidfuzz import fuzz
 
-from sentinel.alerts.policy import AlertPolicy, ChannelClass, EventDecision, Relation
-from sentinel.classification.geo_weighter import GeoWeighter
+from sentinel.alerts.policy import AlertPolicy, ChannelClass, EventDecision, Relation, call_tier_min
+from sentinel.classification.geo_weighter import UNKNOWN_COUNTRY_TOKENS, GeoWeighter
 from sentinel.config import SentinelConfig
 from sentinel.database import Database
 from sentinel.models import ClassificationResult, Event, list_to_json
@@ -65,21 +65,56 @@ class Corroborator:
         """Config-driven pre-dedup event-creation gate (2.13).
 
         A classification below ``dedup.min_event_urgency`` creates no event row
-        (its classification is still persisted). The ``is_military_event`` drop is
-        exempted for the 0.15 meta-event types so an sms-tier debris/statement
-        story is not silently dropped before the deduplicator.
+        (its classification is still persisted).
+
+        The ``is_military_event`` drop applies ONLY inside the none band. An
+        alert-band (NOTIFY/CALL) classification always creates an event, even when
+        the model contradicts itself and returns ``is_military_event: false`` on an
+        urgency-10 missile strike: one disobedient boolean must never be able to
+        kill a call-tier article before an event row exists. Inside the none band
+        the two 0.15 meta-event types (inert-debris recovery, official statements)
+        are still exempt from the flag drop, so an sms-tier meta-event survives even
+        if the operator lowers the gate below the notify band.
         """
         if result.urgency_score < self.config.dedup.min_event_urgency:
             return False
-        # is_military_event drop, exempted for the 0.15 meta-event types.
+        if self.policy.band_for_urgency(result.urgency_score) is not ChannelClass.NONE:
+            return True
         return result.event_type in _EVENT_GATE_EXEMPT_TYPES or result.is_military_event
+
+    def _log_event_gate_drop(self, result: ClassificationResult) -> None:
+        """Log a pre-event drop, loudly when it could have suppressed an alert.
+
+        A none-band drop is BANDING (2.4: an urgency <= 4 article legitimately needs
+        no event row) and is logged at INFO. A drop of an ALERT-BAND classification
+        is a genuine suppression -- an SMS/call-tier article dying before any event
+        exists -- and is logged at WARNING so it is visible at the default log level
+        instead of hiding in DEBUG.
+        """
+        band = self.policy.band_for_urgency(result.urgency_score)
+        message = (
+            "Pre-event gate dropped classification: article=%s urgency=%d band=%s type=%s military=%s "
+            "(dedup.min_event_urgency=%d)"
+        )
+        args = (
+            result.article_id,
+            result.urgency_score,
+            band.value,
+            result.event_type,
+            result.is_military_event,
+            self.config.dedup.min_event_urgency,
+        )
+        if band is ChannelClass.NONE:
+            self.logger.info(message, *args)
+        else:
+            self.logger.warning("ALERT-BAND " + message, *args)
 
     def process_classifications(self, results: list[ClassificationResult]) -> list[Event]:
         """Group classifications into events.
 
         Returns list of events that need alerting (new or updated). Events are
         created only for classifications that pass the config-driven pre-dedup
-        gate (``dedup.min_event_urgency`` + the military-flag exemption, 2.13).
+        gate (``dedup.min_event_urgency`` + the military-flag rules, 2.13).
         """
         alertable_events: list[Event] = []
 
@@ -88,13 +123,7 @@ class Corroborator:
             self.db.insert_classification(result)
 
             if not self._passes_event_gate(result):
-                self.logger.debug(
-                    "Skipping sub-threshold classification: article=%s urgency=%d type=%s military=%s",
-                    result.article_id,
-                    result.urgency_score,
-                    result.event_type,
-                    result.is_military_event,
-                )
+                self._log_event_gate_drop(result)
                 continue
 
             # Try to match to an existing event
@@ -200,11 +229,15 @@ class Corroborator:
     def _concrete_countries(countries: list[str]) -> set[str]:
         """Country codes carrying a real location signal.
 
-        Drops empty/whitespace-only entries and the "unknown" placeholder the
-        classifier emits when it cannot determine the target country, so they
-        don't act as a (non-)match key during grouping. Normalizes to uppercase.
+        Drops empty/whitespace-only entries and the placeholder tokens the
+        classifier emits when it cannot determine the country, so they don't act as
+        a (non-)match key during grouping. The placeholder set is the SAME one the
+        GeoWeighter uses (``UNKNOWN_COUNTRY_TOKENS``) -- "placeholder" must mean the
+        same thing in event grouping and in geo weighting, or a literal "none" label
+        would be a concrete match key here and no-signal there. Normalizes to
+        uppercase.
         """
-        return {code for c in countries if c and (code := c.strip().upper()) and code != "UNKNOWN"}
+        return {code for c in countries if c and (code := c.strip().upper()) and code not in UNKNOWN_COUNTRY_TOKENS}
 
     @staticmethod
     def _as_utc(dt: datetime) -> datetime:
@@ -217,15 +250,17 @@ class Corroborator:
         return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
 
     def _phone_call_threshold(self) -> int:
-        """Lowest urgency whose configured action is a phone call.
+        """Lowest call-tier urgency -- read from the AlertPolicy's single source.
 
-        Read from config (alerts.urgency_levels) rather than hardcoded; falls
-        back to 9 if no phone-call level is configured.
+        The grouping guards below (never absorb a call-eligible article into an
+        acknowledged/failed_terminal event; require a concrete country match for
+        one) MUST use the same call tier the policy dispatches on. Deriving it
+        independently from ``alerts.urgency_levels`` would let the two knobs drift:
+        lowering the call tier in ``alerts.channel_bands`` alone would leave a
+        call-band article passing these guards' threshold check, merging into an
+        acknowledged event and being silenced by its cooldown.
         """
-        thresholds = [
-            level.min_score for level in self.config.alerts.urgency_levels.values() if level.action == "phone_call"
-        ]
-        return min(thresholds) if thresholds else 9
+        return call_tier_min(self.config)
 
     def _countries_compatible(self, result_countries: list[str], event_countries: list[str], urgency: int = 0) -> bool:
         """Decide whether affected-country labels permit grouping.
@@ -255,12 +290,19 @@ class Corroborator:
     def _create_event(self, result: ClassificationResult) -> Event:
         """Create a new event from a classification."""
         now = datetime.now(UTC)
-        alert_status = self._alert_status_for(result.urgency_score, result.affected_countries)
+        alert_status = self._alert_status_for(
+            result.urgency_score,
+            result.affected_countries,
+            target_country=result.target_country,
+            attacker_is_nato=result.attacker_is_nato,
+        )
 
         event = Event(
             event_type=result.event_type,
             urgency_score=result.urgency_score,
             affected_countries=list(result.affected_countries),
+            target_country=result.target_country,
+            attacker_is_nato=result.attacker_is_nato,
             aggressor=result.aggressor,
             summary_pl=result.summary_pl,
             first_seen_at=result.classified_at,
@@ -306,6 +348,15 @@ class Corroborator:
         )
         event.affected_countries = sorted(merged)
 
+        # Merge the geography seam, always toward FIRING: adopt the incoming
+        # target_country when the event has none (a later article naming Polish soil
+        # must be able to lift an event the first article left targetless), and OR
+        # the NATO-attacker flag (once one source says NATO struck Russia, the R11
+        # HIGH tier stands). Never overwrite an already-resolved target.
+        if not event.target_country and result.target_country:
+            event.target_country = result.target_country
+        event.attacker_is_nato = event.attacker_is_nato or result.attacker_is_nato
+
         # Re-evaluate alert status -- but NEVER clobber a status owned by the alert
         # state machine's bounded phone-retry loop. A merge (even a non-independent
         # syndicated copy) runs on EVERY matched article, so re-deriving here would
@@ -314,7 +365,12 @@ class Corroborator:
         # post-cap content to the SMS+push fallback). Preserve those; re-derive only
         # when the event is not mid-retry-lifecycle.
         if event.alert_status not in _RETRY_LIFECYCLE_STATUSES:
-            event.alert_status = self._alert_status_for(event.urgency_score, event.affected_countries)
+            event.alert_status = self._alert_status_for(
+                event.urgency_score,
+                event.affected_countries,
+                target_country=event.target_country,
+                attacker_is_nato=event.attacker_is_nato,
+            )
 
         # Persist changes
         self.db.update_event(
@@ -323,6 +379,8 @@ class Corroborator:
             source_count=event.source_count,
             article_ids=list_to_json(event.article_ids),
             affected_countries=list_to_json(event.affected_countries),
+            target_country=event.target_country,
+            attacker_is_nato=int(event.attacker_is_nato),
             alert_status=event.alert_status,
         )
 
@@ -344,16 +402,25 @@ class Corroborator:
         ChannelClass.NONE: "pending",
     }
 
-    def _alert_status_for(self, urgency: int, affected_countries: list[str]) -> str:
+    def _alert_status_for(
+        self,
+        urgency: int,
+        affected_countries: list[str],
+        target_country: str | None = None,
+        attacker_is_nato: bool = False,
+    ) -> str:
         """Initial ``alert_status`` for an event, delegated to the AlertPolicy.
 
         The Corroborator no longer decides alert levels itself: it asks the single
         AlertPolicy authority for the band (relation NEW; the deduplicator's
-        relation logic is applied later at dispatch). ``dry_run`` short-circuits.
+        relation logic is applied later at dispatch). The geo tier comes from the
+        classifier's explicit ``target_country`` + ``attacker_is_nato`` (so the R11
+        NATO-attacks-Russia HIGH case is reachable here), with the affected
+        countries as the fail-open fallback. ``dry_run`` short-circuits.
         """
         if self.dry_run:
             return "dry_run"
 
-        geo_tier = self.geo_weighter.tier_for_affected(affected_countries)
+        geo_tier = self.geo_weighter.event_tier(target_country, affected_countries, attacker_is_nato)
         intent = self.policy.decide(EventDecision(Relation.NEW), urgency=urgency, geo_tier=geo_tier)
         return self._CLASS_TO_STATUS[intent.channel_class]

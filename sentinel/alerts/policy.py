@@ -77,16 +77,25 @@ class AlertIntent:
     reason: str = ""
 
 
+# Belt-and-braces call tier used only if a config object somehow reaches this
+# module without a CALL band. Config load is the real guard: AlertsConfig's
+# validator rejects a channel_bands map with no call band / incomplete urgency
+# coverage, so a misconfigured band map fails fast at startup rather than
+# silently disabling every phone call in production.
+_FALLBACK_CALL_TIER = 9
+
+
 def call_tier_min(config: SentinelConfig) -> int:
     """Lowest urgency mapped to the CALL band, read from ``alerts.channel_bands``.
 
-    Falls back to 9 if no CALL band is configured, so the call tier can never
-    silently vanish.
+    The single source of truth for "what counts as call tier" -- every caller
+    (policy, corroborator, geo floor) derives it from here, so the call tier can
+    never diverge between two knobs.
     """
     for band in config.alerts.channel_bands:
         if band.channel_class == ChannelClass.CALL.value:
             return band.min_score
-    return 9
+    return _FALLBACK_CALL_TIER
 
 
 class AlertPolicy:
@@ -124,8 +133,14 @@ class AlertPolicy:
         Pure function of its inputs (no I/O). ``already_alerted_at`` is the
         highest channel class already *dispatched* for the event (``None`` if
         none yet), needed for the one-call-per-event and dedup-suppression rules.
+
+        ``ChannelClass.NONE`` is normalized to ``None``: "decided, nothing
+        dispatched" is NOT "already alerted", and treating it as such would let a
+        SAME relation suppress an event that has never produced an alert (2.3
+        permits no-alert only for a SAME on an ALREADY-alerted event).
         """
         relation = decision.relation
+        already = None if already_alerted_at is ChannelClass.NONE else already_alerted_at
         base = self.band_for_urgency(urgency)
 
         # Geography gate (2.5 / 2.5a): only a would-be CALL is geo-gated.
@@ -145,12 +160,12 @@ class AlertPolicy:
         # a NEW or an ESCALATION crossing the call tier on a never-called event is
         # that event's one call. A defective SAME carrying a first tier-crossing
         # still fires (fail toward firing) because a SAME cannot legally cross tiers.
-        if band is ChannelClass.CALL and already_alerted_at is not ChannelClass.CALL:
+        if band is ChannelClass.CALL and already is not ChannelClass.CALL:
             return AlertIntent(ChannelClass.CALL, urgency, resolved_geo, relation, "first-call")
 
         # Deduplication is the sole suppressor (2.3): a SAME relation on an event
         # already alerted on returns no-alert.
-        if relation is Relation.SAME and already_alerted_at is not None:
+        if relation is Relation.SAME and already is not None:
             return AlertIntent(ChannelClass.NONE, urgency, resolved_geo, relation, "same-suppressed")
 
         # An escalation on an event already called uses NOTIFY, not a second call

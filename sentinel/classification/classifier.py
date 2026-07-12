@@ -242,6 +242,30 @@ USER_PROMPT_TEMPLATE = (
 _JSON_BLOCK_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 
+def _as_country_list(value: object) -> list[str]:
+    """Coerce the LLM's ``affected_countries`` into a list of strings.
+
+    The model can emit ``null``, a bare string, or a list containing nulls. A key
+    present with a null value defeats ``dict.get(key, [])`` (it returns None), so
+    normalize here instead of letting a TypeError escape into the batch loop.
+    """
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if item is not None and str(item).strip()]
+    return []
+
+
+def _as_country(value: object) -> str | None:
+    """Coerce the LLM's ``target_country`` into a country token or ``None``."""
+    if value is None:
+        return None
+    token = str(value).strip()
+    return token or None
+
+
 class Classifier:
     """Classifies articles using Claude Haiku 4.5."""
 
@@ -272,16 +296,37 @@ class Classifier:
         urgency = max(1, min(10, int(data.get("urgency_score", 1))))
         confidence = max(0.0, min(1.0, float(data.get("confidence", 0.0))))
         event_type = data.get("event_type", "none")
-        affected_countries = data.get("affected_countries", [])
+        # A key that is PRESENT with a null/scalar value would otherwise slip past a
+        # `data.get(key, [])` default and blow up downstream (one malformed response
+        # must never be able to take out a whole classification cycle).
+        affected_countries = _as_country_list(data.get("affected_countries"))
+        target_country = _as_country(data.get("target_country"))
+        attacker_is_nato = bool(data.get("attacker_is_nato", False))
 
-        # Deterministic geography floor (2.11): a kinetic strike on floor-country
-        # soil (default Poland) is at least call-tier, regardless of the LLM's
-        # number. Applied across the explicit target_country and every affected
-        # country; floor_urgency only ever raises urgency. attacker_is_nato /
-        # target_country are also the seam GeoWeighter's geo_tier consumes.
-        floor_targets = [data.get("target_country"), *affected_countries]
-        for target in floor_targets:
-            urgency = self.geo_weighter.floor_urgency(event_type, target, urgency)
+        # Deterministic geography weighting (2.11): a kinetic strike on floor-country
+        # soil (default Poland) is at least call-tier regardless of the LLM's number.
+        # The floor basis is the explicit target_country when it resolves, falling
+        # back to the affected countries only when the target is unresolved, so a
+        # strike targeting Ukraine that merely lists Poland as affected ("jets
+        # scrambled", "near the Polish border") is not floored into a phone call --
+        # while a botched target on a story naming Polish soil still fires.
+        weighted = self.geo_weighter.weigh(
+            target_country=target_country,
+            attacker_is_nato=attacker_is_nato,
+            event_type=event_type,
+            urgency=urgency,
+            affected_countries=affected_countries,
+        )
+        if weighted.urgency > urgency:
+            self.logger.info(
+                "Geo floor raised urgency %d -> %d (type=%s, target=%s, affected=%s)",
+                urgency,
+                weighted.urgency,
+                event_type,
+                target_country,
+                affected_countries,
+            )
+        urgency = weighted.urgency
 
         result = ClassificationResult(
             article_id=article.id,
@@ -289,6 +334,8 @@ class Classifier:
             event_type=event_type,
             urgency_score=urgency,
             affected_countries=affected_countries,
+            target_country=target_country,
+            attacker_is_nato=attacker_is_nato,
             aggressor=data.get("aggressor", "none"),
             is_new_event=bool(data.get("is_new_event", True)),
             confidence=confidence,
@@ -305,7 +352,15 @@ class Classifier:
         return result
 
     async def classify_batch(self, articles: list[Article]) -> list[ClassificationResult]:
-        """Classify multiple articles sequentially. Skips articles that fail classification."""
+        """Classify multiple articles sequentially. Skips articles that fail classification.
+
+        The per-article handler catches EVERY exception, not just the two expected
+        ones: an unexpected error on ONE malformed response (a stray type in the
+        JSON, say) must never escape and take down the whole batch. The scheduler
+        treats a raised batch as "no classifications this cycle" and the articles
+        are already stored, so they are never re-classified -- a single bad response
+        could otherwise discard a real urgency 9-10 sitting later in the same batch.
+        """
         results = []
         for article in articles:
             try:
@@ -329,6 +384,13 @@ class Classifier:
                     "API error classifying '%s': %s",
                     article.title[:80],
                     e,
+                )
+            except Exception as e:  # noqa: BLE001 -- isolate one bad article from the batch
+                self.logger.error(
+                    "Unexpected error classifying '%s' (article skipped, batch continues): %s",
+                    article.title[:80],
+                    e,
+                    exc_info=True,
                 )
         return results
 

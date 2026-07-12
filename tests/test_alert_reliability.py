@@ -741,8 +741,8 @@ def test_merge_preserves_retry_pending_status(db, config):
     A failed phone round leaves a call-tier event in ``retry_pending`` — the sole
     signal the cycle-driven retry sweep (``get_events_by_alert_status`` →
     ``retry_pending_calls``) uses to keep retrying it up to the cap. The
-    corroborator re-runs ``_update_event`` on EVERY matched article (even a
-    non-independent syndicated copy), and its ``_determine_alert_status`` knows
+    corroborator re-runs ``_update_event`` on EVERY matched article, and its
+    AlertPolicy-delegated status derivation (``_alert_status_for``) knows
     nothing of the retry lifecycle. If the merge re-derived the status the event
     would drop out of the sweep and a failed urgency-9/10 call would never be
     retried (prime-directive miss). The retry-lifecycle status must survive.

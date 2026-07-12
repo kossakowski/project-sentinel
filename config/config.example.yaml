@@ -347,6 +347,38 @@ geography:
     - LV
     - EE
     - RO
+  # Classifier event_type values counted as a kinetic strike. Consumed by the
+  # GeoWeighter (the Poland floor below) and the event-dedup kinetic separator.
+  # Deliberately EXCLUDES debris_found / official_statement: inert-debris recovery
+  # and reaction stories are not kinetic strikes (debris found in Poland is 8/sms,
+  # not a phone call).
+  kinetic_event_types:
+    - invasion
+    - airstrike
+    - missile_strike
+    - artillery_shelling
+    - drone_attack
+  # Countries whose soil, when a kinetic strike lands on it, floors the event to
+  # the call tier (>= 9) regardless of the LLM's number. Poland only: every kinetic
+  # strike on Polish soil in the labeled ground truth is 9-10/call, while
+  # Baltic/Romanian call-tier is scenario-conditional (carried by the classifier
+  # prompt and the eval gates, not a universal floor).
+  floor_countries:
+    - PL
+  # Countries the classifier may name that are KNOWN but not HIGH: their soil is
+  # LOW geo tier (interior Ukraine / Moldova / Russia). Only a country listed here
+  # (or in high_tier_countries) can demote an urgency 9-10 to an SMS -- an
+  # UNRECOGNIZED country token is treated as UNKNOWN and fails OPEN to a phone call
+  # (prime directive: never miss a 9-10).
+  low_tier_countries:
+    - UA
+    - MD
+    - RU
+    - BY
+  # Countries whose soil, when attacked BY a NATO member, is HIGH geo tier (the
+  # "NATO attacks Russia" case: the alliance is now kinetically engaged).
+  nato_attack_targets:
+    - RU
 
 # -----------------------------------------------------------------------------
 # SOURCES -- Where we scan
@@ -565,7 +597,6 @@ classification:
   model: claude-haiku-4-5-20251001
   max_tokens: 512
   temperature: 0.0
-  corroboration_required: 1
   # Sliding window measured from an event's LAST activity (last_updated_at): a new
   # article merges if it arrives within this many minutes of the event's most recent
   # article. Wider absorbs multi-hour incident reporting; too narrow fragments one
@@ -583,9 +614,6 @@ classification:
   # Similarity (0-100) at/above which two summaries are treated as the same event;
   # lower = more aggressive grouping.
   summary_similarity_threshold: 50
-  # Title similarity threshold above which two articles are treated as syndicated
-  # copies of one source (range 0-100).
-  syndication_similarity_threshold: 90
 
 # -----------------------------------------------------------------------------
 # ALERTS -- Notification settings
@@ -594,18 +622,31 @@ alerts:
   phone_number: "${ALERT_PHONE_NUMBER}"
   language: pl
 
+  # Urgency -> channel-class bands. This map is the SINGLE source of truth for the
+  # alert decision (AlertPolicy reads nothing else): >= 9 -> call, 5-8 -> notify
+  # (SMS/push), <= 4 -> none (classification persisted, no alert). Config load
+  # rejects a band map with no `call` band, a gap in the 1-10 urgency scale, or an
+  # inverted order -- a typo here must not be able to silence the phone call.
+  # dedup.min_event_urgency must stay <= the lowest alerting band (see DEDUP).
+  channel_bands:
+    - min_score: 9
+      channel_class: call
+    - min_score: 5
+      channel_class: notify
+    - min_score: 1
+      channel_class: none
+
+  # Delivery routing per tier. The CLASS (call / notify / none) comes from
+  # channel_bands above; these levels carry the fine-grained delivery channel for a
+  # NOTIFY-band event (sms | push | both).
   urgency_levels:
     critical:
       min_score: 9
       action: phone_call
-      corroboration_required: 1
-      retry_attempts: 3
       retry_interval_minutes: 5
-      fallback: sms
     high:
       min_score: 7
       action: sms
-      corroboration_required: 1
       # Delivery channel for this tier: sms | push | both. "both" is
       # behavior-preserving while push is disabled (SMS only); switch to "push"
       # to drop this tier's Twilio SMS cost once a push token is configured.
@@ -613,7 +654,6 @@ alerts:
     medium:
       min_score: 5
       action: sms
-      corroboration_required: 1
       # Delivery channel: sms | push | both (see `high` above).
       channel: both
     low:
@@ -649,8 +689,8 @@ alerts:
   # alarm must never fall silent after a fixed number of unanswered rounds. When an
   # event does reach failed_terminal it (and any new content merging into it) still
   # falls back to SMS + additive push. Every failed send is durably recorded (never
-  # a silent drop). Wires the previously-dead urgency_levels.critical.retry_attempts
-  # intent. Life-safety: keep max_rounds high enough that a real 9-10 survives a
+  # a silent drop). This is the ONLY retry bound in the system.
+  # Life-safety: keep max_rounds high enough that a real 9-10 survives a
   # transient outage — total transport-failure call attempts before terminal are up
   # to max_rounds x max_call_retries.
   # sweep_max_age_minutes bounds the cycle-driven retry sweep by recency: only
@@ -709,6 +749,18 @@ logging:
   file: logs/sentinel.log
   max_size_mb: 50
   backup_count: 5
+
+# -----------------------------------------------------------------------------
+# DEDUP -- Event deduplication / pre-event gate
+# -----------------------------------------------------------------------------
+dedup:
+  # Pre-dedup event-creation gate: a classification below this urgency creates no
+  # event row (its classification is still persisted and auditable). MUST stay <=
+  # the lowest alerting alerts.channel_bands min_score (5 by default) -- config load
+  # rejects a higher value, because an event dropped here dies before dedup, before
+  # dispatch, before any alert can fire. The is_military_event drop applies only
+  # inside the none band, and never to debris_found / official_statement stories.
+  min_event_urgency: 5
 
 # -----------------------------------------------------------------------------
 # TESTING

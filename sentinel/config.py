@@ -118,6 +118,26 @@ class GeographyConfig(BaseModel):
     # Baltic/Romanian strikes are scenario-conditional (carried by the prompt and
     # the eval gates, not a universal floor).
     floor_countries: list[str] = ["PL"]
+    # Countries the classifier may name that are KNOWN but not HIGH: their soil is
+    # LOW geo tier (routine inside-Ukraine / interior-Moldova / inside-Russia
+    # warfare). Membership matters because an UNRECOGNIZED country token is treated
+    # as UNKNOWN and fails OPEN to a call at call urgency (2.5a), while a LOW tier
+    # demotes that call to an SMS -- so only countries listed here (or above) may
+    # demote a 9-10.
+    low_tier_countries: list[str] = ["UA", "MD", "RU", "BY"]
+    # Countries whose soil, when attacked BY a NATO member, is HIGH geo tier (the
+    # R11 "NATO attacks Russia" case: the alliance is now kinetically engaged).
+    nato_attack_targets: list[str] = ["RU"]
+
+
+# The classifier's urgency scale (classifier.py clamps to this range). The band
+# map must cover it end to end, so every classification lands in exactly one band.
+URGENCY_MIN = 1
+URGENCY_MAX = 10
+
+# Channel classes, ordered by escalation. Used to reject an inverted band map
+# (e.g. a notify band sitting ABOVE the call band).
+_CHANNEL_CLASS_RANK = {"none": 0, "notify": 1, "call": 2}
 
 
 class ChannelBand(BaseModel):
@@ -133,7 +153,7 @@ class ChannelBand(BaseModel):
     @field_validator("channel_class")
     @classmethod
     def _validate_channel_class(cls, v: str) -> str:
-        allowed = {"call", "notify", "none"}
+        allowed = set(_CHANNEL_CLASS_RANK)
         if v not in allowed:
             raise ValueError(f"channel_class must be one of {sorted(allowed)}, got {v!r}")
         return v
@@ -147,9 +167,7 @@ class ChannelBand(BaseModel):
 class UrgencyLevel(BaseModel):
     min_score: int
     action: str
-    retry_attempts: int = 0
     retry_interval_minutes: int = 5
-    fallback: str | None = None
     # Per-tier delivery channel for the SMS-action tiers (5-8). Consulted by
     # AlertStateMachine._determine_action only when action == "sms"; ignored for
     # phone_call (9-10) and log_only (1-4) levels. Default "both" is
@@ -185,8 +203,9 @@ class RetryConfig(BaseModel):
     scheduler cycles, enforced against the durable ``events.alert_round_count``
     counter (never in-memory state). When the counter reaches this cap the event
     moves to a terminal ``failed_terminal`` status and stops re-entering the
-    retry loop. Wires the previously-dead ``urgency_levels.critical.retry_attempts``
-    intent. Life-safety: keep this high enough that a real 9-10 keeps calling.
+    retry loop. This is the ONLY retry bound (the old, never-read
+    ``urgency_levels.*.retry_attempts`` knob is gone). Life-safety: keep this high
+    enough that a real 9-10 keeps calling.
 
     Constrained to ``>= 1`` so a mistyped ``0``/negative fails fast at config
     load rather than silently satisfying ``alert_round_count >= max_rounds`` on
@@ -287,6 +306,51 @@ class AlertsConfig(BaseModel):
     ]
 
     @model_validator(mode="after")
+    def _validate_channel_bands(self) -> "AlertsConfig":
+        """Fail fast on a band map that could silence the call tier.
+
+        ``AlertPolicy`` reads the whole alert decision out of this map, so one YAML
+        typo here (an empty list, a missing ``call`` band, an urgency the map does
+        not cover, or a notify band sitting above the call band) would silently
+        route an urgency-10 event on Polish soil to NOTIFY or to nothing at all --
+        with every test still green. A misconfigured band map must break at config
+        load, never in production.
+        """
+        bands = self.channel_bands
+        if not bands:
+            raise ValueError("alerts.channel_bands must not be empty (it is the only alert-band map AlertPolicy reads)")
+
+        classes = {b.channel_class for b in bands}
+        if "call" not in classes:
+            raise ValueError(
+                "alerts.channel_bands must contain a band with channel_class: call — "
+                "without it no event can ever place a phone call (urgency 9-10 is life-safety critical)"
+            )
+
+        scores = [b.min_score for b in bands]
+        out_of_range = [s for s in scores if not URGENCY_MIN <= s <= URGENCY_MAX]
+        if out_of_range:
+            raise ValueError(
+                f"alerts.channel_bands min_score values must be within the urgency scale "
+                f"{URGENCY_MIN}-{URGENCY_MAX}, got {sorted(out_of_range)}"
+            )
+        if len(set(scores)) != len(scores):
+            raise ValueError(f"alerts.channel_bands min_score values must be unique, got {sorted(scores)}")
+        if min(scores) > URGENCY_MIN:
+            raise ValueError(
+                f"alerts.channel_bands must cover every urgency: the lowest band's min_score must be "
+                f"{URGENCY_MIN}, got {min(scores)} (urgencies below it map to no band at all)"
+            )
+
+        ranks = [_CHANNEL_CLASS_RANK[b.channel_class] for b in sorted(bands, key=lambda b: b.min_score, reverse=True)]
+        if ranks != sorted(ranks, reverse=True):
+            raise ValueError(
+                "alerts.channel_bands must escalate with urgency: the call band's min_score must be "
+                "above the notify band's, which must be above the none band's"
+            )
+        return self
+
+    @model_validator(mode="after")
     def _validate_sweep_windows(self) -> "AlertsConfig":
         # The retry sweep re-calls an event only while its last activity is within
         # retry.sweep_max_age_minutes, and a round bumps last_updated_at only at its
@@ -330,7 +394,6 @@ class ClassificationConfig(BaseModel):
     # is length-robust (a short wire headline and a long elaboration of the SAME incident
     # still score high), unlike the length-sensitive token_sort_ratio.
     summary_similarity_metric: str = "token_set_ratio"
-    syndication_similarity_threshold: int = 90
 
     @field_validator("summary_similarity_metric")
     @classmethod
@@ -409,6 +472,28 @@ class SentinelConfig(BaseModel):
     testing: TestingConfig
     processing: ProcessingConfig
     dedup: DedupConfig = DedupConfig()
+
+    @model_validator(mode="after")
+    def _validate_event_gate_below_alert_bands(self) -> "SentinelConfig":
+        """The pre-event gate must never sit above an alerting band.
+
+        ``dedup.min_event_urgency`` drops a classification BEFORE any event row
+        exists — before dedup, before dispatch, before any alert. If it were set
+        above the lowest alerting (notify/call) band, every event in the gap would
+        die silently with all tests green: e.g. min_event_urgency 7 with a notify
+        band at 5 kills every urgency-5/6 SMS-tier event. Cross-checked at load.
+        """
+        alerting = [b.min_score for b in self.alerts.channel_bands if b.channel_class in ("notify", "call")]
+        if not alerting:
+            return self
+        lowest_alerting = min(alerting)
+        if self.dedup.min_event_urgency > lowest_alerting:
+            raise ValueError(
+                f"dedup.min_event_urgency ({self.dedup.min_event_urgency}) must be <= the lowest alerting "
+                f"alerts.channel_bands min_score ({lowest_alerting}) — otherwise alert-band events are "
+                "dropped before an event row is ever created and no alert can fire for them"
+            )
+        return self
 
 
 # ---------------------------------------------------------------------------

@@ -120,6 +120,14 @@ class ClassificationResult:
     model_used: str
     input_tokens: int
     output_tokens: int
+    # Geography seam (Phase 2). ``target_country`` is the SINGLE country whose soil
+    # the LLM says is physically attacked (ISO code, or None/"unknown" when it does
+    # not resolve); ``attacker_is_nato`` carries the R11 NATO-attacks-Russia case.
+    # Persisted (not just used transiently) so the audit row keeps the model's own
+    # answer and every downstream geo decision reads the LLM's target instead of
+    # approximating it from affected_countries.
+    target_country: str | None = None
+    attacker_is_nato: bool = False
     id: str = field(default_factory=lambda: str(uuid4()))
 
     def to_dict(self) -> dict:
@@ -130,6 +138,8 @@ class ClassificationResult:
             "event_type": self.event_type,
             "urgency_score": self.urgency_score,
             "affected_countries": list_to_json(self.affected_countries),
+            "target_country": self.target_country,
+            "attacker_is_nato": int(self.attacker_is_nato),
             "aggressor": self.aggressor,
             "is_new_event": int(self.is_new_event),
             "confidence": self.confidence,
@@ -148,6 +158,8 @@ class ClassificationResult:
             event_type=d.get("event_type", ""),
             urgency_score=d["urgency_score"],
             affected_countries=_json_to_list(d.get("affected_countries")),
+            target_country=d.get("target_country"),
+            attacker_is_nato=bool(d.get("attacker_is_nato") or False),
             aggressor=d.get("aggressor", ""),
             is_new_event=bool(d["is_new_event"]),
             confidence=d["confidence"],
@@ -182,6 +194,12 @@ class Event:
     # alerts.retry.max_rounds; survives restarts because it is persisted here,
     # never held only in memory.
     alert_round_count: int = 0
+    # Geography seam (Phase 2), carried up from the classification so the alert
+    # decision sites read the LLM's actual target instead of approximating it from
+    # affected_countries. attacker_is_nato keeps the R11 NATO-attacks-Russia case
+    # (target RU + NATO attacker = HIGH tier) reachable at dispatch time.
+    target_country: str | None = None
+    attacker_is_nato: bool = False
     id: str = field(default_factory=lambda: str(uuid4()))
 
     def to_dict(self) -> dict:
@@ -190,6 +208,8 @@ class Event:
             "event_type": self.event_type,
             "urgency_score": self.urgency_score,
             "affected_countries": list_to_json(self.affected_countries),
+            "target_country": self.target_country,
+            "attacker_is_nato": int(self.attacker_is_nato),
             "aggressor": self.aggressor,
             "summary_pl": self.summary_pl,
             "first_seen_at": _dt_to_iso(self.first_seen_at),
@@ -207,6 +227,8 @@ class Event:
             event_type=d["event_type"],
             urgency_score=d["urgency_score"],
             affected_countries=_json_to_list(d.get("affected_countries")),
+            target_country=d.get("target_country"),
+            attacker_is_nato=bool(d.get("attacker_is_nato") or False),
             aggressor=d.get("aggressor", ""),
             summary_pl=d["summary_pl"],
             first_seen_at=_iso_to_dt(d["first_seen_at"]),

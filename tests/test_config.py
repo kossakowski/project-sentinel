@@ -4,8 +4,20 @@ import os
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
-from sentinel.config import ClassificationConfig, ConfigError, SentinelConfig, UrgencyLevel, load_config
+from sentinel.config import (
+    AcknowledgmentConfig,
+    AlertsConfig,
+    ChannelBand,
+    ClassificationConfig,
+    ConfigError,
+    DedupConfig,
+    GeographyConfig,
+    SentinelConfig,
+    UrgencyLevel,
+    load_config,
+)
 
 
 def test_load_valid_config(monkeypatch):
@@ -227,7 +239,6 @@ def test_disabled_source_loadable(tmp_path):
     assert config.classification.summary_similarity_threshold == 50
     assert config.classification.summary_similarity_metric == "token_set_ratio"
     assert config.classification.corroboration_max_age_minutes == 2880
-    assert config.classification.syndication_similarity_threshold == 90
 
 
 def test_corroboration_window_default_is_360():
@@ -268,10 +279,19 @@ def test_all_allowed_summary_metrics_resolve_to_callables():
         assert isinstance(fn("a", "a"), (int, float))
 
 
-def test_syndication_threshold_default_is_90():
-    """ClassificationConfig built without syndication_similarity_threshold defaults to 90."""
-    cfg = ClassificationConfig()
-    assert cfg.syndication_similarity_threshold == 90
+def test_corroboration_surface_is_gone():
+    """No corroboration / source-independence knob survives anywhere in the config models.
+
+    Corroboration is deleted: no source-count gate may suppress or delay an alert,
+    and a dead knob implying otherwise is worse than no knob.
+    """
+    assert not hasattr(ClassificationConfig(), "corroboration_required")
+    assert not hasattr(ClassificationConfig(), "syndication_similarity_threshold")
+    level = UrgencyLevel(min_score=9, action="phone_call")
+    assert not hasattr(level, "corroboration_required")
+    # The never-read retry knobs are gone too -- alerts.retry.max_rounds is the only bound.
+    assert not hasattr(level, "retry_attempts")
+    assert not hasattr(level, "fallback")
 
 
 # --------------------------------------------------------------------------
@@ -372,3 +392,122 @@ def test_shipped_configs_set_channel_both():
 
     # config.yaml has NO push block under alerts (relies on the disabled default).
     assert "push" not in main_cfg["alerts"]
+
+
+# --------------------------------------------------------------------------
+# Phase 2 config surfaces — geography, channel_bands, dedup
+# --------------------------------------------------------------------------
+
+
+def _alerts(**overrides) -> AlertsConfig:
+    """Build a minimal AlertsConfig, overriding one field at a time."""
+    kwargs = {
+        "phone_number": "+48123456789",
+        "urgency_levels": {"critical": UrgencyLevel(min_score=9, action="phone_call")},
+        "acknowledgment": AcknowledgmentConfig(),
+    }
+    kwargs.update(overrides)
+    return AlertsConfig(**kwargs)
+
+
+def test_geography_defaults():
+    """GeographyConfig defaults carry the whole Phase 2 geo surface."""
+    geo = GeographyConfig()
+    assert geo.high_tier_countries == ["PL", "LT", "LV", "EE", "RO"]
+    assert geo.floor_countries == ["PL"]
+    assert geo.nato_attack_targets == ["RU"]
+    # Known-but-LOW countries: only these (or the HIGH set) may demote a 9-10 to SMS.
+    assert set(geo.low_tier_countries) == {"UA", "MD", "RU", "BY"}
+    # The kinetic set never contains the two meta-event types (debris/reactions are not strikes).
+    assert "debris_found" not in geo.kinetic_event_types
+    assert "official_statement" not in geo.kinetic_event_types
+    assert "missile_strike" in geo.kinetic_event_types
+
+
+def test_channel_band_rejects_unknown_class():
+    """ChannelBand.channel_class is validated against call/notify/none."""
+    assert ChannelBand(min_score=9, channel_class="call").channel_class == "call"
+    with pytest.raises(ValidationError):
+        ChannelBand(min_score=9, channel_class="telegram")
+
+
+def test_channel_bands_default_is_the_rubric_v2_map():
+    """The shipped default band map: >=9 call, 5-8 notify, <=4 none."""
+    bands = {b.channel_class: b.min_score for b in _alerts().channel_bands}
+    assert bands == {"call": 9, "notify": 5, "none": 1}
+
+
+@pytest.mark.parametrize(
+    "bands,reason",
+    [
+        ([], "empty"),
+        (  # no call band -> no event could ever place a phone call
+            [ChannelBand(min_score=5, channel_class="notify"), ChannelBand(min_score=1, channel_class="none")],
+            "no call band",
+        ),
+        (  # urgency 1-4 falls through to no band at all
+            [ChannelBand(min_score=9, channel_class="call"), ChannelBand(min_score=5, channel_class="notify")],
+            "coverage gap",
+        ),
+        (  # inverted: notify sits above call
+            [
+                ChannelBand(min_score=9, channel_class="notify"),
+                ChannelBand(min_score=5, channel_class="call"),
+                ChannelBand(min_score=1, channel_class="none"),
+            ],
+            "inverted",
+        ),
+        (  # duplicate min_score -> ambiguous band
+            [
+                ChannelBand(min_score=9, channel_class="call"),
+                ChannelBand(min_score=9, channel_class="notify"),
+                ChannelBand(min_score=1, channel_class="none"),
+            ],
+            "duplicate min_score",
+        ),
+        (  # outside the 1-10 urgency scale
+            [
+                ChannelBand(min_score=11, channel_class="call"),
+                ChannelBand(min_score=5, channel_class="notify"),
+                ChannelBand(min_score=1, channel_class="none"),
+            ],
+            "out of range",
+        ),
+    ],
+)
+def test_bad_channel_bands_fail_at_load(bands, reason):
+    """A band map that could silence the call tier must fail AT CONFIG LOAD, not in production.
+
+    AlertPolicy reads the whole alert decision out of this map, so one YAML typo
+    (empty list, missing call band, uncovered urgency, inverted order) would
+    otherwise route an urgency-10 event on Polish soil to NOTIFY or to nothing --
+    with every test still green.
+    """
+    with pytest.raises(ValidationError):
+        _alerts(channel_bands=bands)
+
+
+def test_min_event_urgency_default_and_cross_check(sample_config_dict, tmp_path):
+    """dedup.min_event_urgency must not sit above the lowest alerting band.
+
+    The pre-event gate drops a classification BEFORE any event row exists. Set above
+    the notify band it would silently kill every urgency-5/6 SMS-tier event with all
+    tests green -- so it is cross-checked at load.
+    """
+    assert DedupConfig().min_event_urgency == 5
+
+    def _load(min_event_urgency):
+        cfg = dict(sample_config_dict)
+        cfg["dedup"] = {"min_event_urgency": min_event_urgency}
+        path = tmp_path / f"cfg-{min_event_urgency}.yaml"
+        with open(path, "w") as f:
+            yaml.dump(cfg, f)
+        return load_config(str(path))
+
+    # At/below the notify band (5): fine.
+    assert _load(5).dedup.min_event_urgency == 5
+    assert _load(3).dedup.min_event_urgency == 3
+
+    # Above it: rejected at load.
+    with pytest.raises(ConfigError):
+        _load(7)

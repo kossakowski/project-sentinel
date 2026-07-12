@@ -18,11 +18,15 @@ from uuid import uuid4
 
 import yaml
 
-from sentinel.alerts.policy import AlertPolicy, ChannelClass, EventDecision, GeoTier, Relation
+from sentinel.alerts.policy import AlertPolicy, ChannelClass, EventDecision, Relation
 from sentinel.classification.classifier import Classifier
+from sentinel.classification.geo_weighter import GeoWeighter
 from sentinel.config import SentinelConfig
 from sentinel.models import Article, ClassificationResult
 
+# Country expectations in the eval cases are written against this set; it is used
+# ONLY by _check_case's country checks. The geo tier of a live decision is NEVER
+# derived from it -- that comes from GeoWeighter + config (see _action_for_result).
 MONITORED_COUNTRIES = {"PL", "LT", "LV", "EE", "RO"}
 
 # Haiku 4.5 pricing (USD per million tokens)
@@ -37,17 +41,17 @@ _CLASS_TO_EVAL_ACTION = {
 }
 
 
-def _action_for_result(result: ClassificationResult, policy: AlertPolicy) -> str:
-    """Derive the eval alert action from classifier output via the AlertPolicy.
+def _action_for_result(result: ClassificationResult, policy: AlertPolicy, weighter: GeoWeighter) -> str:
+    """Derive the eval alert action from classifier output, exactly as production does.
 
-    A phone call requires urgency >= call-tier AND a monitored country as the
-    physical target (geo HIGH); otherwise a call-urgency event demotes to SMS.
-    The single AlertPolicy authority makes the band decision -- the eval no longer
-    keeps its own copy (corroboration is not consulted; the eval tests the
-    classifier in isolation).
+    Both halves of the live decision are reused: the geo tier comes from the same
+    ``GeoWeighter`` the corroborator and the state machine use (config-driven
+    ``geography.*`` membership; an unresolved geo is UNKNOWN and fails OPEN to a
+    call at call urgency), and the band comes from the single ``AlertPolicy``
+    authority. The eval keeps no private copy of either -- otherwise the CI gate
+    would score a decision the deployed system does not make.
     """
-    has_monitored = bool(set(result.affected_countries) & MONITORED_COUNTRIES)
-    geo_tier = GeoTier.HIGH if has_monitored else GeoTier.LOW
+    geo_tier = weighter.event_tier(result.target_country, result.affected_countries, result.attacker_is_nato)
     intent = policy.decide(EventDecision(Relation.NEW), urgency=result.urgency_score, geo_tier=geo_tier)
     return _CLASS_TO_EVAL_ACTION[intent.channel_class]
 
@@ -188,7 +192,7 @@ def _make_article(case: EvalCase) -> Article:
     )
 
 
-def _check_case(case: EvalCase, result: ClassificationResult, policy: AlertPolicy) -> CaseResult:
+def _check_case(case: EvalCase, result: ClassificationResult, policy: AlertPolicy, weighter: GeoWeighter) -> CaseResult:
     checks: dict[str, bool] = {}
 
     checks["is_military_event"] = result.is_military_event == case.expected_is_military_event
@@ -210,7 +214,7 @@ def _check_case(case: EvalCase, result: ClassificationResult, policy: AlertPolic
     if case.expected_event_type_any_of is not None:
         checks["event_type_in_set"] = result.event_type in case.expected_event_type_any_of
 
-    actual_action = _action_for_result(result, policy)
+    actual_action = _action_for_result(result, policy, weighter)
     checks["action_match"] = actual_action == case.expected_action
 
     return CaseResult(
@@ -221,6 +225,8 @@ def _check_case(case: EvalCase, result: ClassificationResult, policy: AlertPolic
             "event_type": result.event_type,
             "urgency_score": result.urgency_score,
             "affected_countries": result.affected_countries,
+            "target_country": result.target_country,
+            "attacker_is_nato": result.attacker_is_nato,
             "aggressor": result.aggressor,
             "confidence": result.confidence,
             "summary_pl": result.summary_pl,
@@ -241,6 +247,7 @@ async def run_eval(eval_set_path: str, config: SentinelConfig) -> EvalReport:
     cases = load_eval_set(eval_set_path)
     classifier = Classifier(config)
     policy = AlertPolicy(config)
+    weighter = GeoWeighter(config)
     case_results: list[CaseResult] = []
 
     for i, case in enumerate(cases, 1):
@@ -248,7 +255,7 @@ async def run_eval(eval_set_path: str, config: SentinelConfig) -> EvalReport:
         article = _make_article(case)
         try:
             result = await classifier.classify(article)
-            case_results.append(_check_case(case, result, policy))
+            case_results.append(_check_case(case, result, policy, weighter))
         except Exception as e:
             case_results.append(
                 CaseResult(

@@ -75,9 +75,7 @@ def _make_telegram_config(enabled: bool = False) -> dict:
                 "critical": {
                     "min_score": 9,
                     "action": "phone_call",
-                    "retry_attempts": 3,
                     "retry_interval_minutes": 5,
-                    "fallback": "sms",
                 },
             },
             "acknowledgment": {

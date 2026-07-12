@@ -478,3 +478,169 @@ class TestClassifier:
         await classifier.aclose()
 
         mock_client.close.assert_awaited_once_with()
+
+    # ------------------------------------------------------------------
+    # Geography seam: target_country / attacker_is_nato are parsed AND persisted.
+    # ------------------------------------------------------------------
+    @pytest.mark.asyncio
+    @patch("sentinel.classification.classifier.anthropic.AsyncAnthropic")
+    async def test_classify_parses_geo_fields(self, mock_anthropic_cls, config):
+        """target_country and attacker_is_nato are read off the response onto the result."""
+        mock_client = MagicMock()
+        mock_anthropic_cls.return_value = mock_client
+        mock_client.messages.create = AsyncMock(
+            return_value=_mock_response(
+                {
+                    "is_military_event": True,
+                    "event_type": "missile_strike",
+                    "urgency_score": 9,
+                    "affected_countries": ["RU"],
+                    "target_country": "RU",
+                    "attacker_is_nato": True,
+                    "aggressor": "none",
+                    "is_new_event": True,
+                    "confidence": 0.9,
+                    "summary_pl": "NATO uderzylo na terytorium Rosji.",
+                }
+            )
+        )
+
+        classifier = Classifier(config)
+        classifier.client = mock_client
+
+        result = await classifier.classify(_make_article(title="NATO strikes Russian territory"))
+
+        assert result.target_country == "RU"
+        assert result.attacker_is_nato is True
+
+        # Defaults when the model omits them (never a crash, never a silent True).
+        mock_client.messages.create = AsyncMock(return_value=_mock_response(_invasion_response()))
+        plain = await classifier.classify(_make_article(title="Russia invades Poland"))
+        assert plain.target_country is None
+        assert plain.attacker_is_nato is False
+
+    @pytest.mark.asyncio
+    @patch("sentinel.classification.classifier.anthropic.AsyncAnthropic")
+    async def test_classify_handles_null_affected_countries(self, mock_anthropic_cls, config):
+        """`"affected_countries": null` must not raise -- one malformed response cannot kill a cycle.
+
+        `data.get("affected_countries", [])` returns None when the key is PRESENT with a
+        null value, so the default never applies. If that None escaped, the whole
+        classify_batch would abort and the scheduler would discard every classification
+        of the cycle -- including a possible urgency 9-10.
+        """
+        mock_client = MagicMock()
+        mock_anthropic_cls.return_value = mock_client
+        mock_client.messages.create = AsyncMock(
+            return_value=_mock_response(
+                {
+                    "is_military_event": True,
+                    "event_type": "missile_strike",
+                    "urgency_score": 9,
+                    "affected_countries": None,
+                    "target_country": None,
+                    "aggressor": "RU",
+                    "is_new_event": True,
+                    "confidence": 0.8,
+                    "summary_pl": "Atak rakietowy.",
+                }
+            )
+        )
+
+        classifier = Classifier(config)
+        classifier.client = mock_client
+
+        result = await classifier.classify(_make_article(title="Missile strike reported"))
+
+        assert result.affected_countries == []
+        assert result.target_country is None
+        assert result.urgency_score == 9
+
+    @pytest.mark.asyncio
+    @patch("sentinel.classification.classifier.anthropic.AsyncAnthropic")
+    async def test_classify_batch_survives_unexpected_error(self, mock_anthropic_cls, config):
+        """An UNEXPECTED error on one article skips that article -- the batch keeps going.
+
+        The scheduler treats a raised batch as "no classifications this cycle" and the
+        articles are already stored (never re-classified), so a single malformed response
+        must never discard a real urgency 9-10 sitting later in the same batch.
+        """
+        mock_anthropic_cls.return_value = MagicMock()
+        classifier = Classifier(config)
+
+        boom = _make_article(title="boom")
+        critical = _make_article(title="Russia invades Poland")
+        critical_result = SimpleNamespace(
+            article_id=critical.id,
+            title=critical.title,
+            urgency_score=10,
+            event_type="invasion",
+            is_military_event=True,
+        )
+
+        async def fake_classify(article):
+            if article.title == "boom":
+                raise TypeError("'NoneType' object is not iterable")
+            return critical_result
+
+        classifier.classify = AsyncMock(side_effect=fake_classify)
+
+        results = await classifier.classify_batch([boom, critical])
+
+        assert results == [critical_result]
+
+    @pytest.mark.asyncio
+    @patch("sentinel.classification.classifier.anthropic.AsyncAnthropic")
+    async def test_kinetic_floor_basis_is_target_country(self, mock_anthropic_cls, config):
+        """A kinetic strike TARGETING Ukraine that lists PL as affected is not floored to a call."""
+        mock_client = MagicMock()
+        mock_anthropic_cls.return_value = mock_client
+        mock_client.messages.create = AsyncMock(
+            return_value=_mock_response(
+                {
+                    "is_military_event": True,
+                    "event_type": "missile_strike",
+                    "urgency_score": 4,
+                    "affected_countries": ["UA", "PL"],
+                    "target_country": "UA",
+                    "aggressor": "RU",
+                    "is_new_event": True,
+                    "confidence": 0.8,
+                    "summary_pl": "Rosyjski atak na Ukraine; polskie mysliwce poderwane.",
+                }
+            )
+        )
+
+        classifier = Classifier(config)
+        classifier.client = mock_client
+
+        result = await classifier.classify(_make_article(title="Russian strike on Ukraine, Polish jets scrambled"))
+        assert result.urgency_score == 4
+
+    @pytest.mark.asyncio
+    @patch("sentinel.classification.classifier.anthropic.AsyncAnthropic")
+    async def test_kinetic_floor_applies_when_target_unresolved(self, mock_anthropic_cls, config):
+        """An unresolved target on a kinetic story naming Polish soil still floors to call tier."""
+        mock_client = MagicMock()
+        mock_anthropic_cls.return_value = mock_client
+        mock_client.messages.create = AsyncMock(
+            return_value=_mock_response(
+                {
+                    "is_military_event": True,
+                    "event_type": "missile_strike",
+                    "urgency_score": 4,
+                    "affected_countries": ["PL"],
+                    "target_country": "unknown",
+                    "aggressor": "RU",
+                    "is_new_event": True,
+                    "confidence": 0.6,
+                    "summary_pl": "Uderzenie rakietowe na terytorium Polski.",
+                }
+            )
+        )
+
+        classifier = Classifier(config)
+        classifier.client = mock_client
+
+        result = await classifier.classify(_make_article(title="Missile hits Polish territory"))
+        assert result.urgency_score >= 9
