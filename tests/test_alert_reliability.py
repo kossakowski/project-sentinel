@@ -1425,17 +1425,17 @@ async def test_transport_failure_cap_notifies_at_terminal(_sleep, state_machine,
 async def test_outage_stranded_event_finalized_fail_loud(
     _sleep, stranded_status, state_machine, db, mock_twilio, config
 ):
-    """An event stranded beyond the sweep window is finalized terminally, not left in limbo.
+    """A RECENTLY-stranded event (aged out of re-call but recent) is finalized + notified.
 
-    A process outage longer than ``sweep_max_age_minutes`` leaves an active
-    call-tier event too old to safely re-call; leaving it in ``retry_pending`` limbo
-    until the 90-day cleanup is a silent drop (1.3). The sweep marks such a STALE row
-    ``failed_terminal`` with a fail-loud ERROR log — but does NOT re-call it and does
-    NOT SMS/push about it (a post-deploy backlog of stale rows would otherwise spam
-    the operator about weeks-old events). A genuinely still-live incident keeps
-    producing articles and spawns its own event + call via the corroborator guard.
+    A process outage longer than ``sweep_max_age_minutes`` leaves an active call-tier
+    event too old to safely re-call; leaving it in ``retry_pending`` limbo is a silent
+    drop (1.3). When its last activity is still within ``sweep_notify_max_age_minutes``
+    (a genuinely recent stranding) the sweep marks it ``failed_terminal`` AND notifies
+    via the SMS + push fallback — fail-loud, no phone storm — so the operator hears
+    about it. (Stale/ancient rows are log-only; see the companion test.)
     """
     config.alerts.retry.sweep_max_age_minutes = 60
+    config.alerts.retry.sweep_notify_max_age_minutes = 1440
     config.alerts.push.enabled = True
     config.alerts.push.tokens = ["ExponentPushToken[test]"]
     state_machine.push.send_push = MagicMock(
@@ -1452,7 +1452,8 @@ async def test_outage_stranded_event_finalized_fail_loud(
 
     event = _make_event(urgency_score=10)
     event.alert_status = stranded_status
-    event.last_updated_at = datetime.now(UTC) - timedelta(minutes=90)  # beyond the 60-min window
+    # Aged out of the 60-min re-call window, but recent (< 1440-min notify window).
+    event.last_updated_at = datetime.now(UTC) - timedelta(minutes=90)
     db.insert_event(event)
 
     await state_machine.retry_pending_calls()
@@ -1460,7 +1461,52 @@ async def test_outage_stranded_event_finalized_fail_loud(
     final = db.get_event_by_id(event.id)
     assert final.alert_status == "failed_terminal", "a stranded event must be finalized, not left in limbo"
     assert mock_twilio.make_alert_call.call_count == 0, "no phone storm on aged-out rows"
-    # No SMS/push about a stale row — that would be deploy-day spam about old events.
+    # A recently-stranded 9-10 is notified fail-loud (not silently dropped).
+    assert mock_twilio.send_sms.call_count >= 1
+    assert state_machine.push.send_push.call_count >= 1
+
+
+# --------------------------------------------------------------------------
+# 28b. test_stale_stranded_event_finalized_log_only  [1.3, F1/F4]
+# --------------------------------------------------------------------------
+@pytest.mark.asyncio
+@patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
+async def test_stale_stranded_event_finalized_log_only(_sleep, state_machine, db, mock_twilio, config):
+    """An ANCIENT stranded row is finalized quietly — no SMS/push about weeks-old events.
+
+    A row whose last activity predates ``sweep_notify_max_age_minutes`` (e.g. a
+    pre-existing historical event from before this code, or a long-dead one) is
+    finalized ``failed_terminal`` with an ERROR log ONLY, so a post-deploy backlog of
+    such rows cannot spam the operator with SMS/push about events weeks old.
+    """
+    config.alerts.retry.sweep_max_age_minutes = 60
+    config.alerts.retry.sweep_notify_max_age_minutes = 1440
+    config.alerts.push.enabled = True
+    config.alerts.push.tokens = ["ExponentPushToken[test]"]
+    state_machine.push.send_push = MagicMock(
+        side_effect=lambda title, body, event_id, data: AlertRecord(
+            event_id=event_id,
+            alert_type="push",
+            twilio_sid="tk",
+            status="sent",
+            attempt_number=1,
+            sent_at=datetime.now(UTC),
+            message_body=body,
+        )
+    )
+
+    event = _make_event(urgency_score=10)
+    event.alert_status = "retry_pending"
+    # Older than the 1440-min notify window: a stale historical row.
+    event.last_updated_at = datetime.now(UTC) - timedelta(minutes=1500)
+    db.insert_event(event)
+
+    await state_machine.retry_pending_calls()
+
+    final = db.get_event_by_id(event.id)
+    assert final.alert_status == "failed_terminal", "a stale row must be finalized, not left in limbo"
+    assert mock_twilio.make_alert_call.call_count == 0
+    # No SMS/push about a weeks-old event — that would be deploy-day spam.
     assert mock_twilio.send_sms.call_count == 0
     assert state_machine.push.send_push.call_count == 0
 
@@ -1656,3 +1702,69 @@ async def test_sweep_skips_event_whose_action_is_not_call(_sleep, state_machine,
 
     await state_machine.retry_pending_calls()
     assert mock_twilio.make_alert_call.call_count == 0, "an under-corroborated event must not be swept into a call"
+
+
+# --------------------------------------------------------------------------
+# 34. test_dispatch_cap_route_honors_pending_reply  [F3]
+# --------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_dispatch_cap_route_honors_pending_reply(state_machine, db, mock_twilio, config):
+    """A correct reply at the cap on the DISPATCH path acknowledges, not fallback.
+
+    When a new article merges into a capped event, process_event routes it via the
+    post-cap fallback. If the operator had already replied correctly (e.g. a
+    voice-down/SMS-up split at the cap), that reply must be honored — acknowledge the
+    event — rather than silently burned into the fallback path with the reply lost.
+    """
+    config.alerts.retry.max_rounds = 3
+
+    event = _make_event(urgency_score=10, source_count=2)
+    event.alert_status = "retry_pending"
+    event.alert_round_count = 3  # cap reached
+    db.insert_event(event)
+
+    # A confirmation code was delivered earlier and the operator replied with it.
+    with patch("sentinel.alerts.state_machine.random.randint", return_value=333333):
+        await state_machine._send_confirmation_sms(db.get_event_by_id(event.id))
+    reply = MagicMock()
+    reply.body = "333333"
+    mock_twilio.client.messages.list.return_value = [reply]
+
+    await state_machine.process_event(db.get_event_by_id(event.id))
+
+    final = db.get_event_by_id(event.id)
+    assert final.alert_status == "acknowledged", "a reply at the cap on the dispatch path must acknowledge"
+    assert final.acknowledged_at is not None
+
+
+# --------------------------------------------------------------------------
+# 35. test_sweep_window_must_exceed_retry_interval  [F4]
+# --------------------------------------------------------------------------
+def test_sweep_window_must_exceed_retry_interval():
+    """Config load rejects retry_interval_minutes >= sweep_max_age_minutes.
+
+    If the inter-round interval is not smaller than the sweep re-call window, a live
+    event ages out of the sweep between rounds and is finalized before it can ring
+    again — silently disabling ring-until-acknowledged. The cross-field validator
+    fails fast at load.
+    """
+    from sentinel.config import AcknowledgmentConfig, AlertsConfig, RetryConfig, UrgencyLevel
+
+    levels = {"critical": UrgencyLevel(min_score=9, action="phone_call")}
+
+    with pytest.raises(ValidationError):
+        AlertsConfig(
+            phone_number="+15551234567",
+            urgency_levels=levels,
+            acknowledgment=AcknowledgmentConfig(retry_interval_minutes=200),
+            retry=RetryConfig(sweep_max_age_minutes=180),
+        )
+
+    # A valid pairing (interval < window, notify >= window) constructs.
+    ok = AlertsConfig(
+        phone_number="+15551234567",
+        urgency_levels=levels,
+        acknowledgment=AcknowledgmentConfig(retry_interval_minutes=5),
+        retry=RetryConfig(sweep_max_age_minutes=180, sweep_notify_max_age_minutes=1440),
+    )
+    assert ok.retry.sweep_max_age_minutes == 180

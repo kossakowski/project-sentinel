@@ -181,6 +181,19 @@ class RetryConfig(BaseModel):
     max_rounds: int = Field(default=10, ge=1)
     sweep_max_age_minutes: int = Field(default=180, ge=1)
     sweep_max_events_per_cycle: int = Field(default=3, ge=0)
+    # An event aged out of the re-call window (above) but whose last activity is
+    # still within THIS larger window is a RECENTLY-stranded call-tier event (e.g. a
+    # process outage longer than sweep_max_age_minutes): it is finalized terminally
+    # AND notified via the SMS+push fallback. An event older than this is stale (a
+    # pre-existing historical row) and is finalized with an error log only — no
+    # SMS/push, so a post-deploy backlog does not spam the operator about weeks-old
+    # events. Keep it comfortably above sweep_max_age_minutes.
+    sweep_notify_max_age_minutes: int = Field(default=1440, ge=1)
+    # Wall-clock bound on how long the cycle-driven sweep may spend placing (blocking)
+    # call rounds per scheduler cycle, so a backlog of unacknowledged call-tier events
+    # cannot hold the pipeline cycle lock long enough to starve fetch/classification of
+    # a NEW incident. Complements sweep_max_events_per_cycle (a count bound). 0 disables.
+    sweep_max_seconds_per_cycle: int = Field(default=120, ge=0)
 
 
 class AlertTemplates(BaseModel):
@@ -223,6 +236,29 @@ class AlertsConfig(BaseModel):
     retry: RetryConfig = RetryConfig()
     templates: AlertTemplates = AlertTemplates()
     push: PushConfig = PushConfig()
+
+    @model_validator(mode="after")
+    def _validate_sweep_windows(self) -> "AlertsConfig":
+        # The retry sweep re-calls an event only while its last activity is within
+        # retry.sweep_max_age_minutes, and a round bumps last_updated_at only at its
+        # END. If the inter-round interval is not comfortably smaller than the sweep
+        # window, a live event ages out of the window between rounds and is finalized
+        # before it can ring again — silently disabling ring-until-acknowledged. Fail
+        # fast at config load rather than in production.
+        if self.acknowledgment.retry_interval_minutes >= self.retry.sweep_max_age_minutes:
+            raise ValueError(
+                "alerts.acknowledgment.retry_interval_minutes "
+                f"({self.acknowledgment.retry_interval_minutes}) must be less than "
+                f"alerts.retry.sweep_max_age_minutes ({self.retry.sweep_max_age_minutes}) "
+                "so an actively-retrying event is not aged out of the sweep between rounds"
+            )
+        if self.retry.sweep_notify_max_age_minutes < self.retry.sweep_max_age_minutes:
+            raise ValueError(
+                "alerts.retry.sweep_notify_max_age_minutes "
+                f"({self.retry.sweep_notify_max_age_minutes}) must be >= "
+                f"alerts.retry.sweep_max_age_minutes ({self.retry.sweep_max_age_minutes})"
+            )
+        return self
 
 
 # ---------------------------------------------------------------------------

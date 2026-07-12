@@ -654,17 +654,21 @@ alerts:
   # transient outage — total transport-failure call attempts before terminal are up
   # to max_rounds x max_call_retries.
   # sweep_max_age_minutes bounds the cycle-driven retry sweep by recency: only
-  # events whose last activity falls within the window are re-called; an event
-  # stranded beyond it by a process outage is finalized fail-loud (marked
-  # failed_terminal with an error log — no re-call, no SMS/push about a stale row),
-  # never left in limbo. sweep_max_events_per_cycle caps how many
-  # events the sweep drives through a (blocking) call round per scheduler cycle so a
-  # crisis cannot stall article fetch/classification; the rest wait for next cycle
-  # (0 disables the bound).
+  # events whose last activity falls within the window are re-called (config load
+  # enforces the window > retry_interval_minutes). sweep_notify_max_age_minutes: an
+  # event aged out of the re-call window but still within this larger window is a
+  # recently-stranded event (e.g. a process outage) — finalized failed_terminal AND
+  # notified via SMS+push; an event older than it is stale and finalized with an
+  # error log only (no SMS/push about weeks-old rows). sweep_max_events_per_cycle and
+  # sweep_max_seconds_per_cycle bound how many events / how long the sweep drives
+  # (blocking) call rounds per scheduler cycle so a backlog can't hold the cycle lock
+  # long enough to starve detection of a NEW incident (0 disables each bound).
   retry:
     max_rounds: 10
     sweep_max_age_minutes: 180
+    sweep_notify_max_age_minutes: 1440
     sweep_max_events_per_cycle: 3
+    sweep_max_seconds_per_cycle: 120
 
   # Push notifications via the Expo Push Service (companion mobile app).
   # Push is one of the per-tier delivery channels: set an urgency tier's

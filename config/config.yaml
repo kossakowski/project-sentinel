@@ -632,18 +632,26 @@ alerts:
   # re-called. An actively-retrying event bumps last_updated_at every round so it
   # stays in-window; a stale row left by a historical event ages out and is NOT
   # re-called, so a deploy can't re-activate every historical row at once (a
-  # --test-alert resolves its own synthetic event, so it never lingers). An event
-  # stranded beyond the window by a process outage is finalized fail-loud (marked
-  # failed_terminal with an error log — no re-call and no SMS/push about a stale
-  # row), never left in limbo. Keep the window well above
-  # max_rounds x retry_interval_minutes so a real in-progress retry never ages out
-  # mid-sequence. sweep_max_events_per_cycle caps how many events the sweep drives
-  # through a (blocking) call round per scheduler cycle so a crisis cannot stall
-  # article fetch/classification; the rest wait for the next cycle (0 disables).
+  # --test-alert resolves its own synthetic event, so it never lingers). Keep the
+  # window well above max_rounds x retry_interval_minutes so a real in-progress
+  # retry never ages out mid-sequence (config load enforces window > interval).
+  # sweep_notify_max_age_minutes: an event aged out of the re-call window but whose
+  # last activity is still within THIS larger window is a RECENTLY-stranded call-tier
+  # event (e.g. a process outage longer than sweep_max_age_minutes) — it is finalized
+  # failed_terminal AND notified via the SMS+push fallback. An event older than this
+  # is stale (a pre-existing historical row) and is finalized with an error log only,
+  # so a post-deploy backlog does not spam the operator about weeks-old events.
+  # sweep_max_events_per_cycle caps how many events the sweep drives through a
+  # (blocking) call round per scheduler cycle, and sweep_max_seconds_per_cycle caps
+  # the wall-clock time it may spend doing so, so a backlog of unacknowledged events
+  # cannot hold the pipeline cycle lock long enough to starve detection of a NEW
+  # incident; the rest wait for the next cycle (0 disables each bound).
   retry:
     max_rounds: 10
     sweep_max_age_minutes: 180
+    sweep_notify_max_age_minutes: 1440
     sweep_max_events_per_cycle: 3
+    sweep_max_seconds_per_cycle: 120
 scheduler:
   fast_interval_minutes: 3
   interval_minutes: 15

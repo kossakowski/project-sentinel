@@ -505,6 +505,14 @@ class AlertStateMachine:
         # cap; the phone_call action carries no SMS; the push self-dedups on any
         # prior successful push). This never re-opens the spec-mandated call cap.
         if action == "phone_call" and self._call_cap_reached(event):
+            # Honor a correct reply that landed at/after the cap before finalizing.
+            # The sweep's cap guard already does this; without it a reply arriving on
+            # the dispatch path (a new article merges after the operator complied) is
+            # never matched and the event is wrongly kept in the capped-fallback path.
+            self._hydrate_confirmation_state(event.id, existing_alerts)
+            if await self._check_sms_confirmation(datetime.now(UTC), event.id):
+                await self._acknowledge_event(event, event.alert_round_count)
+                return
             await self._send_capped_fallback(event, existing_alerts)
             return
 
@@ -609,37 +617,23 @@ class AlertStateMachine:
             return
 
         window = self.config.alerts.retry.sweep_max_age_minutes
+        notify_window = self.config.alerts.retry.sweep_notify_max_age_minutes
         budget = self.config.alerts.retry.sweep_max_events_per_cycle
+        max_seconds = self.config.alerts.retry.sweep_max_seconds_per_cycle
+        started = datetime.now(UTC)
         processed = 0
+        notified = 0
 
-        # Pass 1 — finalize events stranded BEYOND the sweep window so they don't sit
-        # in ``retry_pending`` limbo until the 90-day cleanup. A process outage longer
-        # than ``window`` leaves an active ``retry_pending`` / mid-round event too old
-        # to safely re-call (re-calling every historical row on restart would storm).
-        # These rows are STALE (>window with no activity), so the disposition is a
-        # durable terminal marker plus a fail-loud ERROR log — NOT an SMS/push, which
-        # on a post-deploy backlog would spam the operator about weeks-old events. A
-        # genuinely still-live incident keeps producing articles: a fresh critical
-        # article spawns its OWN event and call (the corroborator forces a new event
-        # past a ``failed_terminal`` one), so a live escalation is not lost. This pass
-        # does not count against the call-round budget (it places no call).
-        for status in self._RETRY_SWEEP_STATUSES:
-            for event in self.db.get_events_by_alert_status(status, older_than_minutes=window):
-                if event.acknowledged_at is not None or event.alert_status == "failed_terminal":
-                    continue
-                self.logger.error(
-                    "Event %s: stranded in %s beyond the %d-min sweep window — finalizing "
-                    "failed_terminal (fail-loud; no re-call, no SMS/push for a stale row)",
-                    event.id[:8],
-                    status,
-                    window,
-                )
-                self._mark_failed_terminal(event)
+        def _over_time_budget() -> bool:
+            return bool(max_seconds) and (datetime.now(UTC) - started).total_seconds() >= max_seconds
 
-        # Pass 2 — re-enter fresh (within-window) events into the bounded retry
-        # loop. Bounded by ``sweep_max_events_per_cycle`` so a crisis leaving many
-        # events retry-pending cannot stall article fetch/classification for the
-        # whole cycle; the remainder are picked up next cycle (oldest-first).
+        # Pass A — re-enter fresh (within-window) events into the bounded retry loop.
+        # Runs FIRST so live retries get the per-cycle budget before any finalization.
+        # Bounded by BOTH a count (``sweep_max_events_per_cycle``) and a wall-clock
+        # budget (``sweep_max_seconds_per_cycle``) so a backlog of unacknowledged
+        # call-tier events cannot hold the pipeline cycle lock long enough to starve
+        # detection of a NEW incident; the remainder are picked up next cycle
+        # (oldest-first).
         for status in self._RETRY_SWEEP_STATUSES:
             for event in self.db.get_events_by_alert_status(status, within_minutes=window):
                 # Never re-call an acknowledged event (one-call-per-event). The
@@ -665,15 +659,65 @@ class AlertStateMachine:
                 # dispatch would apply.
                 if self._determine_action(event) != "phone_call":
                     continue
-                if budget and processed >= budget:
+                if (budget and processed >= budget) or _over_time_budget():
                     self.logger.warning(
-                        "Retry sweep hit the per-cycle budget (%d); deferring the remaining "
-                        "retry-pending events to the next cycle",
-                        budget,
+                        "Retry sweep reached its per-cycle budget (events=%d/%s, time %ds); "
+                        "deferring the remaining retry-pending events to the next cycle",
+                        processed,
+                        budget or "inf",
+                        max_seconds,
                     )
                     return
                 await self._execute_phone_call(event, existing_alerts)
                 processed += 1
+
+        # Pass B — finalize events aged out of the re-call window so they don't sit in
+        # ``retry_pending`` limbo until the 90-day cleanup. A RECENTLY-stranded event
+        # (aged out but still within ``sweep_notify_max_age_minutes`` — e.g. a process
+        # outage longer than the re-call window) is finalized AND notified via the
+        # SMS+push fallback (honoring a late correct reply first), so a genuinely
+        # stranded 9-10 is not silently dropped. An event older than the notify window
+        # is STALE (a pre-existing historical row) and is finalized with an ERROR log
+        # ONLY, so a post-deploy backlog does not spam the operator about weeks-old
+        # events. Notifications are bounded by the same per-cycle budget.
+        for status in self._RETRY_SWEEP_STATUSES:
+            for event in self.db.get_events_by_alert_status(status, older_than_minutes=window):
+                if event.acknowledged_at is not None or event.alert_status == "failed_terminal":
+                    continue
+                recently_stranded = self._event_age_minutes(event) <= notify_window
+                if recently_stranded and (not budget or notified < budget):
+                    existing_alerts = self.db.get_alert_records(event.id)
+                    # Honor a correct reply that landed before we finalize (the sweep
+                    # and dispatch cap paths do the same) so a complied ACK is not lost.
+                    self._hydrate_confirmation_state(event.id, existing_alerts)
+                    if await self._check_sms_confirmation(datetime.now(UTC), event.id):
+                        await self._acknowledge_event(event, event.alert_round_count)
+                        continue
+                    self.logger.error(
+                        "Event %s: stranded in %s beyond the %d-min re-call window — finalizing "
+                        "failed_terminal and notifying via SMS+push (recently stranded)",
+                        event.id[:8],
+                        status,
+                        window,
+                    )
+                    await self._send_capped_fallback(event, existing_alerts)
+                    notified += 1
+                else:
+                    self.logger.error(
+                        "Event %s: stale in %s beyond the %d-min notify window — finalizing "
+                        "failed_terminal, log-only (no SMS/push for a stale row)",
+                        event.id[:8],
+                        status,
+                        notify_window,
+                    )
+                    self._mark_failed_terminal(event)
+
+    def _event_age_minutes(self, event: Event) -> float:
+        """Minutes since the event's last activity (``last_updated_at``), UTC-safe."""
+        last = event.last_updated_at
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=UTC)
+        return (datetime.now(UTC) - last).total_seconds() / 60
 
     def _determine_action(self, event: Event) -> str:
         """Resolve the delivery action for an event from the urgency tiers.
@@ -934,9 +978,13 @@ class AlertStateMachine:
         # even during an outage AND stops dispatch and the sweep from both
         # advancing a round for one event within a single cycle.
         phone_records = [a for a in existing_alerts if a.alert_type == "phone_call"]
-        if phone_records:
+        retry_interval = timedelta(minutes=self.config.alerts.acknowledgment.retry_interval_minutes)
+        # retry_interval == 0 means NO spacing; skip the gate entirely. Applying it
+        # would reduce to ``now < last_call_time``, which a backward clock step (NTP
+        # correction / VM vCPU migration) can spuriously satisfy, wrongly skipping a
+        # due round.
+        if phone_records and retry_interval:
             last_call_time = max(a.sent_at for a in phone_records)
-            retry_interval = timedelta(minutes=self.config.alerts.acknowledgment.retry_interval_minutes)
             if datetime.now(UTC) < last_call_time + retry_interval:
                 self.logger.debug(
                     "Event %s: retry interval not elapsed, skipping call",
@@ -957,6 +1005,14 @@ class AlertStateMachine:
         # rounds and predates this round's ``call_placed_at`` — is still inside the
         # queried window. Later rounds keep the original start (setdefault).
         self._confirmation_window_start.setdefault(event.id, call_placed_at)
+
+        # Honor a correct reply that already landed (carried over from a prior round,
+        # incl. a pre-restart code restored by hydration above) BEFORE sending a fresh
+        # confirmation SMS — this avoids a redundant SMS with a rotated code and, on
+        # the normal retry path, acknowledges the event without placing another call.
+        if await self._check_sms_confirmation(call_placed_at, event.id):
+            await self._acknowledge_event(event, total_attempts)
+            return
 
         # Send SMS confirmation code — this is the ONLY confirmation mechanism
         await self._send_confirmation_sms(event)
