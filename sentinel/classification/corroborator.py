@@ -349,11 +349,18 @@ class Corroborator:
         event.affected_countries = sorted(merged)
 
         # Merge the geography seam, always toward FIRING: adopt the incoming
-        # target_country when the event has none (a later article naming Polish soil
-        # must be able to lift an event the first article left targetless), and OR
-        # the NATO-attacker flag (once one source says NATO struck Russia, the R11
-        # HIGH tier stands). Never overwrite an already-resolved target.
-        if not event.target_country and result.target_country:
+        # target_country while the event's current target does not RESOLVE to a
+        # known country -- i.e. it is missing, blank, or a placeholder token like
+        # "unknown"/"none" (which the classifier emits for a targetless article and
+        # which is a TRUTHY string). A plain ``not event.target_country`` check
+        # would treat that placeholder as "already set" and NEVER adopt a later
+        # concrete PL target, pinning a merged urgency-9 event at LOW and demoting
+        # its call to an SMS -- exactly what this adoption exists to prevent (a
+        # later article naming Polish soil must lift an event the first left
+        # targetless). Once the target resolves it is never overwritten. Also OR the
+        # NATO-attacker flag (once one source says NATO struck Russia, the R11 HIGH
+        # tier stands).
+        if result.target_country and self.geo_weighter.resolve_country(event.target_country) is None:
             event.target_country = result.target_country
         event.attacker_is_nato = event.attacker_is_nato or result.attacker_is_nato
 

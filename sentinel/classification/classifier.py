@@ -266,6 +266,21 @@ def _as_country(value: object) -> str | None:
     return token or None
 
 
+def _as_bool(value: object) -> bool:
+    """Strictly coerce the LLM's ``attacker_is_nato`` token to a real bool.
+
+    ``bool("false")`` is True in Python, so a JSON *string* ``"false"`` -- which the
+    model sometimes emits despite the boolean schema -- would otherwise flip
+    ``attacker_is_nato`` ON and spuriously activate the RU+NATO HIGH tier for an
+    inside-Russia story, firing a false call at urgency >= 9. Accept only a real
+    JSON boolean or an explicit truthy string token; everything else (including the
+    string ``"false"``) is False.
+    """
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ("true", "1", "yes")
+
+
 class Classifier:
     """Classifies articles using Claude Haiku 4.5."""
 
@@ -301,7 +316,7 @@ class Classifier:
         # must never be able to take out a whole classification cycle).
         affected_countries = _as_country_list(data.get("affected_countries"))
         target_country = _as_country(data.get("target_country"))
-        attacker_is_nato = bool(data.get("attacker_is_nato", False))
+        attacker_is_nato = _as_bool(data.get("attacker_is_nato", False))
 
         # Deterministic geography weighting (2.11): a kinetic strike on floor-country
         # soil (default Poland) is at least call-tier regardless of the LLM's number.

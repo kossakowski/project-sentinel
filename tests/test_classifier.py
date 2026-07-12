@@ -644,3 +644,58 @@ class TestClassifier:
 
         result = await classifier.classify(_make_article(title="Missile hits Polish territory"))
         assert result.urgency_score >= 9
+
+
+# --------------------------------------------------------------------------
+# attacker_is_nato strict parsing: the JSON string "false" must not become True.
+# --------------------------------------------------------------------------
+def test_as_bool_does_not_coerce_string_false():
+    """`bool("false")` is True in Python; `_as_bool` must return False for it.
+
+    A JSON *string* "false" (which the model sometimes emits despite the boolean
+    schema) coerced to True would spuriously activate the RU+NATO HIGH tier for an
+    inside-Russia story and fire a false call at urgency >= 9.
+    """
+    from sentinel.classification.classifier import _as_bool
+
+    assert _as_bool("false") is False
+    assert _as_bool(False) is False
+    assert _as_bool(None) is False
+    assert _as_bool("") is False
+    assert _as_bool("no") is False
+    assert _as_bool(True) is True
+    assert _as_bool("true") is True
+    assert _as_bool("1") is True
+    assert _as_bool("yes") is True
+
+
+class TestAttackerIsNatoStringFalse:
+    """The string 'false' from the LLM must not flip attacker_is_nato on."""
+
+    @pytest.mark.asyncio
+    @patch("sentinel.classification.classifier.anthropic.AsyncAnthropic")
+    async def test_string_false_stays_false(self, mock_anthropic_cls, config):
+        mock_client = MagicMock()
+        mock_anthropic_cls.return_value = mock_client
+        mock_client.messages.create = AsyncMock(
+            return_value=_mock_response(
+                {
+                    "is_military_event": True,
+                    "event_type": "missile_strike",
+                    "urgency_score": 2,
+                    "affected_countries": ["RU"],
+                    "target_country": "RU",
+                    "attacker_is_nato": "false",
+                    "aggressor": "UA",
+                    "is_new_event": True,
+                    "confidence": 0.7,
+                    "summary_pl": "Ukrainskie uderzenie na terytorium Rosji.",
+                }
+            )
+        )
+
+        classifier = Classifier(config)
+        classifier.client = mock_client
+
+        result = await classifier.classify(_make_article(title="Ukrainian strike inside Russia"))
+        assert result.attacker_is_nato is False

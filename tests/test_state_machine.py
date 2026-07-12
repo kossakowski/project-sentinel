@@ -25,6 +25,7 @@ from sentinel.alerts.state_machine import (
     SMS_MAX_CHARS,
     AlertStateMachine,
     _build_push_data,
+    _event_type_pl,
     _format_push,
     _format_sms_message,
     _format_update_sms,
@@ -1344,9 +1345,9 @@ def test_build_push_data_includes_full_content(db, config):
     assert parsed.utcoffset() == timedelta(0)
 
 
-def test_push_event_type_pl_unknown_passthrough(db, config):
-    """[1.1d] An unknown event_type yields the raw token in event_type_pl (the
-    server's mapping is `.get(event_type, event_type)`), not Polish, not null.
+def test_push_event_type_pl_unknown_default(db, config):
+    """[2.14] An off-enum event_type renders the generic Polish default in the push
+    data, never a raw English token -- alerts are in Polish.
     """
     event, _a1, _a2 = _make_event_with_sources(db)
     event.event_type = "totally_unknown_type"
@@ -1355,8 +1356,22 @@ def test_push_event_type_pl_unknown_passthrough(db, config):
 
     assert "totally_unknown_type" not in EVENT_TYPE_PL
     assert data["event_type"] == "totally_unknown_type"
-    assert data["event_type_pl"] == EVENT_TYPE_PL.get("totally_unknown_type", "totally_unknown_type")
-    assert data["event_type_pl"] == "totally_unknown_type"
+    assert data["event_type_pl"] == _event_type_pl("totally_unknown_type")
+    assert data["event_type_pl"] == "Zdarzenie militarne"
+
+
+def test_event_type_pl_helper_defaults_to_polish():
+    """[2.14] _event_type_pl maps known enum values and falls back to a Polish default.
+
+    A hallucinated type outside the prompt enum (the corroborator already
+    anticipates 'aerial_bombardment' / 'ground_assault') must render in Polish, not
+    as a raw English token, in any phone/SMS/push alert.
+    """
+    assert _event_type_pl("missile_strike") == "Uderzenie rakietowe"
+    assert _event_type_pl("official_statement") == "Oświadczenie oficjalne"
+    assert _event_type_pl("aerial_bombardment") == "Zdarzenie militarne"
+    assert _event_type_pl("ground_assault") == "Zdarzenie militarne"
+    assert _event_type_pl(None) == "Zdarzenie militarne"
 
 
 def test_push_sources_carry_urls(db, config):

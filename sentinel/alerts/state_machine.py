@@ -43,6 +43,25 @@ EVENT_TYPE_PL = {
     "none": "Zdarzenie",
 }
 
+# Generic Polish fallback for any event_type NOT in EVENT_TYPE_PL. The classifier
+# output is free-form JSON, so a hallucinated type outside the prompt enum (e.g.
+# "aerial_bombardment" / "ground_assault", which the corroborator already
+# anticipates) must never surface as a raw English token in a Polish
+# phone/SMS/push alert (2.14: alerts are in Polish). Every prompt-enum value is
+# mapped above, so this only ever fires for an off-enum classification.
+_EVENT_TYPE_PL_DEFAULT = "Zdarzenie militarne"
+
+
+def _event_type_pl(event_type: str | None) -> str:
+    """Polish rendering of an event_type, with a generic Polish fallback (2.14).
+
+    Centralizes the EVENT_TYPE_PL lookup so every render site (call TTS, SMS, SMS
+    update, push body, push data, confirmation SMS) shares the same Polish default
+    instead of leaking the raw English token.
+    """
+    return EVENT_TYPE_PL.get(event_type, _EVENT_TYPE_PL_DEFAULT)
+
+
 # Twilio rejects a concatenated SMS body over 1600 characters. Cap below that
 # with a margin; the source list is trimmed to fit so heavily-corroborated
 # events (many long Google News redirect URLs) don't blow past the limit and
@@ -154,7 +173,7 @@ def _get_latest_source_name(event: Event, db: Database) -> str:
 
 def _format_call_message(event: Event, config: SentinelConfig) -> str:
     """Format the phone call TTS message in Polish using config template."""
-    event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
+    event_type_pl = _event_type_pl(event.event_type)
     template = config.alerts.templates.call
     return template.format(
         event_type_pl=event_type_pl,
@@ -169,7 +188,7 @@ def _format_sms_message(event: Event, db: Database, config: SentinelConfig) -> s
 
     Includes per-source detail lines by looking up articles from the DB.
     """
-    event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
+    event_type_pl = _event_type_pl(event.event_type)
     countries_str = ", ".join(event.affected_countries)
     first_seen_local = format_warsaw(event.first_seen_at)
     template = config.alerts.templates.sms
@@ -206,7 +225,7 @@ def _format_update_sms(event: Event, db: Database, config: SentinelConfig) -> st
 
     Includes the name of the most recent source.
     """
-    event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
+    event_type_pl = _event_type_pl(event.event_type)
     new_source_name = _get_latest_source_name(event, db)
 
     template = config.alerts.templates.sms_update
@@ -230,7 +249,7 @@ def _format_push(event: Event, is_update: bool = False) -> tuple[str, str]:
     actually truncated. The full untrimmed summary still travels in
     ``data.summary_pl`` (the inbox renders from ``data``, not ``body``).
     """
-    event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
+    event_type_pl = _event_type_pl(event.event_type)
     title = (
         f"ℹ️ SENTINEL — aktualizacja: {event_type_pl}" if is_update else f"\U0001f6a8 PROJECT SENTINEL: {event_type_pl}"
     )
@@ -333,7 +352,7 @@ def _build_push_data(event: Event, db: Database, config: SentinelConfig, is_upda
         "event_id": event.id,
         "kind": "update" if is_update else "event",
         "event_type": event.event_type,
-        "event_type_pl": EVENT_TYPE_PL.get(event.event_type, event.event_type),
+        "event_type_pl": _event_type_pl(event.event_type),
         "urgency_score": event.urgency_score,
         "affected_countries": list(event.affected_countries),
         # 1.1d/1.1: these two fields are typed str and default to "" in the
@@ -1215,7 +1234,7 @@ class AlertStateMachine:
     async def _send_confirmation_sms(self, event: Event) -> None:
         """Send an SMS with a random 6-digit confirmation code."""
         phone_number = self.config.alerts.phone_number
-        event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
+        event_type_pl = _event_type_pl(event.event_type)
 
         # Generate a candidate 6-digit code, but only register it (as the active
         # code, in the matchable history set, and paired with its SID) once the SMS

@@ -90,6 +90,11 @@ class MonitoringConfig(BaseModel):
 # Geography models
 # ---------------------------------------------------------------------------
 
+# A geography tier-list entry must be a bare 2-letter uppercase ISO country code
+# (PL, RO, ...), never a country name. resolve_country() only ever produces such
+# codes, so a name in a tier list would silently never match.
+_ISO_COUNTRY_CODE_RE = re.compile(r"^[A-Z]{2}$")
+
 
 class GeographyConfig(BaseModel):
     """Country-level geography tiers.
@@ -140,6 +145,56 @@ class GeographyConfig(BaseModel):
         {"code": "UA", "name": "Ukraine", "name_native": "Ukraina"},
         {"code": "MD", "name": "Moldova", "name_native": "Mołdawia"},
     ]
+
+    @model_validator(mode="after")
+    def _validate_country_codes(self) -> "GeographyConfig":
+        """Fail fast on a name-vs-code typo in any geography tier list.
+
+        Unlike a misconfigured band map (guarded by AlertsConfig), a bad geography
+        list fails SILENTLY: a typo such as ``floor_countries: [Poland]`` (the
+        country NAME instead of the ISO code ``PL``) or ``high_tier_countries:
+        [Poland]`` loads clean, then silently routes an urgency-10 Poland event to
+        NOTIFY and disables the 2.11 PL kinetic floor -- and that LOW demotion is
+        the one mechanism able to silence a 9-10 phone call (life-safety, prime
+        directive). So (a) every tier-list entry MUST be a 2-letter uppercase ISO
+        code, and (b) every floor / nato-target / low-tier entry MUST resolve
+        against the countries this block declares (a floor country present in no
+        tier list can never be produced by resolve_country, so it would never
+        floor). A geography typo must break at config load, never in production.
+        """
+        code_lists = {
+            "high_tier_countries": self.high_tier_countries,
+            "low_tier_countries": self.low_tier_countries,
+            "floor_countries": self.floor_countries,
+            "nato_attack_targets": self.nato_attack_targets,
+        }
+        for name, values in code_lists.items():
+            for code in values:
+                if not isinstance(code, str) or not _ISO_COUNTRY_CODE_RE.match(code):
+                    raise ValueError(
+                        f"geography.{name} entries must be 2-letter uppercase ISO country codes "
+                        f"(e.g. 'PL', not 'Poland'), got {code!r}"
+                    )
+
+        # The set of countries this block knows about: every tier-list code plus
+        # the code of each country_names alias. resolve_country() can only ever
+        # return a code in (roughly) this set, so a floor/nato/low entry outside it
+        # is dead config that never fires.
+        known: set[str] = set(self.high_tier_countries) | set(self.low_tier_countries) | set(self.nato_attack_targets)
+        for entry in self.country_names:
+            code = str(entry.get("code", "")).strip().upper()
+            if code:
+                known.add(code)
+
+        for name in ("floor_countries", "nato_attack_targets", "low_tier_countries"):
+            for code in getattr(self, name):
+                if code not in known:
+                    raise ValueError(
+                        f"geography.{name} entry {code!r} is not a known country -- it appears in no "
+                        "geography tier list and no country_names alias, so it can never resolve "
+                        "(a floor/NATO target that resolves to nothing silently never fires)"
+                    )
+        return self
 
 
 # The classifier's urgency scale (classifier.py clamps to this range). The band

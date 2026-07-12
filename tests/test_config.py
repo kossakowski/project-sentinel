@@ -1,6 +1,7 @@
 """Tests for sentinel.config configuration system."""
 
 import os
+import re
 
 import pytest
 import yaml
@@ -422,6 +423,55 @@ def test_geography_defaults():
     assert "debris_found" not in geo.kinetic_event_types
     assert "official_statement" not in geo.kinetic_event_types
     assert "missile_strike" in geo.kinetic_event_types
+
+
+def test_geography_rejects_name_or_unknown_code_in_tier_list():
+    """A name-vs-code typo (or an unresolvable code) in a geography tier list fails AT LOAD.
+
+    Unlike a bad band map, a bad geography list otherwise fails SILENTLY:
+    floor_countries: ['Poland'] (the country NAME) would disable the 2.11 PL kinetic
+    floor and route an urgency-10 Poland strike to SMS with every test green. It must
+    raise at config construction instead.
+    """
+    # A country NAME instead of an ISO code -> rejected (format check).
+    with pytest.raises(ValidationError):
+        GeographyConfig(floor_countries=["Poland"])
+    with pytest.raises(ValidationError):
+        GeographyConfig(high_tier_countries=["Poland", "LT", "LV", "EE", "RO"])
+    # A lowercase code is not a valid ISO token either.
+    with pytest.raises(ValidationError):
+        GeographyConfig(floor_countries=["pl"])
+    # A well-formed code that resolves against no tier list / alias -> rejected (it
+    # could never floor, so it is dead config).
+    with pytest.raises(ValidationError):
+        GeographyConfig(floor_countries=["ZZ"])
+    # The shipped defaults still construct cleanly.
+    assert GeographyConfig().floor_countries == ["PL"]
+
+
+def test_shipped_config_floor_countries_valid():
+    """[2.11] The tracked config files ship a non-empty, valid geography.floor_countries.
+
+    floor_countries is what floors a kinetic Polish strike to the call tier; a
+    name-vs-code typo or an empty list would silently disable the PL floor with every
+    unit test green, so the shipped YAML is asserted directly (mirrors the shipped
+    high_tier / channel-both checks).
+    """
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    def _load(relpath):
+        with open(os.path.join(repo_root, relpath)) as f:
+            return yaml.safe_load(f)
+
+    for relpath in ("config/config.yaml", "config/config.example.yaml"):
+        geo = _load(relpath)["geography"]
+        floor = geo["floor_countries"]
+        assert floor, f"{relpath}: geography.floor_countries must be non-empty"
+        for code in floor:
+            assert isinstance(code, str) and re.fullmatch(r"[A-Z]{2}", code), (
+                f"{relpath}: floor_countries entry {code!r} must be a 2-letter uppercase ISO code"
+            )
+        assert "PL" in floor, f"{relpath}: Poland must be in geography.floor_countries"
 
 
 def test_channel_band_rejects_unknown_class():

@@ -352,6 +352,50 @@ class TestCorroborator:
         assert article1.id in updated_event.article_ids
         assert article2.id in updated_event.article_ids
 
+    def test_later_target_lifts_targetless_event_to_call(self, db, config):
+        """A later article naming Polish soil as target lifts a targetless event to CALL.
+
+        The classifier emits the placeholder "unknown" target for a targetless first
+        article. That placeholder is a TRUTHY string, so a naive `not
+        event.target_country` check would treat the event as "already targeted" and
+        NEVER adopt a later concrete PL target -- pinning the merged urgency-9 event
+        at LOW (via its non-HIGH affected country) and demoting its call to an SMS.
+        Adoption must instead gate on whether the current target RESOLVES, so the
+        second article's PL target is adopted and the escalation reaches phone_call.
+        """
+        corroborator = Corroborator(db, config)
+
+        article1 = _make_article(
+            source_name="SourceA",
+            source_url="https://source-a.com/1",
+            title="Explosions reported near a border",
+        )
+        article2 = _make_article(
+            source_name="SourceB",
+            source_url="https://source-b.com/2",
+            title="Poland confirmed as the struck territory",
+        )
+        db.insert_article(article1)
+        db.insert_article(article2)
+
+        # First article: sms-tier, target unresolved (placeholder), affected = Moldova (LOW).
+        c1 = _make_classification(article1, urgency_score=6, affected_countries=["MD"], target_country="unknown")
+        events1 = corroborator.process_classifications([c1])
+        assert len(events1) == 1
+        assert events1[0].alert_status == "sms"
+        assert events1[0].target_country == "unknown"
+
+        # Second article: same incident (merges), now naming Poland as the physical
+        # target at call urgency.
+        c2 = _make_classification(article2, urgency_score=9, affected_countries=["MD"], target_country="PL")
+        events2 = corroborator.process_classifications([c2])
+        assert len(events2) == 1
+        assert events2[0].id == events1[0].id
+        # The concrete PL target is adopted over the placeholder ...
+        assert events2[0].target_country == "PL"
+        # ... lifting the geo tier to HIGH so the urgency-9 escalation reaches a call.
+        assert events2[0].alert_status == "phone_call"
+
     def test_low_urgency_no_event(self, db, config):
         """Urgency 1-4 -> no event created (log only)."""
         corroborator = Corroborator(db, config)
