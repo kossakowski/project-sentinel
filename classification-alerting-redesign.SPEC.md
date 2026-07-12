@@ -405,7 +405,13 @@ the retry loop. The bound MUST NOT rely on in-memory state (it survives restarts
 §7.)_
 
 **1.3** — A failed primary send MUST NOT silently drop the alert: it is recorded (1.1) and retried up
-to the cap (1.2). Fail-loud, never fail-silent. _(Prime directive.)_
+to the cap (1.2). Fail-loud, never fail-silent. _(Prime directive.)_ `[clarified 2026-07-12]`
+"Retried up to the cap (1.2)" is scoped to the **phone-call tier**: the cap in 1.2 is the phone-retry
+round counter (`events.alert_round_count`), which exists only for the urgency 9–10 call. For the
+SMS/push tiers, a failed send satisfies this requirement by being **durably recorded** (1.1/1.4) —
+there is no 9–10 miss risk because a 9–10 event's call retries to the cap while push/SMS are
+additive. A bounded SMS/push *re-send* mechanism (its own counter/cap/tests) is NOT part of Phase 1
+and is deferred to a future phase.
 
 **1.4** — The Twilio/push clients MUST return a structured send result carrying the error
 code/detail on failure (replacing the bare `None`-return), so the caller can persist the failure
