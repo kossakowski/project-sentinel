@@ -129,16 +129,20 @@ async def test_new_critical_event_triggers_call(_sleep, state_machine, mock_twil
 
 
 # --------------------------------------------------------------------------
-# 2. test_single_source_critical_triggers_sms
+# 2. test_single_source_critical_triggers_call
 # --------------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_single_source_critical_triggers_sms(state_machine, mock_twilio):
-    """Urgency 10 + 1 source -> SMS only (wait for corroboration)."""
+@patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
+async def test_single_source_critical_triggers_call(_sleep, state_machine, mock_twilio):
+    """[2.2, 2.4] Urgency 10 + 1 source -> phone call (corroboration deleted).
+
+    A single-source call-tier event fires a call immediately; there is no
+    corroboration wait. Prime directive: never miss a 9-10.
+    """
     event = _make_event(urgency_score=10, source_count=1)
     await state_machine.process_event(event)
 
-    mock_twilio.send_sms.assert_called_once()
-    mock_twilio.make_alert_call.assert_not_called()
+    assert mock_twilio.make_alert_call.call_count >= 1
 
 
 # --------------------------------------------------------------------------
@@ -162,7 +166,7 @@ async def test_medium_urgency_triggers_sms(state_machine, mock_twilio, config):
     """Urgency 6 -> SMS."""
     from sentinel.config import UrgencyLevel
 
-    config.alerts.urgency_levels["medium"] = UrgencyLevel(min_score=5, action="sms", corroboration_required=1)
+    config.alerts.urgency_levels["medium"] = UrgencyLevel(min_score=5, action="sms")
 
     event = _make_event(urgency_score=6, source_count=1)
     await state_machine.process_event(event)
@@ -429,18 +433,19 @@ async def test_sms_not_resent_when_new_article_added(state_machine, db, mock_twi
 
 
 # --------------------------------------------------------------------------
-# 15. test_corroboration_upgrade_triggers_call
+# 15. test_single_source_critical_calls_on_first_dispatch
 # --------------------------------------------------------------------------
 @pytest.mark.asyncio
 @patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
-async def test_corroboration_upgrade_triggers_call(_sleep, state_machine, db, mock_twilio):
-    """Event starts with 1 source -> SMS, updated to 2 sources -> phone call."""
-    event_id = str(uuid4())
-    article_id_1 = str(uuid4())
+async def test_single_source_critical_calls_on_first_dispatch(_sleep, state_machine, db, mock_twilio):
+    """[2.2] A call-tier event calls on its FIRST dispatch, single source, no wait.
 
-    # Step 1: event with 1 source -> should send SMS
+    Corroboration is deleted: there is no "1 source -> SMS, 2 sources -> call"
+    upgrade path. A single-source urgency-10 event on monitored soil fires the
+    call immediately.
+    """
     event = Event(
-        id=event_id,
+        id=str(uuid4()),
         event_type="missile_strike",
         urgency_score=10,
         affected_countries=["PL"],
@@ -449,21 +454,9 @@ async def test_corroboration_upgrade_triggers_call(_sleep, state_machine, db, mo
         first_seen_at=datetime.now(UTC),
         last_updated_at=datetime.now(UTC),
         source_count=1,
-        article_ids=[article_id_1],
+        article_ids=[str(uuid4())],
         alert_status="pending",
     )
-    await state_machine.process_event(event)
-    mock_twilio.send_sms.assert_called_once()
-    mock_twilio.make_alert_call.assert_not_called()
-
-    # Step 2: event now has 2 sources (corroborated)
-    # The sms_sent record is in the DB, but it's not a pending phone_call
-    # so the state machine should re-evaluate and trigger a phone call
-    article_id_2 = str(uuid4())
-    event.source_count = 2
-    event.article_ids = [article_id_1, article_id_2]
-    event.alert_status = "pending"
-
     await state_machine.process_event(event)
     assert mock_twilio.make_alert_call.call_count >= 1
 
@@ -920,7 +913,6 @@ def _set_channel(config, level_name: str, channel: str) -> None:
     config.alerts.urgency_levels[level_name] = UrgencyLevel(
         min_score=existing.min_score,
         action=existing.action,
-        corroboration_required=existing.corroboration_required,
         channel=channel,
     )
 
@@ -940,31 +932,27 @@ async def test_determine_action_medium_returns_channel(state_machine, config):
     from sentinel.config import UrgencyLevel
 
     for channel in ("push", "both", "sms"):
-        config.alerts.urgency_levels["medium"] = UrgencyLevel(
-            min_score=5, action="sms", corroboration_required=1, channel=channel
-        )
+        config.alerts.urgency_levels["medium"] = UrgencyLevel(min_score=5, action="sms", channel=channel)
         event = _make_event(urgency_score=5, source_count=1)
         assert state_machine._determine_action(event) == channel
 
 
 def test_determine_action_critical_call_when_corroborated(state_machine):
-    """[1.2a] Score 10, sources 2, corr 1 -> phone_call (channel ignored)."""
+    """[2.4, 2.5] Score 10 on HIGH-geo soil -> phone_call (channel ignored)."""
     event = _make_event(urgency_score=10, source_count=2)
     assert state_machine._determine_action(event) == "phone_call"
 
 
-def test_determine_action_critical_single_source_fallback_sms(state_machine, config):
-    """[1.2a] Score 10 under-corroborated -> 'sms' fallback, never push/both."""
-    from sentinel.config import UrgencyLevel
+def test_determine_action_critical_single_source_calls(state_machine):
+    """[2.2, 2.4] Score 10 with a SINGLE source -> phone_call, no corroboration gate.
 
-    # critical requires 2 sources; provide only 1.
-    config.alerts.urgency_levels["critical"] = UrgencyLevel(
-        min_score=9, action="phone_call", corroboration_required=2, fallback="sms"
-    )
+    Corroboration is deleted: a call-tier event on monitored soil fires a call
+    regardless of source count (prime directive -- never miss a 9-10).
+    """
     event = _make_event(urgency_score=10, source_count=1)
     action = state_machine._determine_action(event)
-    assert action == "sms"
-    assert action not in ("push", "both")
+    assert action == "phone_call"
+    assert action not in ("sms", "push", "both")
 
 
 def test_determine_action_low_logs_only(state_machine, config):
@@ -989,14 +977,14 @@ def test_determine_action_order_independent(state_machine, config):
 
     config.alerts.urgency_levels = {
         "low": UrgencyLevel(min_score=1, action="log_only"),
-        "critical": UrgencyLevel(min_score=9, action="phone_call", corroboration_required=1, fallback="sms"),
-        "medium": UrgencyLevel(min_score=5, action="sms", corroboration_required=1, channel="sms"),
-        "high": UrgencyLevel(min_score=7, action="sms", corroboration_required=1, channel="push"),
+        "critical": UrgencyLevel(min_score=9, action="phone_call", fallback="sms"),
+        "medium": UrgencyLevel(min_score=5, action="sms", channel="sms"),
+        "high": UrgencyLevel(min_score=7, action="sms", channel="push"),
     }
 
     # Score 7 must match `high` (its channel), not the earlier-inserted `low`.
     assert state_machine._determine_action(_make_event(urgency_score=7, source_count=1)) == "push"
-    # Score 10 corroborated must match `critical` -> phone_call.
+    # Score 10 must resolve to the CALL band -> phone_call (no corroboration gate).
     assert state_machine._determine_action(_make_event(urgency_score=10, source_count=1)) == "phone_call"
     # Score 5 must match `medium` (its channel), not `high` or `critical`.
     assert state_machine._determine_action(_make_event(urgency_score=5, source_count=1)) == "sms"

@@ -6,8 +6,10 @@ import re
 import uuid
 from datetime import UTC, datetime, timedelta
 
+from sentinel.alerts.policy import AlertPolicy, ChannelClass, EventDecision, Relation
 from sentinel.alerts.push_client import ExpoPushClient
 from sentinel.alerts.twilio_client import TwilioClient
+from sentinel.classification.geo_weighter import GeoWeighter
 from sentinel.config import SentinelConfig
 from sentinel.database import Database
 from sentinel.models import AlertRecord, Event
@@ -34,6 +36,11 @@ EVENT_TYPE_PL = {
     "drone_attack": "Atak dronów",
     "debris_found": "Znalezione szczątki",
     "official_statement": "Oświadczenie oficjalne",
+    # Catch-all classifier enum values (2.14): every event_type MUST render in
+    # Polish -- alerts are in Polish, so an unmapped type must never surface as a
+    # raw English token in a phone/SMS message.
+    "other": "Inne zdarzenie militarne",
+    "none": "Zdarzenie",
 }
 
 # Twilio rejects a concatenated SMS body over 1600 characters. Cap below that
@@ -392,6 +399,12 @@ class AlertStateMachine:
         self.config = config
         self.push = push_client or ExpoPushClient(config)
         self.logger = logging.getLogger("sentinel.alerts.state_machine")
+        # The state machine no longer decides the alert band itself: _determine_action
+        # delegates the channel-class decision to the single AlertPolicy authority
+        # (corroboration removed). GeoWeighter supplies the event-level geo tier the
+        # policy's call gate consumes.
+        self.policy = AlertPolicy(config)
+        self.geo_weighter = GeoWeighter(config)
         # Per-event confirmation state (1.5): keyed by event_id so a reply to one
         # event's code can never acknowledge a different event. Previously bare
         # instance attributes, which were only safe because dispatch is serialized.
@@ -749,45 +762,53 @@ class AlertStateMachine:
         return datetime.now(UTC) >= last_call_time + retry_interval
 
     def _determine_action(self, event: Event) -> str:
-        """Resolve the delivery action for an event from the urgency tiers.
+        """Resolve the delivery action for an event, delegating the band to AlertPolicy.
 
         Returns one of: "phone_call", "sms", "push", "both", "log_only".
 
-        Decision matrix (from config urgency_levels):
-          9-10 + 2+ sources -> phone_call          (never push/both — AD-2)
-          9-10 + 1 source   -> sms                 (existing fallback)
-          7-8               -> high.channel         (sms | push | both)
-          5-6               -> medium.channel       (sms | push | both)
-          1-4               -> log_only
+        The CALL / NOTIFY / NONE channel-class decision comes from the single
+        AlertPolicy authority (corroboration removed -- no source-count gate). The
+        geo tier is derived from the event's affected countries (fail-open toward
+        HIGH for an unresolved call-urgency event). The class then maps back to the
+        state machine's fine-grained action vocabulary:
 
-        For the SMS-action tiers (5-8) the matched level's `channel` is returned
-        so the operator can route that tier to SMS, push, or both. The 9-10
-        phone_call path ignores `channel` entirely; log_only is returned as-is.
+          CALL   -> "phone_call"   (never push/both -- AD-2)
+          NOTIFY -> the matched SMS tier's channel ("sms" | "push" | "both")
+          NONE   -> "log_only"
 
-        Urgency levels are sorted by min_score descending to avoid
-        dependency on dict insertion order.
+        The per-tier ``channel`` routing for NOTIFY is preserved so an operator can
+        still send a tier to SMS, push, or both.
         """
-        score = event.urgency_score
-        source_count = event.source_count
+        geo_tier = self.geo_weighter.tier_for_affected(event.affected_countries)
+        intent = self.policy.decide(
+            EventDecision(Relation.NEW),
+            urgency=event.urgency_score,
+            geo_tier=geo_tier,
+        )
 
+        if intent.channel_class is ChannelClass.CALL:
+            return "phone_call"
+        if intent.channel_class is ChannelClass.NONE:
+            return "log_only"
+        return self._notify_channel(event.urgency_score)
+
+    def _notify_channel(self, score: int) -> str:
+        """The per-tier delivery channel for a NOTIFY-band event.
+
+        Returns the matched SMS-action urgency level's ``channel``
+        ("sms" | "push" | "both"). Levels are sorted by ``min_score`` descending so
+        the resolved channel is independent of dict insertion order; falls back to
+        "sms" if no SMS-action tier matches.
+        """
         sorted_levels = sorted(
             self.config.alerts.urgency_levels.items(),
             key=lambda kv: kv[1].min_score,
             reverse=True,
         )
-
         for _level_name, level in sorted_levels:
-            if score >= level.min_score:
-                if level.action == "phone_call":
-                    if source_count >= level.corroboration_required:
-                        return "phone_call"
-                    else:
-                        return "sms"
-                if level.action == "sms":
-                    return level.channel  # "sms" | "push" | "both"
-                return level.action  # e.g. "log_only"
-
-        return "log_only"
+            if score >= level.min_score and level.action == "sms":
+                return level.channel  # "sms" | "push" | "both"
+        return "sms"
 
     def _is_in_cooldown(self, event: Event) -> bool:
         """Check if the event is within the cooldown period after acknowledgment."""

@@ -210,7 +210,11 @@ class TestCorroborator:
         assert events1[0].id != events2[0].id
 
     def test_source_independence(self, db, config):
-        """Same Reuters story on 3 sites -> source_count=1, not 3."""
+        """Same Reuters story on 3 sites -> one event; source_count counts merged articles.
+
+        Independent-source / syndication dedup is deleted (corroboration removed):
+        source_count is now simply the number of articles merged into the event.
+        """
         corroborator = Corroborator(db, config)
 
         # Three articles with 90%+ similar titles (syndicated content)
@@ -240,9 +244,9 @@ class TestCorroborator:
 
         events = corroborator.process_classifications([c1, c2, c3])
 
-        # All should be in the same event, but source_count should remain 1
+        # All merge into the same event; source_count now counts the 3 articles.
         final_event = events[-1]
-        assert final_event.source_count == 1
+        assert final_event.source_count == 3
 
     def test_corroboration_threshold_met(self, db, config):
         """2 independent sources with urgency >= 9 -> event eligible for phone call."""
@@ -270,8 +274,12 @@ class TestCorroborator:
         assert final_event.source_count == 2
         assert final_event.alert_status == "phone_call"
 
-    def test_corroboration_threshold_not_met(self, db, config):
-        """1 source for critical event -> SMS only, not phone call."""
+    def test_single_source_critical_is_call(self, db, config):
+        """1 source, urgency 9 on monitored soil -> phone_call (corroboration deleted).
+
+        There is no source-count gate anymore: a single-source call-tier event on
+        HIGH-geo soil is call-tier immediately.
+        """
         corroborator = Corroborator(db, config)
 
         article = _make_article(
@@ -285,8 +293,7 @@ class TestCorroborator:
 
         assert len(events) == 1
         assert events[0].source_count == 1
-        # With urgency 9 but only 1 source, should be SMS not phone_call
-        assert events[0].alert_status == "sms"
+        assert events[0].alert_status == "phone_call"
 
     def test_event_urgency_max(self, db, config):
         """Event with scores 7 and 9 -> event urgency = 9."""
@@ -421,7 +428,11 @@ class TestCorroborator:
         assert events[0].id != events[1].id
 
     def test_cross_source_type_syndication(self, db, config):
-        """Telegram post + RSS article quoting it verbatim -> source_count=1, not 2."""
+        """Telegram post + RSS article quoting it verbatim -> one event, source_count=2.
+
+        Syndication no longer suppresses source counting (independence dedup deleted);
+        the two articles still group into a single event by type/country/summary.
+        """
         corroborator = Corroborator(db, config)
 
         # Telegram post from official source
@@ -455,9 +466,8 @@ class TestCorroborator:
         events = corroborator.process_classifications([c1, c2])
 
         final_event = events[-1]
-        # Despite different source_types, identical titles should be detected
-        # as syndicated content -> source_count stays at 1
-        assert final_event.source_count == 1
+        # Both articles group into one event; source_count counts both.
+        assert final_event.source_count == 2
 
     def test_low_urgency_classification_stored(self, db, config):
         """Low-urgency classifications are stored in the database even though no event is created."""
@@ -579,12 +589,13 @@ class TestCorroborator:
         rows = db.conn.execute("SELECT * FROM events").fetchall()
         assert len(rows) == 2
 
-    def test_syndication_threshold_configurable(self, db, config):
-        """Overriding syndication_similarity_threshold=50 causes two cross-domain
-        articles with ~68% title fuzz.ratio to be flagged as syndicated, leaving
-        source_count at 1 instead of 2.
+    def test_cross_domain_articles_merge_and_count(self, db, config):
+        """Two cross-domain articles about the same incident merge into one event
+        and both count toward source_count.
+
+        Independent-source / syndication dedup is deleted, so source_count is the
+        number of merged articles regardless of cross-domain syndication.
         """
-        config.classification.syndication_similarity_threshold = 50
         corroborator = Corroborator(db, config)
 
         # Different domains, titles at fuzz.ratio ~68%, same summary so they merge.
@@ -619,12 +630,9 @@ class TestCorroborator:
         rows = db.conn.execute("SELECT * FROM events").fetchall()
         assert len(rows) == 1
         final_event = Event.from_row(rows[0])
-        # Indirect signal: identical summaries force the two articles to merge
-        # into one event; source_count stays at 1 (rather than incrementing
-        # to 2) only when _is_independent_source returns False under the
-        # lowered syndication threshold. The private method is not asserted
-        # directly.
-        assert final_event.source_count == 1
+        # Identical summaries force the two articles to merge into one event;
+        # source_count counts both merged articles.
+        assert final_event.source_count == 2
 
     def test_country_isolation_under_lowered_threshold(self, db, config):
         """Identical summaries on the SAME event_type but DIFFERENT affected

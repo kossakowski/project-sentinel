@@ -318,9 +318,9 @@ def test_config_loads_without_channel_keys(tmp_path):
         "alerts": {
             "phone_number": "+48123456789",
             "urgency_levels": {
-                "critical": {"min_score": 9, "action": "phone_call", "corroboration_required": 1},
-                "high": {"min_score": 7, "action": "sms", "corroboration_required": 1},
-                "medium": {"min_score": 5, "action": "sms", "corroboration_required": 1},
+                "critical": {"min_score": 9, "action": "phone_call"},
+                "high": {"min_score": 7, "action": "sms"},
+                "medium": {"min_score": 5, "action": "sms"},
                 "low": {"min_score": 1, "action": "log_only"},
             },
             "acknowledgment": {},

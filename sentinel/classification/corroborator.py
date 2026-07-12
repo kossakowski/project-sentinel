@@ -2,13 +2,14 @@
 
 import logging
 from datetime import UTC, datetime
-from urllib.parse import urlparse
 
 from rapidfuzz import fuzz
 
+from sentinel.alerts.policy import AlertPolicy, ChannelClass, EventDecision, Relation
+from sentinel.classification.geo_weighter import GeoWeighter
 from sentinel.config import SentinelConfig
 from sentinel.database import Database
-from sentinel.models import Article, ClassificationResult, Event, list_to_json
+from sentinel.models import ClassificationResult, Event, list_to_json
 
 # Compatible event types -- if two event types are in each other's sets, they
 # can be grouped into the same real-world event.
@@ -24,8 +25,13 @@ EVENT_COMPATIBILITY: dict[str, set[str]] = {
     "cyber_attack": {"cyber_attack"},
 }
 
-# Minimum urgency to create an event
-_MIN_EVENT_URGENCY = 5
+# event_type values whose event survives the pre-dedup gate even when the
+# classifier marks is_military_event=false. These meta-event types (inert-debris
+# recovery, official statements/reactions) are alert-relevant at their band; the
+# military-flag drop must not silently kill an sms-tier meta-event (2.13). The
+# exemption is deterministic here in code -- the classifier prompt rule (0.15)
+# alone is not a gate.
+_EVENT_GATE_EXEMPT_TYPES: frozenset[str] = frozenset({"debris_found", "official_statement"})
 
 # Alert-lifecycle statuses owned by the alert state machine's bounded phone-retry
 # loop. A merge must NOT re-derive an event's alert_status while it sits in one of
@@ -49,12 +55,31 @@ class Corroborator:
         self.config = config
         self.dry_run = dry_run or config.testing.dry_run
         self.logger = logging.getLogger("sentinel.corroborator")
+        # The Corroborator no longer makes alert decisions: it delegates the
+        # initial alert_status band to the single AlertPolicy authority. GeoWeighter
+        # supplies the event-level geo tier the policy's call gate needs.
+        self.policy = AlertPolicy(config)
+        self.geo_weighter = GeoWeighter(config)
+
+    def _passes_event_gate(self, result: ClassificationResult) -> bool:
+        """Config-driven pre-dedup event-creation gate (2.13).
+
+        A classification below ``dedup.min_event_urgency`` creates no event row
+        (its classification is still persisted). The ``is_military_event`` drop is
+        exempted for the 0.15 meta-event types so an sms-tier debris/statement
+        story is not silently dropped before the deduplicator.
+        """
+        if result.urgency_score < self.config.dedup.min_event_urgency:
+            return False
+        # is_military_event drop, exempted for the 0.15 meta-event types.
+        return result.event_type in _EVENT_GATE_EXEMPT_TYPES or result.is_military_event
 
     def process_classifications(self, results: list[ClassificationResult]) -> list[Event]:
         """Group classifications into events.
 
-        Returns list of events that need alerting (new or updated).
-        Only events with urgency >= 5 are created.
+        Returns list of events that need alerting (new or updated). Events are
+        created only for classifications that pass the config-driven pre-dedup
+        gate (``dedup.min_event_urgency`` + the military-flag exemption, 2.13).
         """
         alertable_events: list[Event] = []
 
@@ -62,12 +87,13 @@ class Corroborator:
             # Store every classification for auditing/cost tracking
             self.db.insert_classification(result)
 
-            # Only create events for military classifications with urgency >= 5
-            if not result.is_military_event or result.urgency_score < _MIN_EVENT_URGENCY:
+            if not self._passes_event_gate(result):
                 self.logger.debug(
-                    "Skipping low-urgency/non-military classification: article=%s urgency=%d",
+                    "Skipping sub-threshold classification: article=%s urgency=%d type=%s military=%s",
                     result.article_id,
                     result.urgency_score,
+                    result.event_type,
+                    result.is_military_event,
                 )
                 continue
 
@@ -75,9 +101,7 @@ class Corroborator:
             matching_event = self._find_matching_event(result)
 
             if matching_event is not None:
-                # Check source independence before incrementing source_count
-                is_independent = self._is_independent_source(result, matching_event)
-                updated_event = self._update_event(matching_event, result, is_independent)
+                updated_event = self._update_event(matching_event, result)
                 alertable_events.append(updated_event)
             else:
                 new_event = self._create_event(result)
@@ -228,62 +252,10 @@ class Corroborator:
             return True
         return bool(result_set & event_set)
 
-    def _is_independent_source(self, result: ClassificationResult, event: Event) -> bool:
-        """Determine if the new classification comes from an independent source.
-
-        Two articles from the same underlying source don't count as independent:
-        - Same domain -> not independent (regardless of source_type)
-        - High title similarity (>= syndication threshold) -> syndicated content,
-          not independent (checked across ALL source types to catch e.g. an RSS
-          article quoting a Telegram post verbatim)
-        """
-        syndication_threshold = self.config.classification.syndication_similarity_threshold
-
-        # Retrieve the article for this classification
-        article_row = self.db.conn.execute("SELECT * FROM articles WHERE id = ?", (result.article_id,)).fetchone()
-        if article_row is None:
-            return True
-
-        new_article = Article.from_row(article_row)
-
-        # Check against all existing articles in the event
-        for existing_article_id in event.article_ids:
-            existing_row = self.db.conn.execute(
-                "SELECT * FROM articles WHERE id = ?", (existing_article_id,)
-            ).fetchone()
-            if existing_row is None:
-                continue
-
-            existing_article = Article.from_row(existing_row)
-
-            # Same domain -> not independent (regardless of source_type)
-            new_domain = self._extract_domain(new_article.source_url)
-            existing_domain = self._extract_domain(existing_article.source_url)
-
-            if new_domain == existing_domain:
-                return False
-
-            # Check for syndication across ALL source types.
-            # Catches: RSS article quoting a Telegram post, GDELT picking up
-            # the same wire story, Google News linking to an already-seen article.
-            title_similarity = fuzz.ratio(new_article.title_normalized, existing_article.title_normalized)
-            if title_similarity >= syndication_threshold:
-                self.logger.debug(
-                    "Syndicated content detected (%.0f%% similarity, %s vs %s): '%s' vs '%s'",
-                    title_similarity,
-                    new_article.source_type,
-                    existing_article.source_type,
-                    new_article.title[:60],
-                    existing_article.title[:60],
-                )
-                return False
-
-        return True
-
     def _create_event(self, result: ClassificationResult) -> Event:
         """Create a new event from a classification."""
         now = datetime.now(UTC)
-        alert_status = self._determine_alert_status(urgency=result.urgency_score, source_count=1)
+        alert_status = self._alert_status_for(result.urgency_score, result.affected_countries)
 
         event = Event(
             event_type=result.event_type,
@@ -312,16 +284,19 @@ class Corroborator:
         self,
         event: Event,
         result: ClassificationResult,
-        is_independent: bool,
     ) -> Event:
-        """Add a new source to an existing event."""
+        """Add a new article to an existing event.
+
+        ``source_count`` now counts merged articles (corroboration / independent-
+        source accounting is deleted -- it no longer gates any alert). Article-level
+        URL/title dedup upstream (``processing/deduplicator.py``) already drops exact
+        duplicates before classification.
+        """
         # Update in-memory event
         event.article_ids.append(result.article_id)
         event.urgency_score = max(event.urgency_score, result.urgency_score)
         event.last_updated_at = datetime.now(UTC)
-
-        if is_independent:
-            event.source_count += 1
+        event.source_count += 1
 
         # Merge affected countries through the same normalization the matching
         # gate uses (uppercased, "unknown"/blank dropped) so stored data and
@@ -339,9 +314,7 @@ class Corroborator:
         # post-cap content to the SMS+push fallback). Preserve those; re-derive only
         # when the event is not mid-retry-lifecycle.
         if event.alert_status not in _RETRY_LIFECYCLE_STATUSES:
-            event.alert_status = self._determine_alert_status(
-                urgency=event.urgency_score, source_count=event.source_count
-            )
+            event.alert_status = self._alert_status_for(event.urgency_score, event.affected_countries)
 
         # Persist changes
         self.db.update_event(
@@ -354,46 +327,33 @@ class Corroborator:
         )
 
         self.logger.info(
-            "Event updated: id=%s, sources=%d (independent=%s), urgency=%d, alert=%s",
+            "Event updated: id=%s, sources=%d, urgency=%d, alert=%s",
             event.id[:8],
             event.source_count,
-            is_independent,
             event.urgency_score,
             event.alert_status,
         )
         return event
 
-    def _determine_alert_status(self, urgency: int, source_count: int) -> str:
-        """Determine the alert level for an event.
+    # Map the policy's channel class onto the event.alert_status vocabulary the
+    # alert state machine keys off (its retry sweep queries the "phone_call"
+    # status; "sms"/"pending" are non-call).
+    _CLASS_TO_STATUS = {
+        ChannelClass.CALL: "phone_call",
+        ChannelClass.NOTIFY: "sms",
+        ChannelClass.NONE: "pending",
+    }
 
-        When dry_run is active, always returns "dry_run" instead of a real status.
+    def _alert_status_for(self, urgency: int, affected_countries: list[str]) -> str:
+        """Initial ``alert_status`` for an event, delegated to the AlertPolicy.
 
-        - phone_call: urgency >= 9 AND source_count >= corroboration_required
-        - sms: urgency >= 7
-        - sms: urgency >= 5
+        The Corroborator no longer decides alert levels itself: it asks the single
+        AlertPolicy authority for the band (relation NEW; the deduplicator's
+        relation logic is applied later at dispatch). ``dry_run`` short-circuits.
         """
         if self.dry_run:
             return "dry_run"
 
-        corroboration_required = self.config.classification.corroboration_required
-
-        if urgency >= 9 and source_count >= corroboration_required:
-            return "phone_call"
-        if urgency >= 7:
-            return "sms"
-        if urgency >= 5:
-            return "sms"
-        return "pending"
-
-    @staticmethod
-    def _extract_domain(url: str) -> str:
-        """Extract the domain from a URL."""
-        try:
-            parsed = urlparse(url)
-            domain = parsed.netloc or parsed.path
-            # Strip www. prefix
-            if domain.startswith("www."):
-                domain = domain[4:]
-            return domain.lower()
-        except Exception:
-            return url.lower()
+        geo_tier = self.geo_weighter.tier_for_affected(affected_countries)
+        intent = self.policy.decide(EventDecision(Relation.NEW), urgency=urgency, geo_tier=geo_tier)
+        return self._CLASS_TO_STATUS[intent.channel_class]

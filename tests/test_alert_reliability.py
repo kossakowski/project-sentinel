@@ -1680,28 +1680,23 @@ async def test_placed_then_failed_call_counts_as_transport_failure(_sleep, state
 @pytest.mark.asyncio
 @patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
 async def test_sweep_skips_event_whose_action_is_not_call(_sleep, state_machine, db, mock_twilio, config):
-    """The sweep re-checks the corroboration gate before re-calling a phone_call event.
+    """The sweep re-checks the action gate before re-calling a phone_call event.
 
     The corroborator's 'phone_call' status and the state machine's _determine_action
-    are independent decisions that can diverge (e.g. the alerts-tier corroboration
-    requirement is raised above the classification one). A single-source event parked
-    in 'phone_call' whose action resolves to a non-call tier must NOT be swept into a
-    real uncorroborated call.
+    are independent decisions that can diverge: an event mis-parked in 'phone_call'
+    whose urgency actually resolves to a non-call (NOTIFY) band must NOT be swept
+    into a real call. Here an sms-tier (urgency 6) event is parked in 'phone_call';
+    the sweep must honor the gate and skip it.
     """
-    # Alerts-tier now requires 2 corroborating sources for the call tier.
-    for level in config.alerts.urgency_levels.values():
-        if level.action == "phone_call":
-            level.corroboration_required = 2
-
-    event = _make_event(urgency_score=10, source_count=1)  # only 1 source
+    event = _make_event(urgency_score=6, source_count=1)  # sms tier, not call
     event.alert_status = "phone_call"
     db.insert_event(event)
 
-    # Sanity: the action for this event is NOT a phone call under the raised gate.
+    # Sanity: the action for this sub-call-tier event is NOT a phone call.
     assert state_machine._determine_action(db.get_event_by_id(event.id)) != "phone_call"
 
     await state_machine.retry_pending_calls()
-    assert mock_twilio.make_alert_call.call_count == 0, "an under-corroborated event must not be swept into a call"
+    assert mock_twilio.make_alert_call.call_count == 0, "a non-call-tier event must not be swept into a call"
 
 
 # --------------------------------------------------------------------------

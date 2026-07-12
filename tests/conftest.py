@@ -63,7 +63,6 @@ def sample_config_dict():
             "model": "claude-haiku-4-5-20251001",
             "max_tokens": 512,
             "temperature": 0.0,
-            "corroboration_required": 2,
             "corroboration_window_minutes": 60,
             # Pin the legacy metric + threshold so existing grouping tests keep their
             # exact semantics; tests for the new behaviour set these explicitly.
@@ -77,7 +76,6 @@ def sample_config_dict():
                 "critical": {
                     "min_score": 9,
                     "action": "phone_call",
-                    "corroboration_required": 2,
                     "retry_attempts": 3,
                     "retry_interval_minutes": 5,
                     "fallback": "sms",
@@ -85,7 +83,6 @@ def sample_config_dict():
                 "high": {
                     "min_score": 7,
                     "action": "sms",
-                    "corroboration_required": 1,
                 },
             },
             "acknowledgment": {

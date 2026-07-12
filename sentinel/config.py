@@ -101,6 +101,42 @@ class GeographyConfig(BaseModel):
     # Whole countries whose soil is HIGH geo-tier (call-tier-eligible for a strike
     # anywhere on their territory, including the capital).
     high_tier_countries: list[str] = ["PL", "LT", "LV", "EE", "RO"]
+    # Classifier event_type values that count as a kinetic strike. Consumed by
+    # GeoWeighter (the Poland floor) and the Phase 3 kinetic separator. Excludes
+    # debris_found / official_statement -- inert-debris recovery and reaction
+    # stories are not kinetic strikes (owner labels PL debris = 8/sms).
+    kinetic_event_types: list[str] = [
+        "invasion",
+        "airstrike",
+        "missile_strike",
+        "artillery_shelling",
+        "drone_attack",
+    ]
+    # Countries whose soil, when a kinetic strike lands on it, floors the event to
+    # the call tier (>= 9) regardless of the LLM's number. Poland only by default:
+    # every kinetic strike on Polish soil in the ground truth is 9-10/call, while
+    # Baltic/Romanian strikes are scenario-conditional (carried by the prompt and
+    # the eval gates, not a universal floor).
+    floor_countries: list[str] = ["PL"]
+
+
+class ChannelBand(BaseModel):
+    """One urgency -> channel-class band (rubric v2 alert banding).
+
+    ``channel_class`` is one of ``call`` / ``notify`` / ``none``; the highest
+    ``min_score`` band an event's urgency clears wins.
+    """
+
+    min_score: int
+    channel_class: str
+
+    @field_validator("channel_class")
+    @classmethod
+    def _validate_channel_class(cls, v: str) -> str:
+        allowed = {"call", "notify", "none"}
+        if v not in allowed:
+            raise ValueError(f"channel_class must be one of {sorted(allowed)}, got {v!r}")
+        return v
 
 
 # ---------------------------------------------------------------------------
@@ -111,7 +147,6 @@ class GeographyConfig(BaseModel):
 class UrgencyLevel(BaseModel):
     min_score: int
     action: str
-    corroboration_required: int = 1
     retry_attempts: int = 0
     retry_interval_minutes: int = 5
     fallback: str | None = None
@@ -241,6 +276,15 @@ class AlertsConfig(BaseModel):
     retry: RetryConfig = RetryConfig()
     templates: AlertTemplates = AlertTemplates()
     push: PushConfig = PushConfig()
+    # Urgency -> channel-class bands (rubric v2), the single source of truth for
+    # AlertPolicy's band mapping: >= 9 -> call, 5-8 -> notify (SMS/push), <= 4 ->
+    # none. The per-tier `urgency_levels.*.channel` still routes a NOTIFY band to
+    # sms/push/both; these bands only decide the class.
+    channel_bands: list[ChannelBand] = [
+        ChannelBand(min_score=9, channel_class="call"),
+        ChannelBand(min_score=5, channel_class="notify"),
+        ChannelBand(min_score=1, channel_class="none"),
+    ]
 
     @model_validator(mode="after")
     def _validate_sweep_windows(self) -> "AlertsConfig":
@@ -275,7 +319,6 @@ class ClassificationConfig(BaseModel):
     model: str = "claude-haiku-4-5-20251001"
     max_tokens: int = 512
     temperature: float = 0.0
-    corroboration_required: int = 2
     corroboration_window_minutes: int = 360
     # Absolute cap (measured from first_seen_at) on how long one event keeps
     # absorbing articles. With the sliding (last-activity) corroboration window a
@@ -335,6 +378,20 @@ class ProcessingConfig(BaseModel):
     dedup: ProcessingDedup
 
 
+class DedupConfig(BaseModel):
+    """Event-deduplication settings (the new EventDeduplicator surface).
+
+    ``min_event_urgency`` is the config-driven pre-dedup event-creation gate that
+    replaces the hardcoded ``corroborator._MIN_EVENT_URGENCY``: a classification
+    whose urgency is below this does not create an event row (its classification
+    is still persisted). The military-flag drop is exempted for ``debris_found`` /
+    ``official_statement`` stories in code, so an sms-tier meta-event cannot be
+    dropped before the deduplicator sees it.
+    """
+
+    min_event_urgency: int = 5
+
+
 # ---------------------------------------------------------------------------
 # Top-level config
 # ---------------------------------------------------------------------------
@@ -351,6 +408,7 @@ class SentinelConfig(BaseModel):
     logging: LoggingConfig
     testing: TestingConfig
     processing: ProcessingConfig
+    dedup: DedupConfig = DedupConfig()
 
 
 # ---------------------------------------------------------------------------

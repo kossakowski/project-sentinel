@@ -348,6 +348,22 @@ geography:
   - LV
   - EE
   - RO
+  # Classifier event_type values counted as a kinetic strike. Consumed by the
+  # GeoWeighter Poland floor and the Phase 3 kinetic separator. Deliberately
+  # excludes debris_found / official_statement (inert debris and reactions are
+  # not kinetic strikes -- PL debris is 8/sms, not a call).
+  kinetic_event_types:
+  - invasion
+  - airstrike
+  - missile_strike
+  - artillery_shelling
+  - drone_attack
+  # Countries whose soil, when a kinetic strike lands, floors the event to the
+  # call tier (>= 9). Poland only: every kinetic strike on Polish soil in the
+  # ground truth is 9-10/call; Baltic/Romanian call-tier is scenario-conditional
+  # (carried by the classifier prompt + eval gates, not a universal floor).
+  floor_countries:
+  - PL
 sources:
   rss:
   - name: PAP
@@ -536,7 +552,6 @@ classification:
   model: claude-haiku-4-5-20251001
   max_tokens: 512
   temperature: 0.0
-  corroboration_required: 1
   corroboration_window_minutes: 360
   # Absolute cap (from first_seen_at) on how long one event keeps absorbing
   # articles; retires a perpetually-updated event so it can't chain-merge
@@ -551,18 +566,27 @@ classification:
 alerts:
   phone_number: ${ALERT_PHONE_NUMBER}
   language: pl
+  # Urgency -> channel-class bands (rubric v2). AlertPolicy's single band map:
+  # >= 9 -> call, 5-8 -> notify (SMS/push), <= 4 -> none (persisted, no alert).
+  # The per-tier `urgency_levels.*.channel` below still routes a NOTIFY band to
+  # sms/push/both; these bands only pick the class.
+  channel_bands:
+  - min_score: 9
+    channel_class: call
+  - min_score: 5
+    channel_class: notify
+  - min_score: 1
+    channel_class: none
   urgency_levels:
     critical:
       min_score: 9
       action: phone_call
-      corroboration_required: 1
       retry_attempts: 3
       retry_interval_minutes: 5
       fallback: sms
     high:
       min_score: 7
       action: sms
-      corroboration_required: 1
       # Delivery channel for this tier: sms | push | both. "both" is
       # behavior-preserving while push is disabled (SMS only); switch to "push"
       # to drop this tier's Twilio SMS cost once a push token is configured.
@@ -570,7 +594,6 @@ alerts:
     medium:
       min_score: 5
       action: sms
-      corroboration_required: 1
       # Delivery channel: sms | push | both (see `high` above).
       channel: both
     low:
@@ -665,6 +688,13 @@ logging:
   file: /var/log/sentinel/sentinel.log
   max_size_mb: 50
   backup_count: 5
+dedup:
+  # Pre-dedup event-creation gate (replaces the hardcoded corroborator
+  # _MIN_EVENT_URGENCY). A classification below this urgency does not create an
+  # event row (its classification is still persisted). The is_military_event drop
+  # is exempted in code for debris_found / official_statement so an sms-tier
+  # meta-event survives to the deduplicator.
+  min_event_urgency: 5
 testing:
   dry_run: false
   # Owner correctness gate: the blind human-labeled set (`./run.sh --eval`).

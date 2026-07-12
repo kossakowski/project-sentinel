@@ -18,6 +18,7 @@ from uuid import uuid4
 
 import yaml
 
+from sentinel.alerts.policy import AlertPolicy, ChannelClass, EventDecision, GeoTier, Relation
 from sentinel.classification.classifier import Classifier
 from sentinel.config import SentinelConfig
 from sentinel.models import Article, ClassificationResult
@@ -28,21 +29,27 @@ MONITORED_COUNTRIES = {"PL", "LT", "LV", "EE", "RO"}
 HAIKU_INPUT_PRICE_PER_M = 0.80
 HAIKU_OUTPUT_PRICE_PER_M = 4.00
 
+# Map the policy's channel class onto the eval's expected_action vocabulary.
+_CLASS_TO_EVAL_ACTION = {
+    ChannelClass.CALL: "phone_call",
+    ChannelClass.NOTIFY: "sms",
+    ChannelClass.NONE: "log_only",
+}
 
-def _action_for_urgency(urgency: int, has_monitored_country: bool) -> str:
-    """Derive the alert action tier from classifier output alone.
 
-    Phone calls require urgency >= 9 AND the article to name a monitored country
-    as the target. SMS covers 5-8. Everything else is log-only.
+def _action_for_result(result: ClassificationResult, policy: AlertPolicy) -> str:
+    """Derive the eval alert action from classifier output via the AlertPolicy.
 
-    Note: the live system also requires source corroboration before a phone call.
-    The eval can't check that — it tests the classifier in isolation.
+    A phone call requires urgency >= call-tier AND a monitored country as the
+    physical target (geo HIGH); otherwise a call-urgency event demotes to SMS.
+    The single AlertPolicy authority makes the band decision -- the eval no longer
+    keeps its own copy (corroboration is not consulted; the eval tests the
+    classifier in isolation).
     """
-    if urgency >= 9 and has_monitored_country:
-        return "phone_call"
-    if urgency >= 5:
-        return "sms"
-    return "log_only"
+    has_monitored = bool(set(result.affected_countries) & MONITORED_COUNTRIES)
+    geo_tier = GeoTier.HIGH if has_monitored else GeoTier.LOW
+    intent = policy.decide(EventDecision(Relation.NEW), urgency=result.urgency_score, geo_tier=geo_tier)
+    return _CLASS_TO_EVAL_ACTION[intent.channel_class]
 
 
 @dataclass
@@ -181,7 +188,7 @@ def _make_article(case: EvalCase) -> Article:
     )
 
 
-def _check_case(case: EvalCase, result: ClassificationResult) -> CaseResult:
+def _check_case(case: EvalCase, result: ClassificationResult, policy: AlertPolicy) -> CaseResult:
     checks: dict[str, bool] = {}
 
     checks["is_military_event"] = result.is_military_event == case.expected_is_military_event
@@ -203,8 +210,7 @@ def _check_case(case: EvalCase, result: ClassificationResult) -> CaseResult:
     if case.expected_event_type_any_of is not None:
         checks["event_type_in_set"] = result.event_type in case.expected_event_type_any_of
 
-    has_monitored = bool(set(result.affected_countries) & MONITORED_COUNTRIES)
-    actual_action = _action_for_urgency(result.urgency_score, has_monitored)
+    actual_action = _action_for_result(result, policy)
     checks["action_match"] = actual_action == case.expected_action
 
     return CaseResult(
@@ -234,6 +240,7 @@ async def run_eval(eval_set_path: str, config: SentinelConfig) -> EvalReport:
 
     cases = load_eval_set(eval_set_path)
     classifier = Classifier(config)
+    policy = AlertPolicy(config)
     case_results: list[CaseResult] = []
 
     for i, case in enumerate(cases, 1):
@@ -241,7 +248,7 @@ async def run_eval(eval_set_path: str, config: SentinelConfig) -> EvalReport:
         article = _make_article(case)
         try:
             result = await classifier.classify(article)
-            case_results.append(_check_case(case, result))
+            case_results.append(_check_case(case, result, policy))
         except Exception as e:
             case_results.append(
                 CaseResult(

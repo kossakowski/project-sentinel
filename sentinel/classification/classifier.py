@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 
 import anthropic
 
+from sentinel.classification.geo_weighter import GeoWeighter
 from sentinel.config import SentinelConfig
 from sentinel.models import Article, ClassificationResult
 
@@ -190,6 +191,8 @@ USER_PROMPT_TEMPLATE = (
     '|official_statement|other|none",\n'
     '  "urgency_score": 1-10,\n'
     '  "affected_countries": ["PL", "LT", "LV", "EE", "RO"],\n'
+    '  "target_country": "PL|LT|LV|EE|RO|RU|UA|MD|unknown|none",\n'
+    '  "attacker_is_nato": true/false,\n'
     '  "aggressor": "RU|BY|unknown|none",\n'
     '  "is_new_event": true/false,\n'
     '  "confidence": 0.0-1.0,\n'
@@ -225,7 +228,14 @@ USER_PROMPT_TEMPLATE = (
     "R11 NATO-attacks-Russia case, or the article concerns Moldova (incidents on Moldovan soil = "
     "around 6, per the GEOGRAPHY LADDER).\n"
     "- affected_countries: ONLY list countries EXPLICITLY mentioned in the article as attacked. "
-    "Do NOT infer affected countries from the monitoring scope. Use [] if none explicitly mentioned."
+    "Do NOT infer affected countries from the monitoring scope. Use [] if none explicitly mentioned.\n"
+    "- target_country: the SINGLE country whose soil is physically attacked/targeted (its ISO code), "
+    "resolved the same way as affected_countries (physical location; a named city/region counts; the "
+    "TARGET-COUNTRY GATE still applies to generic 'a NATO country' references). Use \"unknown\" if the "
+    "article does not physically target a specific country. For the R11 NATO-attacks-Russia case the "
+    'target_country is "RU".\n'
+    "- attacker_is_nato: true ONLY when the attacker carrying out the strike is a NATO country or NATO "
+    "member (the R11 case); false otherwise (a Russian/Belarusian/Ukrainian attacker is not NATO)."
 )
 
 # Regex to extract JSON from markdown-wrapped responses
@@ -239,6 +249,8 @@ class Classifier:
         self.config = config
         self.client = anthropic.AsyncAnthropic()  # Uses ANTHROPIC_API_KEY env var
         self.logger = logging.getLogger("sentinel.classifier")
+        # Deterministic post-LLM geography weighting (2.11 Poland kinetic floor).
+        self.geo_weighter = GeoWeighter(config)
 
         # Daily cost tracking
         self._daily_input_tokens = 0
@@ -259,13 +271,24 @@ class Classifier:
         # Clamp values to valid ranges
         urgency = max(1, min(10, int(data.get("urgency_score", 1))))
         confidence = max(0.0, min(1.0, float(data.get("confidence", 0.0))))
+        event_type = data.get("event_type", "none")
+        affected_countries = data.get("affected_countries", [])
+
+        # Deterministic geography floor (2.11): a kinetic strike on floor-country
+        # soil (default Poland) is at least call-tier, regardless of the LLM's
+        # number. Applied across the explicit target_country and every affected
+        # country; floor_urgency only ever raises urgency. attacker_is_nato /
+        # target_country are also the seam GeoWeighter's geo_tier consumes.
+        floor_targets = [data.get("target_country"), *affected_countries]
+        for target in floor_targets:
+            urgency = self.geo_weighter.floor_urgency(event_type, target, urgency)
 
         result = ClassificationResult(
             article_id=article.id,
             is_military_event=bool(data.get("is_military_event", False)),
-            event_type=data.get("event_type", "none"),
+            event_type=event_type,
             urgency_score=urgency,
-            affected_countries=data.get("affected_countries", []),
+            affected_countries=affected_countries,
             aggressor=data.get("aggressor", "none"),
             is_new_event=bool(data.get("is_new_event", True)),
             confidence=confidence,
