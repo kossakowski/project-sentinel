@@ -31,9 +31,10 @@ from twilio.base.exceptions import TwilioRestException
 
 from sentinel.alerts.state_machine import AlertStateMachine
 from sentinel.alerts.twilio_client import TwilioClient
+from sentinel.classification.corroborator import Corroborator
 from sentinel.config import RetryConfig
 from sentinel.database import Database
-from sentinel.models import AlertRecord, Event
+from sentinel.models import AlertRecord, Article, ClassificationResult, Event
 
 # --------------------------------------------------------------------------
 # Helpers / fixtures
@@ -109,6 +110,59 @@ def _fail_calls(mock_twilio) -> None:
     """Force make_alert_call to return a bare None (simulated transport failure)."""
     mock_twilio.make_alert_call.side_effect = None
     mock_twilio.make_alert_call.return_value = None
+
+
+def _corr_article(source_url: str, title: str) -> Article:
+    """Build a critical (invasion-of-Poland) Article for the corroborator path."""
+    return Article(
+        source_name="TestSource",
+        source_url=source_url,
+        source_type="rss",
+        title=title,
+        summary="Russian forces have begun operations.",
+        language="en",
+        published_at=datetime.now(UTC),
+        fetched_at=datetime.now(UTC),
+    )
+
+
+def _corr_classification(article: Article, summary_pl: str) -> ClassificationResult:
+    """Build a call-tier ClassificationResult that will merge into the seeded event."""
+    return ClassificationResult(
+        article_id=article.id,
+        is_military_event=True,
+        event_type="invasion",
+        urgency_score=9,
+        affected_countries=["PL"],
+        aggressor="RU",
+        is_new_event=False,
+        confidence=0.9,
+        summary_pl=summary_pl,
+        classified_at=datetime.now(UTC),
+        model_used="claude-haiku-4-5-20251001",
+        input_tokens=287,
+        output_tokens=94,
+    )
+
+
+def _seed_call_tier_event(db, article: Article, alert_status: str) -> Event:
+    """Insert a call-tier (invasion-of-Poland) event in the given alert_status."""
+    summary_pl = "Rosja dokonala inwazji na Polske."
+    event = Event(
+        event_type="invasion",
+        urgency_score=9,
+        affected_countries=["PL"],
+        aggressor="RU",
+        summary_pl=summary_pl,
+        first_seen_at=datetime.now(UTC),
+        last_updated_at=datetime.now(UTC),
+        source_count=2,
+        article_ids=[article.id],
+        alert_status=alert_status,
+        acknowledged_at=None,
+    )
+    db.insert_event(event)
+    return event
 
 
 # --------------------------------------------------------------------------
@@ -661,3 +715,70 @@ async def test_failed_terminal_escalation_alerts_despite_prior_push(_sleep, stat
     )
     assert mock_twilio.send_sms.call_count > sms_before, "a post-cap escalation must fall back to SMS"
     assert mock_twilio.make_alert_call.call_count == calls_before, "the phone-call cap must still hold"
+
+
+# --------------------------------------------------------------------------
+# 13. test_merge_preserves_retry_pending_status  [1.2, 1.3]
+# --------------------------------------------------------------------------
+def test_merge_preserves_retry_pending_status(db, config):
+    """A merge into a retry_pending event must not overwrite its alert_status.
+
+    A failed phone round leaves a call-tier event in ``retry_pending`` — the sole
+    signal the cycle-driven retry sweep (``get_events_by_alert_status`` →
+    ``retry_pending_calls``) uses to keep retrying it up to the cap. The
+    corroborator re-runs ``_update_event`` on EVERY matched article (even a
+    non-independent syndicated copy), and its ``_determine_alert_status`` knows
+    nothing of the retry lifecycle. If the merge re-derived the status the event
+    would drop out of the sweep and a failed urgency-9/10 call would never be
+    retried (prime-directive miss). The retry-lifecycle status must survive.
+    """
+    corroborator = Corroborator(db, config)
+    assert not corroborator.dry_run, "guard test needs a real (non-dry-run) status derivation"
+
+    seed_article = _corr_article("https://source-a.com/a1", "Russia invades Poland")
+    db.insert_article(seed_article)
+    event = _seed_call_tier_event(db, seed_article, alert_status="retry_pending")
+
+    # A fresh corroborating article merges into the retry_pending event.
+    new_article = _corr_article("https://source-b.com/a2", "Russian invasion of Poland confirmed")
+    db.insert_article(new_article)
+    classification = _corr_classification(new_article, event.summary_pl)
+
+    corroborator.process_classifications([classification])
+
+    merged = db.get_event_by_id(event.id)
+    # The article actually merged (source grew) ...
+    assert new_article.id in merged.article_ids
+    # ... but the retry-lifecycle status was preserved, not clobbered.
+    assert merged.alert_status == "retry_pending"
+    # ... so the cycle-driven sweep still returns it and keeps driving the retry.
+    assert any(e.id == event.id for e in db.get_events_by_alert_status("retry_pending"))
+
+
+# --------------------------------------------------------------------------
+# 14. test_merge_preserves_failed_terminal_status  [1.2, 1.3]
+# --------------------------------------------------------------------------
+def test_merge_preserves_failed_terminal_status(db, config):
+    """A merge into a failed_terminal event must not erase its terminal marker.
+
+    ``failed_terminal`` is the terminal state that keeps ``process_event``'s
+    post-cap SMS+push fallback routing genuinely new content. A later merged
+    article must not knock the event back to a live phone-call status, which
+    would re-open the exhausted retry loop and lose the fallback marker.
+    """
+    corroborator = Corroborator(db, config)
+    assert not corroborator.dry_run, "guard test needs a real (non-dry-run) status derivation"
+
+    seed_article = _corr_article("https://source-a.com/b1", "Russia invades Poland")
+    db.insert_article(seed_article)
+    event = _seed_call_tier_event(db, seed_article, alert_status="failed_terminal")
+
+    new_article = _corr_article("https://source-b.com/b2", "Russian invasion of Poland confirmed")
+    db.insert_article(new_article)
+    classification = _corr_classification(new_article, event.summary_pl)
+
+    corroborator.process_classifications([classification])
+
+    merged = db.get_event_by_id(event.id)
+    assert new_article.id in merged.article_ids
+    assert merged.alert_status == "failed_terminal"

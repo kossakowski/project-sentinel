@@ -27,6 +27,16 @@ EVENT_COMPATIBILITY: dict[str, set[str]] = {
 # Minimum urgency to create an event
 _MIN_EVENT_URGENCY = 5
 
+# Alert-lifecycle statuses owned by the alert state machine's bounded phone-retry
+# loop. A merge must NOT re-derive an event's alert_status while it sits in one of
+# these: ``retry_pending`` is the sole signal the cycle-driven retry sweep
+# (AlertStateMachine.retry_pending_calls, via get_events_by_alert_status) uses to
+# keep driving a failed call up to alerts.retry.max_rounds, and ``failed_terminal``
+# is the terminal marker that routes genuinely new content to the post-cap SMS+push
+# fallback. Overwriting either during a merge would silently strand a failed
+# urgency-9/10 call (prime-directive miss), so these statuses are preserved.
+_RETRY_LIFECYCLE_STATUSES: frozenset[str] = frozenset({"retry_pending", "failed_terminal"})
+
 
 class Corroborator:
     """Groups classifications into events and determines alert levels."""
@@ -313,8 +323,17 @@ class Corroborator:
         )
         event.affected_countries = sorted(merged)
 
-        # Re-evaluate alert status
-        event.alert_status = self._determine_alert_status(urgency=event.urgency_score, source_count=event.source_count)
+        # Re-evaluate alert status -- but NEVER clobber a status owned by the alert
+        # state machine's bounded phone-retry loop. A merge (even a non-independent
+        # syndicated copy) runs on EVERY matched article, so re-deriving here would
+        # knock a failed call out of ``retry_pending`` (dropping it from the
+        # cycle-driven retry sweep) or erase ``failed_terminal`` (which routes
+        # post-cap content to the SMS+push fallback). Preserve those; re-derive only
+        # when the event is not mid-retry-lifecycle.
+        if event.alert_status not in _RETRY_LIFECYCLE_STATUSES:
+            event.alert_status = self._determine_alert_status(
+                urgency=event.urgency_score, source_count=event.source_count
+            )
 
         # Persist changes
         self.db.update_event(
