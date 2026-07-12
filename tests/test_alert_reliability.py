@@ -1768,3 +1768,70 @@ def test_sweep_window_must_exceed_retry_interval():
         retry=RetryConfig(sweep_max_age_minutes=180, sweep_notify_max_age_minutes=1440),
     )
     assert ok.retry.sweep_max_age_minutes == 180
+
+
+# --------------------------------------------------------------------------
+# 36. test_recently_stranded_over_budget_is_deferred_not_dropped  [1.3, F1]
+# --------------------------------------------------------------------------
+@pytest.mark.asyncio
+@patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
+async def test_recently_stranded_over_budget_is_deferred_not_dropped(_sleep, state_machine, db, mock_twilio, config):
+    """A recently-stranded event past the notify budget is DEFERRED, not finalized log-only.
+
+    Pass B notifies at most ``sweep_max_events_per_cycle`` recently-stranded events per
+    cycle. Over-budget ones must be left untouched (still sweep-eligible) so the next
+    cycle notifies them — finalizing them log-only would drop the mandated SMS+push and
+    any pending operator reply.
+    """
+    config.alerts.retry.sweep_max_age_minutes = 60
+    config.alerts.retry.sweep_notify_max_age_minutes = 1440
+    config.alerts.retry.sweep_max_events_per_cycle = 1
+    config.alerts.push.enabled = True
+    config.alerts.push.tokens = ["ExponentPushToken[test]"]
+    state_machine.push.send_push = MagicMock(
+        side_effect=lambda title, body, event_id, data: AlertRecord(
+            event_id=event_id,
+            alert_type="push",
+            twilio_sid="tk",
+            status="sent",
+            attempt_number=1,
+            sent_at=datetime.now(UTC),
+            message_body=body,
+        )
+    )
+
+    # Two recently-stranded call-tier events (aged out of re-call, within notify window).
+    for i in range(2):
+        ev = _make_event(urgency_score=10, event_id=f"strand-{i}")
+        ev.alert_status = "retry_pending"
+        ev.last_updated_at = datetime.now(UTC) - timedelta(minutes=90)
+        db.insert_event(ev)
+
+    await state_machine.retry_pending_calls()
+
+    statuses = sorted(db.get_event_by_id(f"strand-{i}").alert_status for i in range(2))
+    # Exactly one finalized+notified this cycle; the other DEFERRED (still retry_pending).
+    assert statuses == ["failed_terminal", "retry_pending"], statuses
+    assert mock_twilio.send_sms.call_count == 1  # only the one within budget was notified
+
+    # The deferred one is notified on the next cycle (not silently dropped).
+    await state_machine.retry_pending_calls()
+    assert db.get_event_by_id("strand-0").alert_status == "failed_terminal"
+    assert db.get_event_by_id("strand-1").alert_status == "failed_terminal"
+    assert mock_twilio.send_sms.call_count == 2
+
+
+# --------------------------------------------------------------------------
+# 37. test_notify_window_must_be_ge_recall_window  [F4]
+# --------------------------------------------------------------------------
+def test_notify_window_must_be_ge_recall_window():
+    """Config load rejects sweep_notify_max_age_minutes < sweep_max_age_minutes."""
+    from sentinel.config import AcknowledgmentConfig, AlertsConfig, RetryConfig, UrgencyLevel
+
+    with pytest.raises(ValidationError):
+        AlertsConfig(
+            phone_number="+15551234567",
+            urgency_levels={"critical": UrgencyLevel(min_score=9, action="phone_call")},
+            acknowledgment=AcknowledgmentConfig(retry_interval_minutes=5),
+            retry=RetryConfig(sweep_max_age_minutes=180, sweep_notify_max_age_minutes=100),
+        )

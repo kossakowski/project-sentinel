@@ -192,7 +192,12 @@ class RetryConfig(BaseModel):
     # Wall-clock bound on how long the cycle-driven sweep may spend placing (blocking)
     # call rounds per scheduler cycle, so a backlog of unacknowledged call-tier events
     # cannot hold the pipeline cycle lock long enough to starve fetch/classification of
-    # a NEW incident. Complements sweep_max_events_per_cycle (a count bound). 0 disables.
+    # a NEW incident. Complements sweep_max_events_per_cycle (a count bound). Checked
+    # BETWEEN rounds, so the sweep can overshoot by at most one in-progress round
+    # (~max_call_retries * (call_poll_timeout_seconds + call_retry_pause_seconds)); a
+    # single round is atomic and cannot be interrupted. Fully removing the residual
+    # lock hold requires running the rounds off the cycle lock (a future change).
+    # 0 disables.
     sweep_max_seconds_per_cycle: int = Field(default=120, ge=0)
 
 

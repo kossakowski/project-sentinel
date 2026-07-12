@@ -659,6 +659,11 @@ class AlertStateMachine:
                 # dispatch would apply.
                 if self._determine_action(event) != "phone_call":
                     continue
+                # An event whose retry interval has not elapsed is a no-op re-entry
+                # (``_execute_phone_call`` would return without placing a call). Skip it
+                # here so it does not consume a budget slot meant for a due call round.
+                if not self._retry_round_due(event, existing_alerts):
+                    continue
                 if (budget and processed >= budget) or _over_time_budget():
                     self.logger.warning(
                         "Retry sweep reached its per-cycle budget (events=%d/%s, time %ds); "
@@ -685,7 +690,14 @@ class AlertStateMachine:
                 if event.acknowledged_at is not None or event.alert_status == "failed_terminal":
                     continue
                 recently_stranded = self._event_age_minutes(event) <= notify_window
-                if recently_stranded and (not budget or notified < budget):
+                if recently_stranded and budget and notified >= budget:
+                    # A recently-stranded event owed a notification, but this cycle's
+                    # notify budget is spent. DEFER it (do not finalize) — its sweep
+                    # status is unchanged and still queryable, so the next cycle picks
+                    # it up and notifies. Finalizing it log-only here would drop the
+                    # mandated SMS+push and any pending reply.
+                    continue
+                if recently_stranded:
                     existing_alerts = self.db.get_alert_records(event.id)
                     # Honor a correct reply that landed before we finalize (the sweep
                     # and dispatch cap paths do the same) so a complied ACK is not lost.
@@ -718,6 +730,23 @@ class AlertStateMachine:
         if last.tzinfo is None:
             last = last.replace(tzinfo=UTC)
         return (datetime.now(UTC) - last).total_seconds() / 60
+
+    def _retry_round_due(self, event: Event, existing_alerts: list[AlertRecord]) -> bool:
+        """True if a retry round is due now — no prior call yet, or the interval elapsed.
+
+        ``retry_interval_minutes == 0`` means NO spacing (always due). The gate is
+        skipped for a zero interval because it would reduce to ``now < last_call_time``,
+        which a backward clock step (NTP correction / VM vCPU migration) can spuriously
+        satisfy, wrongly skipping a due round.
+        """
+        retry_interval = timedelta(minutes=self.config.alerts.acknowledgment.retry_interval_minutes)
+        if not retry_interval:
+            return True
+        phone_records = [a for a in existing_alerts if a.alert_type == "phone_call"]
+        if not phone_records:
+            return True
+        last_call_time = max(a.sent_at for a in phone_records)
+        return datetime.now(UTC) >= last_call_time + retry_interval
 
     def _determine_action(self, event: Event) -> str:
         """Resolve the delivery action for an event from the urgency tiers.
@@ -978,19 +1007,12 @@ class AlertStateMachine:
         # even during an outage AND stops dispatch and the sweep from both
         # advancing a round for one event within a single cycle.
         phone_records = [a for a in existing_alerts if a.alert_type == "phone_call"]
-        retry_interval = timedelta(minutes=self.config.alerts.acknowledgment.retry_interval_minutes)
-        # retry_interval == 0 means NO spacing; skip the gate entirely. Applying it
-        # would reduce to ``now < last_call_time``, which a backward clock step (NTP
-        # correction / VM vCPU migration) can spuriously satisfy, wrongly skipping a
-        # due round.
-        if phone_records and retry_interval:
-            last_call_time = max(a.sent_at for a in phone_records)
-            if datetime.now(UTC) < last_call_time + retry_interval:
-                self.logger.debug(
-                    "Event %s: retry interval not elapsed, skipping call",
-                    event.id,
-                )
-                return
+        if not self._retry_round_due(event, existing_alerts):
+            self.logger.debug(
+                "Event %s: retry interval not elapsed, skipping call",
+                event.id,
+            )
+            return
 
         phone_number = self.config.alerts.phone_number
         message = _format_call_message(event, self.config)
