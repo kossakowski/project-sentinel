@@ -1149,3 +1149,194 @@ async def test_failed_confirmation_sms_keeps_prior_code_matchable(state_machine,
     reply_a.body = "111111"
     mock_twilio.client.messages.list.return_value = [reply_a]
     assert await state_machine._check_sms_confirmation(since, event.id) is True
+
+
+# --------------------------------------------------------------------------
+# 23. test_confirmation_matches_prior_round_code_and_widens_window  [1.5]
+# --------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_confirmation_matches_prior_round_code_and_widens_window(state_machine, mock_twilio):
+    """A correct reply carrying an EARLIER round's code, sent before the current
+    round's ``call_placed_at``, still acknowledges.
+
+    Two exclusion axes are closed at once. (a) Code axis: each round's confirmation
+    SMS rotates the active code, so the match must consider EVERY code sent for the
+    event, not just the latest. (b) Timestamp axis: a reply that lands in the gap
+    between rounds is sent BEFORE the current round's ``since``, so the scan must
+    widen to the event's first-round window start (``_confirmation_window_start``)
+    or the reply is filtered out by ``date_sent_after``. Under the previous
+    single-code / current-``since`` logic this reply was lost on both axes — and,
+    under the bounded cap (1.2), that burns a call-tier event to failed_terminal
+    despite a correct operator answer.
+    """
+    event_id = "evt-multi-round"
+
+    t0 = datetime(2026, 7, 11, 10, 0, 0, tzinfo=UTC)  # round 1 placement (window start)
+    t_reply = datetime(2026, 7, 11, 10, 3, 0, tzinfo=UTC)  # reply lands between rounds
+    t2 = datetime(2026, 7, 11, 10, 5, 0, tzinfo=UTC)  # round 2 placement (current `since`)
+
+    # Two delivered rounds: codes 111111 then 222222; scan window pinned to t0.
+    state_machine._confirmation_code_history[event_id] = {"111111", "222222"}
+    state_machine._confirmation_codes[event_id] = "222222"
+    state_machine._confirmation_window_start[event_id] = t0
+
+    captured: dict = {}
+
+    def _list_filtered(to=None, from_=None, date_sent_after=None, limit=10):
+        captured["date_sent_after"] = date_sent_after
+        reply = MagicMock()
+        reply.body = "111111"  # operator replied with round 1's (now-rotated) code
+        reply.date_sent = t_reply
+        # Emulate Twilio's date_sent_after filter.
+        if date_sent_after is not None and reply.date_sent <= date_sent_after:
+            return []
+        return [reply][:limit]
+
+    mock_twilio.client.messages.list.side_effect = _list_filtered
+
+    # Called with the CURRENT round's `since` (t2, AFTER the reply): still matches.
+    assert await state_machine._check_sms_confirmation(t2, event_id) is True
+    # The query was widened to the first-round window start, not the passed t2.
+    assert captured["date_sent_after"] == t0
+
+
+# --------------------------------------------------------------------------
+# 24. test_pending_reply_acknowledges_at_retry_cap  [1.2, 1.5]
+# --------------------------------------------------------------------------
+@pytest.mark.asyncio
+@patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
+async def test_pending_reply_acknowledges_at_retry_cap(_sleep, state_machine, db, mock_twilio, config):
+    """A correct reply on the cap-exhausting round acknowledges, never failed_terminal.
+
+    When the durable round counter reaches ``max_rounds`` the sweep re-enters
+    ``_execute_phone_call`` to finalize the event. If the operator's correct reply
+    (carrying a delivered code) arrived just before that re-entry, it MUST be
+    honored — otherwise a timely acknowledgment is silently lost and the call-tier
+    event is wrongly burned to failed_terminal (and up to that point the operator
+    is spam-called after already complying).
+    """
+    config.alerts.retry.max_rounds = 2
+    config.alerts.acknowledgment.max_call_retries = 1
+    config.alerts.acknowledgment.retry_interval_minutes = 0
+    _fail_calls(mock_twilio)  # calls fail; the confirmation SMS still delivers (default mock)
+
+    event = _make_event(urgency_score=10)
+    db.insert_event(event)
+
+    # Fix the confirmation code so we can reply with exactly what was delivered.
+    with patch("sentinel.alerts.state_machine.random.randint", return_value=424242):
+        # Round 1 via dispatch, round 2 via the sweep: counter reaches the cap (2),
+        # event left retry_pending (the cap-exhausting re-entry has not run yet).
+        await state_machine.process_event(db.get_event_by_id(event.id))
+        assert db.get_event_by_id(event.id).alert_round_count == 1
+        await state_machine.check_pending_calls()
+        capped = db.get_event_by_id(event.id)
+        assert capped.alert_round_count == 2
+        assert capped.alert_status == "retry_pending"
+        assert "424242" in state_machine._confirmation_code_history[event.id]
+
+        calls_before = mock_twilio.make_alert_call.call_count
+
+        # The operator replies with the delivered code, landing before the
+        # cap-exhausting sweep re-entry.
+        reply = MagicMock()
+        reply.body = "Potwierdzam 424242"
+        mock_twilio.client.messages.list.return_value = [reply]
+
+        # The next sweep hits the cap in _execute_phone_call; it must acknowledge.
+        await state_machine.check_pending_calls()
+
+    final = db.get_event_by_id(event.id)
+    assert final.alert_status == "acknowledged", "a correct reply at the cap must acknowledge, not failed_terminal"
+    assert final.alert_status != "failed_terminal"
+    # No additional call placed once the pending reply is honored.
+    assert mock_twilio.make_alert_call.call_count == calls_before
+
+
+# --------------------------------------------------------------------------
+# 25. test_sweep_recovers_stranded_mid_round_event  [1.3, prime directive]
+# --------------------------------------------------------------------------
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stranded_status", ["call_placed", "phone_call"])
+@patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
+async def test_sweep_recovers_stranded_mid_round_event(_sleep, stranded_status, state_machine, db, mock_twilio, config):
+    """A crash mid-round strands a call-tier event; the cycle-driven sweep recovers it.
+
+    Neither ``call_placed`` (a call was placed, the process died before the
+    round-end transition to retry_pending) nor ``phone_call`` (the corroborator's
+    initial call-tier status, crashed before any call landed) leaves an
+    ``initiated``/``ringing`` record for ``check_pending_calls``'s poll to pick up,
+    and a single-source event attracts no further merging article to re-dispatch it
+    via ``process_event``. The sweep must re-enter such an event and place its call
+    instead of leaving it silently stranded (a fail-silent 9-10 miss).
+    """
+    config.alerts.retry.max_rounds = 3
+    config.alerts.acknowledgment.max_call_retries = 1
+    config.alerts.acknowledgment.retry_interval_minutes = 0
+
+    event = _make_event(urgency_score=10, source_count=2)
+    event.alert_status = stranded_status
+    db.insert_event(event)
+
+    # call_placed mirrors a crash AFTER the round's call record was resolved to a
+    # terminal status (no longer in-flight, so the poll finds nothing).
+    if stranded_status == "call_placed":
+        db.insert_alert_record(
+            AlertRecord(
+                event_id=event.id,
+                alert_type="phone_call",
+                twilio_sid="CA-resolved",
+                status="no-answer",
+                attempt_number=1,
+                sent_at=datetime.now(UTC) - timedelta(minutes=10),
+                message_body="x",
+            )
+        )
+
+    calls_before = mock_twilio.make_alert_call.call_count
+    await state_machine.retry_pending_calls()
+
+    # The stranded event was re-entered and a fresh call placed (recovery) ...
+    assert mock_twilio.make_alert_call.call_count > calls_before, (
+        "a crash-stranded call-tier event must be recovered by the sweep"
+    )
+    # ... and it advanced into the normal retry lifecycle.
+    assert db.get_event_by_id(event.id).alert_status in ("retry_pending", "call_placed", "acknowledged")
+
+
+# --------------------------------------------------------------------------
+# 26. test_sweep_skips_event_with_inflight_call  [one-call-per-event]
+# --------------------------------------------------------------------------
+@pytest.mark.asyncio
+@patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
+async def test_sweep_skips_event_with_inflight_call(_sleep, state_machine, db, mock_twilio, config):
+    """The broadened sweep must not double-call an event whose call is still in-flight.
+
+    A ``call_placed`` event can have a still-``initiated``/``ringing`` call record
+    (the crash happened while the call was live). That record is owned by
+    ``check_pending_calls``'s poll; the sweep re-entering it would place a SECOND
+    concurrent call. The in-flight guard skips it, preserving one-call-per-event.
+    """
+    config.alerts.acknowledgment.retry_interval_minutes = 0
+
+    event = _make_event(urgency_score=10)
+    event.alert_status = "call_placed"
+    db.insert_event(event)
+    db.insert_alert_record(
+        AlertRecord(
+            event_id=event.id,
+            alert_type="phone_call",
+            twilio_sid="CA-inflight",
+            status="ringing",
+            attempt_number=1,
+            sent_at=datetime.now(UTC),
+            message_body="x",
+        )
+    )
+
+    calls_before = mock_twilio.make_alert_call.call_count
+    await state_machine.retry_pending_calls()
+
+    assert mock_twilio.make_alert_call.call_count == calls_before, (
+        "an event with an in-flight call must not be re-called by the sweep"
+    )

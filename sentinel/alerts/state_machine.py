@@ -387,8 +387,25 @@ class AlertStateMachine:
         # Per-event confirmation state (1.5): keyed by event_id so a reply to one
         # event's code can never acknowledge a different event. Previously bare
         # instance attributes, which were only safe because dispatch is serialized.
+        #
+        # ``_confirmation_codes`` holds the latest ACTIVE (successfully-delivered)
+        # code, paired with ``_confirmation_sms_sids`` for the within-round
+        # delivery re-check. ``_confirmation_code_history`` accumulates EVERY code
+        # successfully sent for the event across all retry rounds: each round
+        # regenerates and rotates the active code, so matching only the latest
+        # would drop a correct operator reply that carries an EARLIER round's code
+        # (which, under the bounded retry cap 1.2, would burn a call-tier event to
+        # ``failed_terminal`` despite the operator answering). ``_check_sms_confirmation``
+        # matches against this whole set. ``_confirmation_window_start`` pins the
+        # earliest instant from which to scan for the event's replies — the first
+        # round's placement — so a reply that lands in the gap between rounds
+        # (before the current round's ``call_placed_at``) is not excluded on the
+        # timestamp axis either. Codes are per-event, so widening the scan window
+        # can never let one event's reply acknowledge a different event.
         self._confirmation_codes: dict[str, str] = {}
+        self._confirmation_code_history: dict[str, set[str]] = {}
         self._confirmation_sms_sids: dict[str, str] = {}
+        self._confirmation_window_start: dict[str, datetime] = {}
         # Per-event post-cap fallback throttle state: the wall-clock time of the
         # last capped-fallback SMS/push and the event's source_count at that
         # moment. The corroborator re-dispatches a failed_terminal event on EVERY
@@ -528,18 +545,37 @@ class AlertStateMachine:
 
         await self.retry_pending_calls()
 
+    # Event alert_status values the cycle-driven sweep re-enters. Beyond the
+    # normal ``retry_pending`` (a completed-but-unacknowledged round), it also
+    # RECOVERS events stranded mid-round by a crash/restart:
+    #   * ``call_placed`` — a call was placed, then the process died before the
+    #     round-end transition to ``retry_pending``; its call record was already
+    #     resolved to a terminal status by ``_wait_for_call_and_check_sms``, so the
+    #     poll (``get_pending_call_records`` needs ``initiated``/``ringing``) finds
+    #     nothing.
+    #   * ``phone_call`` — the corroborator's initial call-tier status, entered but
+    #     crashed before any call landed.
+    # Neither leaves an in-flight record for the poll, and a single-source
+    # urgency-9 event attracts no further merging article to re-dispatch it via
+    # ``process_event`` — so without sweeping these it is silently stranded and
+    # never retried, a fail-silent 9-10 miss the prime directive forbids.
+    _RETRY_SWEEP_STATUSES = ("retry_pending", "call_placed", "phone_call")
+
     async def retry_pending_calls(self) -> None:
-        """Re-enter the bounded phone-retry loop for events left in retry_pending.
+        """Re-enter the bounded phone-retry loop for events awaiting a call round.
 
         A phone-call round that completes without acknowledgment leaves the event
         in ``alert_status="retry_pending"`` (``_execute_phone_call`` /
         ``_handle_call_result``) but produces no ``initiated``/``ringing`` call
         record, so ``check_pending_calls``'s poll — which only sees in-flight
-        calls — never re-touches it. Without this cycle-driven sweep a fully-failed
-        round would be retried only if a NEW article merged into the event: a
-        single-source urgency-9 event whose call round fails at transport would be
+        calls — never re-touches it. The sweep also recovers events stranded
+        mid-round by a crash/restart (``call_placed`` / ``phone_call`` — see
+        ``_RETRY_SWEEP_STATUSES``), which likewise have no in-flight record for the
+        poll. Without this cycle-driven sweep such a round would be retried only if
+        a NEW article merged into the event: a single-source urgency-9 event whose
+        call round fails at transport (or whose process crashed mid-round) would be
         durably recorded (1.1) yet never retried (1.3 — fail-loud, never
-        fail-silent). This drives each retry_pending event back through
+        fail-silent). This drives each such event back through
         ``_execute_phone_call`` every cycle, where the durable ``alert_round_count``
         enforces the ``max_rounds`` cap (1.2) and moves the event to
         ``failed_terminal`` once exhausted. The per-event ``retry_interval_minutes``
@@ -552,21 +588,29 @@ class AlertStateMachine:
             ``retry_pending`` row (e.g. an unacknowledged ``--test-alert``),
             breaking the run-locally-by-default contract.
           * recency — bounded by ``alerts.retry.sweep_max_age_minutes`` so a stale
-            ``retry_pending`` row does not restart phone rounds on deploy.
+            row does not restart phone rounds on deploy.
           * acknowledged / cooldown — an event that was acknowledged (or is in its
             post-ack cooldown) is never re-called, preserving one-call-per-event.
+          * in-flight call — an event whose call record is still
+            ``initiated``/``ringing`` is owned by the poll above; re-entering it
+            here would place a SECOND concurrent call, so it is skipped (this
+            matters once ``call_placed`` is swept — the crash may have happened
+            while the call was still live).
         """
         if self.config.testing.dry_run:
             return
 
         window = self.config.alerts.retry.sweep_max_age_minutes
-        for event in self.db.get_events_by_alert_status("retry_pending", within_minutes=window):
-            if self._is_in_cooldown(event):
-                continue
-            existing_alerts = self.db.get_alert_records(event.id)
-            if self._is_acknowledged(existing_alerts):
-                continue
-            await self._execute_phone_call(event, existing_alerts)
+        for status in self._RETRY_SWEEP_STATUSES:
+            for event in self.db.get_events_by_alert_status(status, within_minutes=window):
+                if self._is_in_cooldown(event):
+                    continue
+                existing_alerts = self.db.get_alert_records(event.id)
+                if self._is_acknowledged(existing_alerts):
+                    continue
+                if any(a.alert_type == "phone_call" and a.status in ("initiated", "ringing") for a in existing_alerts):
+                    continue
+                await self._execute_phone_call(event, existing_alerts)
 
     def _determine_action(self, event: Event) -> str:
         """Resolve the delivery action for an event from the urgency tiers.
@@ -788,6 +832,16 @@ class AlertStateMachine:
         max_rounds = self.config.alerts.retry.max_rounds
         current = self.db.get_event_by_id(event.id) or event
         if current.alert_round_count >= max_rounds:
+            # Before burning a call-tier event to a terminal failed status, honor a
+            # correct operator reply that may have landed after the previous
+            # round's final SMS check and before this cap-exhausting re-entry. The
+            # scan reads from the event's window start against EVERY code sent for
+            # it, so a reply carrying an earlier round's rotated code still matches;
+            # without this, a timely acknowledgment on the exhausting round is
+            # silently lost and the event is wrongly marked failed_terminal.
+            if await self._check_sms_confirmation(datetime.now(UTC), event.id):
+                await self._acknowledge_event(event, current.alert_round_count)
+                return
             self._mark_failed_terminal(event)
             return
 
@@ -820,6 +874,11 @@ class AlertStateMachine:
         # actually left Twilio (the spacing anchor above already counts failures).
         total_attempts = len([a for a in phone_records if a.status != "failed"])
         call_placed_at = datetime.now(UTC)
+        # Pin the confirmation-scan window to the FIRST round's placement so a
+        # reply carrying an earlier round's code — which lands in the gap between
+        # rounds and predates this round's ``call_placed_at`` — is still inside the
+        # queried window. Later rounds keep the original start (setdefault).
+        self._confirmation_window_start.setdefault(event.id, call_placed_at)
 
         # Send SMS confirmation code — this is the ONLY confirmation mechanism
         await self._send_confirmation_sms(event)
@@ -936,17 +995,17 @@ class AlertStateMachine:
         phone_number = self.config.alerts.phone_number
         event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
 
-        # Generate a candidate 6-digit code, but only promote it to the ACTIVE,
-        # matchable code (and record its SID) once the SMS actually leaves Twilio.
-        # If the send fails we must NOT rotate the active code: the last
-        # successfully-delivered code is the only code the operator possesses, and
-        # under the bounded retry cap (1.2) rotating to an undelivered code would
-        # let a correct reply go unmatched and burn a call-tier event to
-        # failed_terminal despite the operator answering. Keeping the delivered
-        # code active (and its delivered SID) also keeps the within-round resend
-        # guard consistent — the tracked SID always reflects the active code.
-        # Stored per-event (1.5) so a reply to one event's code can never
-        # acknowledge a different event.
+        # Generate a candidate 6-digit code, but only register it (as the active
+        # code, in the matchable history set, and paired with its SID) once the SMS
+        # actually leaves Twilio. A failed send must NOT register a code the
+        # operator never received. Every successfully-sent code stays matchable
+        # across rounds (see ``_check_sms_confirmation``), so a correct reply
+        # carrying any earlier round's code still acknowledges instead of being
+        # lost when the per-round code rotates — which, under the bounded retry cap
+        # (1.2), would otherwise burn a call-tier event to failed_terminal despite
+        # the operator answering. The recorded SID tracks the latest confirmation
+        # SMS for the within-round delivery re-check. Stored per-event (1.5) so a
+        # reply to one event's code can never acknowledge a different event.
         code = f"{random.randint(100000, 999999)}"
 
         message = (
@@ -964,6 +1023,7 @@ class AlertStateMachine:
         self.db.insert_alert_record(record)
         if record.status != "failed":
             self._confirmation_codes[event.id] = code
+            self._confirmation_code_history.setdefault(event.id, set()).add(code)
             self._confirmation_sms_sids[event.id] = record.twilio_sid
             self.logger.info(
                 "SMS confirmation request sent for event %s (code=%s, SID=%s)",
@@ -979,11 +1039,28 @@ class AlertStateMachine:
             )
 
     async def _check_sms_confirmation(self, since: datetime, event_id: str) -> bool:
-        """Check if the user replied with the correct 6-digit code for this event."""
+        """Check if the user replied with a valid confirmation code for this event.
+
+        Matches against EVERY code sent for the event (across all retry rounds),
+        not only the latest: the per-round confirmation SMS rotates the active
+        code, so matching only the newest would drop a correct reply that carries
+        an earlier round's code and, under the bounded cap (1.2), wrongly burn the
+        event to ``failed_terminal``.
+
+        The scan window is widened to the event's first-round placement
+        (``_confirmation_window_start``) whenever that predates ``since``: a reply
+        arriving in the gap between rounds is sent BEFORE the current round's
+        ``call_placed_at``, so filtering only by the current ``since`` would exclude
+        it on the timestamp axis. Codes are per-event, so widening the window can
+        never acknowledge a different event.
+        """
         phone_number = self.config.alerts.phone_number
-        code = self._confirmation_codes.get(event_id)
-        if not code:
+        codes = self._confirmation_code_history.get(event_id)
+        if not codes:
             return False
+
+        window_start = self._confirmation_window_start.get(event_id)
+        effective_since = min(since, window_start) if window_start is not None else since
 
         try:
             # Check inbound SMS from the user's phone to our Twilio number.
@@ -993,16 +1070,17 @@ class AlertStateMachine:
                 lambda: self.twilio.client.messages.list(
                     to=self.twilio.twilio_phone,
                     from_=phone_number,
-                    date_sent_after=since,
+                    date_sent_after=effective_since,
                     limit=10,
                 )
             )
             for msg in messages:
                 body = msg.body.strip() if msg.body else ""
-                if code in body:
+                matched = next((code for code in codes if code in body), None)
+                if matched is not None:
                     self.logger.info(
                         "SMS confirmation received (code=%s) from %s",
-                        code,
+                        matched,
                         phone_number,
                     )
                     return True
