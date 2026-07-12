@@ -277,3 +277,15 @@ All 7 code debt items and 8 ops debt items were resolved 2026-05-25 through 2026
 ## Documentation reorganization (2026-05-30)
 
 The documentation was overhauled and reorganized into a Diátaxis `docs/` tree (tutorials / how-to / reference / explanation / archive) on 2026-05-30. Doc paths changed — see [docs/README.md](docs/README.md) for the new index.
+
+---
+
+## Phase 1 redesign (Alerting reliability) — owner follow-ups (2026-07-12)
+
+Non-blocking items surfaced by the Phase-1 build loop (branch `redesign-phase1-alerting`, unmerged). None violate a Phase-1 MUST or threaten the prime directive; all deferred by design.
+
+- **Off-lock retry sweep (architectural).** Cycle-driven call rounds run under the scheduler `_cycle_lock`; the wall-clock + count budgets bound it but a single ~8-min round can overshoot, delaying detection of a NEW incident while an unacknowledged 9-10 rings. Decouple the sweep's call rounds from the cycle lock (background task / concurrent rounds with an in-flight guard) so ringing never stalls fetch/classification. Risky concurrency change — deliberately deferred from Phase 1.
+- **Confirmation-SMS no-SID resend.** A first-round confirmation SMS that fails at transport isn't resent within the round (`_check_confirmation_sms_delivered` returns None, not False, when no SID was registered); the next round sends a fresh code. Err-safe (keeps ringing), but a one-line hardening (treat no-SID-after-failed-send as delivery-failed) would restore ack ability a round sooner.
+- **Late-resolving call outcome not counted.** A call whose Twilio status is still unresolved at `call_poll_timeout_seconds` is counted as a delivered round (keeps ringing — prime-directive-safe). A carrier that accepts but fails slower than the poll window never advances the cap to the terminal SMS+push escalation. Consider feeding `_handle_call_result`'s later resolution back into round accounting.
+- **Dead config knobs.** `urgency_levels.*.retry_attempts` and `acknowledgment.call_duration_threshold_seconds` are parsed but unused (superseded by `alerts.retry.max_rounds` and the SMS-reply-only ack). Remove in the later corroboration/retry config cleanup phase (Phase 2 removes this config wholesale).
+- **Docs.** `docs/reference/config-reference.md` has no `alerts.retry.*` section (max_rounds / sweep_max_age_minutes / sweep_notify_max_age_minutes / sweep_max_events_per_cycle / sweep_max_seconds_per_cycle) and no mention of the `failed_terminal` / `alert_round_count` lifecycle. Document at merge (docs-reflect-deployed-reality: this branch isn't in prod yet).
