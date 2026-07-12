@@ -936,10 +936,18 @@ class AlertStateMachine:
         phone_number = self.config.alerts.phone_number
         event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
 
-        # Generate a random 6-digit code, stored per-event (1.5) so a reply to
-        # one event's code can never acknowledge a different event.
+        # Generate a candidate 6-digit code, but only promote it to the ACTIVE,
+        # matchable code (and record its SID) once the SMS actually leaves Twilio.
+        # If the send fails we must NOT rotate the active code: the last
+        # successfully-delivered code is the only code the operator possesses, and
+        # under the bounded retry cap (1.2) rotating to an undelivered code would
+        # let a correct reply go unmatched and burn a call-tier event to
+        # failed_terminal despite the operator answering. Keeping the delivered
+        # code active (and its delivered SID) also keeps the within-round resend
+        # guard consistent — the tracked SID always reflects the active code.
+        # Stored per-event (1.5) so a reply to one event's code can never
+        # acknowledge a different event.
         code = f"{random.randint(100000, 999999)}"
-        self._confirmation_codes[event.id] = code
 
         message = (
             f"PROJECT SENTINEL: {event_type_pl}\n\n"
@@ -955,6 +963,7 @@ class AlertStateMachine:
         )
         self.db.insert_alert_record(record)
         if record.status != "failed":
+            self._confirmation_codes[event.id] = code
             self._confirmation_sms_sids[event.id] = record.twilio_sid
             self.logger.info(
                 "SMS confirmation request sent for event %s (code=%s, SID=%s)",
@@ -964,7 +973,7 @@ class AlertStateMachine:
             )
         else:
             self.logger.error(
-                "Event %s: confirmation SMS failed to send (error_code=%s)",
+                "Event %s: confirmation SMS failed to send (error_code=%s); keeping prior delivered code active",
                 event.id[:8],
                 record.error_code,
             )

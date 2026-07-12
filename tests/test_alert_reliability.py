@@ -968,35 +968,60 @@ async def test_transport_failed_rounds_are_interval_spaced(_sleep, state_machine
 @pytest.mark.asyncio
 @patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
 async def test_sweep_ignores_stale_retry_pending(_sleep, state_machine, db, mock_twilio, config):
-    """A stale ``retry_pending`` row beyond the sweep window is NOT re-activated.
+    """A SAME-UTC-DAY stale ``retry_pending`` row beyond the window is NOT swept.
 
     ``get_events_by_alert_status`` had no recency bound, so on the first post-deploy
     cycle every historical ``retry_pending`` event still within DB retention would
     restart phone rounds at once (a call storm), as would an unacknowledged
     ``--test-alert`` leftover. The sweep is bounded by
-    ``alerts.retry.sweep_max_age_minutes``: a days-old row ages out, while a fresh
-    one is still swept.
+    ``alerts.retry.sweep_max_age_minutes``.
+
+    This exercises the format-consistency of that bound. The stored column holds
+    ISO timestamps with a 'T' separator; comparing them against SQLite's
+    ``datetime('now', ...)`` (a SPACE separator) is a mixed-format TEXT compare in
+    which ANY row sharing the current UTC calendar date sorts GREATER than the
+    threshold ('T' 0x54 > ' ' 0x20) and passes regardless of age — so a same-day
+    stale row would resume real phone rounds after a deploy. The stale row here is
+    the SAME UTC calendar date as "now" but far older than the window, so it would
+    be (wrongly) swept under a mixed-format compare and is correctly aged out only
+    when the cutoff matches the stored format.
+
+    ``datetime.now`` in the DB layer is pinned so the same-day stale row is
+    deterministically older than the window regardless of wall-clock time (near
+    UTC midnight a real ``now - hours`` would slip to the previous calendar date
+    and stop exercising the same-day path this guards).
     """
     config.alerts.retry.sweep_max_age_minutes = 60
     config.alerts.acknowledgment.max_call_retries = 1
     config.alerts.acknowledgment.retry_interval_minutes = 0
     _fail_calls(mock_twilio)
 
+    fixed_now = datetime(2026, 7, 11, 12, 0, 0, tzinfo=UTC)
+    # Same UTC calendar date as fixed_now, but ~12h old — far beyond the 60-min window.
+    stale_ts = fixed_now.replace(hour=0, minute=0, second=1, microsecond=0)
+    assert stale_ts.date() == fixed_now.date(), "stale row must share the current UTC date"
+
     stale = _make_event(urgency_score=10, event_id="stale")
     stale.alert_status = "retry_pending"
-    stale.last_updated_at = datetime.now(UTC) - timedelta(days=2)
+    stale.last_updated_at = stale_ts
     db.insert_event(stale)
 
-    calls_before = mock_twilio.make_alert_call.call_count
-    await state_machine.retry_pending_calls()
-    assert mock_twilio.make_alert_call.call_count == calls_before
+    with patch("sentinel.database.datetime") as mock_dt:
+        mock_dt.now.return_value = fixed_now
 
-    # A fresh retry_pending event within the window IS swept.
-    fresh = _make_event(urgency_score=10, event_id="fresh")
-    fresh.alert_status = "retry_pending"
-    db.insert_event(fresh)
-    await state_machine.retry_pending_calls()
-    assert mock_twilio.make_alert_call.call_count > calls_before
+        calls_before = mock_twilio.make_alert_call.call_count
+        await state_machine.retry_pending_calls()
+        assert mock_twilio.make_alert_call.call_count == calls_before, (
+            "a same-UTC-day row older than the window must NOT be swept"
+        )
+
+        # A fresh retry_pending event within the window IS swept.
+        fresh = _make_event(urgency_score=10, event_id="fresh")
+        fresh.alert_status = "retry_pending"
+        fresh.last_updated_at = fixed_now
+        db.insert_event(fresh)
+        await state_machine.retry_pending_calls()
+        assert mock_twilio.make_alert_call.call_count > calls_before
 
 
 # --------------------------------------------------------------------------
@@ -1056,3 +1081,71 @@ async def test_capped_fallback_throttles_syndicated_remerges(_sleep, state_machi
     await state_machine.process_event(db.get_event_by_id(event.id))
     assert state_machine.push.send_push.call_count > push_after_first
     assert mock_twilio.send_sms.call_count > sms_after_first
+
+
+# --------------------------------------------------------------------------
+# 22. test_failed_confirmation_sms_keeps_prior_code_matchable  [1.2, 1.5]
+# --------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_failed_confirmation_sms_keeps_prior_code_matchable(state_machine, db, mock_twilio):
+    """A failed confirmation-SMS send must not rotate away the last delivered code.
+
+    Each phone-retry round regenerates the 6-digit confirmation code before
+    sending it. If a later round's send FAILS (a voice-up / SMS-down carrier
+    split), the active code must stay the last successfully-DELIVERED one — the
+    only code the operator actually holds — so a correct reply still acknowledges
+    the event. Rotating the active code to the undelivered value instead would
+    leave the operator's real code unmatched and, under the bounded retry cap
+    (1.2), burn a call-tier event to ``failed_terminal`` despite a correct answer.
+    Keeping the delivered code and its SID paired also keeps the within-round
+    resend guard consistent.
+    """
+    event = _make_event(event_id="evt-conf")
+    db.insert_event(event)
+
+    # Round 1: the confirmation SMS is delivered with code A (111111).
+    with patch("sentinel.alerts.state_machine.random.randint", return_value=111111):
+        await state_machine._send_confirmation_sms(event)
+    assert state_machine._confirmation_codes[event.id] == "111111"
+    delivered_sid = state_machine._confirmation_sms_sids[event.id]
+
+    # Round 2: the confirmation SMS send FAILS and would have carried code B.
+    def _fail_sms(phone, message, event_id):
+        return AlertRecord(
+            event_id=event_id,
+            alert_type="sms",
+            twilio_sid="",
+            status="failed",
+            attempt_number=1,
+            sent_at=datetime.now(UTC),
+            message_body=message,
+            error_code="30008",
+            error_detail="unknown delivery error",
+        )
+
+    mock_twilio.send_sms.side_effect = _fail_sms
+    with patch("sentinel.alerts.state_machine.random.randint", return_value=222222):
+        await state_machine._send_confirmation_sms(event)
+
+    # The failed send never rotated the active code or its tracked SID away from
+    # round 1's delivered values.
+    assert state_machine._confirmation_codes[event.id] == "111111"
+    assert state_machine._confirmation_sms_sids[event.id] == delivered_sid
+
+    # The failure is still durably recorded (fail-loud, never a silent drop).
+    failed_sms = [r for r in db.get_alert_records(event.id) if r.alert_type == "sms" and r.status == "failed"]
+    assert failed_sms, "a failed confirmation SMS must still persist a failed row"
+
+    since = datetime.now(UTC) - timedelta(minutes=1)
+
+    # The undelivered code B does NOT acknowledge (it was never made active) ...
+    reply_b = MagicMock()
+    reply_b.body = "222222"
+    mock_twilio.client.messages.list.return_value = [reply_b]
+    assert await state_machine._check_sms_confirmation(since, event.id) is False
+
+    # ... while a reply carrying the last DELIVERED code A still acknowledges.
+    reply_a = MagicMock()
+    reply_a.body = "111111"
+    mock_twilio.client.messages.list.return_value = [reply_a]
+    assert await state_machine._check_sms_confirmation(since, event.id) is True

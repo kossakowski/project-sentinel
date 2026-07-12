@@ -1,7 +1,7 @@
 import logging
 import os
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sentinel.models import AlertRecord, Article, ClassificationResult, Event
 
@@ -252,6 +252,16 @@ class Database:
         would restart phone rounds for every historical ``retry_pending`` event at
         once. An actively-retrying event bumps ``last_updated_at`` every round, so
         it stays inside the window.
+
+        The cutoff is computed in Python as an ISO-8601 string and bound as a
+        parameter so the comparison is against the SAME timestamp format the
+        column stores (``datetime.now(UTC).isoformat()`` — a 'T' separator, e.g.
+        ``2026-07-11T00:00:01+00:00``). Comparing the stored ISO text against
+        SQLite's ``datetime('now', ...)`` (a SPACE separator) would be a mixed-
+        format TEXT comparison: because 'T' (0x54) sorts after ' ' (0x20), any row
+        sharing the current UTC calendar date would compare GREATER than the
+        threshold and pass the filter regardless of age, defeating the recency
+        bound. Matching the stored format keeps the age window correct.
         """
         if within_minutes is None:
             cursor = self.conn.execute(
@@ -259,11 +269,10 @@ class Database:
                 (status,),
             )
         else:
+            cutoff = (datetime.now(UTC) - timedelta(minutes=within_minutes)).isoformat()
             cursor = self.conn.execute(
-                "SELECT * FROM events WHERE alert_status = ? "
-                "AND last_updated_at > datetime('now', ? || ' minutes') "
-                "ORDER BY last_updated_at ASC",
-                (status, str(-within_minutes)),
+                "SELECT * FROM events WHERE alert_status = ? AND last_updated_at > ? ORDER BY last_updated_at ASC",
+                (status, cutoff),
             )
         return [Event.from_row(row) for row in cursor.fetchall()]
 
