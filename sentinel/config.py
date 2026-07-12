@@ -153,9 +153,21 @@ class RetryConfig(BaseModel):
     Constrained to ``>= 1`` so a mistyped ``0``/negative fails fast at config
     load rather than silently satisfying ``alert_round_count >= max_rounds`` on
     first touch and disabling every call-tier alert system-wide.
+
+    ``sweep_max_age_minutes`` bounds the cycle-driven retry sweep by recency: only
+    events whose LAST activity (``events.last_updated_at``) falls within this
+    window are re-entered by the sweep. An actively-retrying event has its
+    ``last_updated_at`` bumped every round, so it stays inside the window; a stale
+    ``retry_pending`` row left over from a historical event or an unacknowledged
+    ``--test-alert`` (both still within DB retention) ages out and is NOT swept —
+    otherwise a deploy would re-activate every historical ``retry_pending`` row at
+    once (a call storm). Keep it comfortably larger than
+    ``max_rounds * acknowledgment.retry_interval_minutes`` so a legitimately
+    in-progress retry never ages out mid-sequence.
     """
 
     max_rounds: int = Field(default=10, ge=1)
+    sweep_max_age_minutes: int = Field(default=180, ge=1)
 
 
 class AlertTemplates(BaseModel):

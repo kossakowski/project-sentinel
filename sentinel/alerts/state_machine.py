@@ -389,6 +389,18 @@ class AlertStateMachine:
         # instance attributes, which were only safe because dispatch is serialized.
         self._confirmation_codes: dict[str, str] = {}
         self._confirmation_sms_sids: dict[str, str] = {}
+        # Per-event post-cap fallback throttle state: the wall-clock time of the
+        # last capped-fallback SMS/push and the event's source_count at that
+        # moment. The corroborator re-dispatches a failed_terminal event on EVERY
+        # merged article — including non-independent syndicated copies — so an
+        # unthrottled _send_capped_fallback would fire an SMS + dedup-bypassing
+        # push on each cycle a syndicated copy re-merges. These let the fallback
+        # suppress that redundant re-send while still firing for genuinely-new
+        # independent corroboration (source_count grew) or once the interval
+        # elapses. In-memory is sufficient: it only rate-limits within a running
+        # process, and resetting on restart errs toward firing (prime directive).
+        self._last_fallback_at: dict[str, datetime] = {}
+        self._last_fallback_source_count: dict[str, int] = {}
 
     def _as_record(
         self,
@@ -531,10 +543,30 @@ class AlertStateMachine:
         ``_execute_phone_call`` every cycle, where the durable ``alert_round_count``
         enforces the ``max_rounds`` cap (1.2) and moves the event to
         ``failed_terminal`` once exhausted. The per-event ``retry_interval_minutes``
-        gate inside ``_execute_phone_call`` still spaces out delivered calls.
+        gate inside ``_execute_phone_call`` still spaces out the rounds.
+
+        The sweep is a second dispatch path into ``_execute_phone_call``, so it
+        must honor the same guards ``process_event`` applies:
+          * dry-run — a ``--dry-run`` cycle must place NO real call/SMS. Without
+            this gate the sweep would fire real Twilio calls for any DB
+            ``retry_pending`` row (e.g. an unacknowledged ``--test-alert``),
+            breaking the run-locally-by-default contract.
+          * recency — bounded by ``alerts.retry.sweep_max_age_minutes`` so a stale
+            ``retry_pending`` row does not restart phone rounds on deploy.
+          * acknowledged / cooldown — an event that was acknowledged (or is in its
+            post-ack cooldown) is never re-called, preserving one-call-per-event.
         """
-        for event in self.db.get_events_by_alert_status("retry_pending"):
-            await self._execute_phone_call(event)
+        if self.config.testing.dry_run:
+            return
+
+        window = self.config.alerts.retry.sweep_max_age_minutes
+        for event in self.db.get_events_by_alert_status("retry_pending", within_minutes=window):
+            if self._is_in_cooldown(event):
+                continue
+            existing_alerts = self.db.get_alert_records(event.id)
+            if self._is_acknowledged(existing_alerts):
+                continue
+            await self._execute_phone_call(event, existing_alerts)
 
     def _determine_action(self, event: Event) -> str:
         """Resolve the delivery action for an event from the urgency tiers.
@@ -644,6 +676,34 @@ class AlertStateMachine:
         current = self.db.get_event_by_id(event.id) or event
         return current.alert_status == "failed_terminal" or current.alert_round_count >= max_rounds
 
+    def _fallback_throttled(self, event: Event) -> bool:
+        """True when a capped-fallback SMS/push for this event should be suppressed.
+
+        The corroborator re-dispatches a ``failed_terminal`` event on EVERY merged
+        article — including non-independent syndicated copies that add no new
+        information — so an unthrottled fallback would fire an SMS + dedup-bypassing
+        push on each cycle a syndicated copy re-merges (a "don't spam" violation).
+        A fallback is allowed when ANY of:
+          * it is the first fallback for this event (never rate-limit the first
+            post-cap notification);
+          * genuinely-new independent corroboration arrived — the event's
+            ``source_count`` grew since the last fallback (prime directive: new
+            escalation content must still reach the user, even inside the window);
+          * the throttle interval has elapsed since the last fallback.
+        Otherwise (a syndicated re-merge inside the interval, no new independent
+        source) it is suppressed. The interval reuses
+        ``acknowledgment.retry_interval_minutes`` — the same cadence that spaces the
+        pre-cap call rounds — so the post-cap fallback re-contacts at most that
+        often. A value of 0 disables the throttle (every dispatch fires).
+        """
+        last_at = self._last_fallback_at.get(event.id)
+        if last_at is None:
+            return False
+        if event.source_count > self._last_fallback_source_count.get(event.id, 0):
+            return False
+        window = timedelta(minutes=self.config.alerts.acknowledgment.retry_interval_minutes)
+        return datetime.now(UTC) < last_at + window
+
     async def _send_capped_fallback(self, event: Event, existing_alerts: list[AlertRecord]) -> None:
         """Deliver new content on a call-capped event via SMS + a dedup-bypassing push.
 
@@ -655,8 +715,20 @@ class AlertStateMachine:
         directly (not via ``_execute_sms``) so it does not overwrite the
         ``failed_terminal`` status. Ensures the event is marked terminal first so
         the state is consistent no matter which path first observes the cap.
+
+        The SMS/push sends are throttled (``_fallback_throttled``) so a
+        syndicated copy re-merging every cycle does not re-spam the user, while a
+        genuinely-new independent escalation still gets through. The terminal-state
+        transition is applied regardless of the throttle so the event's state stays
+        consistent whichever path first observes the cap.
         """
         self._mark_failed_terminal(event)
+        if self._fallback_throttled(event):
+            self.logger.debug(
+                "Event %s: capped fallback throttled (no new independent source within interval)",
+                event.id[:8],
+            )
+            return
         self.logger.warning(
             "Event %s: phone-call cap exhausted (failed_terminal); routing new content to SMS + push fallback",
             event.id[:8],
@@ -682,6 +754,12 @@ class AlertStateMachine:
                 event.id[:8],
                 record.error_code,
             )
+
+        # Record the throttle checkpoint so the next syndicated re-merge inside the
+        # interval (with no new independent source) is suppressed instead of
+        # re-firing an SMS + push.
+        self._last_fallback_at[event.id] = datetime.now(UTC)
+        self._last_fallback_source_count[event.id] = event.source_count
 
     async def _execute_phone_call(self, event: Event, existing_alerts: list[AlertRecord] | None = None) -> None:
         """Place a phone call alert with aggressive immediate retries.
@@ -713,13 +791,19 @@ class AlertStateMachine:
             self._mark_failed_terminal(event)
             return
 
-        # Enforce retry interval: if there was a previous *successful* call from a
-        # prior cycle, check that enough time has elapsed. Failed-to-initiate
-        # records don't count — a call that never left the ground shouldn't gate
-        # the next round.
-        call_records = [a for a in existing_alerts if a.alert_type == "phone_call" and a.status != "failed"]
-        if call_records:
-            last_call_time = max(a.sent_at for a in call_records)
+        # Enforce the retry interval by the last call ATTEMPT time regardless of
+        # transport outcome — INCLUDING transport-failed rounds. During a full
+        # Twilio outage every phone_call record is status="failed"; if those did
+        # not count toward spacing, no interval would apply and the rounds would
+        # burn back-to-back — a dispatch round plus the same-cycle retry sweep,
+        # then one round per fast-lane cycle — exhausting the max_rounds cap in
+        # minutes instead of spanning retry_interval_minutes * max_rounds. Spacing
+        # by every round's attempt time makes the cap span the configured window
+        # even during an outage AND stops dispatch and the sweep from both
+        # advancing a round for one event within a single cycle.
+        phone_records = [a for a in existing_alerts if a.alert_type == "phone_call"]
+        if phone_records:
+            last_call_time = max(a.sent_at for a in phone_records)
             retry_interval = timedelta(minutes=self.config.alerts.acknowledgment.retry_interval_minutes)
             if datetime.now(UTC) < last_call_time + retry_interval:
                 self.logger.debug(
@@ -731,7 +815,10 @@ class AlertStateMachine:
         phone_number = self.config.alerts.phone_number
         message = _format_call_message(event, self.config)
         max_per_round = self.config.alerts.acknowledgment.max_call_retries
-        total_attempts = len(call_records)
+        # total_attempts numbers delivered attempts for logging / attempt_number;
+        # transport-failed placements are excluded so the number tracks calls that
+        # actually left Twilio (the spacing anchor above already counts failures).
+        total_attempts = len([a for a in phone_records if a.status != "failed"])
         call_placed_at = datetime.now(UTC)
 
         # Send SMS confirmation code — this is the ONLY confirmation mechanism
@@ -827,6 +914,16 @@ class AlertStateMachine:
             alert_status="acknowledged",
             acknowledged_at=datetime.now(UTC).isoformat(),
         )
+        # Resolve any still-in-flight call record for this event. An SMS ack can
+        # arrive while a call is 'initiated'/'ringing'; if that record is left
+        # in-flight, the next cycle's poll (get_pending_call_records) re-touches it
+        # and _handle_call_result would knock the just-acknowledged event back to
+        # retry_pending, which the retry sweep then turns into a SECOND call on an
+        # already-acknowledged event. Marking it 'acknowledged' removes it from the
+        # pending poll so one-call-per-event holds.
+        for rec in self.db.get_alert_records(event.id):
+            if rec.alert_type == "phone_call" and rec.status in ("initiated", "ringing"):
+                self.db.update_alert_record(rec.id, status="acknowledged")
         self.logger.info(
             "Event %s: confirmed via SMS after %d call attempts",
             event.id[:8],
@@ -1000,8 +1097,19 @@ class AlertStateMachine:
                     call_status,
                     duration,
                 )
-            # Retry logic is handled by process_event on next cycle
-            # The alert_status remains "call_placed" so it will be retried
+            # Retry logic is handled by process_event / the retry sweep on the next
+            # cycle. Do NOT re-arm retry_pending if the event has already been
+            # resolved between placing the call and this poll: an SMS ack may have
+            # marked it 'acknowledged' (its confirmation resolves out-of-band), or
+            # the round cap may have moved it to 'failed_terminal'. Overwriting
+            # either back to retry_pending would re-enter the retry sweep and place
+            # a SECOND call on an already-acknowledged event (breaking
+            # one-call-per-event) or re-open the exhausted cap.
+            current = self.db.get_event_by_id(record.event_id)
+            if current is not None and (
+                current.acknowledged_at is not None or current.alert_status in ("acknowledged", "failed_terminal")
+            ):
+                return
             self.db.update_event(record.event_id, alert_status="retry_pending")
         # If still in-progress/queued/ringing, leave as-is
 

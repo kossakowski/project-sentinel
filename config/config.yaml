@@ -622,8 +622,18 @@ alerts:
   # push). Wires the previously-dead urgency_levels.critical.retry_attempts
   # intent. Life-safety: keep this high enough that a real 9-10 keeps calling —
   # total call attempts before terminal are up to max_rounds x max_call_retries.
+  #
+  # sweep_max_age_minutes bounds the cycle-driven retry sweep by recency: only
+  # retry_pending events whose LAST activity (last_updated_at) is within this
+  # window are re-entered. An actively-retrying event bumps last_updated_at every
+  # round so it stays in-window; a stale retry_pending row left by a historical
+  # event or an unacknowledged --test-alert (still inside DB retention) ages out
+  # and is NOT swept, so a deploy can't re-activate every historical row at once.
+  # Keep it well above max_rounds x retry_interval_minutes so a real in-progress
+  # retry never ages out mid-sequence.
   retry:
     max_rounds: 10
+    sweep_max_age_minutes: 180
 scheduler:
   fast_interval_minutes: 3
   interval_minutes: 15

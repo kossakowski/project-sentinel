@@ -235,19 +235,36 @@ class Database:
         )
         return [Event.from_row(row) for row in cursor.fetchall()]
 
-    def get_events_by_alert_status(self, status: str) -> list[Event]:
-        """Return all events currently in the given ``alert_status``.
+    def get_events_by_alert_status(self, status: str, within_minutes: int | None = None) -> list[Event]:
+        """Return events currently in the given ``alert_status``.
 
         Used by the alert state machine's cycle-driven retry sweep to re-enter
         events left in ``retry_pending`` after a failed phone round, so a
         fully-failed round is retried every cycle (bounded by the durable
         ``alert_round_count`` counter) even when no new article merges into the
         event. Ordered oldest-first so the longest-waiting event retries first.
+
+        When ``within_minutes`` is given, only events whose LAST activity
+        (``last_updated_at``) falls inside that window are returned. The sweep
+        passes ``alerts.retry.sweep_max_age_minutes`` so a stale ``retry_pending``
+        row (a historical event or an unacknowledged ``--test-alert`` still within
+        DB retention) is NOT re-activated on the next cycle — otherwise a deploy
+        would restart phone rounds for every historical ``retry_pending`` event at
+        once. An actively-retrying event bumps ``last_updated_at`` every round, so
+        it stays inside the window.
         """
-        cursor = self.conn.execute(
-            "SELECT * FROM events WHERE alert_status = ? ORDER BY last_updated_at ASC",
-            (status,),
-        )
+        if within_minutes is None:
+            cursor = self.conn.execute(
+                "SELECT * FROM events WHERE alert_status = ? ORDER BY last_updated_at ASC",
+                (status,),
+            )
+        else:
+            cursor = self.conn.execute(
+                "SELECT * FROM events WHERE alert_status = ? "
+                "AND last_updated_at > datetime('now', ? || ' minutes') "
+                "ORDER BY last_updated_at ASC",
+                (status, str(-within_minutes)),
+            )
         return [Event.from_row(row) for row in cursor.fetchall()]
 
     def insert_alert_record(self, record: AlertRecord) -> None:
