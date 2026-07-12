@@ -66,6 +66,30 @@ def test_geo_weighter_kinetic_from_event_type(config):
     assert gw.is_kinetic("missile_strike") is False
 
 
+def test_is_kinetic_normalizes_event_type(config):
+    """An off-case / whitespace-padded event_type still matches the kinetic set.
+
+    ``is_kinetic`` normalizes the token the same way ``resolve_country`` normalizes
+    country tokens. The 2.11 Poland kinetic floor is a deterministic backstop for an
+    unreliable LLM urgency number; a second LLM formatting error on the type string
+    ("Missile_Strike", " missile_strike ") must NOT be able to silently disable it --
+    that would drop a Poland strike into the NONE band and fire no alert at all.
+    """
+    gw = GeoWeighter(config)
+    for token in ("Missile_Strike", " missile_strike ", "MISSILE_STRIKE", "missile_strike\n"):
+        assert gw.is_kinetic(token) is True, token
+        # The floor stays armed through the drifted token.
+        assert gw.floor_urgency(token, "PL", 4) >= 9, token
+
+    # A non-kinetic type stays non-kinetic regardless of case.
+    assert gw.is_kinetic("Debris_Found") is False
+    assert gw.floor_urgency("Debris_Found", "PL", 8) == 8
+
+    # Empty / blank tokens are never kinetic.
+    assert gw.is_kinetic(None) is False
+    assert gw.is_kinetic("   ") is False
+
+
 def test_unresolved_target_is_unknown(config):
     """An unresolved / placeholder target country yields UNKNOWN (fail-open at AlertPolicy)."""
     gw = GeoWeighter(config)

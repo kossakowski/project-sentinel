@@ -85,8 +85,21 @@ class GeoWeighter:
 
         The default set excludes ``debris_found`` and ``official_statement`` --
         inert-debris recovery and reaction stories are not kinetic strikes.
+
+        The token is normalized (stripped + case-folded) before membership, and the
+        config set the same way, so an off-case / whitespace-padded classifier token
+        ("Missile_Strike", " missile_strike ") still matches -- exactly as
+        ``resolve_country`` normalizes country tokens. The 2.11 Poland kinetic floor
+        is a deterministic safety net whose whole premise is that the LLM's urgency
+        number is unreliable; a second LLM formatting error on this string seam must
+        not be able to silently disable it (which would drop a Poland strike into the
+        NONE band and fire NO alert).
         """
-        return (event_type or "") in set(self.config.geography.kinetic_event_types)
+        token = (event_type or "").strip().casefold()
+        if not token:
+            return False
+        kinetic = {str(t).strip().casefold() for t in self.config.geography.kinetic_event_types}
+        return token in kinetic
 
     # ------------------------------------------------------------------
     # Country resolution (config-driven; codes + names, no gazetteer)
