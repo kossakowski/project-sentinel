@@ -5,9 +5,10 @@ whether the attacker is NATO), derives a ``kinetic`` flag from the classifier
 ``event_type`` against a config-driven set, and floors kinetic strikes on
 ``geography.floor_countries`` (default ``[PL]``) to the call tier.
 
-Country tokens are resolved against a config-driven country set (the ISO codes
-and the English / native names already carried by ``geography.*`` and
-``monitoring.target_countries`` / ``monitoring.aggressor_countries``). A token
+Country tokens are resolved against a config-driven country set (the ISO codes in
+the ``geography.*`` tier lists plus the English / native names carried by
+``monitoring.target_countries`` / ``monitoring.aggressor_countries`` and
+``geography.country_names``). A token
 that does not resolve to a KNOWN country is UNKNOWN, never LOW: an unresolved
 geo at call urgency fails toward firing (AlertPolicy 2.5a), while a LOW tier
 demotes a call to an SMS. Treating a disobedient token (e.g. the country NAME
@@ -71,6 +72,10 @@ class GeoWeighter:
 
     def __init__(self, config: SentinelConfig) -> None:
         self.config = config
+        # Config is immutable for the life of the process, so the token -> ISO alias
+        # map is built once here instead of on every resolve_country() call (which
+        # runs once per country per article).
+        self._aliases = self._build_country_aliases()
 
     # ------------------------------------------------------------------
     # Kinetic classification
@@ -86,13 +91,19 @@ class GeoWeighter:
     # ------------------------------------------------------------------
     # Country resolution (config-driven; codes + names, no gazetteer)
     # ------------------------------------------------------------------
-    def _country_aliases(self) -> dict[str, str]:
+    def _build_country_aliases(self) -> dict[str, str]:
         """Every recognized country token -> its ISO code.
 
-        Built from config only: the geography tier lists plus the ``{code, name,
-        name_native}`` objects in ``monitoring.target_countries`` /
-        ``monitoring.aggressor_countries``. So "PL", "Poland" and "Polska" all
-        resolve to PL, while an unlisted token resolves to nothing (UNKNOWN).
+        Built from config only: the geography tier lists (bare ISO codes) plus the
+        ``{code, name, name_native}`` objects in ``monitoring.target_countries`` /
+        ``monitoring.aggressor_countries`` and ``geography.country_names``. So "PL",
+        "Poland" and "Polska" all resolve to PL and "Ukraine" / "Ukraina" resolve to
+        UA, while an unlisted token resolves to nothing (UNKNOWN).
+
+        ``geography.country_names`` is what makes the LOW tier reachable by NAME: the
+        tier lists carry only codes, and the monitored/aggressor blocks only name the
+        countries Sentinel watches -- so without it a classifier emitting "Ukraine"
+        would be UNKNOWN (fail-open to a call) instead of LOW (demoted to SMS).
         """
         geo = self.config.geography
         aliases: dict[str, str] = {}
@@ -100,7 +111,12 @@ class GeoWeighter:
             code = str(raw).strip().upper()
             if code:
                 aliases[code] = code
-        for entry in (*self.config.monitoring.target_countries, *self.config.monitoring.aggressor_countries):
+        named = (
+            *self.config.monitoring.target_countries,
+            *self.config.monitoring.aggressor_countries,
+            *geo.country_names,
+        )
+        for entry in named:
             code = str(entry.get("code", "")).strip().upper()
             if not code:
                 continue
@@ -123,7 +139,7 @@ class GeoWeighter:
         token = str(country).strip().upper()
         if token in UNKNOWN_COUNTRY_TOKENS:
             return None
-        return self._country_aliases().get(token)
+        return self._aliases.get(token)
 
     def _high_set(self) -> set[str]:
         return {str(c).strip().upper() for c in self.config.geography.high_tier_countries}

@@ -24,9 +24,13 @@ from sentinel.classification.geo_weighter import GeoWeighter
 from sentinel.config import SentinelConfig
 from sentinel.models import Article, ClassificationResult
 
-# Country expectations in the eval cases are written against this set; it is used
-# ONLY by _check_case's country checks. The geo tier of a live decision is NEVER
-# derived from it -- that comes from GeoWeighter + config (see _action_for_result).
+# The monitored-country vocabulary the eval cases' `expected_countries` lists are
+# written against (RO joined the monitored set 2026-07). It is exported, not used
+# in the scoring path: `_check_case` compares each case against its OWN expected
+# countries, and the geo tier of a live decision is NEVER derived from this set --
+# that comes from GeoWeighter + config (see `_action_for_result`). The config
+# cross-check asserts RO is present here so a monitored country cannot be added to
+# `geography.high_tier_countries` while the eval's vocabulary silently lags behind.
 MONITORED_COUNTRIES = {"PL", "LT", "LV", "EE", "RO"}
 
 # Haiku 4.5 pricing (USD per million tokens)

@@ -77,25 +77,33 @@ class AlertIntent:
     reason: str = ""
 
 
-# Belt-and-braces call tier used only if a config object somehow reaches this
-# module without a CALL band. Config load is the real guard: AlertsConfig's
-# validator rejects a channel_bands map with no call band / incomplete urgency
-# coverage, so a misconfigured band map fails fast at startup rather than
-# silently disabling every phone call in production.
-_FALLBACK_CALL_TIER = 9
-
-
 def call_tier_min(config: SentinelConfig) -> int:
     """Lowest urgency mapped to the CALL band, read from ``alerts.channel_bands``.
 
     The single source of truth for "what counts as call tier" -- every caller
     (policy, corroborator, geo floor) derives it from here, so the call tier can
     never diverge between two knobs.
+
+    The LOWEST call band wins, not the first one listed: a band map carrying more
+    than one call band (rejected at config load, but this module must not depend on
+    that) would otherwise let this function report a call tier ABOVE the urgency at
+    which :meth:`AlertPolicy.band_for_urgency` already returns CALL. The
+    corroborator's life-safety merge guards key off this number, so reporting it too
+    high would let a call-band article be absorbed into an acknowledged event and
+    silenced by its cooldown. Erring low keeps the guards firing.
+
+    No hardcoded fallback: every urgency threshold lives in config. A band map with
+    no call band cannot place a phone call at all, which is a life-safety failure --
+    ``AlertsConfig._validate_channel_bands`` rejects it at load, and if one somehow
+    reaches this function it raises loudly instead of inventing a tier.
     """
-    for band in config.alerts.channel_bands:
-        if band.channel_class == ChannelClass.CALL.value:
-            return band.min_score
-    return _FALLBACK_CALL_TIER
+    call_tiers = [b.min_score for b in config.alerts.channel_bands if b.channel_class == ChannelClass.CALL.value]
+    if not call_tiers:
+        raise ValueError(
+            "alerts.channel_bands has no band with channel_class: call — no event could ever place a "
+            "phone call (urgency 9-10 is life-safety critical)"
+        )
+    return min(call_tiers)
 
 
 class AlertPolicy:

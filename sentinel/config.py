@@ -128,6 +128,18 @@ class GeographyConfig(BaseModel):
     # Countries whose soil, when attacked BY a NATO member, is HIGH geo tier (the
     # R11 "NATO attacks Russia" case: the alliance is now kinetically engaged).
     nato_attack_targets: list[str] = ["RU"]
+    # Name aliases for the countries named in the tier lists above, in the same
+    # {code, name, name_native} shape monitoring.target_countries uses. The tier
+    # lists carry bare ISO codes, so without this a classifier that emits the
+    # country NAME ("Ukraine"/"Ukraina") instead of the code would not resolve, the
+    # tier would be UNKNOWN, and the LOW demotion this block exists for would not
+    # happen (it fails OPEN to a call -- safe, but it defeats the demotion). The
+    # monitored PL/LT/LV/EE/RO and RU/BY names come from monitoring.*_countries;
+    # these cover the rest of the tier lists.
+    country_names: list[dict] = [
+        {"code": "UA", "name": "Ukraine", "name_native": "Ukraina"},
+        {"code": "MD", "name": "Moldova", "name_native": "Mołdawia"},
+    ]
 
 
 # The classifier's urgency scale (classifier.py clamps to this range). The band
@@ -336,6 +348,21 @@ class AlertsConfig(BaseModel):
             )
         if len(set(scores)) != len(scores):
             raise ValueError(f"alerts.channel_bands min_score values must be unique, got {sorted(scores)}")
+
+        band_classes = [b.channel_class for b in bands]
+        if len(set(band_classes)) != len(band_classes):
+            # Two bands of the same class (e.g. call at 10 AND call at 9) make "the
+            # call tier" ambiguous: the band map would still escalate monotonically,
+            # yet callers asking "what is the lowest call urgency?" could disagree
+            # with AlertPolicy's band lookup. Everything downstream (the corroborator's
+            # acknowledged/failed_terminal absorption guard, its concrete-country gate)
+            # keys off ONE call tier -- a disagreement there can silence a real call.
+            # One band per class, always.
+            raise ValueError(
+                f"alerts.channel_bands must contain at most one band per channel_class, got {sorted(band_classes)} "
+                "(two bands of the same class make the call tier ambiguous)"
+            )
+
         if min(scores) > URGENCY_MIN:
             raise ValueError(
                 f"alerts.channel_bands must cover every urgency: the lowest band's min_score must be "

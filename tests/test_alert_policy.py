@@ -196,6 +196,53 @@ def test_call_tier_has_a_single_source(db, config):
 
 
 # --------------------------------------------------------------------------
+# 11c. [2.8] call_tier_min reports the LOWEST call band, so it can never disagree
+#      with AlertPolicy.band_for_urgency about what counts as call tier.
+# --------------------------------------------------------------------------
+def test_call_tier_min_is_the_lowest_call_band(db, config):
+    """A band map with two call bands must not make the corroborator's guards drift.
+
+    Config load rejects a duplicate channel_class, but the policy must not depend on
+    that: if such a map ever reached it, taking the FIRST call band (10) while
+    band_for_urgency already returns CALL at 9 would leave an urgency-9 call-band
+    article below the corroborator's guard threshold -- free to merge into an
+    acknowledged event and be silenced by its cooldown.
+    """
+    config.alerts.channel_bands = [
+        ChannelBand(min_score=10, channel_class="call"),
+        ChannelBand(min_score=9, channel_class="call"),
+        ChannelBand(min_score=5, channel_class="notify"),
+        ChannelBand(min_score=1, channel_class="none"),
+    ]
+
+    assert call_tier_min(config) == 9
+    # The policy's band lookup and the derived call tier agree at the boundary...
+    assert AlertPolicy(config).band_for_urgency(9) is ChannelClass.CALL
+    # ...and so do the corroborator's life-safety merge guards.
+    assert Corroborator(db, config)._phone_call_threshold() == 9
+
+
+# --------------------------------------------------------------------------
+# 11d. [2.8] No hardcoded call tier: a band map with no call band raises rather
+#      than inventing one.
+# --------------------------------------------------------------------------
+def test_call_tier_min_requires_a_call_band(config):
+    """Config load is the real guard; call_tier_min must not silently substitute a literal.
+
+    A band map with no call band cannot place a phone call at all. Returning a
+    hardcoded urgency here would hide that from every caller (and put a threshold in
+    code, which the config-only rule forbids), so it raises instead.
+    """
+    config.alerts.channel_bands = [
+        ChannelBand(min_score=5, channel_class="notify"),
+        ChannelBand(min_score=1, channel_class="none"),
+    ]
+
+    with pytest.raises(ValueError, match="call"):
+        call_tier_min(config)
+
+
+# --------------------------------------------------------------------------
 # 12. [2.1] The three old decision sites are removed / delegating; MONITORED_COUNTRIES survives.
 # --------------------------------------------------------------------------
 def test_old_decision_sites_removed(db, config):
@@ -348,6 +395,40 @@ def test_min_event_urgency_config_driven(db, config):
         [_statement_result(art3.id, 6, is_military=False, summary="Oświadczenie C.")]
     )
     assert len(events3) == 1
+
+
+# --------------------------------------------------------------------------
+# 16a. [2.13] Inside the NONE band, the meta-event exemption -- not the military
+#      flag -- decides. This is the ONLY branch where _EVENT_GATE_EXEMPT_TYPES is
+#      consulted (an alert-band article never reaches it), so without this test a
+#      typo in the exemption set would go unnoticed.
+# --------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "event_type,creates_event",
+    [
+        ("debris_found", True),  # inert-debris recovery: exempt from the military-flag drop
+        ("official_statement", True),  # reactions/statements: exempt
+        ("other", False),  # not a meta-event type -> the flag drop applies
+        ("missile_strike", False),  # a strike the model itself says is not military, at none-band urgency
+    ],
+)
+def test_none_band_military_drop_exempts_meta_event_types(db, config, event_type, creates_event):
+    """With the gate below the notify band, a none-band article survives only if it is exempt.
+
+    Gate = 3 puts urgency 4 (a NONE-band urgency) above the event-creation gate, so
+    the drop is decided purely by `event_type in _EVENT_GATE_EXEMPT_TYPES or
+    is_military_event`. The two 0.15 meta types must survive an
+    `is_military_event: false` classification; anything else must be dropped.
+    """
+    config.dedup.min_event_urgency = 3
+    art = _insert_article(db, f"https://example.com/none-band-{event_type}")
+    events = Corroborator(db, config).process_classifications(
+        [_result(art.id, 4, event_type, is_military=False, summary=f"Zdarzenie {event_type}.")]
+    )
+
+    assert (len(events) == 1) is creates_event
+    if creates_event:
+        assert events[0].event_type == event_type
 
 
 # --------------------------------------------------------------------------

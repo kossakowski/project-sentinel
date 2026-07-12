@@ -473,6 +473,15 @@ def test_channel_bands_default_is_the_rubric_v2_map():
             ],
             "out of range",
         ),
+        (  # two call bands -> "the call tier" is ambiguous for the corroborator's guards
+            [
+                ChannelBand(min_score=10, channel_class="call"),
+                ChannelBand(min_score=9, channel_class="call"),
+                ChannelBand(min_score=5, channel_class="notify"),
+                ChannelBand(min_score=1, channel_class="none"),
+            ],
+            "duplicate channel_class",
+        ),
     ],
 )
 def test_bad_channel_bands_fail_at_load(bands, reason):

@@ -378,6 +378,19 @@ geography:
   # R11 case: NATO is now kinetically engaged with Russia).
   nato_attack_targets:
   - RU
+  # Name aliases for the countries in the tier lists above, so the classifier
+  # naming a country ("Ukraine"/"Ukraina") instead of emitting its ISO code still
+  # resolves. Without an entry the token is UNKNOWN, which fails OPEN to a phone
+  # call -- safe, but it defeats the LOW-tier demotion. PL/LT/LV/EE/RO and RU/BY
+  # already get their names from monitoring.target_countries /
+  # monitoring.aggressor_countries.
+  country_names:
+  - code: UA
+    name: Ukraine
+    name_native: Ukraina
+  - code: MD
+    name: Moldova
+    name_native: Mołdawia
 sources:
   rss:
   - name: PAP

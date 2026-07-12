@@ -134,6 +134,7 @@ Consumed by: `sentinel/classification/geo_weighter.py` (the deterministic post-L
 | `floor_countries` | list[str] | `PL` | `PL` | Countries whose soil, when a **kinetic** strike lands on it, floors the event's urgency to the call tier (≥ 9) regardless of the LLM's number. Poland only: every kinetic strike on Polish soil in the labeled ground truth is 9–10/call, while Baltic/Romanian call-tier is scenario-conditional. |
 | `low_tier_countries` | list[str] | `UA, MD, RU, BY` | same | Countries that are **known but not HIGH** — their soil is LOW geo tier. Membership is load-bearing: only a country listed here (or in `high_tier_countries`) can **demote** an urgency 9–10 to an SMS. An *unrecognized* country token is UNKNOWN and fails **open** to a phone call. |
 | `nato_attack_targets` | list[str] | `RU` | `RU` | Countries whose soil, when attacked **by a NATO member**, is HIGH geo tier (the "NATO attacks Russia" case — the alliance is kinetically engaged). |
+| `country_names` | list[{code, name, name_native}] | `UA/Ukraine/Ukraina, MD/Moldova/Mołdawia` | same | Name aliases for the countries in the tier lists above, same shape as `monitoring.target_countries`. The tier lists carry bare ISO codes, so a classifier emitting the country **name** ("Ukraine") rather than "UA" would not resolve — the tier would be UNKNOWN, which fails **open** to a call (safe, but it defeats the LOW-tier demotion). `PL/LT/LV/EE/RO` and `RU/BY` already get their names from `monitoring.target_countries` / `monitoring.aggressor_countries`. |
 
 **Geo tier resolution (`GeoWeighter`):**
 - The classifier emits `target_country` (the single country whose soil is physically attacked) and
@@ -205,9 +206,11 @@ the only source of truth for "what counts as call tier" (the corroborator's grou
 `channel_class` values: `call`, `notify`, `none` (a `field_validator` rejects anything else).
 
 **Load-time validation (fail fast — a typo here could silence every phone call):** the list must be
-non-empty, contain a `call` band, use unique `min_score` values inside the 1–10 urgency scale, start
-at `min_score: 1` (full coverage — no urgency may fall through to no band), and escalate with urgency
-(call above notify above none). Any violation raises `ConfigError` at load.
+non-empty, contain a `call` band, use unique `min_score` values inside the 1–10 urgency scale, carry
+**at most one band per `channel_class`** (two `call` bands would make "the call tier" ambiguous for
+the corroborator's merge guards), start at `min_score: 1` (full coverage — no urgency may fall through
+to no band), and escalate with urgency (call above notify above none). Any violation raises
+`ConfigError` at load.
 
 ### `alerts.urgency_levels` — `UrgencyLevel` (dict keyed by name)
 

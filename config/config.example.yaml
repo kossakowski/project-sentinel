@@ -379,6 +379,20 @@ geography:
   # "NATO attacks Russia" case: the alliance is now kinetically engaged).
   nato_attack_targets:
     - RU
+  # Name aliases for the countries named in the tier lists above, in the same
+  # {code, name, name_native} shape monitoring.target_countries uses. The tier lists
+  # carry bare ISO codes, so a classifier that emits the country NAME ("Ukraine" /
+  # "Ukraina") instead of "UA" would otherwise not resolve: the tier would be
+  # UNKNOWN, which fails OPEN to a phone call (safe, but it defeats the LOW-tier
+  # demotion this block exists for). PL/LT/LV/EE/RO and RU/BY already carry their
+  # names in monitoring.target_countries / monitoring.aggressor_countries.
+  country_names:
+    - code: UA
+      name: Ukraine
+      name_native: Ukraina
+    - code: MD
+      name: Moldova
+      name_native: Mołdawia
 
 # -----------------------------------------------------------------------------
 # SOURCES -- Where we scan

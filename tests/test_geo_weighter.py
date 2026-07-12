@@ -126,6 +126,36 @@ def test_country_names_resolve_from_config(config):
     assert gw.floor_urgency("missile_strike", "Polska", 4) >= 9
 
 
+def test_low_tier_country_names_resolve(config):
+    """LOW-tier country NAMES resolve too, so the demotion the tier list exists for actually happens.
+
+    The tier lists carry bare ISO codes; only geography.country_names gives UA/MD a
+    name. Without it a classifier emitting "Ukraine" would be UNRESOLVED -> UNKNOWN
+    -> fail open to a CALL at urgency 9-10 (safe, but every routine inside-Ukraine
+    strike would ring the phone). It follows config, not a hardcoded list.
+    """
+    gw = GeoWeighter(config)
+    policy = AlertPolicy(config)
+
+    for token in ("Ukraine", "ukraina", "Moldova", "Mołdawia"):
+        assert gw.geo_tier(token) is GeoTier.LOW, token
+        intent = policy.decide(EventDecision(Relation.NEW), urgency=9, geo_tier=gw.geo_tier(token))
+        assert intent.channel_class is ChannelClass.NOTIFY, token
+
+    assert gw.resolve_country("Ukraine") == "UA"
+    assert gw.resolve_country("Moldova") == "MD"
+    # The aggressor countries keep resolving by name via monitoring.aggressor_countries.
+    assert gw.resolve_country("Rosja") == "RU"
+
+    # Follows config: drop the alias entries and the NAME no longer resolves (the ISO
+    # code still does), so the token fails OPEN to UNKNOWN -- never to LOW.
+    config.geography.country_names = []
+    stripped = GeoWeighter(config)
+    assert stripped.resolve_country("Ukraine") is None
+    assert stripped.geo_tier("Ukraine") is GeoTier.UNKNOWN
+    assert stripped.geo_tier("UA") is GeoTier.LOW
+
+
 # --------------------------------------------------------------------------
 # Floor basis (owner-resolved): target_country first, affected only as fallback.
 # --------------------------------------------------------------------------

@@ -977,7 +977,7 @@ def test_determine_action_order_independent(state_machine, config):
 
     config.alerts.urgency_levels = {
         "low": UrgencyLevel(min_score=1, action="log_only"),
-        "critical": UrgencyLevel(min_score=9, action="phone_call", fallback="sms"),
+        "critical": UrgencyLevel(min_score=9, action="phone_call"),
         "medium": UrgencyLevel(min_score=5, action="sms", channel="sms"),
         "high": UrgencyLevel(min_score=7, action="sms", channel="push"),
     }
