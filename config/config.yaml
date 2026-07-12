@@ -630,11 +630,12 @@ alerts:
   # sweep_max_age_minutes bounds the cycle-driven retry sweep by recency: only
   # events whose LAST activity (last_updated_at) is within this window are
   # re-called. An actively-retrying event bumps last_updated_at every round so it
-  # stays in-window; a stale row left by a historical event or an unacknowledged
-  # --test-alert (still inside DB retention) ages out and is NOT re-called, so a
-  # deploy can't re-activate every historical row at once. An event stranded beyond
-  # the window by a process outage is finalized fail-loud (terminal + SMS/push
-  # fallback), never left in limbo. Keep the window well above
+  # stays in-window; a stale row left by a historical event ages out and is NOT
+  # re-called, so a deploy can't re-activate every historical row at once (a
+  # --test-alert resolves its own synthetic event, so it never lingers). An event
+  # stranded beyond the window by a process outage is finalized fail-loud (marked
+  # failed_terminal with an error log — no re-call and no SMS/push about a stale
+  # row), never left in limbo. Keep the window well above
   # max_rounds x retry_interval_minutes so a real in-progress retry never ages out
   # mid-sequence. sweep_max_events_per_cycle caps how many events the sweep drives
   # through a (blocking) call round per scheduler cycle so a crisis cannot stall

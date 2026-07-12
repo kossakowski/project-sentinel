@@ -655,8 +655,9 @@ alerts:
   # to max_rounds x max_call_retries.
   # sweep_max_age_minutes bounds the cycle-driven retry sweep by recency: only
   # events whose last activity falls within the window are re-called; an event
-  # stranded beyond it by a process outage is finalized fail-loud (terminal + SMS/
-  # push fallback), never left in limbo. sweep_max_events_per_cycle caps how many
+  # stranded beyond it by a process outage is finalized fail-loud (marked
+  # failed_terminal with an error log — no re-call, no SMS/push about a stale row),
+  # never left in limbo. sweep_max_events_per_cycle caps how many
   # events the sweep drives through a (blocking) call round per scheduler cycle so a
   # crisis cannot stall article fetch/classification; the rest wait for next cycle
   # (0 disables the bound).

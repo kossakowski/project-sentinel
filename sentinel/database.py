@@ -272,6 +272,8 @@ class Database:
         threshold and pass the filter regardless of age, defeating the recency
         bound. Matching the stored format keeps the age window correct.
         """
+        if within_minutes is not None and older_than_minutes is not None:
+            raise ValueError("within_minutes and older_than_minutes are mutually exclusive")
         if within_minutes is not None:
             cutoff = (datetime.now(UTC) - timedelta(minutes=within_minutes)).isoformat()
             cursor = self.conn.execute(

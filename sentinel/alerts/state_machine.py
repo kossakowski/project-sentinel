@@ -612,35 +612,29 @@ class AlertStateMachine:
         budget = self.config.alerts.retry.sweep_max_events_per_cycle
         processed = 0
 
-        # Pass 1 — FAIL-LOUD finalization of events stranded BEYOND the sweep window
-        # (1.3). A process outage longer than ``window`` leaves an active
-        # ``retry_pending`` / mid-round event too old to safely re-call (re-calling
-        # every historical row on restart would storm), yet leaving it in limbo
-        # until the 90-day cleanup is a silent 9-10 miss. Finalize it terminally and
-        # notify via the SMS + additive push fallback so the disposition is durable
-        # and the operator still hears about it — never a silent drop.
+        # Pass 1 — finalize events stranded BEYOND the sweep window so they don't sit
+        # in ``retry_pending`` limbo until the 90-day cleanup. A process outage longer
+        # than ``window`` leaves an active ``retry_pending`` / mid-round event too old
+        # to safely re-call (re-calling every historical row on restart would storm).
+        # These rows are STALE (>window with no activity), so the disposition is a
+        # durable terminal marker plus a fail-loud ERROR log — NOT an SMS/push, which
+        # on a post-deploy backlog would spam the operator about weeks-old events. A
+        # genuinely still-live incident keeps producing articles: a fresh critical
+        # article spawns its OWN event and call (the corroborator forces a new event
+        # past a ``failed_terminal`` one), so a live escalation is not lost. This pass
+        # does not count against the call-round budget (it places no call).
         for status in self._RETRY_SWEEP_STATUSES:
             for event in self.db.get_events_by_alert_status(status, older_than_minutes=window):
-                if event.acknowledged_at is not None:
+                if event.acknowledged_at is not None or event.alert_status == "failed_terminal":
                     continue
-                existing_alerts = self.db.get_alert_records(event.id)
-                if self._is_acknowledged(existing_alerts):
-                    continue
-                if budget and processed >= budget:
-                    self.logger.warning(
-                        "Retry sweep hit the per-cycle budget (%d) finalizing stranded events; "
-                        "deferring the rest to the next cycle",
-                        budget,
-                    )
-                    return
-                self.logger.warning(
-                    "Event %s: stranded in %s beyond the %d-min sweep window — finalizing fail-loud",
+                self.logger.error(
+                    "Event %s: stranded in %s beyond the %d-min sweep window — finalizing "
+                    "failed_terminal (fail-loud; no re-call, no SMS/push for a stale row)",
                     event.id[:8],
                     status,
                     window,
                 )
-                await self._send_capped_fallback(event, existing_alerts)
-                processed += 1
+                self._mark_failed_terminal(event)
 
         # Pass 2 — re-enter fresh (within-window) events into the bounded retry
         # loop. Bounded by ``sweep_max_events_per_cycle`` so a crisis leaving many
@@ -660,6 +654,16 @@ class AlertStateMachine:
                 if self._is_acknowledged(existing_alerts):
                     continue
                 if any(a.alert_type == "phone_call" and a.status in ("initiated", "ringing") for a in existing_alerts):
+                    continue
+                # Re-check the call-tier gate before re-calling. The corroborator's
+                # ``phone_call`` status and the state machine's ``_determine_action``
+                # are independent decisions that can disagree (see
+                # .claude/rules/corroboration.md): an event left in ``phone_call``
+                # whose action resolves to a non-call tier (e.g. corroboration knobs
+                # diverge, or an SMS-tier event was mis-parked) must not be swept into
+                # a real phone call. Honor the same corroboration gate a fresh
+                # dispatch would apply.
+                if self._determine_action(event) != "phone_call":
                     continue
                 if budget and processed >= budget:
                     self.logger.warning(
@@ -888,6 +892,11 @@ class AlertStateMachine:
         if existing_alerts is None:
             existing_alerts = self.db.get_alert_records(event.id)
 
+        # Restore confirmation-code state from durable rows if it is missing (e.g. a
+        # restart mid-retry), BEFORE any ack check or round seeding, so a correct
+        # reply carrying a pre-restart code is honored on every path.
+        self._hydrate_confirmation_state(event.id, existing_alerts)
+
         # Bounded cross-cycle retry rounds (1.2). Read the durable round counter
         # from the DB so the cap survives restarts and is never trusted from a
         # possibly-stale event argument. The cap counts transport-FAILURE rounds
@@ -999,10 +1008,20 @@ class AlertStateMachine:
 
             self.db.insert_alert_record(record)
             self.db.update_event(event.id, alert_status="call_placed")
-            round_delivered_call = True
 
-            # Wait for call to finish, polling SMS in the meantime
+            # Wait for call to finish, polling SMS in the meantime. This resolves
+            # ``record.status`` to the final Twilio call outcome.
             await self._wait_for_call_and_check_sms(record, call_placed_at)
+
+            # A call counts as DELIVERED (the phone rang / reached the carrier) only
+            # if its final outcome is not a transport failure. A call Twilio accepted
+            # but that terminated "failed"/"canceled" (dead SIM, invalid/blocked
+            # number) never rang anyone — it is a transport failure, so it must NOT
+            # mark the round delivered, or the cap and the terminal SMS+push fallback
+            # (the push may still reach the operator on a different transport) would
+            # never be reached for a persistently unreachable number.
+            if record.status not in ("failed", "canceled"):
+                round_delivered_call = True
 
             # Check SMS reply after call ends
             if await self._check_sms_confirmation(call_placed_at, event.id):
@@ -1137,7 +1156,28 @@ class AlertStateMachine:
                 record.error_code,
             )
 
-    def _recover_confirmation_state(self, event_id: str) -> tuple[set[str], datetime | None]:
+    def _hydrate_confirmation_state(self, event_id: str, existing_alerts: list[AlertRecord] | None = None) -> None:
+        """Repopulate in-memory confirmation state from durable rows if it is missing.
+
+        The per-event confirmation codes and window start live in memory and do NOT
+        survive a restart. When they are absent for an event that already has
+        confirmation-SMS history (a restart mid-retry), this rebuilds them from the
+        durable rows BEFORE any ack check or round seeding, so the ``setdefault``
+        window pin and the subsequent match use the recovered codes/window rather
+        than only this round's fresh code — otherwise a correct reply carrying a
+        pre-restart code would be unmatchable in the live round path.
+        """
+        if event_id in self._confirmation_code_history:
+            return
+        codes, earliest = self._recover_confirmation_state(event_id, existing_alerts)
+        if codes:
+            self._confirmation_code_history[event_id] = set(codes)
+        if earliest is not None and event_id not in self._confirmation_window_start:
+            self._confirmation_window_start[event_id] = earliest
+
+    def _recover_confirmation_state(
+        self, event_id: str, records: list[AlertRecord] | None = None
+    ) -> tuple[set[str], datetime | None]:
         """Rebuild the matchable confirmation codes + scan-window start from the DB.
 
         The per-event confirmation code history (``_confirmation_code_history``)
@@ -1150,7 +1190,7 @@ class AlertStateMachine:
         """
         codes: set[str] = set()
         earliest: datetime | None = None
-        for rec in self.db.get_alert_records(event_id):
+        for rec in records if records is not None else self.db.get_alert_records(event_id):
             # Only successfully-DELIVERED confirmation SMSes carry a code the
             # operator actually holds — a failed send never reached them, so its
             # code must not become matchable (mirrors _send_confirmation_sms, which
@@ -1425,5 +1465,13 @@ class AlertStateMachine:
         status: str,
         duration_seconds: int | None = None,
     ) -> None:
-        """Update an existing alert record's status and duration in the DB."""
+        """Update an existing alert record's status and duration in the DB.
+
+        Also mutates the passed ``record`` in place so the caller's local object
+        reflects the resolved outcome (e.g. the final Twilio call status), keeping
+        it consistent with the persisted row.
+        """
         self.db.update_alert_record(record.id, status=status, duration_seconds=duration_seconds)
+        record.status = status
+        if duration_seconds is not None:
+            record.duration_seconds = duration_seconds

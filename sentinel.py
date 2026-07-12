@@ -497,6 +497,19 @@ def _run_test_alert(alert_type: str, config, logger) -> None:
     # The alert methods are coroutines, so drive them under a single asyncio.run.
     if alert_type == "phone_call":
         asyncio.run(state_machine._execute_phone_call(event))
+        # A test alert is a one-shot. Ensure the synthetic urgency-10 event does not
+        # linger in a sweep-eligible status (retry_pending / call_placed): a running
+        # monitor sharing this DB would otherwise re-call it every retry interval
+        # until manually acknowledged. If the tester did not acknowledge it, resolve
+        # it terminally so the cross-cycle retry sweep never touches it.
+        final = db.get_event_by_id(event.id)
+        if final is not None and final.acknowledged_at is None:
+            db.update_event(
+                event.id,
+                alert_status="acknowledged",
+                acknowledged_at=datetime.now(UTC).isoformat(),
+            )
+            print("  (test event resolved — it will not be re-called by the monitor)")
     elif alert_type == "sms":
         asyncio.run(state_machine._execute_sms(event))
     elif alert_type == "push":

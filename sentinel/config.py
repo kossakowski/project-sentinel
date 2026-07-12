@@ -132,7 +132,10 @@ class UrgencyLevel(BaseModel):
 
 class AcknowledgmentConfig(BaseModel):
     call_duration_threshold_seconds: int = 15
-    max_call_retries: int = 3
+    # ge=1: a mistyped 0 would make each round place zero calls yet still march the
+    # event to failed_terminal having never rung the operator — same failure class
+    # the RetryConfig.max_rounds bound guards, so fail fast at config load.
+    max_call_retries: int = Field(default=3, ge=1)
     retry_interval_minutes: int = 5
     cooldown_hours: int = 6
     call_poll_timeout_seconds: int = 90
