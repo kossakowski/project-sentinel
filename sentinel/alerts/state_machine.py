@@ -1419,8 +1419,12 @@ class AlertStateMachine:
     async def _handle_call_result(self, record: AlertRecord, status: dict) -> None:
         """Handle the result of a previously placed phone call.
 
-        If the call was answered (duration > threshold), mark as acknowledged.
-        Otherwise, retry or fall back to SMS.
+        Acknowledgment is SMS-reply-ONLY — a call's own outcome NEVER auto-acknowledges
+        (no DTMF / no duration-threshold check): a call answered by voicemail would
+        otherwise be a false acknowledgment and silence a real alert. Every terminal
+        call outcome (completed / busy / no-answer / canceled / failed) is treated as
+        unanswered here; retry is driven by process_event / the retry sweep next cycle,
+        which stop only on an SMS ack or the durable round cap.
         """
         call_status = status["status"]
         duration = status["duration"]
