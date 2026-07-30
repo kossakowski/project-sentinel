@@ -490,9 +490,17 @@ alerts:
   urgency_levels:
     critical:
       min_score: 9
-      # Calls RE-ENABLED 2026-07-30 after a brief mute (see the storm note on
-      # acknowledgment.max_call_retries below, which is the actual rate limiter).
-      action: phone_call
+      # CALLS MUTED 2026-07-30 by operator request (second mute, after a brief
+      # re-enable). Was: action: phone_call
+      # With action: sms, AlertStateMachine._determine_action returns this
+      # level's `channel`, so urgency 9-10 delivers via SMS + push and
+      # _execute_phone_call is never reached. Monitoring stays fully live.
+      # TO RESTORE CALLS: set action back to phone_call and drop `channel`.
+      # Do NOT restore until the urgency-9 country gate in
+      # Corroborator._countries_compatible stops splitting one incident into
+      # many events -- that fragmentation is the real defect.
+      action: sms
+      channel: both
       corroboration_required: 1
       retry_attempts: 3
       retry_interval_minutes: 5
