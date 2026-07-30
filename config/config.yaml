@@ -490,7 +490,17 @@ alerts:
   urgency_levels:
     critical:
       min_score: 9
-      action: phone_call
+      # TEMPORARY KILL SWITCH (calls disabled by operator request).
+      # Was: action: phone_call
+      # Runaway call storm: _execute_phone_call places up to `max_call_retries`
+      # calls per round (~10s apart), and the urgency-9 country gate in
+      # Corroborator._countries_compatible fragments one incident into several
+      # events, each with its own independent call sequence -> ~10 calls/min.
+      # With action: sms, _determine_action returns this level's `channel`, so
+      # 9-10 delivers via SMS + push and _execute_phone_call is never reached.
+      # TO RESTORE CALLS: set action back to phone_call and drop `channel`.
+      action: sms
+      channel: both
       corroboration_required: 1
       retry_attempts: 3
       retry_interval_minutes: 5
