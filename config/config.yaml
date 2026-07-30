@@ -490,17 +490,9 @@ alerts:
   urgency_levels:
     critical:
       min_score: 9
-      # TEMPORARY KILL SWITCH (calls disabled by operator request).
-      # Was: action: phone_call
-      # Runaway call storm: _execute_phone_call places up to `max_call_retries`
-      # calls per round (~10s apart), and the urgency-9 country gate in
-      # Corroborator._countries_compatible fragments one incident into several
-      # events, each with its own independent call sequence -> ~10 calls/min.
-      # With action: sms, _determine_action returns this level's `channel`, so
-      # 9-10 delivers via SMS + push and _execute_phone_call is never reached.
-      # TO RESTORE CALLS: set action back to phone_call and drop `channel`.
-      action: sms
-      channel: both
+      # Calls RE-ENABLED 2026-07-30 after a brief mute (see the storm note on
+      # acknowledgment.max_call_retries below, which is the actual rate limiter).
+      action: phone_call
       corroboration_required: 1
       retry_attempts: 3
       retry_interval_minutes: 5
@@ -556,7 +548,14 @@ alerts:
       Pilność: {urgency_score}/10'
   acknowledgment:
     call_duration_threshold_seconds: 15
-    max_call_retries: 5
+    # Calls placed per round by AlertStateMachine._execute_phone_call, spaced by
+    # call_retry_pause_seconds. Was 5, which on 2026-07-30 produced ~10 calls/min:
+    # 5 calls per event, multiplied across 8 event IDs that the urgency-9 country
+    # gate in Corroborator._countries_compatible split out of ONE real incident
+    # (Kh-101 airspace violation / Lublin sirens). Capped at 1 so a fragmented
+    # story costs one call per fragment instead of five. Raising this again
+    # without fixing that fragmentation will bring the storm straight back.
+    max_call_retries: 1
     retry_interval_minutes: 5
     cooldown_hours: 6
   push:
