@@ -1,0 +1,176 @@
+[
+ {
+  "iteration": 1,
+  "fingerprint": "fp_35a5da34",
+  "findingId": 1,
+  "file": "sentinel/alerts/policy.py:95",
+  "title": "call_tier_min returns the FIRST call band, not the LOWEST \u2014 a validator-legal two-call-band config desynchronizes the corroborator's life-safety merge guards and can silence an urgency-9 call",
+  "decision": "accept",
+  "finalCategory": "quality",
+  "finalSeverity": "medium",
+  "executorAction": "fix",
+  "blocking": true,
+  "reasoning": "Reproduced this session: AlertsConfig._validate_channel_bands accepts two call bands ([10:call, 9:call, 5:notify, 1:none]) because uniqueness is enforced on min_score only and the class-rank monotonic check passes on [2,2,1,0]. With that validator-legal config, call_tier_min returned 10 while AlertPolicy.band_for_urgency(9) returned CALL. Corroborator._phone_call_threshold (corroborator.py:252-263) feeds both the concrete-country gate (corroborator.py:284) and the acknowledged/failed_terminal absorption guard (corroborator.py:180-183), so an urgency-9 CALL-band article would bypass both guards, merge into an acknowledged event, and be silenced by its cooldown (_RETRY_LIFECYCLE_STATUSES preserves 'acknowledged' in _update_event, corroborator.py:367). That is a suppression-direction hole in a life-safety system whose prime directive is never missing a 9-10. Latent (shipped config/config.yaml has exactly one call band, verified), but the config surface legally permits it, nothing warns, and the fix is cheap (min() over call bands or reject duplicate channel_class at load). Medium is the correct severity: real, confirmed, suppression-direction, but requires an unusual operator-authored config to trigger.",
+  "evidenceRefs": [
+   "file:sentinel/alerts/policy.py:95",
+   "file:sentinel/config.py:337-350",
+   "file:sentinel/classification/corroborator.py:180-183",
+   "file:sentinel/classification/corroborator.py:284",
+   "check:repro run this session (validator accepted two call bands; call_tier_min=10; band_for_urgency(9)=call)",
+   "spec:Phase 2 req 2.3/2.8"
+  ]
+ },
+ {
+  "iteration": 1,
+  "fingerprint": "fp_188d31c3",
+  "findingId": 2,
+  "file": "CLAUDE.md:21",
+  "title": "Operative agent instructions (CLAUDE.md + .claude/rules/corroboration.md) still mandate the deleted corroboration gate",
+  "decision": "escalate",
+  "finalCategory": "quality",
+  "finalSeverity": "medium",
+  "executorAction": "needs-human",
+  "blocking": false,
+  "reasoning": "Drift confirmed this session: CLAUDE.md:21 still states 'Corroboration required before a phone call (independent source)' under 'Critical rules (always honor)', and .claude/rules/corroboration.md:38-48 still documents Corroborator._determine_alert_status, classification.corroboration_required, per-level corroboration_required, and classification.syndication_similarity_threshold - all deleted by this phase (test_old_decision_sites_removed and the config-surface removal confirm deletion). Both files auto-load into agent sessions (corroboration.md auto-loaded into THIS session), so a future agent honoring them could reintroduce the suppression gate this phase deliberately removed. The impact estimate is not overestimated. However, the remedy cannot be executed unilaterally: the owner's global rules make CLAUDE.md and instruction-file changes proposal-first, never applied without sign-off, and the corroboration.md rule file itself carries life-safety-invariant sign-off language. The owner must authorize (or perform) the rewrite of the CLAUDE.md critical-rules line and the corroboration.md overhaul - this is a human-consent decision, not an executor fix.",
+  "evidenceRefs": [
+   "file:CLAUDE.md:21",
+   "file:.claude/rules/corroboration.md:37-48",
+   "spec:Phase 2 req 2.2 (corroboration removed)",
+   "test:tests/test_alert_policy.py::test_old_decision_sites_removed",
+   "check:grep confirmed stale references this session"
+  ]
+ },
+ {
+  "iteration": 1,
+  "fingerprint": "fp_c51c793f",
+  "findingId": 3,
+  "file": "sentinel/eval/harness.py:28",
+  "title": "Dead MONITORED_COUNTRIES constant in the harness with a false comment claiming it is used by _check_case",
+  "decision": "accept",
+  "finalCategory": "quality",
+  "finalSeverity": "low",
+  "executorAction": "fix",
+  "blocking": false,
+  "reasoning": "Confirmed: the comment at harness.py:28-30 claims MONITORED_COUNTRIES 'is used ONLY by _check_case's country checks', but grep shows no reference to it anywhere in harness.py beyond the definition at line 30, and _check_case (harness.py:195-240) compares directly against per-case expected country lists. The constant now survives only for spec 2.1's MUST and external test imports (tests/test_config_countries.py:150, tests/test_alert_policy.py:204). Requirement 2.1's letter (constant MUST survive) is satisfied; the defect is the false comment, which will mislead the next editor. Fix: correct the comment while keeping the constant.",
+  "evidenceRefs": [
+   "file:sentinel/eval/harness.py:28-30",
+   "file:sentinel/eval/harness.py:195-240",
+   "test:tests/test_config_countries.py:150",
+   "spec:Phase 2 req 2.1 (MONITORED_COUNTRIES MUST survive)"
+  ]
+ },
+ {
+  "iteration": 1,
+  "fingerprint": "fp_d2ab5f28",
+  "findingId": 4,
+  "file": "sentinel/alerts/state_machine.py:788",
+  "title": "AlertPolicy's relation/already_alerted_at inputs are dormant on every live path \u2014 2.3/2.6 suppression logic runs only in unit tests until Phase 3",
+  "decision": "dismiss",
+  "finalCategory": "quality",
+  "finalSeverity": "none",
+  "executorAction": "ignore",
+  "blocking": false,
+  "reasoning": "This is intended phasing, not an omission. Spec 2.10 defines EventDecision explicitly as 'the interface Phase 3's EventDeduplicator produces and AlertPolicy consumes', and Phase 3 req 3.1 is where _find_matching_event grouping is replaced by EventDeduplicator.decide(...) emitting real relations. Until then the three production call sites correctly pass Relation.NEW (corroborator.py:425, state_machine.py:788-792, harness.py:55), and production one-call-per-event/SAME suppression remains covered by the preserved legacy mechanisms (_user_already_notified, cooldown, _RETRY_LIFECYCLE_STATUSES). The 2.3/2.6 policy logic is unit-tested per this phase's acceptance tests (tests 2, 2b, 3 all pass). The corroborator docstring (corroborator.py:416-419) documents the deferral. No defect against Phase 2's requirements.",
+  "evidenceRefs": [
+   "spec:Phase 2 req 2.10",
+   "spec:Phase 3 req 3.1",
+   "file:sentinel/classification/corroborator.py:416-425",
+   "file:sentinel/alerts/state_machine.py:785-792",
+   "test:tests/test_alert_policy.py::test_escalation_first_call_fires"
+  ]
+ },
+ {
+  "iteration": 1,
+  "fingerprint": "fp_65205fe4",
+  "findingId": 5,
+  "file": "sentinel/alerts/policy.py:85",
+  "title": "Hardcoded _FALLBACK_CALL_TIER = 9 in policy.py contradicts the 'nothing is hardcoded' rule",
+  "decision": "accept",
+  "finalCategory": "quality",
+  "finalSeverity": "low",
+  "executorAction": "fix",
+  "blocking": false,
+  "reasoning": "Confirmed: policy.py:85 hardcodes _FALLBACK_CALL_TIER = 9 and call_tier_min returns it when no call band exists. Unreachable today - AlertsConfig._validate_channel_bands (config.py:324-328) rejects any band map lacking a call band, and test_thresholds_config_driven proves live behavior follows config - so this is not a functional 2.8 violation (no loadable config is ever governed by the literal). But it is a literal urgency threshold in code on a project whose CLAUDE.md mandates config-only thresholds, and if the validator is ever relaxed it silently becomes the live call tier. Low severity is correct (dead defensive code today); preferable fix is raising instead of returning a literal.",
+  "evidenceRefs": [
+   "file:sentinel/alerts/policy.py:80-98",
+   "file:sentinel/config.py:324-328",
+   "test:tests/test_alert_policy.py::test_thresholds_config_driven",
+   "spec:Phase 2 req 2.8"
+  ]
+ },
+ {
+  "iteration": 1,
+  "fingerprint": "fp_eb63be4a",
+  "findingId": 6,
+  "file": "sentinel/classification/geo_weighter.py:99",
+  "title": "LOW-tier country NAMES don't resolve \u2014 a classifier emitting 'Ukraine'/'Moldova' as target yields UNKNOWN and fires a CALL instead of the intended LOW demotion",
+  "decision": "accept",
+  "finalCategory": "quality",
+  "finalSeverity": "low",
+  "executorAction": "fix",
+  "blocking": false,
+  "reasoning": "Reproduced this session against the shipped config: resolve_country('Ukraine') and resolve_country('Moldova') return None (geography.low_tier_countries contributes only bare ISO codes to _country_aliases; only monitoring.target_countries/aggressor_countries carry name/name_native entries), so geo_tier('Ukraine') is UNKNOWN and at urgency >=9 AlertPolicy fails open to CALL (policy.py:150-153) instead of the intended LOW->NOTIFY demotion. The failure direction is safe for the prime directive (over-fires, never suppresses) - the geo_weighter module docstring documents unresolved-as-UNKNOWN as a deliberate choice - and exposure requires the classifier to disobey the ISO-code prompt mandate. But it partially defeats the phase's false-positive-call reduction for name tokens, and only HIGH/monitored names are covered by test_country_names_resolve_from_config. Low severity confirmed; fix is adding name aliases for low-tier countries via config.",
+  "evidenceRefs": [
+   "file:sentinel/classification/geo_weighter.py:89-112",
+   "file:sentinel/alerts/policy.py:150-153",
+   "check:repro this session (resolve_country('Ukraine')=None, geo_tier('Ukraine')=unknown)",
+   "test:tests/test_geo_weighter.py::test_country_names_resolve_from_config",
+   "spec:Phase 2 req 2.5"
+  ]
+ },
+ {
+  "iteration": 1,
+  "fingerprint": "fp_9310db3e",
+  "findingId": 7,
+  "file": "sentinel/classification/geo_weighter.py:126",
+  "title": "_country_aliases() rebuilt from config on every resolve_country call",
+  "decision": "accept",
+  "finalCategory": "quality",
+  "finalSeverity": "low",
+  "executorAction": "fix",
+  "blocking": false,
+  "reasoning": "Confirmed in code: resolve_country (geo_weighter.py:126) calls self._country_aliases() on every invocation, rebuilding the full alias dict from four config lists per token; event_tier/tier_for_affected/floor_for_event invoke it once per country per article. Config is immutable per process, so caching (instance attribute built in __init__ or cached_property) is safe and trivial. Pure efficiency waste with no correctness impact - Low, non-blocking.",
+  "evidenceRefs": [
+   "file:sentinel/classification/geo_weighter.py:89-126",
+   "file:sentinel/classification/geo_weighter.py:155-196"
+  ]
+ },
+ {
+  "iteration": 1,
+  "fingerprint": "fp_017588b5",
+  "findingId": 8,
+  "file": "sentinel/classification/corroborator.py:83",
+  "title": "The _EVENT_GATE_EXEMPT_TYPES none-band branch is never executed by any test \u2014 a typo in the exemption set would go green",
+  "decision": "accept",
+  "finalCategory": "quality",
+  "finalSeverity": "low",
+  "executorAction": "fix",
+  "blocking": false,
+  "reasoning": "Confirmed by tracing every gate test this session: with the default dedup.min_event_urgency=5, every existing test exits _passes_event_gate at corroborator.py:79 (urgency below the gate: the urgency-3 'other' case, the gate=6/urgency-5 case, the gate=8/urgency-6 case) or at corroborator.py:81-82 (alert band: the urgency-5/6/10 cases including test_min_event_urgency_config_driven's is_military=False urgency-6 case). Line 83's 'result.event_type in _EVENT_GATE_EXEMPT_TYPES' membership check therefore never executes in the suite - it requires gate <= urgency <= 4, and no test lowers the gate below 5 with a none-band urgency. A typo'd type name in _EVENT_GATE_EXEMPT_TYPES would pass all 591 tests. The 2.13 acceptance-test letter is met; this is a genuine coverage gap on the deterministic exemption the spec calls load-bearing. Reviewer's suggested test (gate=3, urgency-4 debris_found is_military=false -> event; urgency-4 'other' is_military=false -> dropped) is exactly right. Low, non-blocking.",
+  "evidenceRefs": [
+   "file:sentinel/classification/corroborator.py:79-83",
+   "test:tests/test_alert_policy.py:329-350",
+   "test:tests/test_alert_policy.py:357-396",
+   "spec:Phase 2 req 2.13"
+  ]
+ },
+ {
+  "iteration": 1,
+  "fingerprint": "fp_a7661bb3",
+  "findingId": 9,
+  "file": "tests/test_state_machine.py:980",
+  "title": "Test passes the removed 'fallback' kwarg to UrgencyLevel \u2014 silently ignored by Pydantic",
+  "decision": "accept",
+  "finalCategory": "quality",
+  "finalSeverity": "low",
+  "executorAction": "fix",
+  "blocking": false,
+  "reasoning": "Confirmed: tests/test_state_machine.py:980 constructs UrgencyLevel(min_score=9, action='phone_call', fallback='sms'); UrgencyLevel (config.py:167-183) has no fallback field (removed this phase; tests/test_config.py asserts not hasattr(level, 'fallback')), and Pydantic v2's default extra='ignore' silently swallows the kwarg, so the test passes while implying a deleted knob still exists. Stale remnant; drop the kwarg. Low, non-blocking.",
+  "evidenceRefs": [
+   "file:tests/test_state_machine.py:980",
+   "file:sentinel/config.py:167-183",
+   "test:tests/test_config.py (asserts fallback field absent)",
+   "check:pytest 591 passed (kwarg silently ignored)"
+  ]
+ }
+]

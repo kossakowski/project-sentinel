@@ -1,0 +1,711 @@
+[
+  {
+    "iteration": 1,
+    "fingerprint": "fp_c92df445",
+    "findingId": 1,
+    "file": "sentinel/classification/classifier.py:55",
+    "title": "R2/R3 unnamed-NATO examples still command >=9, contradicting the new TARGET-COUNTRY GATE",
+    "decision": "accept",
+    "finalCategory": "spec-compliance",
+    "finalSeverity": "high",
+    "executorAction": "fix",
+    "blocking": true,
+    "reasoning": "Verified: classifier.py:54-55 retains \"'Drones violating airspace of NATO state' with shelter warnings = 9\" and :59 retains \"'Russian strike on NATO border' = 9 ... score MINIMUM 9\", while the new TARGET-COUNTRY GATE (:39-43) orders the identical unnamed-NATO pattern to urgency 2-3 with empty affected_countries, and the revised CRITICAL RULE (:185-187) states a non-monitored NATO state is NOT auto-9. Req 0.6 is a MUST ('a non-monitored NATO state is NOT auto-9 on membership alone'); a prompt containing both the required rule and direct >=9 counter-examples on the exact fact pattern does not comply as an outcome — LLM behavior on the phase's root-cause scenario (false-positive PL calls) becomes indeterminate. Downstream, a 9 with empty countries still spawns its own event/call per the corroborator country gate, so the defect Phase 0 exists to fix survives. High severity is justified by the life-safety false-call impact.",
+    "evidenceRefs": [
+      "file:sentinel/classification/classifier.py:54",
+      "file:sentinel/classification/classifier.py:59",
+      "file:sentinel/classification/classifier.py:39",
+      "file:sentinel/classification/classifier.py:185",
+      "spec:Phase 0 req 0.5/0.6",
+      "file:.claude/rules/corroboration.md (country gate: empty-country critical article spawns own event/call)"
+    ]
+  },
+  {
+    "iteration": 1,
+    "fingerprint": "fp_053d9f86",
+    "findingId": 2,
+    "file": "sentinel/classification/classifier.py:84",
+    "title": "R7 caps found/crashed drones at 4, contradicting debris_found=8 (PL)/6-7 (Baltics) — unknown-origin PL debris stories can be dropped pre-event",
+    "decision": "accept",
+    "finalCategory": "spec-compliance",
+    "finalSeverity": "high",
+    "executorAction": "fix",
+    "blocking": true,
+    "reasoning": "Verified: R7 (classifier.py:84-88) commands 'score 4 maximum' for a drone 'found on ground'/'discovered' with unknown or Ukrainian origin, while the ladder (:125) and EVENT-TYPE RULES (:135-137) command 8 for inert debris found in Poland (req 0.14 MUST; spec ground truth: inert PL debris 8/sms). The common unknown-origin wreckage-in-Poland story matches R7's literal trigger words, so the prompt demands both <=4 and 8. A 4 falls below corroborator._MIN_EVENT_URGENCY=5 (corroborator.py:28,53), discarding the story before events/alerts — exactly the suppression 0.15's is_military_event clause exists to prevent. High: a missed 8-band PL alert is a life-safety miss in the tolerated-direction-inverted sense (under-alerting).",
+    "evidenceRefs": [
+      "file:sentinel/classification/classifier.py:84",
+      "file:sentinel/classification/classifier.py:125",
+      "file:sentinel/classification/classifier.py:135",
+      "file:sentinel/classification/corroborator.py:28",
+      "file:sentinel/classification/corroborator.py:53",
+      "spec:Phase 0 req 0.14/0.15 + Ground truth (inert PL debris 8/sms)"
+    ]
+  },
+  {
+    "iteration": 1,
+    "fingerprint": "fp_298b2866",
+    "findingId": 3,
+    "file": "sentinel/classification/classifier.py:73",
+    "title": "R6/R8(c) cap all reaction stories at 2-4, contradicting the ladder's Polish-government reaction ~6",
+    "decision": "accept",
+    "finalCategory": "spec-compliance",
+    "finalSeverity": "medium",
+    "executorAction": "fix",
+    "blocking": true,
+    "reasoning": "Verified: R6 (classifier.py:73-82) caps ALL reaction stories at urgency 2-4 ('caps at 4'), while the ladder (:130-132) and the official_statement rule (:138-140) set Polish-government reaction = around 6 (req 0.14 MUST; rubric v2: Polish-government reaction ≈6/sms). The prompt header says 'CALIBRATION RULES (apply these in order)' with R6 preceding the ladder, and no reconciliation clause was added. A PL-gov reaction scored 4 is dropped by the urgency<5 pre-event cut (corroborator.py:53), missing the owner's 5-8/sms band.",
+    "evidenceRefs": [
+      "file:sentinel/classification/classifier.py:73",
+      "file:sentinel/classification/classifier.py:130",
+      "file:sentinel/classification/classifier.py:138",
+      "file:sentinel/classification/corroborator.py:53",
+      "spec:Phase 0 req 0.14 (Polish-government reaction ≈6)"
+    ]
+  },
+  {
+    "iteration": 1,
+    "fingerprint": "fp_4324c289",
+    "findingId": 4,
+    "file": "sentinel/classification/classifier.py:58",
+    "title": "R3's MINIMUM-9 strike floor contradicts the ladder's Baltic strike=8 and Romania strike-with-injuries=7-8",
+    "decision": "accept",
+    "finalCategory": "spec-compliance",
+    "finalSeverity": "medium",
+    "executorAction": "fix",
+    "blocking": true,
+    "reasoning": "Verified: R3 (classifier.py:58-61) commands 'score MINIMUM 9' for any strike ON/AT a monitored country's territory, unchanged by the phase, while the ladder (:126-128, req 0.14 MUST) sets Baltic real strike = 8 and Romania strike with injuries = 7-8. Spec ground truth sides with the ladder (Vilnius strike w/ shelter orders = 8/sms; Galați = 8/sms — spec Technical Context lines 171-174). The same scenario is simultaneously commanded >=9 and =8/7-8; 9 vs 8 is exactly the call/sms boundary, so classifier output on labeled bands is unstable. Over-firing is the tolerated direction, but 0.14 is a MUST to encode the rubric, and a direct contradiction fails that encoding.",
+    "evidenceRefs": [
+      "file:sentinel/classification/classifier.py:58",
+      "file:sentinel/classification/classifier.py:126",
+      "spec:Phase 0 req 0.14 + Ground truth (Vilnius 8/sms, Galați 8/sms)"
+    ]
+  },
+  {
+    "iteration": 1,
+    "fingerprint": "fp_75242339",
+    "findingId": 5,
+    "file": "sentinel/classification/classifier.py:129",
+    "title": "Moldova ~6 in the ladder contradicts the revised CRITICAL RULE capping non-monitored countries at 1-3 (5 max)",
+    "decision": "accept",
+    "finalCategory": "spec-compliance",
+    "finalSeverity": "medium",
+    "executorAction": "fix",
+    "blocking": true,
+    "reasoning": "Verified: ladder (classifier.py:129) sets 'Moldova: incidents on Moldovan soil = around 6' (req 0.14 MUST) while the CRITICAL RULE rewritten this phase per 0.6 (:188-190) caps non-monitored countries at 1-3 (5 max for capability escalation, or R11). Moldova is non-monitored, so the two directives conflict (6 vs cap 5) and no Moldova carve-out was added when the clause was revised. The 6 vs 5 boundary is also the sms/none action boundary (5-8 = sms), so the contradiction affects whether Moldova incidents alert at all.",
+    "evidenceRefs": [
+      "file:sentinel/classification/classifier.py:129",
+      "file:sentinel/classification/classifier.py:188",
+      "spec:Phase 0 req 0.14 (Moldova ≈6) + req 0.6"
+    ]
+  },
+  {
+    "iteration": 1,
+    "fingerprint": "fp_32eb056a",
+    "findingId": 6,
+    "file": "sentinel/classification/classifier.py:163",
+    "title": "JSON response example for affected_countries omits RO",
+    "decision": "accept",
+    "finalCategory": "spec-compliance",
+    "finalSeverity": "medium",
+    "executorAction": "fix",
+    "blocking": true,
+    "reasoning": "Verified: the JSON response example (classifier.py:163) still reads '\"affected_countries\": [\"PL\", \"LT\", \"LV\", \"EE\"]' — the only country-code list in the response schema excludes RO, biasing the model against emitting RO for the Galați-type case Phase 0 exists to catch. Mechanically confirmed the consequence: harness has_monitored = affected_countries ∩ MONITORED_COUNTRIES (harness.py:206) and _action_for_urgency (harness.py:41-45) derives sms instead of phone_call for an RO/9 case with RO omitted, undercutting 0.6/0.13's outcome. Reviewer's Medium (not High) calibration is correct — I verified frozen expectations in tests/fixtures/eval_set.yaml contain \"UA\" (lines 45, 93, 109), proving the model emits codes outside the example list, so the bias is probabilistic, not absolute.",
+    "evidenceRefs": [
+      "file:sentinel/classification/classifier.py:163",
+      "file:sentinel/eval/harness.py:206",
+      "file:sentinel/eval/harness.py:41",
+      "test:tests/fixtures/eval_set.yaml:45 (UA in expectations)",
+      "spec:Phase 0 req 0.6/0.13"
+    ]
+  },
+  {
+    "iteration": 1,
+    "fingerprint": "fp_3887f13b",
+    "findingId": 7,
+    "file": "sentinel/fetchers/google_news.py:14",
+    "title": "Google News LANG_MAP has no 'ro' — the new Romanian queries fetch the en-US edition",
+    "decision": "reclassify",
+    "finalCategory": "quality",
+    "finalSeverity": "medium",
+    "executorAction": "fix",
+    "blocking": true,
+    "reasoning": "Fact pattern confirmed: google_news.py LANG_MAP (:14-19) covers only en/pl/uk/ru; build_feed_url (:37) falls back to ('en','US'), so the two 'language: ro' queries added at config/config.yaml:477-480 silently fetch hl=en&gl=US&ceid=US:en instead of a Romanian edition. Reclassified from spec-compliance to quality: req 0.4 is a SHOULD and its config surface WAS added, so this is not a MUST breach — but it is an independent functional bug introduced by the phase (config declares Romanian queries that do not do what they claim), degrading the RO-soil ingestion coverage the surface exists for. A Medium quality bug blocks on the quality axis regardless of the feature's SHOULD grade. Severity kept at the reviewer's Medium — only the category changed.",
+    "evidenceRefs": [
+      "file:sentinel/fetchers/google_news.py:14",
+      "file:sentinel/fetchers/google_news.py:37",
+      "file:config/config.yaml:477",
+      "spec:Phase 0 req 0.4 (SHOULD)"
+    ]
+  },
+  {
+    "iteration": 1,
+    "fingerprint": "fp_d19f695e",
+    "findingId": 8,
+    "file": "sentinel/alerts/state_machine.py:16",
+    "title": "EVENT_TYPE_PL lacks Polish translations for debris_found and official_statement",
+    "decision": "accept",
+    "finalCategory": "quality",
+    "finalSeverity": "medium",
+    "executorAction": "fix",
+    "blocking": true,
+    "reasoning": "Verified: EVENT_TYPE_PL (state_machine.py:16-27) maps only the 10 pre-existing enum values; debris_found and official_statement — which the Phase 0 prompt now actively instructs Haiku to emit at sms-band urgencies (8 and ~6) — fall through the .get(event_type, event_type) fallback at six render sites (:140, :155, :192, :216, :319, :644), putting raw English enum strings inside Polish alert messages. This violates the CLAUDE.md critical rule 'Alerts are in Polish' the moment the new enum values fire. Fallback prevents a crash, so quality/Medium is the correct classification.",
+    "evidenceRefs": [
+      "file:sentinel/alerts/state_machine.py:16",
+      "file:sentinel/alerts/state_machine.py:140",
+      "spec:Phase 0 req 0.15 (new enum values)",
+      "file:CLAUDE.md (Alerts are in Polish)"
+    ]
+  },
+  {
+    "iteration": 1,
+    "fingerprint": "fp_54899c23",
+    "findingId": 9,
+    "file": "sentinel.py:423",
+    "title": "_run_regression_eval is not exception-safe — a broken regression set blocks the gate run",
+    "decision": "accept",
+    "finalCategory": "quality",
+    "finalSeverity": "medium",
+    "executorAction": "fix",
+    "blocking": true,
+    "reasoning": "Verified: _run_regression_eval (sentinel.py:409-426) guards only the missing-file case (:417-419). load_eval_set raises ValueError on empty/malformed YAML root or zero cases (harness.py:96-119) and _parse_case can raise KeyError; these propagate out of asyncio.run(run_eval(...)) at :423. The regression run executes BEFORE the gate run (sentinel.py:253 precedes :254), so a broken report-only set crashes the process and prevents the owner correctness gate from running — violating 0.11's explicit 'non-gating (report-only)' contract. Independent quality bug in the wiring implemented this phase; Medium is proportionate (CI/eval path only, not the alert runtime).",
+    "evidenceRefs": [
+      "file:sentinel.py:409",
+      "file:sentinel.py:253",
+      "file:sentinel.py:423",
+      "file:sentinel/eval/harness.py:96",
+      "spec:Phase 0 req 0.11 (non-gating)"
+    ]
+  },
+  {
+    "iteration": 1,
+    "fingerprint": "fp_b7202cc1",
+    "findingId": 10,
+    "file": "sentinel/classification/classifier.py:47",
+    "title": "R1/R2/R5 monitored-country enumerations still exclude RO",
+    "decision": "accept",
+    "finalCategory": "quality",
+    "finalSeverity": "low",
+    "executorAction": "fix",
+    "blocking": false,
+    "reasoning": "Verified: R1 (classifier.py:47), R2 (:52-54), and R5 (:69-70) enumerate PL/LT/LV/EE while the scope line, gate (:41), R9 (:101), and CRITICAL RULES (:182) use PL/LT/LV/EE/RO — three inconsistent 'monitored set' enumerations in one prompt. The reviewer's own caveat is correct: blindly extending R1/R2 minimum-9 floors to RO would contradict Romania's lower ladder tier (strike w/ injuries = 7-8), so parts may be deliberate; R5's omission looks unintended. Low/quality is the right calibration — the inconsistency invites model confusion but has no single provable wrong-band outcome beyond the contradictions already accepted in findings 1-5.",
+    "evidenceRefs": [
+      "file:sentinel/classification/classifier.py:47",
+      "file:sentinel/classification/classifier.py:69",
+      "file:sentinel/classification/classifier.py:182"
+    ]
+  },
+  {
+    "iteration": 1,
+    "fingerprint": "fp_1cf5b37c",
+    "findingId": 11,
+    "file": "sentinel/classification/classifier.py:174",
+    "title": "Old urgency-scale legend not reconciled with the new geography ladder",
+    "decision": "accept",
+    "finalCategory": "quality",
+    "finalSeverity": "low",
+    "executorAction": "fix",
+    "blocking": false,
+    "reasoning": "Verified: the urgency-scale legend (classifier.py:174-177) still gives '5-6: ... single drone found near border' (vs PL inert debris = 8 at :125) and '7-8: ... air alerts in Baltic states' (vs R1's minimum 9 for monitored-country air alerts at :47-50). Pre-existing legend text left unharmonized when Phase 0 introduced the ladder. Genuine but Low: same self-contradiction family as the accepted Medium/High findings, with the highest-impact instances already captured there.",
+    "evidenceRefs": [
+      "file:sentinel/classification/classifier.py:174",
+      "file:sentinel/classification/classifier.py:125",
+      "file:sentinel/classification/classifier.py:47"
+    ]
+  },
+  {
+    "iteration": 1,
+    "fingerprint": "fp_54873d4d",
+    "findingId": 12,
+    "file": "sentinel/processing/keyword_filter.py:10",
+    "title": "Romanian keywords rely on word-boundary matching with no inflection handling",
+    "decision": "accept",
+    "finalCategory": "quality",
+    "finalSeverity": "low",
+    "executorAction": "fix",
+    "blocking": false,
+    "reasoning": "Verified: _SLAVIC_LANGUAGES = {pl, uk, ru} (keyword_filter.py:10), so 'ro' takes the word-boundary exact-match branch (\\b-anchored regex). Romanian suffixes definite articles (atac→atacul, dronă→dronele), and \\batac\\b does not match 'atacul', so the citation-form keywords at config/config.yaml:253-268 miss common inflected headline forms. Real but Low: it degrades (not zeroes) the 0.4 SHOULD ingestion surface, RO events are also covered by EN/PL sources, and keyword-filter recall tuning is an owner-config concern.",
+    "evidenceRefs": [
+      "file:sentinel/processing/keyword_filter.py:10",
+      "file:config/config.yaml:253",
+      "spec:Phase 0 req 0.4 (SHOULD)"
+    ]
+  },
+  {
+    "iteration": 1,
+    "fingerprint": "fp_22666d0d",
+    "findingId": 13,
+    "file": "config/config.example.yaml:618",
+    "title": "config.example.yaml template drifted from the new Phase 0 config surface",
+    "decision": "accept",
+    "finalCategory": "quality",
+    "finalSeverity": "low",
+    "executorAction": "fix",
+    "blocking": false,
+    "reasoning": "Verified: config/config.example.yaml has no RO target country, no geography: block, no ro keywords/queries (grep for RO/geography/regression matched nothing), and :618 still sets eval_set_file: tests/fixtures/eval_set.yaml with no regression_eval_set_file. CLAUDE.md names it as the config template, so a fresh setup would monitor without Romania and gate on the synthetic set. Not in the Phase 0 deliverables list, so quality/Low is correct.",
+    "evidenceRefs": [
+      "file:config/config.example.yaml:618",
+      "file:CLAUDE.md (template: config/config.example.yaml)",
+      "spec:Phase 0 Deliverables (config.example.yaml absent)"
+    ]
+  },
+  {
+    "iteration": 1,
+    "fingerprint": "fp_6efffad0",
+    "findingId": 14,
+    "file": "docs/reference/config-reference.md:290",
+    "title": "config-reference docs now contain a false statement and omit the new keys",
+    "decision": "accept",
+    "finalCategory": "quality",
+    "finalSeverity": "low",
+    "executorAction": "fix",
+    "blocking": false,
+    "reasoning": "Verified: docs/reference/config-reference.md:290 still states 'The live config/config.yaml omits this key' for eval_set_file, which is now false (config/config.yaml:608 sets tests/fixtures/eval_set_human.yaml), and neither geography.high_tier_countries nor testing.regression_eval_set_file is documented — against the project rule that every config param lives in this reference. Docs were not a Phase 0 deliverable, so quality/Low.",
+    "evidenceRefs": [
+      "file:docs/reference/config-reference.md:290",
+      "file:config/config.yaml:608",
+      "file:config/config.yaml:611"
+    ]
+  },
+  {
+    "iteration": 1,
+    "fingerprint": "fp_2c97d7be",
+    "findingId": 15,
+    "file": "tests/test_classifier_geography.py:33",
+    "title": "Loose test anchors weaken two acceptance assertions",
+    "decision": "accept",
+    "finalCategory": "quality",
+    "finalSeverity": "low",
+    "executorAction": "fix",
+    "blocking": false,
+    "reasoning": "Verified both weak anchors. test_classifier_geography.py:33 asserts '\"PL/LT/LV/EE/RO\" in prompt', which is satisfied by the TARGET-COUNTRY GATE line (classifier.py:41) or R9 (:101) alone even if the urgency-9-10 clause dropped RO — spec acceptance test 1 explicitly requires 'the urgency-9-10 clause includes RO'. And :104 asserts the unanchored substring '= urgency 2', which R6's '= urgency 2-4 maximum' (classifier.py:74) also satisfies, so the assertion does not actually pin R9's inside-Ukraine=2 rule. Genuine test-coverage weakness; Low because the guarded strings are currently present and all 17 tests legitimately pass (testIntegrity clean).",
+    "evidenceRefs": [
+      "test:tests/test_classifier_geography.py:33",
+      "test:tests/test_classifier_geography.py:104",
+      "file:sentinel/classification/classifier.py:74",
+      "spec:Phase 0 Acceptance Test 1",
+      "check:testIntegrity (suspicious=false)"
+    ]
+  },
+  {
+    "iteration": 2,
+    "fingerprint": "fp_cfcf3150",
+    "findingId": 1,
+    "file": "sentinel/classification/classifier.py:47",
+    "title": "R1 shelter-order rule still limits itself to PL/LT/LV/EE, contradicting R2's Romania shelter-order escalation",
+    "decision": "accept",
+    "finalCategory": "quality",
+    "finalSeverity": "medium",
+    "executorAction": "fix",
+    "blocking": true,
+    "reasoning": "Verified: R1 (classifier.py:47-50) grants the shelter-order minimum-9 only to PL/LT/LV/EE, while R2 (classifier.py:56-58) escalates 'the Baltic states or Romania' to 9 on 'shelter orders or casualties', and the GEOGRAPHY LADDER (classifier.py:142) gives Romania 9 only for 'a massive deliberate attack'. The prompt is internally contradictory about whether a Romanian shelter order reaches call tier. Per spec rubric v2 (Technical Context, lines 166-168: Romania minor 6 / strike w/ injuries 7-8 / massive deliberate 9 — no shelter-order clause), R2 is the drifting rule; either way the contradiction sits exactly at the call/sms boundary in the phase whose purpose is geography-scoring correctness (0.14), and contradictory anchors are a known instability driver for this classifier. Medium is genuine, not overestimated.",
+    "evidenceRefs": [
+      "file:sentinel/classification/classifier.py:47",
+      "file:sentinel/classification/classifier.py:56",
+      "file:sentinel/classification/classifier.py:142",
+      "spec:Phase 0 req 0.14",
+      "spec:Technical Context — rubric v2 geography ladder"
+    ]
+  },
+  {
+    "iteration": 2,
+    "fingerprint": "fp_7b3d4f76",
+    "findingId": 2,
+    "file": "config/config.yaml:251",
+    "title": "Romanian keywords are citation forms under word-boundary matching — inflected/definite-article forms will not match, dropping RO headlines pre-classification",
+    "decision": "reclassify",
+    "finalCategory": "quality",
+    "finalSeverity": "medium",
+    "executorAction": "fix",
+    "blocking": true,
+    "reasoning": "Mechanism independently confirmed: keyword_filter.py:10 defines _SLAVIC_LANGUAGES = {pl, uk, ru} (no 'ro'), so _find_matches (keyword_filter.py:186-194) applies word-boundary regex to Romanian articles. Romanian enclitic definite articles and inflection mean the citation-form keywords added at config.yaml:251-272 ('dronă', 'invazie', 'bombardament', 'atac cu rachete') will not match the common headline forms ('drona/dronei', 'invazia', 'bombardamentul', 'atacul cu rachete'). Google News articles are NOT keyword-bypassed (bypass set built only from RSS/Telegram, keyword_filter.py:21-31; enforced in filter_batch at :104), so real RO headlines drop before classification — defeating the purpose of 0.4 and the Galați-miss root-cause fix (spec Phase 0 intro). Reclassified from spec-compliance to quality: 0.4 is a SHOULD and is nominally implemented (keywords + queries exist, tests pass), so this is not a MUST violation — it is an independent Medium quality bug in the feature's effectiveness, which blocks on the quality axis per the SHOULD/MAY rule. Severity kept at the reviewer's Medium (partially mitigated by EN/PL coverage of RO events and uninflected keywords 'drone'/'Shahed'/'Geran', but the RO-language surface is largely ineffective as shipped).",
+    "evidenceRefs": [
+      "file:sentinel/processing/keyword_filter.py:10",
+      "file:sentinel/processing/keyword_filter.py:186",
+      "file:sentinel/processing/keyword_filter.py:21",
+      "file:config/config.yaml:251",
+      "spec:Phase 0 req 0.4",
+      "spec:Phase 0 intro (Galați miss)"
+    ]
+  },
+  {
+    "iteration": 2,
+    "fingerprint": "fp_979c13f3",
+    "findingId": 3,
+    "file": "config/config.example.yaml:616",
+    "title": "config/config.example.yaml template not updated: no RO monitoring, no geography block, stale testing keys causing same-set double eval for template users",
+    "decision": "accept",
+    "finalCategory": "quality",
+    "finalSeverity": "medium",
+    "executorAction": "fix",
+    "blocking": true,
+    "reasoning": "Verified by grep: config/config.example.yaml contains no RO target country, no geography: block, no ro: keyword set, no RO Google News queries, and no regression_eval_set_file; eval_set_file still points at tests/fixtures/eval_set.yaml (line 618). Pydantic defaults confirmed at sentinel/config.py:237-240 (both eval keys default to eval_set.yaml), so a template-derived config runs the same synthetic set twice under bare --eval (sentinel.py:251-254) and — worse — monitors no Romania at all. Repo precedent treats the two shipped configs as kept in sync (tests/test_config.py:347 test_shipped_configs_set_channel_both asserts on BOTH files), and project CLAUDE.md names the example as the template. A template that silently omits a monitored country in a life-safety system is more than cosmetic drift; Medium holds.",
+    "evidenceRefs": [
+      "file:config/config.example.yaml:618",
+      "file:sentinel/config.py:237",
+      "file:sentinel.py:251",
+      "test:tests/test_config.py:347"
+    ]
+  },
+  {
+    "iteration": 2,
+    "fingerprint": "fp_ee645d19",
+    "findingId": 4,
+    "file": "sentinel/classification/classifier.py:190",
+    "title": "Stale urgency-scale and calibration examples contradict the new geography ladder",
+    "decision": "accept",
+    "finalCategory": "quality",
+    "finalSeverity": "medium",
+    "executorAction": "fix",
+    "blocking": true,
+    "reasoning": "Verified: the user-prompt urgency scale (classifier.py:190-191) still anchors 'air alerts in Baltic states' at 7-8, directly contradicting R1's 'air raid alerts ... score MINIMUM 9 ... non-negotiable' (classifier.py:47-50) and the ladder's shelter-orders-9 (classifier.py:141); 'single drone found near border' at 5-6 (classifier.py:188-189) and R10's 'One unidentified drone = 5-6' (classifier.py:123) conflict with the ladder's Baltic-minor 6-7 and PL-debris 8 (classifier.py:139-140). Commit 4a2e0a6 ('Align classifier calibration rules with the geography ladder') aligned the R-rules but missed these user-prompt anchors, and no new test guards them. Contradictory numeric anchors partially defeat 0.14's coherent ladder encoding at and near the call boundary; pre-existing text is no defense in the phase whose deliverable is exactly this prompt's geography/urgency guidance. Medium accepted as stated.",
+    "evidenceRefs": [
+      "file:sentinel/classification/classifier.py:190",
+      "file:sentinel/classification/classifier.py:188",
+      "file:sentinel/classification/classifier.py:123",
+      "file:sentinel/classification/classifier.py:47",
+      "file:sentinel/classification/classifier.py:141",
+      "spec:Phase 0 req 0.14"
+    ]
+  },
+  {
+    "iteration": 2,
+    "fingerprint": "fp_582c58a4",
+    "findingId": 5,
+    "file": "sentinel/classification/classifier.py:56",
+    "title": "R2's Romania tier drifts from the 0.14 ladder (minor 6-7 vs 6; shelter/casualties to 9 vs injuries 7-8)",
+    "decision": "accept",
+    "finalCategory": "quality",
+    "finalSeverity": "low",
+    "executorAction": "fix",
+    "blocking": false,
+    "reasoning": "Verified: R2 (classifier.py:56-58) scores a lone/minor airspace incident over 'the Baltic states or Romania' at 6-7 and escalates Romania to 9 on shelter orders/casualties, while the ladder (classifier.py:142) sets Romania minor = 6 (6-7 is the Baltic tier at :140) and reserves Romania-9 for 'massive deliberate' with injuries at 7-8. This is the same R2 drift underlying finding 1 viewed at the band level; the drift errs toward over-alerting (prime-directive-safe), so Low is correct. Fixing R2 to defer to the per-country ladder tiers resolves findings 1 and 5 together.",
+    "evidenceRefs": [
+      "file:sentinel/classification/classifier.py:56",
+      "file:sentinel/classification/classifier.py:140",
+      "file:sentinel/classification/classifier.py:142",
+      "spec:Phase 0 req 0.14"
+    ]
+  },
+  {
+    "iteration": 2,
+    "fingerprint": "fp_7bb4be20",
+    "findingId": 6,
+    "file": "sentinel/classification/classifier.py:77",
+    "title": "R5 nuclear-activity rule omits Romania from the monitored set",
+    "decision": "accept",
+    "finalCategory": "quality",
+    "finalSeverity": "low",
+    "executorAction": "fix",
+    "blocking": false,
+    "reasoning": "Verified: R5 (classifier.py:76-78) reads 'movement of nuclear-capable units near PL/LT/LV/EE = urgency 7 minimum' — RO omitted. The spec did not enumerate R5 among the clauses to revise (0.6 targets the 9-10 exclusivity and scope line), so this is not spec non-compliance, but Romania is now a full monitored country (0.1/0.2) and nuclear-capable deployments near Romania (Black Sea) get no min-7 floor — a genuine monitored-set inconsistency of the same class as finding 1. Low, non-blocking; trivial one-token fix.",
+    "evidenceRefs": [
+      "file:sentinel/classification/classifier.py:76",
+      "spec:Phase 0 req 0.6",
+      "spec:Phase 0 req 0.2"
+    ]
+  },
+  {
+    "iteration": 2,
+    "fingerprint": "fp_8852ca1c",
+    "findingId": 7,
+    "file": "docs/reference/cli.md:27",
+    "title": "Docs drift: --eval behavior and new config keys undocumented (cli.md, config-reference.md, CLAUDE.md)",
+    "decision": "accept",
+    "finalCategory": "quality",
+    "finalSeverity": "low",
+    "executorAction": "fix",
+    "blocking": false,
+    "reasoning": "Verified: docs/reference/cli.md --eval row still describes a single run 'uses testing.eval_set_file (default tests/fixtures/eval_set.yaml)' while bare --eval now runs a non-gating regression pass plus the human gate (sentinel.py:246-254, gate = eval_set_human.yaml per config); CLAUDE.md:33 repeats the stale default; grep confirms config-reference.md has zero hits for geography, high_tier_countries, or regression_eval_set_file. Docs were not Phase 0 deliverables, but the drift was introduced BY this change set and the project convention requires config params documented in the config reference. Low, non-blocking docs drift.",
+    "evidenceRefs": [
+      "file:docs/reference/cli.md:27",
+      "file:CLAUDE.md:33",
+      "check:grep config-reference.md (zero hits)",
+      "file:sentinel.py:246"
+    ]
+  },
+  {
+    "iteration": 2,
+    "fingerprint": "fp_3b751ced",
+    "findingId": 8,
+    "file": "config/config.yaml:477",
+    "title": "RO ingestion surface is thin: two narrow AND-form Google News queries, no Romanian RSS outlet",
+    "decision": "accept",
+    "finalCategory": "quality",
+    "finalSeverity": "low",
+    "executorAction": "fix",
+    "blocking": false,
+    "reasoning": "Verified: exactly two RO queries exist (config.yaml:477-480), both multi-word AND-form, and the fetcher appends when:1h (google_news.py:38); no Romanian RSS outlet was added despite the per-country EE/LT/LV feed pattern (config.yaml:366-380: ERR/LRT/LSM). Requirement 0.4 is SHOULD with '[assumed] exact sources' (executor-delegated choice) and its acceptance tests pass, so this is nominal compliance with a real recall concern that compounds finding 2. Low, non-blocking advisory: broaden the query surface and/or add a RO RSS feed alongside the finding-2 fix.",
+    "evidenceRefs": [
+      "file:config/config.yaml:477",
+      "file:config/config.yaml:366",
+      "file:sentinel/fetchers/google_news.py:38",
+      "spec:Phase 0 req 0.4 ([assumed] exact sources)",
+      "test:tests/test_config_countries.py:109"
+    ]
+  },
+  {
+    "iteration": 2,
+    "fingerprint": "fp_61d1899a",
+    "findingId": 9,
+    "file": "tests/test_config_countries.py:150",
+    "title": "test_harness_does_not_write_fixtures heuristic is evadable (Path.write_text, variable paths)",
+    "decision": "dismiss",
+    "finalCategory": "quality",
+    "finalSeverity": "none",
+    "executorAction": "ignore",
+    "blocking": false,
+    "reasoning": "The test (tests/test_config_countries.py:150-160) implements spec acceptance test 13 as written: 'Inspect the harness module source; assert no write/open-for-write against any path under tests/fixtures/'. It does the open-for-write regex plus a belt-and-braces line check — a faithful, reasonable rendering of the specified heuristic. The evadability (Path.write_text, variable-held paths) is inherent to the spec's own source-inspection design, which the reviewer concedes ('weakness is inherited from the spec'). Code that follows the spec is correct; additionally, 0.12 is corroborated each iteration by the mechanical testIntegrity signal (this run: fixtures untouched, suspicious=false). Not escalating: this is a test-robustness preference, not a spec ambiguity affecting correctness — recorded as a note.",
+    "evidenceRefs": [
+      "spec:Phase 0 acceptance test 13",
+      "test:tests/test_config_countries.py:150",
+      "check:testIntegrity (suspicious=false, no fixture files in diff)"
+    ]
+  },
+  {
+    "iteration": 2,
+    "fingerprint": "fp_bc236d37",
+    "findingId": 10,
+    "file": "tests/test_config_countries.py:17",
+    "title": "Relative CONFIG_PATH makes the new config tests cwd-dependent",
+    "decision": "accept",
+    "finalCategory": "quality",
+    "finalSeverity": "low",
+    "executorAction": "fix",
+    "blocking": false,
+    "reasoning": "Verified: CONFIG_PATH = \"config/config.yaml\" (tests/test_config_countries.py:17) is opened directly in the raw_config fixture (:27) and passed to load_config (:37); invoking pytest from outside the repo root fails these tests. The sibling tests/test_config.py:356-360 computes repo_root from __file__ for the same file — the established pattern. Real but cosmetic robustness/consistency defect; Low, non-blocking, trivial fix.",
+    "evidenceRefs": [
+      "test:tests/test_config_countries.py:17",
+      "test:tests/test_config_countries.py:27",
+      "test:tests/test_config.py:356"
+    ]
+  },
+  {
+    "iteration": 2,
+    "fingerprint": "fp_2a270d21",
+    "findingId": 11,
+    "file": "sentinel/fetchers/google_news.py:1",
+    "title": "Unrelated cosmetic refactor of google_news.py bundled into the phase change set; two touched files are outside the declared deliverables",
+    "decision": "accept",
+    "finalCategory": "quality",
+    "finalSeverity": "low",
+    "executorAction": "ignore",
+    "blocking": false,
+    "reasoning": "Verified in git diff 31fdb30..HEAD: beyond the required LANG_MAP 'ro' entry (google_news.py:19, required by acceptance test test_google_news_lang_map_has_romanian), the change set reflows multi-line strings, reorders imports, and swaps timezone.utc for UTC across google_news.py — behavior-neutral churn in a production file outside the declared deliverables. The state_machine.py EVENT_TYPE_PL additions are justified and tested (Polish renderings for the 0.15 event types; test_event_type_pl_covers_new_types). The observation is valid (scope discipline in a life-safety file), but the churn is provably behavior-neutral (UTC is an alias of timezone.utc; full suite 423 passed) and reverting formatting would add churn risk for zero behavioral value — executorAction ignore.",
+    "evidenceRefs": [
+      "file:sentinel/fetchers/google_news.py:19",
+      "file:sentinel/alerts/state_machine.py:27",
+      "test:tests/test_config_countries.py:181",
+      "check:pytest 423 passed",
+      "spec:Phase 0 deliverables list"
+    ]
+  },
+  {
+    "iteration": 3,
+    "fingerprint": "fp_8aa4c47f",
+    "findingId": 1,
+    "file": "sentinel/classification/classifier.py:197",
+    "title": "User-prompt 9-10 urgency-scale anchors contradict the geography ladder (Romania shelter shortcut, Baltic/Romania strike bands)",
+    "decision": "accept",
+    "finalCategory": "spec-compliance",
+    "finalSeverity": "medium",
+    "executorAction": "fix",
+    "blocking": true,
+    "reasoning": "Verified literal intra-prompt contradiction. The 9-10 band anchors (classifier.py:197-199) grant call-tier to 'shelter orders or air-raid alerts issued in a monitored country' — monitored includes RO, directly contradicting R2's 'Romania has no shelter-order shortcut to 9' (classifier.py:58-60) — and to 'offensive weapons over monitored territory' and 'kinetic strikes on/at monitored borders', contradicting the ladder rungs Baltic minor 6-7/strike 8 and Romania minor 6/strike-with-injuries 7-8 (classifier.py:143-145). The spec's ground-truth key facts record Galati=8/sms, Constanta=7/sms, Vilnius=8/sms — kinetic strikes on monitored soil that must NOT be call-tier; these anchors pull exactly such cases across the sms/call boundary, recreating the false-positive-call root cause Phase 0 exists to fix. 0.14 requires the rubric-v2 ladder AS the urgency guidance; guidance contradicted by concrete in-band counter-examples is not encoded guidance, and the 'follow the GEOGRAPHY LADDER above' preface (line 187) does not neutralize literal 9-10 examples. Note for the executor: the fix requires updating the executor-added test test_prompt_urgency_scale_aligns_with_ladder (tests/test_classifier_geography.py:239), which asserts the contradictory anchor string — it is not one of the 15 spec acceptance tests, so revising it alongside the prompt is legitimate, not gate-weakening.",
+    "evidenceRefs": [
+      "file:sentinel/classification/classifier.py:197-199",
+      "file:sentinel/classification/classifier.py:58-60",
+      "file:sentinel/classification/classifier.py:143-145",
+      "spec:Phase 0 req 0.14 + Technical Context ground-truth key facts (Galati/Constanta/Vilnius = sms-tier)",
+      "test:tests/test_classifier_geography.py:239"
+    ]
+  },
+  {
+    "iteration": 3,
+    "fingerprint": "fp_12b1b5b1",
+    "findingId": 2,
+    "file": "sentinel/classification/classifier.py:47",
+    "title": "R1's unconditional Baltic shelter-order MIN-9 floor conflicts with the conditioned ladder rung and the owner ground truth (Vilnius 8/sms)",
+    "decision": "accept",
+    "finalCategory": "spec-compliance",
+    "finalSeverity": "medium",
+    "executorAction": "fix",
+    "blocking": true,
+    "reasoning": "Verified. R1 (classifier.py:47-50) makes any LT/LV/EE shelter order an unconditional 'MINIMUM 9 ... non-negotiable ... Do NOT score 7-8'. The spec's owner ground truth explicitly records 'Vilnius strike with shelter orders = 8/sms', and the spec states labels are authoritative ('where the label deviates, the label wins'). Rubric v2's Baltic 9 rung is conditioned on a deliberate Russian attack — spec acceptance test 14 names the rung 'deliberate-with-casualties 9' — so a shelter order alone is not an unconditional 9. R1's blanket floor forecloses the owner's 8/sms label, producing a false-positive call on Vilnius-type cases and an owner-gate failure under 0.14. The reviewer's counter-parse ('...or shelter orders = 9' read as shelter-orders-alone) is refuted by the recorded owner label, which is the spec's stated tiebreaker. The Poland half of R1 is consistent with the ladder (PL live intrusion >=9); only the blanket Baltic floor conflicts, so the fix is a scoping change, not a removal.",
+    "evidenceRefs": [
+      "file:sentinel/classification/classifier.py:47-50",
+      "spec:Technical Context ground-truth key facts ('Vilnius strike with shelter orders = 8/sms'; labels win)",
+      "spec:Phase 0 req 0.14 + Acceptance Test 14 ('deliberate-with-casualties 9')",
+      "file:sentinel/classification/classifier.py:143-144"
+    ]
+  },
+  {
+    "iteration": 3,
+    "fingerprint": "fp_adc96e84",
+    "findingId": 3,
+    "file": "sentinel/classification/classifier.py:79",
+    "title": "R5 nuclear-activity urgency-7 floor not widened to Romania",
+    "decision": "accept",
+    "finalCategory": "quality",
+    "finalSeverity": "low",
+    "executorAction": "fix",
+    "blocking": false,
+    "reasoning": "Verified. R5 retains 'near PL/LT/LV/EE = urgency 7 minimum' (classifier.py:78-80) while every other monitored-set mention was deliberately widened to include RO (classifier.py:41, 54, 117, 202). Unlike R1's RO exclusion, which is rubric-justified (no shelter shortcut), rubric v2 contains no rule exempting Romania from the nuclear floor — consistent with an oversight. No spec requirement mandates widening R5, so this stays quality/low, non-blocking at the default threshold.",
+    "evidenceRefs": [
+      "file:sentinel/classification/classifier.py:78-80",
+      "file:sentinel/classification/classifier.py:41",
+      "file:sentinel/classification/classifier.py:202",
+      "spec:req 0.14 (no nuclear rung in rubric v2)"
+    ]
+  },
+  {
+    "iteration": 3,
+    "fingerprint": "fp_78062ced",
+    "findingId": 4,
+    "file": "sentinel/config.py:237",
+    "title": "TestingConfig Pydantic default leaves the eval gate on the synthetic set and equal to the regression set",
+    "decision": "accept",
+    "finalCategory": "quality",
+    "finalSeverity": "low",
+    "executorAction": "fix",
+    "blocking": false,
+    "reasoning": "Verified. TestingConfig defaults both eval_set_file and regression_eval_set_file to tests/fixtures/eval_set.yaml (config.py:237-240), so a config.yaml missing the testing keys silently gates on the synthetic set and runs the same file twice. Requirement 0.10 as written targets the config file and IS satisfied (config.yaml:631 sets the human set; test_config_eval_gate_human passes), so this is a defense-in-depth footgun, not a violation — low, non-blocking. Cheap fix: default the gate to eval_set_human.yaml or validate gate != regression.",
+    "evidenceRefs": [
+      "file:sentinel/config.py:237-240",
+      "file:config/config.yaml:628-634",
+      "test:tests/test_config_countries.py::test_config_eval_gate_human",
+      "spec:req 0.10"
+    ]
+  },
+  {
+    "iteration": 3,
+    "fingerprint": "fp_54611f9e",
+    "findingId": 5,
+    "file": "tests/test_classifier_geography.py:33",
+    "title": "test_prompt_scope_includes_romania under-asserts the spec's 9-10-clause-includes-RO check",
+    "decision": "reclassify",
+    "finalCategory": "spec-compliance",
+    "finalSeverity": "low",
+    "executorAction": "fix",
+    "blocking": false,
+    "reasoning": "Verified and reclassified quality->spec-compliance (severity unchanged). Spec acceptance test 1 requires asserting 'the urgency-9-10 clause includes RO'; the implemented test only asserts the substring 'PL/LT/LV/EE/RO' anywhere in the prompt (test_classifier_geography.py:33). That substring also occurs in the TARGET-COUNTRY GATE (classifier.py:41), R2 (:54), and R9 (:117), so the assertion would still pass if the 9-10 CRITICAL RULES clause (classifier.py:202) dropped RO. Because the under-delivered artifact is a spec-defined acceptance test, the correct axis is spec-compliance; severity stays low because the guarded property currently holds (classifier.py:202 includes RO).",
+    "evidenceRefs": [
+      "spec:Phase 0 Acceptance Test 1",
+      "file:tests/test_classifier_geography.py:33",
+      "file:sentinel/classification/classifier.py:41",
+      "file:sentinel/classification/classifier.py:202"
+    ]
+  },
+  {
+    "iteration": 3,
+    "fingerprint": "fp_905b2508",
+    "findingId": 6,
+    "file": "sentinel/classification/classifier.py:102",
+    "title": "R7/R10 give Romania '6-7' where the ladder pins Romania minor incidents at 6",
+    "decision": "accept",
+    "finalCategory": "quality",
+    "finalSeverity": "low",
+    "executorAction": "fix",
+    "blocking": false,
+    "reasoning": "Verified. R7 says 'debris found on Baltic or Romanian soil per the ladder (minor 6-7)' (classifier.py:101-102) and R10 says 'a lone drone over a Baltic state or Romania = 6-7' (:126), lumping Romania into the Baltic band, while the ladder (:145) and rubric v2 pin Romania minor at 6. Impact is bounded: both spots explicitly defer to the ladder, and 6 vs 7 stays inside the 5-8 sms band, so the action tier cannot change — cosmetic band imprecision, low.",
+    "evidenceRefs": [
+      "file:sentinel/classification/classifier.py:101-102",
+      "file:sentinel/classification/classifier.py:126",
+      "file:sentinel/classification/classifier.py:145",
+      "spec:req 0.14 (Romania minor = 6)"
+    ]
+  },
+  {
+    "iteration": 3,
+    "fingerprint": "fp_4e9b0557",
+    "findingId": 7,
+    "file": "sentinel/classification/classifier.py:208",
+    "title": "Severity inversion: attack on a non-monitored NATO state (1-3) scores below a foreign-government reaction story (~4) and Moldova (~6)",
+    "decision": "escalate",
+    "finalCategory": "quality",
+    "finalSeverity": "low",
+    "executorAction": "needs-human",
+    "blocking": false,
+    "reasoning": "Mechanism verified: the prompt caps attacks on non-monitored countries at 1-3 (classifier.py:208-211), which the ladder places below a foreign-government reaction (~4, :147-149) and Moldova (~6) — so a Russian kinetic strike on e.g. Germany would map to log_only. This satisfies 0.6's letter (non-monitored NATO not auto-9) and rubric v2 defines NO band for a non-monitored-NATO attack, so the inversion is a spec/rubric gap, not an implementation defect; the capability-escalation clause ('then 5 max') partially mitigates. Whether an escape-trigger system should stay silent on such an event is an owner rubric decision — the resolver must not mint a new band. Escalate for owner judgment.",
+    "evidenceRefs": [
+      "file:sentinel/classification/classifier.py:208-211",
+      "file:sentinel/classification/classifier.py:147-149",
+      "spec:req 0.6",
+      "spec:Technical Context rubric v2 (no non-monitored-NATO band)"
+    ]
+  },
+  {
+    "iteration": 3,
+    "fingerprint": "fp_21563e99",
+    "findingId": 8,
+    "file": "sentinel/classification/classifier.py:124",
+    "title": "R10 vs R9 precedence unmarked for drones over the Ukraine/Russia interiors",
+    "decision": "accept",
+    "finalCategory": "quality",
+    "finalSeverity": "low",
+    "executorAction": "fix",
+    "blocking": false,
+    "reasoning": "Verified. R10's 'One unidentified drone with no monitored-country soil involved = 5-6' (classifier.py:125-126) collides with R9's UA-interior=2 / RU-interior=1 (:116-119) for an unidentified drone inside those interiors, and rubric v2 says Ukraine interior = 2/none always. The prompt marks precedence for R6/R8 ('R6 OVERRIDES R8', :93) but not for R9/R10. Error direction is toward firing (5-6/sms instead of 2/none) — eval-noise and cost, not a safety miss — so low; a one-line precedence marker fixes it.",
+    "evidenceRefs": [
+      "file:sentinel/classification/classifier.py:116-119",
+      "file:sentinel/classification/classifier.py:125-126",
+      "file:sentinel/classification/classifier.py:93",
+      "spec:Technical Context rubric v2 (Ukraine interior 2/none always)"
+    ]
+  },
+  {
+    "iteration": 3,
+    "fingerprint": "fp_e41c1f4f",
+    "findingId": 9,
+    "file": "sentinel/eval/harness.py:41",
+    "title": "Eval/live action divergence for the new R11 NATO-attacks-Russia band",
+    "decision": "dismiss",
+    "finalCategory": "quality",
+    "finalSeverity": "none",
+    "executorAction": "ignore",
+    "blocking": false,
+    "reasoning": "Mechanism confirmed (harness.py:41-42 requires a monitored country for phone_call; state_machine._determine_action at state_machine.py:460-487 is urgency-only), but this eval/live divergence is exactly the pre-existing third-decision-site fact the spec documents in Technical Context ('Three decision sites exist (must collapse to one)') and explicitly assigns to Phase 2 (the single AlertPolicy). Phase 0's harness deliverable is solely 'add RO to MONITORED_COUNTRIES (L25)' — done (harness.py:25; test_harness_monitored_includes_ro passes; 0.13 satisfied, as the reviewer concedes). Adjudicated out of Phase 0 scope; not a defect of this phase.",
+    "evidenceRefs": [
+      "spec:Technical Context 'Three decision sites exist (must collapse to one)'",
+      "spec:Phase 0 Deliverables (harness.py: add RO only)",
+      "file:sentinel/eval/harness.py:25",
+      "file:sentinel/alerts/state_machine.py:460-487",
+      "test:tests/test_config_countries.py::test_harness_monitored_includes_ro"
+    ]
+  },
+  {
+    "iteration": 3,
+    "fingerprint": "fp_4ef8b8d1",
+    "findingId": 10,
+    "file": "config/config.yaml:296",
+    "title": "No 'ro' exclude_keywords; appended English excludes cannot match Romanian text",
+    "decision": "accept",
+    "finalCategory": "quality",
+    "finalSeverity": "low",
+    "executorAction": "fix",
+    "blocking": false,
+    "reasoning": "Verified. exclude_keywords has only en/pl blocks (config.yaml:296-338) and keyword_filter appends English excludes for non-English articles (keyword_filter.py:64-69), which cannot match Romanian words, so RO exercise/anniversary items reach the paid classifier. No spec violation — 0.4 is SHOULD and concerns ingestion (inclusion), and uk/ru share the same pre-existing gap — and the error direction is toward firing (safe for a life-safety system). Cost/noise only; adding an ro: exclude block is a cheap config-only improvement. Low, non-blocking.",
+    "evidenceRefs": [
+      "file:config/config.yaml:296-338",
+      "file:sentinel/processing/keyword_filter.py:64-69",
+      "spec:req 0.4 (SHOULD, ingestion-only)"
+    ]
+  },
+  {
+    "iteration": 3,
+    "fingerprint": "fp_f8861b8d",
+    "findingId": 11,
+    "file": "sentinel/fetchers/google_news.py:40",
+    "title": "Out-of-deliverable cosmetic churn in google_news.py beyond the required LANG_MAP entry",
+    "decision": "accept",
+    "finalCategory": "quality",
+    "finalSeverity": "low",
+    "executorAction": "fix",
+    "blocking": false,
+    "reasoning": "Verified via git diff 360dfe0..HEAD: google_news.py received cosmetic churn beyond the required \"ro\": (\"ro\",\"RO\") LANG_MAP entry — six multi-line strings joined to single lines, timezone.utc->UTC twice, and an import reorder. The file is not in the Phase 0 deliverable list and none of the gate commands ruff-check it, so the churn was not lint-forced. Behavior-preserving (full suite green, 426 passed) but violates deliverable-scoped diff discipline; the LANG_MAP entry itself is justified by 0.4 and covered by test_google_news_lang_map_has_romanian. Low: revert the cosmetic hunks, keep the LANG_MAP line.",
+    "evidenceRefs": [
+      "check:git diff 360dfe0..HEAD -- sentinel/fetchers/google_news.py",
+      "spec:Phase 0 Deliverables (google_news.py absent)",
+      "spec:Phase 0 Gate Criteria (ruff scope excludes google_news.py)",
+      "test:tests/test_config_countries.py::test_google_news_lang_map_has_romanian"
+    ]
+  }
+]

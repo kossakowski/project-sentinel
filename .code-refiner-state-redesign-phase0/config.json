@@ -1,0 +1,12 @@
+{
+  "baseline_commit": "31fdb3057f7d17b79b5f426b8f4d7c008f3224f0",
+  "final_commit": "e4f9e54ce1f307d48e165c6dc795d6461dcd87b3",
+  "branch": "redesign-phase0-geography",
+  "phase": "Phase 0 — Geography correctness (Romania + classifier prompt fix)",
+  "workflow_run_id": "wf_fd7c9cb5-cde",
+  "loop_iterations": 3,
+  "loop_verdict": "escalate",
+  "resolved_model_ids": "claude-opus-4-8 (executor/checks) + claude-fable-5 (reviewers/resolver)",
+  "post_loop_resolution": "main-agent holistic reconciliation validated by 2 blind reviewers (sonnet) + 1 resolver (sonnet)",
+  "final_status": "PASS — 15/15 requirements verified; finding-7 deferred to owner (out of scope)"
+}

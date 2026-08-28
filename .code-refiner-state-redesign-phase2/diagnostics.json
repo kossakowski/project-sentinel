@@ -1,0 +1,74 @@
+{
+ "run_summary": {
+  "run_id": "2026-07-12T10-19-47Z-a565253",
+  "timestamp_utc": "2026-07-12T10:19:47Z",
+  "spec_file": "/home/kossa/code/project-sentinel/classification-alerting-redesign.SPEC.md",
+  "phase": "Phase 2 \u2014 Single `AlertPolicy` + `GeoWeighter` (decision consolidation; remove corroboration)",
+  "iterations": 1,
+  "final_verdict": "escalate",
+  "total_agents_spawned": 4,
+  "mode": "default",
+  "reviewer_ensemble": 1
+ },
+ "reviewer_signal": {
+  "per_iteration": [
+   {
+    "iteration": 1,
+    "totalFindings": 9,
+    "accepted": 7,
+    "dismissed": 1,
+    "reclassified": 0,
+    "escalated": 1,
+    "falsePositiveRate": 0.11,
+    "reviewerVerdict": "FAIL",
+    "reviewersInEnsemble": 1
+   }
+  ],
+  "cross_iteration": {
+   "recurring_findings": 0,
+   "new_findings_per_iteration": [
+    9
+   ]
+  }
+ },
+ "resolver_behavior": {
+  "per_iteration": [
+   {
+    "iteration": 1,
+    "acceptRate": 0.78,
+    "dismissRate": 0.11,
+    "reclassifyRate": 0,
+    "escalateRate": 0.11,
+    "rubberStampWarning": false,
+    "antiDowngradeAttested": true
+   }
+  ]
+ },
+ "blind_review_effectiveness": {
+  "independent_convergence_count": 0,
+  "convergence_details": [],
+  "blindness_leakage_detected": null,
+  "blindness_structural": true
+ },
+ "iteration_efficiency": {
+  "blocking_counts_by_iteration": [
+   1
+  ],
+  "monotonically_decreasing": true
+ },
+ "verified_requirements": {
+  "total_spec_requirements": 16,
+  "verified_count": 14,
+  "non_verifiable_count": 0,
+  "unverified_count": 2,
+  "coverage_percent": 87.5,
+  "passed_with_coverage_gap": false
+ },
+ "escalation_summary": {
+  "total_escalations": 1,
+  "by_type": {
+   "needs-human": 1
+  }
+ },
+ "run_id": "2026-07-12T10-19-47Z-a565253"
+}

@@ -1,0 +1,98 @@
+{
+ "2.1": {
+  "description": "AlertPolicy is the single decision authority; the three old decision sites (corroborator._determine_alert_status, state_machine._determine_action, harness._action_for_urgency) are deleted or delegate.",
+  "inScope": true,
+  "status": "verified",
+  "reason": ""
+ },
+ "2.2": {
+  "description": "Corroboration removed; no source-count gate may suppress/delay. Remove the full surface: both YAML keys, both Pydantic fields, and the tests/conftest.py key \u2014 config still loads cleanly with no dead field.",
+  "inScope": true,
+  "status": "verified",
+  "reason": ""
+ },
+ "2.3": {
+  "description": "Dedup is the only suppressor of alert-eligible events (urgency >= notify threshold): no-alert ONLY when relation==SAME on an already-alerted event. NONE-band (<=4) is banding via 2.4, not suppression.",
+  "inScope": true,
+  "status": "unverified",
+  "reason": ""
+ },
+ "2.4": {
+  "description": "Three bands (rubric v2): >=call-tier (9-10) -> CALL; 5-8 -> NOTIFY; <=4 -> NONE (classification persisted and logged, no alert). Boundaries config-driven.",
+  "inScope": true,
+  "status": "verified",
+  "reason": ""
+ },
+ "2.5": {
+  "description": "GeoWeighter computes geo_tier (HIGH if target in high_tier_countries OR target==RU & attacker_is_nato; LOW for inside-UA/interior-MD); CALL requires urgency>=tier AND geo HIGH; urgency>=call-tier with geo LOW demotes to NOTIFY, never NONE.",
+  "inScope": true,
+  "status": "verified",
+  "reason": ""
+ },
+ "2.5a": {
+  "description": "UNKNOWN geo at urgency>=9 treated as HIGH (fail toward firing).",
+  "inScope": true,
+  "status": "verified",
+  "reason": ""
+ },
+ "2.5b": {
+  "description": "kinetic derived deterministically from event_type against config-driven geography.kinetic_event_types (not an LLM field, not hardcoded); default set MUST NOT include debris_found or official_statement; single definition consumed by 2.5/2.11 and 3.8.",
+  "inScope": true,
+  "status": "verified",
+  "reason": ""
+ },
+ "2.6": {
+  "description": "NEW at CALL tier fires a call. ESCALATION/UPDATE to an event already alerted at CALL class uses NOTIFY, not a second call. An event's FIRST CALL-class intent MUST fire regardless of relation. 'Alerted at CALL class' = a CALL intent was DISPATCHED, regardless of transport outcome.",
+  "inScope": true,
+  "status": "verified",
+  "reason": ""
+ },
+ "2.7": {
+  "description": "Decision is channel-agnostic; AlertIntent carries a channel class; transports pluggable and preserved.",
+  "inScope": true,
+  "status": "verified",
+  "reason": ""
+ },
+ "2.8": {
+  "description": "All thresholds + geography membership in config; none hardcoded.",
+  "inScope": true,
+  "status": "unverified",
+  "reason": ""
+ },
+ "2.9": {
+  "description": "AlertPolicy.decide is a pure no-I/O function of EventDecision, weighted urgency, geo_tier, and the event's prior alert class (already_alerted_at: ChannelClass|None).",
+  "inScope": true,
+  "status": "verified",
+  "reason": ""
+ },
+ "2.10": {
+  "description": "Defines EventDecision contract (relation NEW|SAME|ESCALATION + matched_event_id) as the Phase 3 interface.",
+  "inScope": true,
+  "status": "verified",
+  "reason": ""
+ },
+ "2.11": {
+  "description": "Poland-only kinetic floor: kinetic (2.5b) + target==PL -> urgency floored >=9; MUST NOT floor other HIGH-tier countries; debris-recovery reports never floored; config geography.floor_countries default [PL].",
+  "inScope": true,
+  "status": "verified",
+  "reason": ""
+ },
+ "2.12": {
+  "description": "AlertPolicy band mapping reproduces the owner's action from the owner's urgency for all 60 labeled events in tests/fixtures/dedup_traps.yaml (call->CALL, sms->NOTIFY, none->NONE). Zero mismatches allowed.",
+  "inScope": true,
+  "status": "verified",
+  "reason": ""
+ },
+ "2.13": {
+  "description": "Pre-dedup event-creation gate becomes config-driven (dedup.min_event_urgency) and MUST NOT drop official_statement/roundup stories reaching the notify band; the is_military_event drop MUST NOT apply to debris_found/official_statement articles; NONE-band articles keep persisted classification, no event row.",
+  "inScope": true,
+  "status": "verified",
+  "reason": ""
+ },
+ "2.14": {
+  "description": "Every classifier event_type value (incl. debris_found, official_statement) has a Polish rendering in alert templates \u2014 alerts are in Polish, no raw English token fallback.",
+  "inScope": true,
+  "status": "verified",
+  "reason": ""
+ }
+}

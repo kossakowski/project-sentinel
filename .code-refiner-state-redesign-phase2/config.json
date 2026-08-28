@@ -1,0 +1,11 @@
+{
+ "baseline_commit": "a56525317fc042b39fbf3f973528a5efa79a1a5a",
+ "iteration_count": 1,
+ "mode": "workflow-code-refiner (option-a)",
+ "models": {
+  "executor_checks": "claude-opus-4-8",
+  "reviewer_resolver": "claude-fable-5"
+ },
+ "final_verdict": "escalate",
+ "final_blocking": 1
+}
