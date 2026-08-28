@@ -1,0 +1,12 @@
+# Autonomous run decisions — /workflow-code-refiner Phase 0 (Geography correctness)
+
+Run: 2026-07-12T09-04-23Z-360dfe0 · baseline HEAD 360dfe0 · branch build/worktree-base
+
+[Phase 0] Used spec_manifest.json for the requirement catalogue (0.1–0.15) — spec-forge emitted it next to the spec; it is the exact list the overnight runner re-checks.
+[Phase 0] REVISED the earlier 0.4 pre-seed: req 0.4 (SHOULD: Romanian keywords/sources) is NOT pre-seeded `non-verifiable` and stays fully in scope. The earlier reasoning assumed a requirement can only be verified by a *named* acceptance test; the checks agent actually accepts any positive evidence from a check it ran, and "config.yaml contains a Romanian source/keyword" is a trivially deterministic config-shape assertion that belongs in tests/test_config_countries.py (a spec deliverable: "config-shape + harness-constant tests"). Pre-seeding it non-verifiable would have let the executor silently skip the only requirement with no test — the exact silent-false-completion the coverage gate exists to prevent.
+[Phase 0] Appended a short project-specific addendum to the executor base prompt: any in-scope requirement the spec leaves without a named acceptance test must still be made mechanically verifiable by a deterministic assertion in that phase's test files. Generic (not 0.4-specific), keeps the coverage gate honest, and prevents the escalation thrash the earlier pre-seed was trying to avoid.
+[Phase 0] checkCommands = full suite (`pytest tests/ -q`) + ruff scoped to the 6 touched files. Broad ruff was rejected: 56 PRE-EXISTING ruff errors live in unrelated test/fetcher files and would masquerade as regressions. Full pytest kept as the regression net that catches an accidental USER_PROMPT_TEMPLATE reflow (test_dashboard_api.py is byte-coupled to the per-article block).
+[Phase 0] gateCriteria = the exact 4 manifest Phase-0 commands (runner parity), appended to checks.
+[Phase 0] fanOut=false, reviewerEnsemble=1, maxIterations=5, thorough=false — small, interdependent config+prompt phase on a life-safety system; --thorough/fan-out/ensemble are the documented budget-runaway shape and add no value here.
+[Phase 0] runArchivist=true — config-reference.md / sources.md reference the exact config keys/countries being changed; archivist output is preview-only and I gate the commit, so stale-doc risk is low and I can apply only clearly-correct updates.
+[Phase 0] stateDir=.code-refiner-state (gitignored default).
