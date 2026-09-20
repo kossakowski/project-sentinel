@@ -2,45 +2,87 @@
 
 This guide covers setting up all external service accounts needed by Project Sentinel.
 
-## 1. Anthropic API (Claude Haiku)
+## 1. Direct OpenAI API (Luna)
 
-You need an Anthropic API account to use Claude Haiku for article classification. This is separate from a Claude Pro/Team chat subscription.
+The local configuration selects `classification.provider: openai` and
+`gpt-5.6-luna`. This requires paid OpenAI API access, separately from a ChatGPT or
+Codex subscription. The key is used by both classification and the existing
+article-quality gate. OpenAI mode does not require an Anthropic key.
 
-### Steps
+Finish coding/offline checks first. For assisted setup, use a visible Playwright
+browser and select/create a dedicated **Project Sentinel** project. If more than
+one organisation is available, confirm which organisation should pay. The
+operator handles sign-in, private payment details and final funding confirmation.
+Do not enable automatic recharge without a separate decision.
 
-1. Go to **https://console.anthropic.com**
-2. Sign up or log in (can use same email as your Claude chat account)
-3. Navigate to **Settings → Billing**
-4. Add a payment method
-5. Add credits -- **$5 is enough for months** of usage at Haiku rates
-6. Navigate to **Settings → API Keys**
-7. Click **Create Key**
-8. Name it `project-sentinel` (for your reference)
-9. Copy the key -- it starts with `sk-ant-...`
-10. Add to your `.env` file:
-    ```
-    ANTHROPIC_API_KEY=sk-ant-your-key-here
-    ```
+Create a project-scoped key with Responses write permission and access to the
+selected model. Store it as `OPENAI_API_KEY` in the ignored local `.env`, preserving
+other credentials. Never paste the key into chat, a command argument, screenshot
+or a committed file. Restrict the secret file to its owner (`chmod 600 .env`).
+Use the platform's current permission controls; account-specific access must be
+verified by a real bounded request.
 
-### Pricing (Claude Haiku 4.5)
+The application uses explicit reasoning `none`, standard service tier, no SDK
+retries, a total deadline, strict JSON schema and `store=false`. It records model,
+prompt and request hashes. There is no automatic fallback provider.
 
-Pricing changes — see [Anthropic pricing](https://www.anthropic.com/pricing) for current Haiku 4.5 rates. Project Sentinel uses ~50-100 classifications/day; costs are minimal.
+### Verify without sending alerts
 
-### Verify It Works
+First run the entirely offline check:
 
 ```bash
-pip install anthropic
-python -c "
-import anthropic
-client = anthropic.Anthropic()
-msg = client.messages.create(
-    model='claude-haiku-4-5-20251001',
-    max_tokens=100,
-    messages=[{'role': 'user', 'content': 'Say hello in Polish'}]
-)
-print(msg.content[0].text)
-"
+.venv/bin/python -m sentinel.eval.direct_luna
 ```
+
+After funding and **explicit approval of a $0.25 test allowance**, run this command
+with a new output filename (existing reports are never overwritten):
+
+```bash
+.venv/bin/python -m sentinel.eval.direct_luna --live --max-cost-usd 0.25 --output data/eval/luna-direct-validation.jsonl
+```
+
+This makes up to twenty classifier requests: ten identical known-miss inputs and
+ten fresh synthetic cases, with fake phone/SMS/push transports and in-memory event
+storage. It tests the real classifier, memory guards, grouping and notification
+logic. It does not fetch real article bodies or test message delivery. Reports
+include failures, message/request hashes, token usage and estimated costs.
+The reused known-miss case is not a fresh holdout. Fresh labels are engineering
+expectations, not human-approved ground truth. Repeated successes do not establish
+determinism or erase the historical miss.
+
+### Budget, failure and rollback
+
+`classification.budget` controls a persistent SQLite ledger shared by classifier
+and quality-gate requests. Keep its writable path stable across restarts and use
+an absolute path on a server. Each call reserves an upper estimate before sending;
+success settles token charges, including cached input. A timeout, authentication
+failure or response without usable usage retains the reservation because the
+charge is uncertain. Refused/incomplete answers with usage are billed too.
+Uncached input conservatively includes the configured cache-write premium, so the
+estimate can exceed the provider bill. The configured request cap excludes very
+large contexts that would use another pricing tier.
+
+At the monthly allowance, new paid work stops. The article remains queued, logs
+explain the error, and `health.json` reports degraded classification. This is a
+**detection gap**, not a successful safe classification. Provider outages, credit
+exhaustion and malformed answers also leave work pending for retry. Do not delete
+queued work or the usage ledger to make health appear green.
+
+The guard is an application spending control at configured token rates, not a
+provider-wide guarantee. Dashboard budget alerts are not asserted to be a hard
+cap. Other applications, purchases, tax and Twilio charges are outside this ledger.
+Review rates when changing the model. Legacy Anthropic rollback retains its older
+token estimate and does not use this OpenAI ledger.
+
+Rollback explicitly selects `provider: anthropic`, the previous Haiku model and
+its prior token limit, with `ANTHROPIC_API_KEY` available. The old prompt remains
+available. Restore the prior incident-memory setting only as a reviewed rollback
+choice. Preserve the database and alert history. See the
+[migration plan](../ideas/luna-direct-api-migration-plan.md) for rollout gates.
+Production deployment, secret installation and restart need separate approval.
+
+References: [Luna model and pricing](https://developers.openai.com/api/docs/models/gpt-5.6-luna),
+[structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs).
 
 ---
 

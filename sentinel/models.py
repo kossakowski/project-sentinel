@@ -137,6 +137,13 @@ class ClassificationResult:
     input_tokens: int
     output_tokens: int
     incident_memory: dict = field(default_factory=dict)
+    facts: dict = field(default_factory=dict)
+    provider_used: str = "legacy"
+    prompt_version: str = "legacy-unversioned"
+    request_hash: str = ""
+    response_id: str = ""
+    cached_input_tokens: int = 0
+    estimated_cost_usd: float = 0.0
     id: str = field(default_factory=lambda: str(uuid4()))
 
     def to_dict(self) -> dict:
@@ -156,6 +163,13 @@ class ClassificationResult:
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
             "incident_memory": dict_to_json(self.incident_memory),
+            "facts": dict_to_json(self.facts),
+            "provider_used": self.provider_used,
+            "prompt_version": self.prompt_version,
+            "request_hash": self.request_hash,
+            "response_id": self.response_id,
+            "cached_input_tokens": self.cached_input_tokens,
+            "estimated_cost_usd": self.estimated_cost_usd,
         }
 
     @classmethod
@@ -175,6 +189,13 @@ class ClassificationResult:
             input_tokens=d.get("input_tokens", 0),
             output_tokens=d.get("output_tokens", 0),
             incident_memory=_json_to_dict(d.get("incident_memory")),
+            facts=_json_to_dict(d.get("facts")),
+            provider_used=d.get("provider_used", "legacy"),
+            prompt_version=d.get("prompt_version", "legacy-unversioned"),
+            request_hash=d.get("request_hash", ""),
+            response_id=d.get("response_id", ""),
+            cached_input_tokens=d.get("cached_input_tokens", 0),
+            estimated_cost_usd=d.get("estimated_cost_usd", 0.0),
             id=d.get("id", str(uuid4())),
         )
 

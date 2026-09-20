@@ -18,7 +18,9 @@ def test_load_valid_config(monkeypatch):
 
     assert isinstance(config, SentinelConfig)
     assert config.alerts.phone_number == "+48123456789"
-    assert config.classification.model == "claude-haiku-4-5-20251001"
+    assert config.classification.model == "gpt-5.6-luna"
+    assert config.classification.provider == "openai"
+    assert config.classification.reasoning_effort == "none"
     assert config.scheduler.interval_minutes == 15
     assert len(config.sources.rss) > 0
     assert config.sources.gdelt.enabled is True

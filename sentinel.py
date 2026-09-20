@@ -307,8 +307,14 @@ def _run_test_headline(headline: str, config, logger) -> None:
     classifier = Classifier(config)
     article = _make_synthetic_article(headline)
 
+    async def classify_and_close():
+        try:
+            return await classifier.classify(article)
+        finally:
+            await classifier.aclose()
+
     try:
-        result = asyncio.run(classifier.classify(article))
+        result = asyncio.run(classify_and_close())
         _print_classification_result(result, headline)
     except Exception as e:
         print(f"Classification failed: {e}", file=sys.stderr)
@@ -344,35 +350,38 @@ def _run_test_file(filepath: str, config, logger) -> None:
     async def _classify_all() -> None:
         # All classify calls run under a single event loop (one asyncio.run),
         # not one event loop per headline.
-        for entry in headlines:
-            if isinstance(entry, str):
-                headline_text = entry
-                expected = None
-            elif isinstance(entry, dict):
-                headline_text = entry.get("text", entry.get("headline", ""))
-                expected = entry.get("expected", None)
-            else:
-                continue
+        try:
+            for entry in headlines:
+                if isinstance(entry, str):
+                    headline_text = entry
+                    expected = None
+                elif isinstance(entry, dict):
+                    headline_text = entry.get("text", entry.get("headline", ""))
+                    expected = entry.get("expected", None)
+                else:
+                    continue
 
-            article = _make_synthetic_article(headline_text)
-            try:
-                result = await classifier.classify(article)
-                _print_classification_result(result, headline_text)
+                article = _make_synthetic_article(headline_text)
+                try:
+                    result = await classifier.classify(article)
+                    _print_classification_result(result, headline_text)
 
-                # Compare against expected values if provided
-                if expected:
-                    mismatches = []
-                    for key, exp_val in expected.items():
-                        actual_val = getattr(result, key, None)
-                        if actual_val != exp_val:
-                            mismatches.append(f"  {key}: expected={exp_val}, got={actual_val}")
-                    if mismatches:
-                        print("  MISMATCHES:")
-                        for m in mismatches:
-                            print(m)
-                        print()
-            except Exception as e:
-                print(f"  FAILED: {e}\n")
+                    # Compare against expected values if provided
+                    if expected:
+                        mismatches = []
+                        for key, exp_val in expected.items():
+                            actual_val = getattr(result, key, None)
+                            if actual_val != exp_val:
+                                mismatches.append(f"  {key}: expected={exp_val}, got={actual_val}")
+                        if mismatches:
+                            print("  MISMATCHES:")
+                            for m in mismatches:
+                                print(m)
+                            print()
+                except Exception as e:
+                    print(f"  FAILED: {e}\n")
+        finally:
+            await classifier.aclose()
 
     asyncio.run(_classify_all())
 

@@ -1,7 +1,9 @@
 import logging
 import os
 import sqlite3
-from datetime import UTC, datetime
+from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 from sentinel.models import AlertRecord, Article, ClassificationResult, Event
 
@@ -114,7 +116,17 @@ class Database:
         old event and alert belongs to revision 1, and old classifications have no
         decision metadata.
         """
+        self.conn.execute("""CREATE TABLE IF NOT EXISTS classification_queue (
+            article_id TEXT PRIMARY KEY REFERENCES articles(id), attempts INTEGER NOT NULL DEFAULT 0,
+            next_attempt_at TEXT NOT NULL, last_error TEXT NOT NULL DEFAULT '')""")
         additions = (
+            ("classifications", "facts", "TEXT NOT NULL DEFAULT '{}'"),
+            ("classifications", "provider_used", "TEXT NOT NULL DEFAULT 'legacy'"),
+            ("classifications", "prompt_version", "TEXT NOT NULL DEFAULT 'legacy-unversioned'"),
+            ("classifications", "request_hash", "TEXT NOT NULL DEFAULT ''"),
+            ("classifications", "response_id", "TEXT NOT NULL DEFAULT ''"),
+            ("classifications", "cached_input_tokens", "INTEGER NOT NULL DEFAULT 0"),
+            ("classifications", "estimated_cost_usd", "REAL NOT NULL DEFAULT 0"),
             ("classifications", "incident_memory", "TEXT NOT NULL DEFAULT '{}'"),
             ("events", "notification_revision", "INTEGER NOT NULL DEFAULT 1"),
             ("alert_records", "event_revision", "INTEGER NOT NULL DEFAULT 1"),
@@ -130,6 +142,52 @@ class Database:
         self.conn.execute("UPDATE events SET notification_revision = 1 WHERE notification_revision IS NULL")
         self.conn.execute("UPDATE alert_records SET event_revision = 1 WHERE event_revision IS NULL")
 
+    @contextmanager
+    def transaction(self):
+        """Nestable transaction; grouping and queue completion commit together."""
+        name = "tx_" + uuid4().hex
+        self.conn.execute(f"SAVEPOINT {name}")
+        try:
+            yield
+        except BaseException:
+            self.conn.execute(f"ROLLBACK TO {name}")
+            self.conn.execute(f"RELEASE {name}")
+            raise
+        else:
+            self.conn.execute(f"RELEASE {name}")
+
+    def enqueue_classification(self, article: Article):
+        with self.transaction():
+            self.conn.execute(
+                "INSERT OR IGNORE INTO classification_queue(article_id,next_attempt_at) VALUES (?,?)",
+                (article.id, ""),
+            )
+
+    def pending_classifications(self, limit: int) -> list[Article]:
+        rows = self.conn.execute(
+            "SELECT a.* FROM articles a JOIN classification_queue q ON q.article_id=a.id "
+            "WHERE q.next_attempt_at<=? ORDER BY julianday(a.fetched_at), a.rowid LIMIT ?",
+            (datetime.now(UTC).isoformat(), limit),
+        ).fetchall()
+        return [Article.from_row(row) for row in rows]
+
+    def classification_failed(self, article_id: str, delay_seconds: int, error: str):
+        with self.transaction():
+            self.conn.execute(
+                "UPDATE classification_queue SET attempts=attempts+1,next_attempt_at=?,last_error=? WHERE article_id=?",
+                ((datetime.now(UTC) + timedelta(seconds=delay_seconds)).isoformat(), error, article_id),
+            )
+
+    def classification_complete(self, article_id: str):
+        with self.transaction():
+            self.conn.execute("DELETE FROM classification_queue WHERE article_id=?", (article_id,))
+
+    def classification_health(self) -> dict:
+        row = self.conn.execute(
+            "SELECT COUNT(*) AS pending, COALESCE(SUM(attempts>0),0) AS failed FROM classification_queue"
+        ).fetchone()
+        return {"pending": row["pending"], "failed": row["failed"], "degraded": row["failed"] > 0}
+
     def insert_article(self, article: Article) -> bool:
         """Insert an article. Returns False if URL hash already exists (duplicate)."""
         if self.article_exists(article.url_hash):
@@ -141,7 +199,7 @@ class Database:
         placeholders = ", ".join("?" for _ in data)
 
         try:
-            with self.conn:
+            with self.transaction():
                 self.conn.execute(
                     f"INSERT INTO articles ({columns}) VALUES ({placeholders})",
                     list(data.values()),
@@ -177,7 +235,7 @@ class Database:
         columns = ", ".join(data.keys())
         placeholders = ", ".join("?" for _ in data)
 
-        with self.conn:
+        with self.transaction():
             cursor = self.conn.execute(
                 f"INSERT OR IGNORE INTO classifications ({columns}) VALUES ({placeholders})",
                 list(data.values()),
@@ -193,7 +251,7 @@ class Database:
         columns = ", ".join(data.keys())
         placeholders = ", ".join("?" for _ in data)
 
-        with self.conn:
+        with self.transaction():
             self.conn.execute(
                 f"INSERT INTO events ({columns}) VALUES ({placeholders})",
                 list(data.values()),
@@ -212,7 +270,7 @@ class Database:
         values = list(kwargs.values())
         values.append(event_id)
 
-        with self.conn:
+        with self.transaction():
             self.conn.execute(
                 f"UPDATE events SET {set_clause} WHERE id = ?",
                 values,
@@ -299,7 +357,7 @@ class Database:
         columns = ", ".join(data.keys())
         placeholders = ", ".join("?" for _ in data)
 
-        with self.conn:
+        with self.transaction():
             self.conn.execute(
                 f"INSERT INTO alert_records ({columns}) VALUES ({placeholders})",
                 list(data.values()),
@@ -358,7 +416,7 @@ class Database:
         values = list(kwargs.values())
         values.append(record_id)
 
-        with self.conn:
+        with self.transaction():
             self.conn.execute(
                 f"UPDATE alert_records SET {set_clause} WHERE id = ?",
                 values,
@@ -373,18 +431,18 @@ class Database:
         """
         total_deleted = 0
 
-        with self.conn:
+        with self.transaction():
             # Delete classifications for old articles
             cursor = self.conn.execute(
                 "DELETE FROM classifications WHERE article_id IN "
-                "(SELECT id FROM articles WHERE fetched_at < datetime('now', ? || ' days'))",
+                "(SELECT id FROM articles WHERE id NOT IN (SELECT article_id FROM classification_queue) AND fetched_at < datetime('now', ? || ' days'))",
                 (str(-article_days),),
             )
             total_deleted += cursor.rowcount
 
             # Delete old articles
             cursor = self.conn.execute(
-                "DELETE FROM articles WHERE fetched_at < datetime('now', ? || ' days')",
+                "DELETE FROM articles WHERE id NOT IN (SELECT article_id FROM classification_queue) AND fetched_at < datetime('now', ? || ' days')",
                 (str(-article_days),),
             )
             total_deleted += cursor.rowcount

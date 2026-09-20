@@ -63,6 +63,7 @@ def test_cli_classify_bridges_complete(config, tmp_path):
     # Patch the Classifier class so the local `from ... import Classifier` inside
     # the CLI functions picks up our mock; its classify is an awaitable AsyncMock.
     classifier_instance = MagicMock()
+    classifier_instance.aclose = AsyncMock()
     classifier_instance.classify = AsyncMock(side_effect=lambda article: _fake_classification(article.title))
 
     # Wrap asyncio.run so it still actually drives the coroutine (no leaked
@@ -157,6 +158,7 @@ async def test_run_eval_is_async(config, tmp_path):
     )
 
     classifier_instance = MagicMock()
+    classifier_instance.aclose = AsyncMock()
 
     async def fake_classify(article):
         return SimpleNamespace(
@@ -216,6 +218,7 @@ async def test_run_cycle_awaits_classifier(_cycle_pipeline):
     pipeline.deduplicator.deduplicate_batch = MagicMock(return_value=[article])
     pipeline.keyword_filter.filter_batch = MagicMock(return_value=[article])
     pipeline.enricher.enrich_batch = AsyncMock(return_value=[article])
+    pipeline.db.pending_classifications = MagicMock(return_value=[article])
 
     classify_batch = AsyncMock(return_value=[])
     pipeline.classifier.classify_batch = classify_batch

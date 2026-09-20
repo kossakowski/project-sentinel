@@ -8,7 +8,7 @@ import asyncio
 import json
 import logging
 import os
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -70,6 +70,7 @@ class HealthStatus:
     uptime_seconds: float
     db_size_bytes: int
     fetcher_status: dict[str, bool]
+    classification_status: dict = field(default_factory=dict)
 
 
 class PipelineStats:
@@ -206,6 +207,8 @@ class SentinelPipeline:
             await self.classifier.aclose()
         except Exception as e:
             self.logger.error("Failed to close classifier client: %s", e, exc_info=True)
+        if hasattr(self.enricher, "aclose"):
+            await self.enricher.aclose()
         self.db.close()
 
     async def run_cycle(self, *, fast_only: bool = False, diagnostic: bool = False) -> CycleResult:
@@ -230,17 +233,14 @@ class SentinelPipeline:
             # Step 2: Normalize
             normalized = self.normalizer.normalize_batch(raw_articles)
 
-            # Step 3: Deduplicate
-            unique = self.deduplicator.deduplicate_batch(normalized, diagnostic=diagnostic)
-            self.logger.info("After dedup: %d unique articles", len(unique))
-
-            # Step 4: Keyword filter
-            relevant = self.keyword_filter.filter_batch(unique)
-            self.logger.info("After keyword filter: %d relevant articles", len(relevant))
-
-            # Step 5: Enrich articles with insufficient summaries
-            if relevant:
-                relevant = await self.enricher.enrich_batch(relevant)
+            # Atomically mark newly selected work pending alongside URL dedup.
+            with self.db.transaction():
+                unique = self.deduplicator.deduplicate_batch(normalized, diagnostic=diagnostic)
+                selected = self.keyword_filter.filter_batch(unique)
+                for article in selected:
+                    self.db.enqueue_classification(article)
+            relevant = self.db.pending_classifications(self.config.classification.retry_batch_size)
+            self.logger.info("After dedup: %d unique; pending this cycle: %d", len(unique), len(relevant))
 
             # Step 6: Classify (only if there are relevant articles)
             classifications = []
@@ -250,19 +250,30 @@ class SentinelPipeline:
                 # including articles fetched during the same scheduler cycle.
                 for article in relevant:
                     try:
+                        await self.enricher.enrich_batch([article])
                         candidates = self.incident_memory.candidates(article)
                         result = await self.classifier.classify(article, incident_context=candidates)
                     except Exception as e:
-                        self.logger.error("Classification failed for %s: %s", article.id, e, exc_info=True)
+                        self.logger.error("Classification failed for %s: %s", article.id, e)
+                        self.db.classification_failed(
+                            article.id, self.config.classification.retry_delay_seconds, type(e).__name__
+                        )
                         continue
                     self.incident_memory.validate(result, candidates, article)
                     classifications.append(result)
                     try:
-                        events.extend(self.corroborator.process_classifications([result]))
+                        with self.db.transaction():
+                            grouped = self.corroborator.process_classifications([result])
+                            self.db.classification_complete(article.id)
+                        events.extend(grouped)
                     except Exception:
+                        self.db.classification_failed(
+                            article.id, self.config.classification.retry_delay_seconds, "grouping_failed"
+                        )
                         self.logger.exception("Incident grouping failed for article %s", article.id)
             elif relevant:
                 try:
+                    relevant = await self.enricher.enrich_batch(relevant)
                     classifications = await self.classifier.classify_batch(relevant)
                     self.logger.info("Classified %d articles", len(classifications))
                 except Exception as e:
@@ -275,7 +286,16 @@ class SentinelPipeline:
 
             # Step 6: Corroborate (group into events)
             if not self.config.classification.incident_memory.enabled:
-                events = self.corroborator.process_classifications(classifications)
+                with self.db.transaction():
+                    events = self.corroborator.process_classifications(classifications)
+                    for result in classifications:
+                        self.db.classification_complete(result.article_id)
+                completed = {result.article_id for result in classifications}
+                for article in relevant:
+                    if article.id not in completed:
+                        self.db.classification_failed(
+                            article.id, self.config.classification.retry_delay_seconds, "classification_failed"
+                        )
             # Keep the final snapshot of each incident, never earlier batch versions.
             events = list({event.id: event for event in events}.values())
             alertable_events = [e for e in events if e.alert_status != "pending"]
@@ -555,8 +575,13 @@ class SentinelScheduler:
             failures = stats.fetcher_consecutive_failures.get(fetcher.name, 0)
             fetcher_status[fetcher.name] = failures == 0
 
+        classification_status = self.pipeline.db.classification_health()
+        if classification_status["degraded"]:
+            healthy = False
+            error = error or "Classification unavailable: failed articles remain pending; check provider/budget logs."
         health = HealthStatus(
             is_healthy=healthy,
+            classification_status=classification_status,
             last_cycle_at=result.cycle_start.isoformat() if result else None,
             last_cycle_duration_seconds=result.duration_seconds if result else None,
             last_cycle_articles_fetched=result.articles_fetched if result else 0,

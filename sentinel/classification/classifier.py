@@ -1,6 +1,7 @@
-"""Classifier -- sends articles to Claude Haiku 4.5 for military event classification."""
+"""Military news classifier with direct OpenAI and explicit legacy Anthropic modes."""
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
@@ -9,6 +10,9 @@ from datetime import UTC, datetime
 import anthropic
 
 from sentinel.classification.incident_memory import MEMORY_INSTRUCTIONS
+from sentinel.classification.openai_provider import ClassificationError, OpenAIProvider
+from sentinel.classification.policy import messages, prompt_hash
+from sentinel.classification.schema import CLASSIFICATION_SCHEMA
 from sentinel.config import SentinelConfig
 from sentinel.models import Article, ClassificationResult
 
@@ -152,11 +156,12 @@ _JSON_BLOCK_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 
 class Classifier:
-    """Classifies articles using Claude Haiku 4.5."""
+    """Classify through the configured provider without automatic fallback."""
 
     def __init__(self, config: SentinelConfig) -> None:
         self.config = config
-        self.client = anthropic.AsyncAnthropic()  # Uses ANTHROPIC_API_KEY env var
+        self.provider = OpenAIProvider(config.classification) if config.classification.provider == "openai" else None
+        self.client = self.provider.client if self.provider else anthropic.AsyncAnthropic()
         self.logger = logging.getLogger("sentinel.classifier")
 
         # Daily cost tracking
@@ -169,6 +174,34 @@ class Classifier:
 
         Raises json.JSONDecodeError or anthropic.APIError on failure.
         """
+        if self.provider is not None:
+            cfg = self.config.classification
+            reply = await self.provider.request(
+                messages(article, incident_context or [], cfg.policy),
+                CLASSIFICATION_SCHEMA,
+                purpose="classification",
+                max_tokens=cfg.max_tokens,
+            )
+            data = dict(reply.data)
+            facts = data.pop("facts")
+            if not data["summary_pl"].strip():
+                raise ClassificationError("Empty classification summary; article remains pending")
+            self._track_tokens(reply.input_tokens, reply.output_tokens)
+            return ClassificationResult(
+                article_id=article.id,
+                **data,
+                facts=facts,
+                classified_at=datetime.now(UTC),
+                model_used=cfg.model,
+                provider_used="openai",
+                prompt_version="clarified-v2:" + prompt_hash(cfg.policy),
+                request_hash=reply.request_hash,
+                response_id=reply.response_id,
+                input_tokens=reply.input_tokens,
+                output_tokens=reply.output_tokens,
+                cached_input_tokens=reply.cached_tokens,
+                estimated_cost_usd=reply.cost_usd,
+            )
         response = (
             await self._call_api(article)
             if incident_context is None
@@ -199,6 +232,11 @@ class Classifier:
             summary_pl=data.get("summary_pl") if isinstance(data.get("summary_pl"), str) else "",
             classified_at=datetime.now(UTC),
             model_used=self.config.classification.model,
+            provider_used="anthropic",
+            prompt_version="legacy:"
+            + hashlib.sha256(
+                (SYSTEM_PROMPT + (MEMORY_INSTRUCTIONS if incident_context is not None else "")).encode()
+            ).hexdigest(),
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
             incident_memory=data.get("incident_memory", {}),
@@ -235,11 +273,16 @@ class Classifier:
                     article.title[:80],
                     e,
                 )
+            except ClassificationError as e:
+                self.logger.error("Classification unavailable for article %s: %s", article.id, e)
         return results
 
     async def aclose(self) -> None:
-        """Close the underlying async Anthropic client (releases its HTTP connections)."""
-        await self.client.close()
+        """Close the selected provider and its owned resources."""
+        if self.provider is not None:
+            await self.provider.aclose()
+        else:
+            await self.client.close()
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -337,7 +380,14 @@ class Classifier:
 
     def _log_daily_summary(self) -> None:
         """Log accumulated token usage for the day."""
-        # Haiku pricing: $0.80/M input, $4.00/M output (Claude Haiku 4.5)
+        if self.provider is not None:
+            self.logger.info(
+                "Daily classification tokens: input=%d output=%d; costs in model usage ledger",
+                self._daily_input_tokens,
+                self._daily_output_tokens,
+            )
+            return
+        # Legacy estimate; direct OpenAI costs use the persistent provider ledger.
         input_cost = self._daily_input_tokens * 0.80 / 1_000_000
         output_cost = self._daily_output_tokens * 4.00 / 1_000_000
         total_cost = input_cost + output_cost

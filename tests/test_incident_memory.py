@@ -317,7 +317,9 @@ async def test_same_batch_second_classification_receives_first_event_memory(db, 
     pipeline.config = config
     pipeline.db = db
     pipeline.normalizer = _IdentityStage()
-    pipeline.deduplicator = _IdentityStage()
+    from sentinel.processing.deduplicator import Deduplicator
+
+    pipeline.deduplicator = Deduplicator(db, config)
     pipeline.keyword_filter = _IdentityStage()
     pipeline.enricher = _IdentityStage()
     pipeline.classifier = fake_classifier
@@ -403,6 +405,7 @@ async def test_classifier_uses_one_fake_provider_request_with_memory_context(con
     create = AsyncMock(return_value=response)
     classifier = Classifier.__new__(Classifier)
     classifier.config = config
+    classifier.provider = None
     classifier.client = SimpleNamespace(messages=SimpleNamespace(create=create))
     classifier.logger = logging.getLogger("test.incident_memory.classifier")
     classifier._daily_input_tokens = 0

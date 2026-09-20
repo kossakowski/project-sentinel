@@ -236,29 +236,37 @@ async def run_eval(eval_set_path: str, config: SentinelConfig) -> EvalReport:
     classifier = Classifier(config)
     case_results: list[CaseResult] = []
 
-    for i, case in enumerate(cases, 1):
-        print(f"[{i}/{len(cases)}] {case.id}", file=sys.stderr)
-        article = _make_article(case)
-        try:
-            result = await classifier.classify(article)
-            case_results.append(_check_case(case, result))
-        except Exception as e:
-            case_results.append(
-                CaseResult(
-                    case_id=case.id,
-                    failure_mode=case.failure_mode,
-                    actual={},
-                    expected_action=case.expected_action,
-                    actual_action="error",
-                    checks={},
-                    overall_pass=False,
-                    error=str(e),
+    direct_start = classifier.provider.ledger.total() if config.classification.provider == "openai" else 0
+    direct_cost = 0
+    try:
+        for i, case in enumerate(cases, 1):
+            print(f"[{i}/{len(cases)}] {case.id}", file=sys.stderr)
+            article = _make_article(case)
+            try:
+                result = await classifier.classify(article)
+                case_results.append(_check_case(case, result))
+            except Exception as e:
+                case_results.append(
+                    CaseResult(
+                        case_id=case.id,
+                        failure_mode=case.failure_mode,
+                        actual={},
+                        expected_action=case.expected_action,
+                        actual_action="error",
+                        checks={},
+                        overall_pass=False,
+                        error=str(e),
+                    )
                 )
-            )
+
+    finally:
+        if config.classification.provider == "openai":
+            direct_cost = classifier.provider.ledger.total() - direct_start
+        await classifier.aclose()
 
     finished_at = datetime.now(UTC)
     metrics = compute_metrics(case_results)
-    cost = compute_cost(case_results)
+    cost = direct_cost if config.classification.provider == "openai" else compute_cost(case_results)
 
     return EvalReport(
         started_at=started_at.isoformat(),

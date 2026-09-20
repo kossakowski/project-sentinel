@@ -16,6 +16,7 @@ import anthropic
 import httpx
 from googlenewsdecoder import new_decoderv1
 
+from sentinel.classification.openai_provider import OpenAIProvider
 from sentinel.config import SentinelConfig
 from sentinel.models import Article
 from sentinel.utils import strip_html
@@ -68,6 +69,33 @@ class ArticleEnricher:
         self.config = config
         self.logger = logging.getLogger("sentinel.enricher")
         self._client: anthropic.Anthropic | None = None
+        self._openai_provider: OpenAIProvider | None = None
+
+    async def aclose(self):
+        if self._openai_provider is not None:
+            await self._openai_provider.aclose()
+        if self._client is not None:
+            self._client.close()
+
+    async def _check_vagueness_direct(self, article: Article) -> bool:
+        if self._openai_provider is None:
+            self._openai_provider = OpenAIProvider(self.config.classification)
+        schema = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {"needs_enrichment": {"type": "boolean"}, "reason": {"type": "string"}},
+            "required": ["needs_enrichment", "reason"],
+        }
+        reply = await self._openai_provider.request(
+            [
+                {"role": "system", "content": VAGUENESS_CHECK_PROMPT},
+                {"role": "user", "content": f"Title: {article.title}\nSummary: {article.summary}"},
+            ],
+            schema,
+            purpose="enrichment_quality",
+            max_tokens=256,
+        )
+        return reply.data["needs_enrichment"]
 
     @property
     def _anthropic(self) -> anthropic.Anthropic:
@@ -138,9 +166,7 @@ class ArticleEnricher:
             data = json.loads(raw)
             needs = data.get("needs_enrichment", False)
             if needs:
-                self.logger.debug(
-                    "LLM flagged '%s': %s", article.title[:60], data.get("reason", "")
-                )
+                self.logger.debug("LLM flagged '%s': %s", article.title[:60], data.get("reason", ""))
             return bool(needs)
         except Exception as e:
             self.logger.warning("LLM vagueness check failed for '%s': %s", article.title[:60], e)
@@ -239,7 +265,12 @@ class ArticleEnricher:
         heuristic_count = len(to_enrich)
 
         for article in passed:
-            if self._check_vagueness_llm(article):
+            needs = (
+                await self._check_vagueness_direct(article)
+                if self.config.classification.provider == "openai"
+                else self._check_vagueness_llm(article)
+            )
+            if needs:
                 article.raw_metadata["enrichment"] = {
                     "method": "llm",
                     "original_summary": article.summary,
@@ -253,7 +284,9 @@ class ArticleEnricher:
         if to_enrich:
             self.logger.info(
                 "Enriching %d articles (heuristic=%d, llm=%d)",
-                len(to_enrich), heuristic_count, llm_count,
+                len(to_enrich),
+                heuristic_count,
+                llm_count,
             )
             bodies = await asyncio.gather(
                 *(self._fetch_body(a) for a in to_enrich),
@@ -261,7 +294,7 @@ class ArticleEnricher:
             )
             enriched_ok = 0
             enriched_fail = 0
-            for article, body in zip(to_enrich, bodies):
+            for article, body in zip(to_enrich, bodies, strict=True):
                 if isinstance(body, str) and body:
                     article.summary = body
                     article.raw_metadata["enrichment"]["fetched"] = True
@@ -271,7 +304,9 @@ class ArticleEnricher:
                     enriched_fail += 1
 
             self.logger.info(
-                "Enrichment results: %d fetched, %d failed", enriched_ok, enriched_fail,
+                "Enrichment results: %d fetched, %d failed",
+                enriched_ok,
+                enriched_fail,
             )
 
         return articles

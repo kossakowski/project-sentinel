@@ -1,6 +1,6 @@
 import os
 import re
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
@@ -190,10 +190,52 @@ class IncidentMemoryConfig(BaseModel):
         return self
 
 
+class ModelBudgetConfig(BaseModel):
+    ledger_path: str = "data/model-usage.db"
+    monthly_usd: float = Field(default=20, gt=0, le=20, allow_inf_nan=False)
+    input_per_million: float = Field(default=0.20, gt=0, allow_inf_nan=False)
+    cached_input_per_million: float = Field(default=0.02, ge=0, allow_inf_nan=False)
+    output_per_million: float = Field(default=1.20, gt=0, allow_inf_nan=False)
+    cache_write_multiplier: float = Field(default=1.25, ge=1, allow_inf_nan=False)
+
+
 class ClassificationConfig(BaseModel):
+    # Omitted provider preserves existing installations until explicit migration.
+    provider: Literal["anthropic", "openai"] = "anthropic"
+    api_base_url: Literal["https://api.openai.com/v1"] = "https://api.openai.com/v1"
+    policy: dict[str, Any] = Field(default_factory=dict)
+    timeout_seconds: float = Field(default=30, gt=0, le=120)
+    reasoning_effort: Literal["none"] = "none"
+    budget: ModelBudgetConfig = Field(default_factory=ModelBudgetConfig)
+    retry_delay_seconds: int = Field(default=300, ge=1)
+    retry_batch_size: int = Field(default=100, ge=1, le=1000)
+
+    @model_validator(mode="after")
+    def _validate_direct_policy(self):
+        if self.provider == "openai":
+            if not self.model.startswith("gpt-"):
+                raise ValueError("OpenAI provider requires an explicit OpenAI model ID")
+            from sentinel.classification.policy import system_prompt
+
+            try:
+                if self.policy.get("version") != 2 or not self.policy.get("monitored_countries"):
+                    raise ValueError("Missing clarified policy version 2")
+                for bounds in self.policy["ranges"].values():
+                    if (
+                        not isinstance(bounds, list)
+                        or len(bounds) != 2
+                        or any(type(x) is not int for x in bounds)
+                        or not 1 <= bounds[0] <= bounds[1] <= 10
+                    ):
+                        raise ValueError("Invalid policy urgency range")
+                system_prompt(self.policy)
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError("OpenAI mode requires the complete approved classification.policy") from exc
+        return self
+
     incident_memory: IncidentMemoryConfig = Field(default_factory=IncidentMemoryConfig)
     model: str = "claude-haiku-4-5-20251001"
-    max_tokens: int = 512
+    max_tokens: int = Field(default=512, ge=128, le=4096)
     temperature: float = 0.0
     corroboration_required: int = 2
     corroboration_window_minutes: int = 360

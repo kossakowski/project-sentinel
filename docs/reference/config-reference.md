@@ -16,7 +16,8 @@
 
 | Variable | Used by | Required |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | Classification engine (`sentinel/classification/classifier.py`) | yes |
+| `OPENAI_API_KEY` | Direct classifier and enrichment quality gate | when provider is `openai` |
+| `ANTHROPIC_API_KEY` | Legacy classifier and quality gate | when provider is `anthropic` |
 | `TWILIO_ACCOUNT_SID` | Alert dispatcher (`sentinel/alerts/dispatcher.py`) | yes |
 | `TWILIO_AUTH_TOKEN` | Alert dispatcher | yes |
 | `TWILIO_PHONE_NUMBER` | Outbound caller ID | yes |
@@ -124,11 +125,12 @@ Consumed by: `sentinel/classification/classifier.py`
 
 Consumed by: `sentinel/classification/classifier.py` (LLM call) and `sentinel/classification/corroborator.py` (event grouping / corroboration).
 
-| YAML key | Type | Live value | Pydantic default | Description |
+| YAML key | Type | Local branch value | Pydantic default | Description |
 |---|---|---|---|---|
-| `model` | str | `claude-haiku-4-5-20251001` | `claude-haiku-4-5-20251001` | Anthropic model ID. Also used by the enricher's vagueness/quality gate. |
-| `max_tokens` | int | `512` | `512` | Max output tokens per classification call |
-| `temperature` | float | `0.0` | `0.0` | LLM temperature (0 = deterministic) |
+| `provider` | str | `openai` | `anthropic` | Explicit provider; no automatic fallback. Omission preserves old installations. |
+| `model` | str | `gpt-5.6-luna` | `claude-haiku-4-5-20251001` | Provider model ID, also used by the quality gate. |
+| `max_tokens` | int | `1024` | `512` | OpenAI total output cap; legacy Anthropic adds its memory allowance. |
+| `temperature` | float | `0.0` | `0.0` | Legacy Anthropic sampling only; no deterministic-output guarantee. OpenAI omits this setting, preserving the tested provider default. |
 | `corroboration_required` | int | `1` | `2` | Min independent sources for a phone-call-eligible event. **Live config sets `1`**; the Pydantic default is `2`. (The per-level `alerts.urgency_levels.*.corroboration_required` is the value the state machine actually gates on; this top-level key feeds the corroborator's alertable check.) |
 | `corroboration_window_minutes` | int | `360` | `360` | **Sliding** window (minutes) for grouping a new article into an existing event, measured from that event's `last_updated_at` (its **last activity**), not `first_seen_at`. So a multi-hour incident that keeps drawing fresh articles stays ONE event. Live & default `360` (6h). |
 | `corroboration_max_age_minutes` | int | `2880` | `2880` | Absolute lifetime cap (minutes) measured from `first_seen_at`. Once an event is older than this it stops absorbing articles — a fresh article spawns a NEW event — so a perpetually-updated event can't chain-merge genuinely distinct incidents. `0` disables the cap. Live & default `2880` (48h). |
@@ -141,12 +143,39 @@ Consumed by: `sentinel/classification/classifier.py` (LLM call) and `sentinel/cl
 - **Country gate:** at/above the phone-call urgency threshold (9), a match requires a concrete-country intersection — a Poland-critical article whose country wasn't extracted spawns its OWN event/call (empty/"unknown" does NOT relax the gate at critical urgency). Below the threshold, empty/"unknown" labels don't block a merge, but two concrete-but-different country sets (e.g. PL vs RO) stay separate. Countries are normalized (uppercased; blank/"unknown" dropped) on merge.
 - **Critical-urgency safety guard:** a phone-call-eligible article is NEVER absorbed into an event that already has `acknowledged_at` set (already alerted / in cooldown). It forces a NEW event and a NEW call so a fresh escalation can't be silenced by an earlier event's cooldown.
 
+### Direct provider, budget and recovery
+
+| Key | Default | Meaning |
+|---|---|---|
+| `api_base_url` | `https://api.openai.com/v1` | Direct endpoint; alternative hosts are rejected. |
+| `reasoning_effort` | `none` | Explicitly disabled; other values are rejected for this migration. |
+| `timeout_seconds` | `30` | Total request deadline; SDK retries are disabled. |
+| `policy` | `{}` | Complete approved v2 policy required in OpenAI mode; the example config contains the resolved choices/ranges. |
+| `retry_delay_seconds` | `300` | Delay before reattempting queued failed work. |
+| `retry_batch_size` | `100` | Maximum pending articles processed per cycle, oldest arrival first. |
+| `budget.ledger_path` | `data/model-usage.db` | Shared persistent OpenAI reservation/usage ledger; use an absolute writable path in production. |
+| `budget.monthly_usd` | `20` | UTC monthly application allowance (maximum 20); exhaustion stops paid work and degrades health. |
+| `budget.input_per_million` | `0.20` | Configured standard input estimate in USD. |
+| `budget.cached_input_per_million` | `0.02` | Cached input estimate in USD. |
+| `budget.output_per_million` | `1.20` | Output estimate in USD. |
+| `budget.cache_write_multiplier` | `1.25` | Conservative premium on uncached input when separate cache-write usage is unavailable. |
+
+These rates were checked for Luna on 2026-09-20; they are not universal model
+prices. The ledger includes the enrichment quality gate and uncertain reservations.
+It excludes spending outside this application. See [API setup](../how-to/api-setup.md)
+for billing, no-send validation and the budget/detection-gap trade-off.
+Additive database migrations preserve historical events and classifications.
+Only newly selected articles enter `classification_queue`; historic URL dedup
+is retained, not silently relabelled as new-model output. Every direct result
+persists provider/model/prompt/request provenance and factual extraction.
+
 ### `classification.incident_memory`
 
 This opt-in path includes stored incident context in the existing classification
 request. It does not change the configured model or add another model call.
-It is disabled in the example and repository configuration pending evaluation and
-production rollout. The existing fuzzy grouping parameters above apply to the legacy
+It is enabled in the local/example Luna configuration after the no-send runtime
+evaluation. The Pydantic default remains disabled for old configurations. Production
+rollout is a separate permission boundary. The existing fuzzy grouping parameters above apply to the legacy
 path; memory uses the independent retrieval window below.
 
 | Field | Default | Purpose |
@@ -159,7 +188,7 @@ path; memory uses the independent retrieval window below.
 | `max_text_chars` | `300` | Limit each summary/title field in candidate context. |
 | `min_confidence` | `0.85` | Minimum incident-identity confidence to accept a noncritical match to a supplied candidate ID. |
 | `critical_min_confidence` | `0.9` | Stricter minimum for incoming phone-call-eligible reports. |
-| `extra_output_tokens` | `256` | Add room for the memory decision to the existing output limit. |
+| `extra_output_tokens` | `256` | Legacy Anthropic memory allowance; OpenAI uses the single `max_tokens` total. |
 | `weekday_aliases` | `{}` in code; multilingual map in YAML | Map weekday names across PL/EN/UA/RU to catch conflicting incident days. Explicit ISO and DD.MM.YYYY dates are also checked. |
 
 The output distinguishes a new incident, duplicate coverage, a nonurgent update,
