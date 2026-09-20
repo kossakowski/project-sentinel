@@ -1,0 +1,1944 @@
+version: 1
+policy_version: 2
+description: >-
+  Fresh synthetic held-out diagnostic controls for the clarified version-2 policy.
+  These reports describe invented scenarios, not observed news events. All labels are
+  provisional pending an independent evidence review.
+cases:
+  - id: v2h-pl-01-a
+    sequence_id: v2h-pl-01
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: pl
+      note: Fikcyjny raport kontrolny; nie opisuje rzeczywistego zdarzenia.
+      evidence:
+        - "Rosja zaatakowała obiekty energetyczne w środkowej Ukrainie"
+        - "Polskie samoloty poderwano wyłącznie zapobiegawczo"
+    article:
+      title: Zapobiegawczy start polskich dyżurnych par po ataku w Ukrainie
+      summary: Rosja zaatakowała obiekty energetyczne w środkowej Ukrainie. Polskie samoloty poderwano wyłącznie zapobiegawczo; nie odnotowano naruszenia polskiej przestrzeni ani ostrzeżenia dla mieszkańców.
+      source_name: Syntetyczny Serwis PL 01A
+      source_url: "synthetic://v2h-pl-01-a"
+      source_type: synthetic
+      language: pl
+      published_at: "2026-09-01T06:00:00+00:00"
+      fetched_at: "2026-09-01T06:02:00+00:00"
+    expected:
+      urgency_min: 5
+      urgency_max: 6
+      affected_countries: [PL]
+      notification: initial
+      relation: new
+      critical: false
+      facts: {attack_countries: [UA], protection: precaution, status: active}
+    rationale: Atak jest fizycznie ulokowany w Ukrainie, a Polska podjęła tylko konkretny środek ostrożności.
+
+  - id: v2h-pl-01-b
+    sequence_id: v2h-pl-01
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: pl
+      note: Fikcyjny raport kontrolny; nie opisuje rzeczywistego zdarzenia.
+      evidence:
+        - "Wrogi pocisk uderzył w czynny radar wojskowy w Polsce"
+        - "Zagrożenie trwa, a obrona poszukuje kolejnych pocisków"
+    article:
+      title: Wrogi pocisk trafił radar wojskowy w Polsce
+      summary: Wrogi pocisk uderzył w czynny radar wojskowy w Polsce. Zagrożenie trwa, a obrona poszukuje kolejnych pocisków; nie wydano dotąd ostrzeżenia cywilnego.
+      source_name: Syntetyczny Serwis PL 01B
+      source_url: "synthetic://v2h-pl-01-b"
+      source_type: synthetic
+      language: pl
+      published_at: "2026-09-01T06:12:00+00:00"
+      fetched_at: "2026-09-01T06:14:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 10
+      affected_countries: [PL]
+      notification: initial
+      relation: new
+      critical: true
+      facts: {attack_countries: [PL], protection: none, status: active}
+    rationale: Artykuł jednoznacznie potwierdza trwający wrogi atak fizyczny w Polsce.
+
+  - id: v2h-pl-01-c
+    sequence_id: v2h-pl-01
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: pl
+      note: Fikcyjny komentarz polityczny odnoszący się do poprzedniego raportu.
+      evidence:
+        - "Minister nazwał trafienie radaru alarmem dla europejskiej polityki obronnej"
+        - "Nie podał żadnej nowej informacji o zagrożeniu"
+    article:
+      title: Minister komentuje trafienie radaru i mówi o politycznym alarmie
+      summary: Minister nazwał trafienie radaru alarmem dla europejskiej polityki obronnej. Nie podał żadnej nowej informacji o zagrożeniu, skutkach ani działaniach ochronnych.
+      source_name: Syntetyczny Serwis PL 01C
+      source_url: "synthetic://v2h-pl-01-c"
+      source_type: synthetic
+      language: pl
+      published_at: "2026-09-01T06:25:00+00:00"
+      fetched_at: "2026-09-01T06:27:00+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 3
+      affected_countries: []
+      notification: silent
+      relation: same
+      same_as: v2h-pl-01-b
+      critical: false
+      facts: {attack_countries: [], protection: none, status: unclear}
+    rationale: Słowo „alarm” jest metaforą polityczną, a bieżący tekst nie opisuje nowego niebezpieczeństwa.
+
+  - id: v2h-pl-01-d
+    sequence_id: v2h-pl-01
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: pl
+      note: Fikcyjny, niezależny raport kontrolny.
+      evidence:
+        - "Łotewskie lotnictwo poderwało myśliwce zapobiegawczo"
+        - "Uderzenia nastąpiły wyłącznie na terytorium Ukrainy"
+    article:
+      title: Łotwa poderwała myśliwce po nowej fali uderzeń w Ukrainie
+      summary: Łotewskie lotnictwo poderwało myśliwce zapobiegawczo. Uderzenia nastąpiły wyłącznie na terytorium Ukrainy; łotewskiej przestrzeni nie naruszono.
+      source_name: Syntetyczny Serwis PL 01D
+      source_url: "synthetic://v2h-pl-01-d"
+      source_type: synthetic
+      language: pl
+      published_at: "2026-09-01T07:00:00+00:00"
+      fetched_at: "2026-09-01T07:03:00+00:00"
+    expected:
+      urgency_min: 5
+      urgency_max: 6
+      affected_countries: [LV]
+      notification: initial
+      relation: new
+      critical: false
+      facts: {attack_countries: [UA], protection: precaution, status: active}
+    rationale: Łotwa reaguje ochronnie, lecz fizyczny atak jest wyraźnie ograniczony do Ukrainy.
+
+  - id: v2h-pl-02-a
+    sequence_id: v2h-pl-02
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: pl
+      note: Fikcyjny raport kontrolny; nie opisuje rzeczywistego zdarzenia.
+      evidence:
+        - "Władze Łotwy wydały oficjalny nakaz natychmiastowego zejścia mieszkańców do schronów"
+        - "Nakaz pozostaje w mocy"
+    article:
+      title: Oficjalny nakaz schronienia dla mieszkańców wschodniej Łotwy
+      summary: Władze Łotwy wydały oficjalny nakaz natychmiastowego zejścia mieszkańców do schronów z powodu nadlatującego wrogiego obiektu. Nakaz pozostaje w mocy; miejsca uderzenia jeszcze nie potwierdzono.
+      source_name: Syntetyczny Serwis PL 02A
+      source_url: "synthetic://v2h-pl-02-a"
+      source_type: synthetic
+      language: pl
+      published_at: "2026-09-02T08:00:00+00:00"
+      fetched_at: "2026-09-02T08:01:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 9
+      affected_countries: [LV]
+      notification: initial
+      relation: new
+      critical: true
+      facts: {attack_countries: [], protection: official_warning, status: active}
+    rationale: Aktywny, oficjalny nakaz schronienia w kraju monitorowanym sam stanowi zdarzenie krytyczne.
+
+  - id: v2h-pl-02-b
+    sequence_id: v2h-pl-02
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: pl
+      note: Fikcyjna parafraza poprzedniego raportu.
+      evidence:
+        - "Łotewski nakaz schronienia nadal obowiązuje"
+        - "To ten sam nadlatujący obiekt zgłoszony kilkanaście minut wcześniej"
+    article:
+      title: Nakaz ukrycia się na Łotwie nadal aktywny
+      summary: Łotewski nakaz schronienia nadal obowiązuje. To ten sam nadlatujący obiekt zgłoszony kilkanaście minut wcześniej; brak potwierdzenia uderzenia.
+      source_name: Syntetyczny Serwis PL 02B
+      source_url: "synthetic://v2h-pl-02-b"
+      source_type: synthetic
+      language: pl
+      published_at: "2026-09-02T08:08:00+00:00"
+      fetched_at: "2026-09-02T08:10:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 9
+      affected_countries: [LV]
+      notification: silent
+      relation: same
+      same_as: v2h-pl-02-a
+      critical: true
+      facts: {attack_countries: [], protection: official_warning, status: active}
+    rationale: To wyraźna parafraza tego samego aktywnego ostrzeżenia bez nowej eskalacji.
+
+  - id: v2h-pl-02-c
+    sequence_id: v2h-pl-02
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: pl
+      note: Fikcyjna eskalacja tego samego epizodu.
+      evidence:
+        - "Ten sam obiekt uderzył w łotewski posterunek wojskowy"
+        - "Nakaz schronienia pozostaje aktywny"
+    article:
+      title: Ten sam obiekt uderzył w posterunek na Łotwie
+      summary: Ten sam obiekt uderzył w łotewski posterunek wojskowy i spowodował pożar. Nakaz schronienia pozostaje aktywny, a służby spodziewają się kolejnych obiektów.
+      source_name: Syntetyczny Serwis PL 02C
+      source_url: "synthetic://v2h-pl-02-c"
+      source_type: synthetic
+      language: pl
+      published_at: "2026-09-02T08:20:00+00:00"
+      fetched_at: "2026-09-02T08:21:00+00:00"
+    expected:
+      urgency_min: 10
+      urgency_max: 10
+      affected_countries: [LV]
+      notification: update
+      relation: same
+      same_as: v2h-pl-02-a
+      critical: true
+      facts: {attack_countries: [LV], protection: official_warning, status: active}
+    rationale: Nowe potwierdzenie uderzenia materialnie eskaluje ten sam aktywny epizod i wymaga aktualizacji.
+
+  - id: v2h-pl-02-d
+    sequence_id: v2h-pl-02
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: pl
+      note: Fikcyjny przypadek negatywny.
+      evidence:
+        - "Przedmiot okazał się cywilną sondą meteorologiczną"
+        - "Nie stwierdzono działania wrogiego"
+    article:
+      title: Cywilna sonda znaleziona na polu w Estonii
+      summary: Przedmiot okazał się cywilną sondą meteorologiczną. Nie stwierdzono działania wrogiego, teren sprawdzono i zakończono czynności.
+      source_name: Syntetyczny Serwis PL 02D
+      source_url: "synthetic://v2h-pl-02-d"
+      source_type: synthetic
+      language: pl
+      published_at: "2026-09-02T09:00:00+00:00"
+      fetched_at: "2026-09-02T09:02:00+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 3
+      affected_countries: [EE]
+      notification: silent
+      relation: new
+      critical: false
+      facts: {attack_countries: [], protection: none, status: resolved}
+    rationale: Lokalny przedmiot ma potwierdzone cywilne pochodzenie i brak wrogości.
+
+  - id: v2h-pl-03-a
+    sequence_id: v2h-pl-03
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: pl
+      note: Fikcyjny opis zakończonego epizodu.
+      evidence:
+        - "Wczorajszy alarm w Estonii został odwołany"
+        - "Obecnie nie ma aktywnego zagrożenia"
+    article:
+      title: Wczorajszy estoński alarm zakończony bez incydentu
+      summary: Wczorajszy alarm w Estonii został odwołany po identyfikacji fałszywego echa radarowego. Obecnie nie ma aktywnego zagrożenia ani potwierdzonego ataku.
+      source_name: Syntetyczny Serwis PL 03A
+      source_url: "synthetic://v2h-pl-03-a"
+      source_type: synthetic
+      language: pl
+      published_at: "2026-09-03T05:00:00+00:00"
+      fetched_at: "2026-09-03T05:01:00+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 3
+      affected_countries: [EE]
+      notification: silent
+      relation: new
+      critical: false
+      facts: {attack_countries: [], protection: none, status: resolved}
+    rationale: Tekst jednoznacznie opisuje zakończony fałszywy alarm bez bieżącego zagrożenia.
+
+  - id: v2h-pl-03-b
+    sequence_id: v2h-pl-03
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: pl
+      note: Fikcyjna nowa fala, wyraźnie oddzielona od zakończonego epizodu.
+      evidence:
+        - "Dziś rozpoczęła się odrębna, nowa fala zagrożenia"
+        - "Estońskie władze nakazały mieszkańcom pozostać w schronach"
+    article:
+      title: Nowa fala zagrożenia w Estonii, wydano nakaz schronienia
+      summary: Dziś rozpoczęła się odrębna, nowa fala zagrożenia, niezwiązana z zakończonym wczoraj fałszywym alarmem. Estońskie władze nakazały mieszkańcom pozostać w schronach; ostrzeżenie jest aktywne.
+      source_name: Syntetyczny Serwis PL 03B
+      source_url: "synthetic://v2h-pl-03-b"
+      source_type: synthetic
+      language: pl
+      published_at: "2026-09-03T07:00:00+00:00"
+      fetched_at: "2026-09-03T07:01:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 9
+      affected_countries: [EE]
+      notification: initial
+      relation: new
+      critical: true
+      facts: {attack_countries: [], protection: official_warning, status: active}
+    rationale: Tekst jawnie oznacza nową aktywną falę i nowy oficjalny nakaz ochronny.
+
+  - id: v2h-pl-03-c
+    sequence_id: v2h-pl-03
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: pl
+      note: Fikcyjna parafraza nowej fali.
+      evidence:
+        - "Dzisiejszy estoński nakaz schronienia nadal obowiązuje"
+        - "Nie odnotowano nowego rozwoju sytuacji"
+    article:
+      title: Estoński nakaz schronienia nadal w mocy
+      summary: Dzisiejszy estoński nakaz schronienia nadal obowiązuje z powodu tej samej nowej fali. Nie odnotowano nowego rozwoju sytuacji ani potwierdzonego uderzenia.
+      source_name: Syntetyczny Serwis PL 03C
+      source_url: "synthetic://v2h-pl-03-c"
+      source_type: synthetic
+      language: pl
+      published_at: "2026-09-03T07:08:00+00:00"
+      fetched_at: "2026-09-03T07:10:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 9
+      affected_countries: [EE]
+      notification: silent
+      relation: same
+      same_as: v2h-pl-03-b
+      critical: true
+      facts: {attack_countries: [], protection: official_warning, status: active}
+    rationale: Jest to duplikat informacyjny aktywnego ostrzeżenia z tej samej nowej fali.
+
+  - id: v2h-pl-03-d
+    sequence_id: v2h-pl-03
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: pl
+      note: Fikcyjny raport niezależny.
+      evidence:
+        - "Litewskie myśliwce wystartowały zapobiegawczo"
+        - "Atak dotyczy wyłącznie Ukrainy"
+    article:
+      title: Litwa zapobiegawczo podrywa myśliwce podczas ataku na Ukrainę
+      summary: Litewskie myśliwce wystartowały zapobiegawczo, gdy Rosja atakowała cele w głębi Ukrainy. Atak dotyczy wyłącznie Ukrainy; Litwa nie została naruszona.
+      source_name: Syntetyczny Serwis PL 03D
+      source_url: "synthetic://v2h-pl-03-d"
+      source_type: synthetic
+      language: pl
+      published_at: "2026-09-03T08:00:00+00:00"
+      fetched_at: "2026-09-03T08:02:00+00:00"
+    expected:
+      urgency_min: 5
+      urgency_max: 6
+      affected_countries: [LT]
+      notification: initial
+      relation: new
+      critical: false
+      facts: {attack_countries: [UA], protection: precaution, status: active}
+    rationale: Litwa wykonała konkretną reakcję zapobiegawczą, lecz nie jest miejscem fizycznego ataku.
+
+  - id: v2h-pl-04-a
+    sequence_id: v2h-pl-04
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: pl
+      note: Fikcyjny przypadek sprawdzający mylące nazwy geograficzne i narodowość.
+      evidence:
+        - "Rosyjski obywatel jechał pociągiem do Wilna"
+        - "Nie doszło do ataku ani incydentu wojskowego"
+    article:
+      title: Rosyjski obywatel zatrzymany w pociągu jadącym do Wilna
+      summary: Rosyjski obywatel jechał pociągiem do Wilna i został zatrzymany za brak biletu. Nie doszło do ataku ani incydentu wojskowego w Rosji, na Litwie ani w pociągu.
+      source_name: Syntetyczny Serwis PL 04A
+      source_url: "synthetic://v2h-pl-04-a"
+      source_type: synthetic
+      language: pl
+      published_at: "2026-09-04T10:00:00+00:00"
+      fetched_at: "2026-09-04T10:01:00+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 2
+      affected_countries: []
+      notification: silent
+      relation: new
+      critical: false
+      facts: {attack_countries: [], protection: none, status: unclear}
+    rationale: Narodowość i cel podróży nie wskazują miejsca ataku, którego tekst wprost wyklucza.
+
+  - id: v2h-pl-04-b
+    sequence_id: v2h-pl-04
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: pl
+      note: Fikcyjny raport kontrolny.
+      evidence:
+        - "Wrogi pocisk przekroczył granicę Estonii"
+        - "Obiekt nadal leci nad terytorium Estonii"
+    article:
+      title: Wrogi pocisk naruszył przestrzeń Estonii
+      summary: Wrogi pocisk przekroczył granicę Estonii i minął stanowisko obrony powietrznej. Obiekt nadal leci nad terytorium Estonii; nie wydano ostrzeżenia cywilnego.
+      source_name: Syntetyczny Serwis PL 04B
+      source_url: "synthetic://v2h-pl-04-b"
+      source_type: synthetic
+      language: pl
+      published_at: "2026-09-04T10:12:00+00:00"
+      fetched_at: "2026-09-04T10:13:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 10
+      affected_countries: [EE]
+      notification: initial
+      relation: new
+      critical: true
+      facts: {attack_countries: [EE], protection: none, status: active}
+    rationale: Tekst jednoznacznie potwierdza aktywne wrogie wtargnięcie na terytorium Estonii.
+
+  - id: v2h-pl-04-c
+    sequence_id: v2h-pl-04
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: pl
+      note: Fikcyjna eskalacja tego samego epizodu.
+      evidence:
+        - "Ten sam pocisk uderzył w estońską bazę lotniczą"
+        - "Zagrożenie pozostaje aktywne"
+    article:
+      title: Ten sam pocisk trafił estońską bazę
+      summary: Ten sam pocisk uderzył w estońską bazę lotniczą i ranił personel. Zagrożenie pozostaje aktywne, ponieważ wykryto kolejne obiekty.
+      source_name: Syntetyczny Serwis PL 04C
+      source_url: "synthetic://v2h-pl-04-c"
+      source_type: synthetic
+      language: pl
+      published_at: "2026-09-04T10:22:00+00:00"
+      fetched_at: "2026-09-04T10:23:00+00:00"
+    expected:
+      urgency_min: 10
+      urgency_max: 10
+      affected_countries: [EE]
+      notification: update
+      relation: same
+      same_as: v2h-pl-04-b
+      critical: true
+      facts: {attack_countries: [EE], protection: none, status: active}
+    rationale: Potwierdzone uderzenie i obrażenia są materialną eskalacją tego samego wtargnięcia.
+
+  - id: v2h-pl-04-d
+    sequence_id: v2h-pl-04
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: pl
+      note: Fikcyjny raport niezależny.
+      evidence:
+        - "Polskie lotnictwo prowadzi zapobiegawczy patrol"
+        - "Pociski spadły wyłącznie na cele w środkowej Ukrainie"
+    article:
+      title: Zapobiegawczy patrol Polski po uderzeniach w środkowej Ukrainie
+      summary: Polskie lotnictwo prowadzi zapobiegawczy patrol. Pociski spadły wyłącznie na cele w środkowej Ukrainie; nie ma naruszenia Polski ani ostrzeżenia dla ludności.
+      source_name: Syntetyczny Serwis PL 04D
+      source_url: "synthetic://v2h-pl-04-d"
+      source_type: synthetic
+      language: pl
+      published_at: "2026-09-04T11:00:00+00:00"
+      fetched_at: "2026-09-04T11:02:00+00:00"
+    expected:
+      urgency_min: 5
+      urgency_max: 6
+      affected_countries: [PL]
+      notification: initial
+      relation: new
+      critical: false
+      facts: {attack_countries: [UA], protection: precaution, status: active}
+    rationale: Polska ma konkretną reakcję ochronną, lecz fizyczny atak jest w Ukrainie.
+
+  - id: v2h-en-01-a
+    sequence_id: v2h-en-01
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: en
+      note: Invented diagnostic report; it does not describe a real event.
+      evidence:
+        - "Russia struck power facilities in central Ukraine"
+        - "Polish aircraft launched solely as a precaution"
+    article:
+      title: Polish alert aircraft launch as a precaution after strike in Ukraine
+      summary: Russia struck power facilities in central Ukraine. Polish aircraft launched solely as a precaution; no Polish airspace violation or resident warning was reported.
+      source_name: Synthetic EN Wire 01A
+      source_url: "synthetic://v2h-en-01-a"
+      source_type: synthetic
+      language: en
+      published_at: "2026-09-05T06:00:00+00:00"
+      fetched_at: "2026-09-05T06:02:00+00:00"
+    expected:
+      urgency_min: 5
+      urgency_max: 6
+      affected_countries: [PL]
+      notification: initial
+      relation: new
+      critical: false
+      facts: {attack_countries: [UA], protection: precaution, status: active}
+    rationale: The physical attack is in Ukraine while Poland takes a concrete precaution only.
+
+  - id: v2h-en-01-b
+    sequence_id: v2h-en-01
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: en
+      note: Invented diagnostic report; it does not describe a real event.
+      evidence:
+        - "A hostile missile hit an operating military radar in Lithuania"
+        - "The threat remains active"
+    article:
+      title: Hostile missile hits military radar in Lithuania
+      summary: A hostile missile hit an operating military radar in Lithuania. The threat remains active while air defence searches for more missiles; no civilian order has been issued.
+      source_name: Synthetic EN Wire 01B
+      source_url: "synthetic://v2h-en-01-b"
+      source_type: synthetic
+      language: en
+      published_at: "2026-09-05T06:12:00+00:00"
+      fetched_at: "2026-09-05T06:14:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 10
+      affected_countries: [LT]
+      notification: initial
+      relation: new
+      critical: true
+      facts: {attack_countries: [LT], protection: none, status: active}
+    rationale: The report confirms an active hostile physical attack inside Lithuania.
+
+  - id: v2h-en-01-c
+    sequence_id: v2h-en-01
+    split: holdout
+    label_status: disputed
+    provenance:
+      kind: synthetic
+      content_language: en
+      note: Invented political reaction referring to the previous report.
+      evidence:
+        - "The minister called the radar strike an alarm for European defence policy"
+        - "She supplied no new danger information"
+    article:
+      title: Minister calls Lithuanian radar strike a political alarm
+      summary: The minister called the radar strike an alarm for European defence policy. She supplied no new danger information, damage report, or protective instruction.
+      source_name: Synthetic EN Wire 01C
+      source_url: "synthetic://v2h-en-01-c"
+      source_type: synthetic
+      language: en
+      published_at: "2026-09-05T06:25:00+00:00"
+      fetched_at: "2026-09-05T06:27:00+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 3
+      affected_countries: []
+      notification: silent
+      relation: same
+      same_as: v2h-en-01-b
+      critical: false
+      facts: {attack_countries: [], protection: none, status: unclear}
+    rationale: The word alarm is emotional political language and adds no current danger fact.
+
+  - id: v2h-en-01-d
+    sequence_id: v2h-en-01
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: en
+      note: Invented independent diagnostic report.
+      evidence:
+        - "Estonian jets launched as a precaution"
+        - "The strikes occurred only in Ukraine"
+    article:
+      title: Estonia launches jets after a new strike wave in Ukraine
+      summary: Estonian jets launched as a precaution. The strikes occurred only in Ukraine, and Estonian airspace was not breached.
+      source_name: Synthetic EN Wire 01D
+      source_url: "synthetic://v2h-en-01-d"
+      source_type: synthetic
+      language: en
+      published_at: "2026-09-05T07:00:00+00:00"
+      fetched_at: "2026-09-05T07:03:00+00:00"
+    expected:
+      urgency_min: 5
+      urgency_max: 6
+      affected_countries: [EE]
+      notification: initial
+      relation: new
+      critical: false
+      facts: {attack_countries: [UA], protection: precaution, status: active}
+    rationale: Estonia takes a local precaution, but Ukraine is the only physically attacked country.
+
+  - id: v2h-en-02-a
+    sequence_id: v2h-en-02
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: en
+      note: Invented diagnostic report; it does not describe a real event.
+      evidence:
+        - "Latvian authorities issued an official order for residents to enter shelters immediately"
+        - "The order remains in force"
+    article:
+      title: Official shelter order issued for residents in eastern Latvia
+      summary: Latvian authorities issued an official order for residents to enter shelters immediately because of an approaching hostile object. The order remains in force; an impact location is not yet confirmed.
+      source_name: Synthetic EN Wire 02A
+      source_url: "synthetic://v2h-en-02-a"
+      source_type: synthetic
+      language: en
+      published_at: "2026-09-06T08:00:00+00:00"
+      fetched_at: "2026-09-06T08:01:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 9
+      affected_countries: [LV]
+      notification: initial
+      relation: new
+      critical: true
+      facts: {attack_countries: [], protection: official_warning, status: active}
+    rationale: An active official shelter order in a monitored country is independently critical.
+
+  - id: v2h-en-02-b
+    sequence_id: v2h-en-02
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: en
+      note: Invented paraphrase of the previous report.
+      evidence:
+        - "Latvia's shelter order is still active"
+        - "It concerns the same approaching object reported minutes earlier"
+    article:
+      title: Latvian shelter instruction remains active
+      summary: Latvia's shelter order is still active. It concerns the same approaching object reported minutes earlier, and no impact has been confirmed.
+      source_name: Synthetic EN Wire 02B
+      source_url: "synthetic://v2h-en-02-b"
+      source_type: synthetic
+      language: en
+      published_at: "2026-09-06T08:08:00+00:00"
+      fetched_at: "2026-09-06T08:10:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 9
+      affected_countries: [LV]
+      notification: silent
+      relation: same
+      same_as: v2h-en-02-a
+      critical: true
+      facts: {attack_countries: [], protection: official_warning, status: active}
+    rationale: This is a clear paraphrase of the same active warning without escalation.
+
+  - id: v2h-en-02-c
+    sequence_id: v2h-en-02
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: en
+      note: Invented escalation of the same episode.
+      evidence:
+        - "The same object struck a Latvian military post"
+        - "The shelter order remains active"
+    article:
+      title: Same object strikes Latvian military post
+      summary: The same object struck a Latvian military post and started a fire. The shelter order remains active, and services expect additional objects.
+      source_name: Synthetic EN Wire 02C
+      source_url: "synthetic://v2h-en-02-c"
+      source_type: synthetic
+      language: en
+      published_at: "2026-09-06T08:20:00+00:00"
+      fetched_at: "2026-09-06T08:21:00+00:00"
+    expected:
+      urgency_min: 10
+      urgency_max: 10
+      affected_countries: [LV]
+      notification: update
+      relation: same
+      same_as: v2h-en-02-a
+      critical: true
+      facts: {attack_countries: [LV], protection: official_warning, status: active}
+    rationale: A newly confirmed impact materially escalates the same active episode.
+
+  - id: v2h-en-02-d
+    sequence_id: v2h-en-02
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: en
+      note: Invented negative control.
+      evidence:
+        - "The object was a civilian weather balloon"
+        - "Investigators found no hostile action"
+    article:
+      title: Civilian weather balloon recovered from a Polish field
+      summary: The object was a civilian weather balloon. Investigators found no hostile action, cleared the field, and closed the case.
+      source_name: Synthetic EN Wire 02D
+      source_url: "synthetic://v2h-en-02-d"
+      source_type: synthetic
+      language: en
+      published_at: "2026-09-06T09:00:00+00:00"
+      fetched_at: "2026-09-06T09:02:00+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 3
+      affected_countries: [PL]
+      notification: silent
+      relation: new
+      critical: false
+      facts: {attack_countries: [], protection: none, status: resolved}
+    rationale: The local object is confirmed civilian and non-hostile.
+
+  - id: v2h-en-03-a
+    sequence_id: v2h-en-03
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: en
+      note: Invented report about a concluded episode.
+      evidence:
+        - "Yesterday's warning in Lithuania was cancelled"
+        - "There is no active threat now"
+    article:
+      title: Yesterday's Lithuanian warning ended without an incident
+      summary: Yesterday's warning in Lithuania was cancelled after a radar reflection was identified as false. There is no active threat now and no confirmed attack.
+      source_name: Synthetic EN Wire 03A
+      source_url: "synthetic://v2h-en-03-a"
+      source_type: synthetic
+      language: en
+      published_at: "2026-09-07T05:00:00+00:00"
+      fetched_at: "2026-09-07T05:01:00+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 3
+      affected_countries: [LT]
+      notification: silent
+      relation: new
+      critical: false
+      facts: {attack_countries: [], protection: none, status: resolved}
+    rationale: The article explicitly describes a concluded false warning with no current danger.
+
+  - id: v2h-en-03-b
+    sequence_id: v2h-en-03
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: en
+      note: Invented new wave explicitly distinct from the concluded episode.
+      evidence:
+        - "A separate new wave began today"
+        - "Lithuanian authorities ordered residents to remain in shelters"
+    article:
+      title: New wave in Lithuania prompts active shelter order
+      summary: A separate new wave began today and is unrelated to yesterday's concluded false warning. Lithuanian authorities ordered residents to remain in shelters; the warning is active.
+      source_name: Synthetic EN Wire 03B
+      source_url: "synthetic://v2h-en-03-b"
+      source_type: synthetic
+      language: en
+      published_at: "2026-09-07T07:00:00+00:00"
+      fetched_at: "2026-09-07T07:01:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 9
+      affected_countries: [LT]
+      notification: initial
+      relation: new
+      critical: true
+      facts: {attack_countries: [], protection: official_warning, status: active}
+    rationale: The current report explicitly marks a new active wave and a new official shelter order.
+
+  - id: v2h-en-03-c
+    sequence_id: v2h-en-03
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: en
+      note: Invented paraphrase of the new wave.
+      evidence:
+        - "Today's Lithuanian shelter order remains in force"
+        - "There has been no new development"
+    article:
+      title: Lithuanian shelter order remains in force
+      summary: Today's Lithuanian shelter order remains in force for the same new wave. There has been no new development and no confirmed impact.
+      source_name: Synthetic EN Wire 03C
+      source_url: "synthetic://v2h-en-03-c"
+      source_type: synthetic
+      language: en
+      published_at: "2026-09-07T07:08:00+00:00"
+      fetched_at: "2026-09-07T07:10:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 9
+      affected_countries: [LT]
+      notification: silent
+      relation: same
+      same_as: v2h-en-03-b
+      critical: true
+      facts: {attack_countries: [], protection: official_warning, status: active}
+    rationale: This is an informational duplicate of the same active warning.
+
+  - id: v2h-en-03-d
+    sequence_id: v2h-en-03
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: en
+      note: Invented independent report.
+      evidence:
+        - "Latvian fighters launched as a precaution"
+        - "The attack was confined to Ukraine"
+    article:
+      title: Latvia launches fighters as a precaution during attack on Ukraine
+      summary: Latvian fighters launched as a precaution while Russia attacked targets deep inside Ukraine. The attack was confined to Ukraine, and Latvia was not breached.
+      source_name: Synthetic EN Wire 03D
+      source_url: "synthetic://v2h-en-03-d"
+      source_type: synthetic
+      language: en
+      published_at: "2026-09-07T08:00:00+00:00"
+      fetched_at: "2026-09-07T08:02:00+00:00"
+    expected:
+      urgency_min: 5
+      urgency_max: 6
+      affected_countries: [LV]
+      notification: initial
+      relation: new
+      critical: false
+      facts: {attack_countries: [UA], protection: precaution, status: active}
+    rationale: Latvia takes a concrete protective precaution while Ukraine is the only attacked country.
+
+  - id: v2h-en-04-a
+    sequence_id: v2h-en-04
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: en
+      note: Invented control for misleading nationality, destination, and search wording.
+      evidence:
+        - "A Russian citizen was travelling on a train bound for Warsaw"
+        - "no military attack occurred"
+    article:
+      title: Search query mentions attack as Russian passenger travels to Warsaw
+      summary: A Russian citizen was travelling on a train bound for Warsaw and was fined for a missing ticket. The page appeared for the source query "attack Poland", but no military attack occurred in Russia, Poland, or on the train.
+      source_name: Synthetic EN Wire 04A
+      source_url: "synthetic://v2h-en-04-a"
+      source_type: synthetic
+      language: en
+      published_at: "2026-09-08T10:00:00+00:00"
+      fetched_at: "2026-09-08T10:01:00+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 2
+      affected_countries: []
+      notification: silent
+      relation: new
+      critical: false
+      facts: {attack_countries: [], protection: none, status: unclear}
+    rationale: Nationality, destination, and a source query do not establish an attacked country.
+
+  - id: v2h-en-04-b
+    sequence_id: v2h-en-04
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: en
+      note: Invented diagnostic report.
+      evidence:
+        - "A hostile missile crossed into Polish airspace"
+        - "It is still flying over Polish territory"
+    article:
+      title: Hostile missile crosses into Polish airspace
+      summary: A hostile missile crossed into Polish airspace and passed an air-defence position. It is still flying over Polish territory; no civilian warning has been issued.
+      source_name: Synthetic EN Wire 04B
+      source_url: "synthetic://v2h-en-04-b"
+      source_type: synthetic
+      language: en
+      published_at: "2026-09-08T10:12:00+00:00"
+      fetched_at: "2026-09-08T10:13:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 10
+      affected_countries: [PL]
+      notification: initial
+      relation: new
+      critical: true
+      facts: {attack_countries: [PL], protection: none, status: active}
+    rationale: The text explicitly confirms an active hostile incursion into Poland.
+
+  - id: v2h-en-04-c
+    sequence_id: v2h-en-04
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: en
+      note: Invented escalation of the same episode.
+      evidence:
+        - "The same missile struck a Polish air base"
+        - "The threat remains active"
+    article:
+      title: Same missile hits Polish air base
+      summary: The same missile struck a Polish air base and injured personnel. The threat remains active because additional objects have been detected.
+      source_name: Synthetic EN Wire 04C
+      source_url: "synthetic://v2h-en-04-c"
+      source_type: synthetic
+      language: en
+      published_at: "2026-09-08T10:22:00+00:00"
+      fetched_at: "2026-09-08T10:23:00+00:00"
+    expected:
+      urgency_min: 10
+      urgency_max: 10
+      affected_countries: [PL]
+      notification: update
+      relation: same
+      same_as: v2h-en-04-b
+      critical: true
+      facts: {attack_countries: [PL], protection: none, status: active}
+    rationale: The confirmed impact and injuries materially escalate the same incursion.
+
+  - id: v2h-en-04-d
+    sequence_id: v2h-en-04
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: en
+      note: Invented independent report.
+      evidence:
+        - "Estonian aviation is flying a precautionary patrol"
+        - "The missiles fell only on targets in central Ukraine"
+    article:
+      title: Estonian precautionary patrol after strikes in central Ukraine
+      summary: Estonian aviation is flying a precautionary patrol. The missiles fell only on targets in central Ukraine; there is no Estonian breach or resident warning.
+      source_name: Synthetic EN Wire 04D
+      source_url: "synthetic://v2h-en-04-d"
+      source_type: synthetic
+      language: en
+      published_at: "2026-09-08T11:00:00+00:00"
+      fetched_at: "2026-09-08T11:02:00+00:00"
+    expected:
+      urgency_min: 5
+      urgency_max: 6
+      affected_countries: [EE]
+      notification: initial
+      relation: new
+      critical: false
+      facts: {attack_countries: [UA], protection: precaution, status: active}
+    rationale: Estonia has a concrete precautionary response, but the attack is physically in Ukraine.
+
+  - id: v2h-uk-01-a
+    sequence_id: v2h-uk-01
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: uk
+      note: Вигадане діагностичне повідомлення; воно не описує реальну подію.
+      evidence:
+        - "Росія атакувала енергетичні об’єкти в центральній Україні"
+        - "Польські літаки піднялися лише як запобіжний захід"
+    article:
+      title: Польща запобіжно підняла чергові літаки після атаки в Україні
+      summary: Росія атакувала енергетичні об’єкти в центральній Україні. Польські літаки піднялися лише як запобіжний захід; порушення польського простору чи попередження для мешканців не було.
+      source_name: Синтетична служба UK 01A
+      source_url: "synthetic://v2h-uk-01-a"
+      source_type: synthetic
+      language: uk
+      published_at: "2026-09-09T06:00:00+00:00"
+      fetched_at: "2026-09-09T06:02:00+00:00"
+    expected:
+      urgency_min: 5
+      urgency_max: 6
+      affected_countries: [PL]
+      notification: initial
+      relation: new
+      critical: false
+      facts: {attack_countries: [UA], protection: precaution, status: active}
+    rationale: Фізична атака відбувається в Україні, а Польща здійснює лише конкретний запобіжний захід.
+
+  - id: v2h-uk-01-b
+    sequence_id: v2h-uk-01
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: uk
+      note: Вигадане діагностичне повідомлення; воно не описує реальну подію.
+      evidence:
+        - "Ворожа ракета влучила в діючий військовий радар в Естонії"
+        - "Загроза залишається активною"
+    article:
+      title: Ворожа ракета влучила у військовий радар в Естонії
+      summary: Ворожа ракета влучила в діючий військовий радар в Естонії. Загроза залишається активною, а протиповітряна оборона шукає інші ракети; наказу для цивільних поки немає.
+      source_name: Синтетична служба UK 01B
+      source_url: "synthetic://v2h-uk-01-b"
+      source_type: synthetic
+      language: uk
+      published_at: "2026-09-09T06:12:00+00:00"
+      fetched_at: "2026-09-09T06:14:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 10
+      affected_countries: [EE]
+      notification: initial
+      relation: new
+      critical: true
+      facts: {attack_countries: [EE], protection: none, status: active}
+    rationale: Повідомлення однозначно підтверджує активну ворожу фізичну атаку в Естонії.
+
+  - id: v2h-uk-01-c
+    sequence_id: v2h-uk-01
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: uk
+      note: Вигаданий негативний контроль про звичайні навчання.
+      evidence:
+        - "У Литві завершилися планові навчання без ядерних сил"
+        - "Реальної загрози чи бойової атаки не було"
+    article:
+      title: У Литві завершилися планові неядерні навчання
+      summary: У Литві завершилися планові навчання без ядерних сил і без бойових боєприпасів. Реальної загрози чи бойової атаки не було.
+      source_name: Синтетична служба UK 01C
+      source_url: "synthetic://v2h-uk-01-c"
+      source_type: synthetic
+      language: uk
+      published_at: "2026-09-09T06:25:00+00:00"
+      fetched_at: "2026-09-09T06:27:00+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 3
+      affected_countries: []
+      notification: silent
+      relation: new
+      critical: false
+      facts: {attack_countries: [], protection: none, status: historical}
+    rationale: Звичайні неядерні навчання без реальної загрози є низькопріоритетним контролем.
+
+  - id: v2h-uk-01-d
+    sequence_id: v2h-uk-01
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: uk
+      note: Вигадане незалежне повідомлення.
+      evidence:
+        - "Литовські винищувачі піднялися як запобіжний захід"
+        - "Удари сталися лише в Україні"
+    article:
+      title: Литва підняла винищувачі після нової хвилі ударів в Україні
+      summary: Литовські винищувачі піднялися як запобіжний захід. Удари сталися лише в Україні, а повітряний простір Литви не порушували.
+      source_name: Синтетична служба UK 01D
+      source_url: "synthetic://v2h-uk-01-d"
+      source_type: synthetic
+      language: uk
+      published_at: "2026-09-09T07:00:00+00:00"
+      fetched_at: "2026-09-09T07:03:00+00:00"
+    expected:
+      urgency_min: 5
+      urgency_max: 6
+      affected_countries: [LT]
+      notification: initial
+      relation: new
+      critical: false
+      facts: {attack_countries: [UA], protection: precaution, status: active}
+    rationale: Литва здійснює локальну запобіжну реакцію, але фізично атаковано лише Україну.
+
+  - id: v2h-uk-02-a
+    sequence_id: v2h-uk-02
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: uk
+      note: Вигадане діагностичне повідомлення; воно не описує реальну подію.
+      evidence:
+        - "Влада Польщі видала офіційний наказ мешканцям негайно пройти до укриттів"
+        - "Наказ залишається чинним"
+    article:
+      title: Офіційний наказ пройти до укриттів на сході Польщі
+      summary: Влада Польщі видала офіційний наказ мешканцям негайно пройти до укриттів через наближення ворожого об’єкта. Наказ залишається чинним; місце можливого влучання ще не підтверджене.
+      source_name: Синтетична служба UK 02A
+      source_url: "synthetic://v2h-uk-02-a"
+      source_type: synthetic
+      language: uk
+      published_at: "2026-09-10T08:00:00+00:00"
+      fetched_at: "2026-09-10T08:01:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 9
+      affected_countries: [PL]
+      notification: initial
+      relation: new
+      critical: true
+      facts: {attack_countries: [], protection: official_warning, status: active}
+    rationale: Активний офіційний наказ укритися в контрольованій країні сам по собі є критичним.
+
+  - id: v2h-uk-02-b
+    sequence_id: v2h-uk-02
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: uk
+      note: Вигадана перефразована версія попереднього повідомлення.
+      evidence:
+        - "Польський наказ пройти до укриттів досі чинний"
+        - "Йдеться про той самий об’єкт, про який повідомили кілька хвилин тому"
+    article:
+      title: Наказ пройти до укриттів у Польщі залишається чинним
+      summary: Польський наказ пройти до укриттів досі чинний. Йдеться про той самий об’єкт, про який повідомили кілька хвилин тому; влучання не підтверджене.
+      source_name: Синтетична служба UK 02B
+      source_url: "synthetic://v2h-uk-02-b"
+      source_type: synthetic
+      language: uk
+      published_at: "2026-09-10T08:08:00+00:00"
+      fetched_at: "2026-09-10T08:10:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 9
+      affected_countries: [PL]
+      notification: silent
+      relation: same
+      same_as: v2h-uk-02-a
+      critical: true
+      facts: {attack_countries: [], protection: official_warning, status: active}
+    rationale: Це явна перефразована версія того самого активного попередження без ескалації.
+
+  - id: v2h-uk-02-c
+    sequence_id: v2h-uk-02
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: uk
+      note: Вигадана ескалація того самого епізоду.
+      evidence:
+        - "Той самий об’єкт влучив у польський військовий пост"
+        - "Наказ пройти до укриттів залишається чинним"
+    article:
+      title: Той самий об’єкт влучив у військовий пост у Польщі
+      summary: Той самий об’єкт влучив у польський військовий пост і спричинив пожежу. Наказ пройти до укриттів залишається чинним, служби очікують інші об’єкти.
+      source_name: Синтетична служба UK 02C
+      source_url: "synthetic://v2h-uk-02-c"
+      source_type: synthetic
+      language: uk
+      published_at: "2026-09-10T08:20:00+00:00"
+      fetched_at: "2026-09-10T08:21:00+00:00"
+    expected:
+      urgency_min: 10
+      urgency_max: 10
+      affected_countries: [PL]
+      notification: update
+      relation: same
+      same_as: v2h-uk-02-a
+      critical: true
+      facts: {attack_countries: [PL], protection: official_warning, status: active}
+    rationale: Нове підтверджене влучання істотно загострює той самий активний епізод.
+
+  - id: v2h-uk-02-d
+    sequence_id: v2h-uk-02
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: uk
+      note: Вигаданий негативний контроль про віддалений удар.
+      evidence:
+        - "Ракета влучила у військовий склад у східній Україні"
+        - "У Польщі та країнах Балтії не було інцидентів або захисних дій"
+    article:
+      title: Удар по складу на сході України без наслідків для сусідніх держав
+      summary: Ракета влучила у військовий склад у східній Україні. У Польщі та країнах Балтії не було інцидентів або захисних дій.
+      source_name: Синтетична служба UK 02D
+      source_url: "synthetic://v2h-uk-02-d"
+      source_type: synthetic
+      language: uk
+      published_at: "2026-09-10T09:00:00+00:00"
+      fetched_at: "2026-09-10T09:02:00+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 3
+      affected_countries: []
+      notification: silent
+      relation: new
+      critical: false
+      facts: {attack_countries: [UA], protection: none, status: active}
+    rationale: Фізичний удар віддалено розташований в Україні без локального інциденту чи реакції в контрольованих країнах.
+
+  - id: v2h-uk-03-a
+    sequence_id: v2h-uk-03
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: uk
+      note: Вигадане повідомлення про завершений епізод.
+      evidence:
+        - "Учорашнє попередження в Латвії скасовано"
+        - "Зараз активної загрози немає"
+    article:
+      title: Учорашнє попередження в Латвії завершилося без інциденту
+      summary: Учорашнє попередження в Латвії скасовано після того, як відбиття радара визнали хибним. Зараз активної загрози немає і атака не підтверджена.
+      source_name: Синтетична служба UK 03A
+      source_url: "synthetic://v2h-uk-03-a"
+      source_type: synthetic
+      language: uk
+      published_at: "2026-09-11T05:00:00+00:00"
+      fetched_at: "2026-09-11T05:01:00+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 3
+      affected_countries: [LV]
+      notification: silent
+      relation: new
+      critical: false
+      facts: {attack_countries: [], protection: none, status: resolved}
+    rationale: Стаття прямо описує завершене хибне попередження без поточної небезпеки.
+
+  - id: v2h-uk-03-b
+    sequence_id: v2h-uk-03
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: uk
+      note: Вигадана нова хвиля, явно відмінна від завершеного епізоду.
+      evidence:
+        - "Сьогодні почалася окрема нова хвиля загрози"
+        - "Влада Латвії наказала мешканцям залишатися в укриттях"
+    article:
+      title: Нова хвиля в Латвії, діє наказ залишатися в укриттях
+      summary: Сьогодні почалася окрема нова хвиля загрози, не пов’язана з учорашнім завершеним хибним попередженням. Влада Латвії наказала мешканцям залишатися в укриттях; попередження активне.
+      source_name: Синтетична служба UK 03B
+      source_url: "synthetic://v2h-uk-03-b"
+      source_type: synthetic
+      language: uk
+      published_at: "2026-09-11T07:00:00+00:00"
+      fetched_at: "2026-09-11T07:01:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 9
+      affected_countries: [LV]
+      notification: initial
+      relation: new
+      critical: true
+      facts: {attack_countries: [], protection: official_warning, status: active}
+    rationale: Поточний текст явно позначає нову активну хвилю та новий офіційний наказ.
+
+  - id: v2h-uk-03-c
+    sequence_id: v2h-uk-03
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: uk
+      note: Вигадана перефразована версія нової хвилі.
+      evidence:
+        - "Сьогоднішній латвійський наказ залишатися в укриттях досі чинний"
+        - "Нових подій не сталося"
+    article:
+      title: Латвійський наказ залишатися в укриттях досі чинний
+      summary: Сьогоднішній латвійський наказ залишатися в укриттях досі чинний через ту саму нову хвилю. Нових подій не сталося, підтвердженого влучання немає.
+      source_name: Синтетична служба UK 03C
+      source_url: "synthetic://v2h-uk-03-c"
+      source_type: synthetic
+      language: uk
+      published_at: "2026-09-11T07:08:00+00:00"
+      fetched_at: "2026-09-11T07:10:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 9
+      affected_countries: [LV]
+      notification: silent
+      relation: same
+      same_as: v2h-uk-03-b
+      critical: true
+      facts: {attack_countries: [], protection: official_warning, status: active}
+    rationale: Це інформаційний дублікат того самого активного попередження.
+
+  - id: v2h-uk-03-d
+    sequence_id: v2h-uk-03
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: uk
+      note: Вигадане незалежне повідомлення.
+      evidence:
+        - "Естонські винищувачі піднялися як запобіжний захід"
+        - "Атака відбувалася лише в Україні"
+    article:
+      title: Естонія запобіжно підняла винищувачі під час атаки на Україну
+      summary: Естонські винищувачі піднялися як запобіжний захід, коли Росія атакувала цілі в глибині України. Атака відбувалася лише в Україні, Естонію не порушували.
+      source_name: Синтетична служба UK 03D
+      source_url: "synthetic://v2h-uk-03-d"
+      source_type: synthetic
+      language: uk
+      published_at: "2026-09-11T08:00:00+00:00"
+      fetched_at: "2026-09-11T08:02:00+00:00"
+    expected:
+      urgency_min: 5
+      urgency_max: 6
+      affected_countries: [EE]
+      notification: initial
+      relation: new
+      critical: false
+      facts: {attack_countries: [UA], protection: precaution, status: active}
+    rationale: Естонія здійснює конкретний запобіжний захід, а фізично атаковано лише Україну.
+
+  - id: v2h-uk-04-a
+    sequence_id: v2h-uk-04
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: uk
+      note: Вигаданий контроль для оманливої національності, напрямку та пошукового запиту.
+      evidence:
+        - "Громадянин Росії їхав потягом до Риги"
+        - "військової атаки не було"
+    article:
+      title: Пошуковий запит про атаку показав новину про пасажира до Риги
+      summary: Громадянин Росії їхав потягом до Риги й отримав штраф за відсутність квитка. Сторінка з’явилася за запитом джерела «атака Латвія», але військової атаки не було ні в Росії, ні в Латвії, ні в потязі.
+      source_name: Синтетична служба UK 04A
+      source_url: "synthetic://v2h-uk-04-a"
+      source_type: synthetic
+      language: uk
+      published_at: "2026-09-12T10:00:00+00:00"
+      fetched_at: "2026-09-12T10:01:00+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 2
+      affected_countries: []
+      notification: silent
+      relation: new
+      critical: false
+      facts: {attack_countries: [], protection: none, status: unclear}
+    rationale: Національність, напрямок потяга та пошуковий запит не встановлюють атаковану країну.
+
+  - id: v2h-uk-04-b
+    sequence_id: v2h-uk-04
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: uk
+      note: Вигадане діагностичне повідомлення.
+      evidence:
+        - "Ворожа ракета перетнула повітряний простір Литви"
+        - "Вона досі летить над територією Литви"
+    article:
+      title: Ворожа ракета порушила повітряний простір Литви
+      summary: Ворожа ракета перетнула повітряний простір Литви та пройшла повз позицію протиповітряної оборони. Вона досі летить над територією Литви; цивільного попередження немає.
+      source_name: Синтетична служба UK 04B
+      source_url: "synthetic://v2h-uk-04-b"
+      source_type: synthetic
+      language: uk
+      published_at: "2026-09-12T10:12:00+00:00"
+      fetched_at: "2026-09-12T10:13:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 10
+      affected_countries: [LT]
+      notification: initial
+      relation: new
+      critical: true
+      facts: {attack_countries: [LT], protection: none, status: active}
+    rationale: Текст прямо підтверджує активне вороже вторгнення до Литви.
+
+  - id: v2h-uk-04-c
+    sequence_id: v2h-uk-04
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: uk
+      note: Вигадана ескалація того самого епізоду.
+      evidence:
+        - "Та сама ракета влучила в литовську авіабазу"
+        - "Загроза залишається активною"
+    article:
+      title: Та сама ракета влучила в литовську авіабазу
+      summary: Та сама ракета влучила в литовську авіабазу та поранила персонал. Загроза залишається активною, бо виявлено додаткові об’єкти.
+      source_name: Синтетична служба UK 04C
+      source_url: "synthetic://v2h-uk-04-c"
+      source_type: synthetic
+      language: uk
+      published_at: "2026-09-12T10:22:00+00:00"
+      fetched_at: "2026-09-12T10:23:00+00:00"
+    expected:
+      urgency_min: 10
+      urgency_max: 10
+      affected_countries: [LT]
+      notification: update
+      relation: same
+      same_as: v2h-uk-04-b
+      critical: true
+      facts: {attack_countries: [LT], protection: none, status: active}
+    rationale: Підтверджене влучання і поранення істотно загострюють те саме вторгнення.
+
+  - id: v2h-uk-04-d
+    sequence_id: v2h-uk-04
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: uk
+      note: Вигадане незалежне повідомлення.
+      evidence:
+        - "Польська авіація здійснює запобіжний патруль"
+        - "Ракети впали лише на цілі в центральній Україні"
+    article:
+      title: Польський запобіжний патруль після ударів у центральній Україні
+      summary: Польська авіація здійснює запобіжний патруль. Ракети впали лише на цілі в центральній Україні; порушення Польщі чи попередження для мешканців немає.
+      source_name: Синтетична служба UK 04D
+      source_url: "synthetic://v2h-uk-04-d"
+      source_type: synthetic
+      language: uk
+      published_at: "2026-09-12T11:00:00+00:00"
+      fetched_at: "2026-09-12T11:02:00+00:00"
+    expected:
+      urgency_min: 5
+      urgency_max: 6
+      affected_countries: [PL]
+      notification: initial
+      relation: new
+      critical: false
+      facts: {attack_countries: [UA], protection: precaution, status: active}
+    rationale: Польща має конкретну запобіжну реакцію, але фізична атака відбувається в Україні.
+
+  - id: v2h-ru-01-a
+    sequence_id: v2h-ru-01
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: ru
+      note: Вымышленное диагностическое сообщение; оно не описывает реальное событие.
+      evidence:
+        - "Россия атаковала энергетические объекты в центральной Украине"
+        - "Литовские самолёты поднялись только в качестве меры предосторожности"
+    article:
+      title: Литва предупредительно подняла дежурные самолёты после атаки на Украине
+      summary: Россия атаковала энергетические объекты в центральной Украине. Литовские самолёты поднялись только в качестве меры предосторожности; нарушения литовского пространства и предупреждения для жителей не было.
+      source_name: Синтетическая служба RU 01A
+      source_url: "synthetic://v2h-ru-01-a"
+      source_type: synthetic
+      language: ru
+      published_at: "2026-09-13T06:00:00+00:00"
+      fetched_at: "2026-09-13T06:02:00+00:00"
+    expected:
+      urgency_min: 5
+      urgency_max: 6
+      affected_countries: [LT]
+      notification: initial
+      relation: new
+      critical: false
+      facts: {attack_countries: [UA], protection: precaution, status: active}
+    rationale: Физическая атака происходит на Украине, а Литва принимает только конкретную меру предосторожности.
+
+  - id: v2h-ru-01-b
+    sequence_id: v2h-ru-01
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: ru
+      note: Вымышленное диагностическое сообщение; оно не описывает реальное событие.
+      evidence:
+        - "Вражеская ракета поразила действующий военный радар в Латвии"
+        - "Угроза остаётся активной"
+    article:
+      title: Вражеская ракета поразила военный радар в Латвии
+      summary: Вражеская ракета поразила действующий военный радар в Латвии. Угроза остаётся активной, а противовоздушная оборона ищет другие ракеты; приказа для граждан пока нет.
+      source_name: Синтетическая служба RU 01B
+      source_url: "synthetic://v2h-ru-01-b"
+      source_type: synthetic
+      language: ru
+      published_at: "2026-09-13T06:12:00+00:00"
+      fetched_at: "2026-09-13T06:14:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 10
+      affected_countries: [LV]
+      notification: initial
+      relation: new
+      critical: true
+      facts: {attack_countries: [LV], protection: none, status: active}
+    rationale: Сообщение однозначно подтверждает активную вражескую физическую атаку в Латвии.
+
+  - id: v2h-ru-01-c
+    sequence_id: v2h-ru-01
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: ru
+      note: Вымышленный отрицательный контроль об удалённом ударе.
+      evidence:
+        - "Снаряд поразил военный склад в глубине России"
+        - "В Польше и странах Балтии не было происшествий или защитных мер"
+    article:
+      title: Удар по складу в глубине России без последствий для других стран
+      summary: Снаряд поразил военный склад в глубине России. В Польше и странах Балтии не было происшествий или защитных мер.
+      source_name: Синтетическая служба RU 01C
+      source_url: "synthetic://v2h-ru-01-c"
+      source_type: synthetic
+      language: ru
+      published_at: "2026-09-13T06:25:00+00:00"
+      fetched_at: "2026-09-13T06:27:00+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 3
+      affected_countries: []
+      notification: silent
+      relation: new
+      critical: false
+      facts: {attack_countries: [RU], protection: none, status: active}
+    rationale: Физический удар удалённо расположен в России и не вызывает местного происшествия или реакции в контролируемых странах.
+
+  - id: v2h-ru-01-d
+    sequence_id: v2h-ru-01
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: ru
+      note: Вымышленное независимое сообщение.
+      evidence:
+        - "Польские истребители поднялись в качестве меры предосторожности"
+        - "Удары произошли только на Украине"
+    article:
+      title: Польша подняла истребители после новой волны ударов на Украине
+      summary: Польские истребители поднялись в качестве меры предосторожности. Удары произошли только на Украине, воздушное пространство Польши не нарушалось.
+      source_name: Синтетическая служба RU 01D
+      source_url: "synthetic://v2h-ru-01-d"
+      source_type: synthetic
+      language: ru
+      published_at: "2026-09-13T07:00:00+00:00"
+      fetched_at: "2026-09-13T07:03:00+00:00"
+    expected:
+      urgency_min: 5
+      urgency_max: 6
+      affected_countries: [PL]
+      notification: initial
+      relation: new
+      critical: false
+      facts: {attack_countries: [UA], protection: precaution, status: active}
+    rationale: Польша предпринимает локальную защитную меру, но физически атакована только Украина.
+
+  - id: v2h-ru-02-a
+    sequence_id: v2h-ru-02
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: ru
+      note: Вымышленное диагностическое сообщение; оно не описывает реальное событие.
+      evidence:
+        - "Власти Эстонии издали официальный приказ жителям немедленно пройти в укрытия"
+        - "Приказ остаётся в силе"
+    article:
+      title: Официальный приказ пройти в укрытия на востоке Эстонии
+      summary: Власти Эстонии издали официальный приказ жителям немедленно пройти в укрытия из-за приближающегося вражеского объекта. Приказ остаётся в силе; место возможного попадания пока не подтверждено.
+      source_name: Синтетическая служба RU 02A
+      source_url: "synthetic://v2h-ru-02-a"
+      source_type: synthetic
+      language: ru
+      published_at: "2026-09-14T08:00:00+00:00"
+      fetched_at: "2026-09-14T08:01:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 9
+      affected_countries: [EE]
+      notification: initial
+      relation: new
+      critical: true
+      facts: {attack_countries: [], protection: official_warning, status: active}
+    rationale: Активный официальный приказ укрыться в контролируемой стране сам по себе является критическим.
+
+  - id: v2h-ru-02-b
+    sequence_id: v2h-ru-02
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: ru
+      note: Вымышленная перефразировка предыдущего сообщения.
+      evidence:
+        - "Эстонский приказ пройти в укрытия всё ещё действует"
+        - "Речь идёт о том же объекте, о котором сообщили несколько минут назад"
+    article:
+      title: Приказ пройти в укрытия в Эстонии остаётся в силе
+      summary: Эстонский приказ пройти в укрытия всё ещё действует. Речь идёт о том же объекте, о котором сообщили несколько минут назад; попадание не подтверждено.
+      source_name: Синтетическая служба RU 02B
+      source_url: "synthetic://v2h-ru-02-b"
+      source_type: synthetic
+      language: ru
+      published_at: "2026-09-14T08:08:00+00:00"
+      fetched_at: "2026-09-14T08:10:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 9
+      affected_countries: [EE]
+      notification: silent
+      relation: same
+      same_as: v2h-ru-02-a
+      critical: true
+      facts: {attack_countries: [], protection: official_warning, status: active}
+    rationale: Это явная перефразировка того же активного предупреждения без эскалации.
+
+  - id: v2h-ru-02-c
+    sequence_id: v2h-ru-02
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: ru
+      note: Вымышленная эскалация того же эпизода.
+      evidence:
+        - "Тот же объект попал в эстонский военный пост"
+        - "Приказ пройти в укрытия остаётся в силе"
+    article:
+      title: Тот же объект попал в военный пост в Эстонии
+      summary: Тот же объект попал в эстонский военный пост и вызвал пожар. Приказ пройти в укрытия остаётся в силе, службы ожидают другие объекты.
+      source_name: Синтетическая служба RU 02C
+      source_url: "synthetic://v2h-ru-02-c"
+      source_type: synthetic
+      language: ru
+      published_at: "2026-09-14T08:20:00+00:00"
+      fetched_at: "2026-09-14T08:21:00+00:00"
+    expected:
+      urgency_min: 10
+      urgency_max: 10
+      affected_countries: [EE]
+      notification: update
+      relation: same
+      same_as: v2h-ru-02-a
+      critical: true
+      facts: {attack_countries: [EE], protection: official_warning, status: active}
+    rationale: Новое подтверждённое попадание существенно усиливает тот же активный эпизод.
+
+  - id: v2h-ru-02-d
+    sequence_id: v2h-ru-02
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: ru
+      note: Вымышленный отрицательный контроль об обычных учениях.
+      evidence:
+        - "В Польше завершились плановые учения без ядерных сил"
+        - "Реальной угрозы или боевой атаки не было"
+    article:
+      title: В Польше завершились плановые неядерные учения
+      summary: В Польше завершились плановые учения без ядерных сил и без боевых боеприпасов. Реальной угрозы или боевой атаки не было.
+      source_name: Синтетическая служба RU 02D
+      source_url: "synthetic://v2h-ru-02-d"
+      source_type: synthetic
+      language: ru
+      published_at: "2026-09-14T09:00:00+00:00"
+      fetched_at: "2026-09-14T09:02:00+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 3
+      affected_countries: []
+      notification: silent
+      relation: new
+      critical: false
+      facts: {attack_countries: [], protection: none, status: historical}
+    rationale: Обычные неядерные учения без реальной угрозы являются низкоприоритетным контролем.
+
+  - id: v2h-ru-03-a
+    sequence_id: v2h-ru-03
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: ru
+      note: Вымышленное сообщение о завершённом эпизоде.
+      evidence:
+        - "Вчерашнее предупреждение в Польше отменено"
+        - "Сейчас активной угрозы нет"
+    article:
+      title: Вчерашнее предупреждение в Польше завершилось без происшествия
+      summary: Вчерашнее предупреждение в Польше отменено после того, как отражение радара признали ложным. Сейчас активной угрозы нет и атака не подтверждена.
+      source_name: Синтетическая служба RU 03A
+      source_url: "synthetic://v2h-ru-03-a"
+      source_type: synthetic
+      language: ru
+      published_at: "2026-09-15T05:00:00+00:00"
+      fetched_at: "2026-09-15T05:01:00+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 3
+      affected_countries: [PL]
+      notification: silent
+      relation: new
+      critical: false
+      facts: {attack_countries: [], protection: none, status: resolved}
+    rationale: Статья прямо описывает завершённое ложное предупреждение без текущей опасности.
+
+  - id: v2h-ru-03-b
+    sequence_id: v2h-ru-03
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: ru
+      note: Вымышленная новая волна, явно отличная от завершённого эпизода.
+      evidence:
+        - "Сегодня началась отдельная новая волна угрозы"
+        - "Власти Польши приказали жителям оставаться в укрытиях"
+    article:
+      title: Новая волна в Польше, действует приказ оставаться в укрытиях
+      summary: Сегодня началась отдельная новая волна угрозы, не связанная со вчерашним завершённым ложным предупреждением. Власти Польши приказали жителям оставаться в укрытиях; предупреждение активно.
+      source_name: Синтетическая служба RU 03B
+      source_url: "synthetic://v2h-ru-03-b"
+      source_type: synthetic
+      language: ru
+      published_at: "2026-09-15T07:00:00+00:00"
+      fetched_at: "2026-09-15T07:01:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 9
+      affected_countries: [PL]
+      notification: initial
+      relation: new
+      critical: true
+      facts: {attack_countries: [], protection: official_warning, status: active}
+    rationale: Текущий текст явно обозначает новую активную волну и новый официальный приказ.
+
+  - id: v2h-ru-03-c
+    sequence_id: v2h-ru-03
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: ru
+      note: Вымышленная перефразировка новой волны.
+      evidence:
+        - "Сегодняшний польский приказ оставаться в укрытиях всё ещё действует"
+        - "Новых событий не произошло"
+    article:
+      title: Польский приказ оставаться в укрытиях всё ещё действует
+      summary: Сегодняшний польский приказ оставаться в укрытиях всё ещё действует из-за той же новой волны. Новых событий не произошло, подтверждённого попадания нет.
+      source_name: Синтетическая служба RU 03C
+      source_url: "synthetic://v2h-ru-03-c"
+      source_type: synthetic
+      language: ru
+      published_at: "2026-09-15T07:08:00+00:00"
+      fetched_at: "2026-09-15T07:10:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 9
+      affected_countries: [PL]
+      notification: silent
+      relation: same
+      same_as: v2h-ru-03-b
+      critical: true
+      facts: {attack_countries: [], protection: official_warning, status: active}
+    rationale: Это информационный дубликат того же активного предупреждения.
+
+  - id: v2h-ru-03-d
+    sequence_id: v2h-ru-03
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: ru
+      note: Вымышленное независимое сообщение.
+      evidence:
+        - "Латвийские истребители поднялись в качестве меры предосторожности"
+        - "Атака происходила только на Украине"
+    article:
+      title: Латвия предупредительно подняла истребители во время атаки на Украину
+      summary: Латвийские истребители поднялись в качестве меры предосторожности, когда Россия атаковала цели в глубине Украины. Атака происходила только на Украине, Латвию не нарушали.
+      source_name: Синтетическая служба RU 03D
+      source_url: "synthetic://v2h-ru-03-d"
+      source_type: synthetic
+      language: ru
+      published_at: "2026-09-15T08:00:00+00:00"
+      fetched_at: "2026-09-15T08:02:00+00:00"
+    expected:
+      urgency_min: 5
+      urgency_max: 6
+      affected_countries: [LV]
+      notification: initial
+      relation: new
+      critical: false
+      facts: {attack_countries: [UA], protection: precaution, status: active}
+    rationale: Латвия принимает конкретную меру предосторожности, а физически атакована только Украина.
+
+  - id: v2h-ru-04-a
+    sequence_id: v2h-ru-04
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: ru
+      note: Вымышленный контроль для обманчивой национальности, направления и поискового запроса.
+      evidence:
+        - "Гражданин Украины ехал поездом в Таллин"
+        - "военного нападения не было"
+    article:
+      title: Поисковый запрос об атаке показал новость о пассажире в Таллин
+      summary: Гражданин Украины ехал поездом в Таллин и был оштрафован за отсутствие билета. Страница появилась по запросу источника «атака Эстония», но военного нападения не было ни на Украине, ни в Эстонии, ни в поезде.
+      source_name: Синтетическая служба RU 04A
+      source_url: "synthetic://v2h-ru-04-a"
+      source_type: synthetic
+      language: ru
+      published_at: "2026-09-16T10:00:00+00:00"
+      fetched_at: "2026-09-16T10:01:00+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 2
+      affected_countries: []
+      notification: silent
+      relation: new
+      critical: false
+      facts: {attack_countries: [], protection: none, status: unclear}
+    rationale: Национальность, направление поезда и поисковый запрос не устанавливают атакованную страну.
+
+  - id: v2h-ru-04-b
+    sequence_id: v2h-ru-04
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: ru
+      note: Вымышленное диагностическое сообщение.
+      evidence:
+        - "Вражеская ракета вошла в воздушное пространство Польши"
+        - "Она всё ещё летит над польской территорией"
+    article:
+      title: Вражеская ракета вошла в воздушное пространство Польши
+      summary: Вражеская ракета вошла в воздушное пространство Польши и прошла мимо позиции противовоздушной обороны. Она всё ещё летит над польской территорией; гражданского предупреждения нет.
+      source_name: Синтетическая служба RU 04B
+      source_url: "synthetic://v2h-ru-04-b"
+      source_type: synthetic
+      language: ru
+      published_at: "2026-09-16T10:12:00+00:00"
+      fetched_at: "2026-09-16T10:13:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 10
+      affected_countries: [PL]
+      notification: initial
+      relation: new
+      critical: true
+      facts: {attack_countries: [PL], protection: none, status: active}
+    rationale: Текст прямо подтверждает активное вражеское вторжение в Польшу.
+
+  - id: v2h-ru-04-c
+    sequence_id: v2h-ru-04
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: ru
+      note: Вымышленная эскалация того же эпизода.
+      evidence:
+        - "Та же ракета попала в польскую авиабазу"
+        - "Угроза остаётся активной"
+    article:
+      title: Та же ракета попала в польскую авиабазу
+      summary: Та же ракета попала в польскую авиабазу и ранила персонал. Угроза остаётся активной, поскольку обнаружены дополнительные объекты.
+      source_name: Синтетическая служба RU 04C
+      source_url: "synthetic://v2h-ru-04-c"
+      source_type: synthetic
+      language: ru
+      published_at: "2026-09-16T10:22:00+00:00"
+      fetched_at: "2026-09-16T10:23:00+00:00"
+    expected:
+      urgency_min: 10
+      urgency_max: 10
+      affected_countries: [PL]
+      notification: update
+      relation: same
+      same_as: v2h-ru-04-b
+      critical: true
+      facts: {attack_countries: [PL], protection: none, status: active}
+    rationale: Подтверждённое попадание и ранения существенно усиливают то же вторжение.
+
+  - id: v2h-ru-04-d
+    sequence_id: v2h-ru-04
+    split: holdout
+    label_status: reviewed
+    provenance:
+      kind: synthetic
+      content_language: ru
+      note: Вымышленное независимое сообщение.
+      evidence:
+        - "Эстонская авиация выполняет предупредительный патруль"
+        - "Ракеты упали только по целям в центральной Украине"
+    article:
+      title: Эстонский предупредительный патруль после ударов в центральной Украине
+      summary: Эстонская авиация выполняет предупредительный патруль. Ракеты упали только по целям в центральной Украине; нарушения Эстонии или предупреждения для жителей нет.
+      source_name: Синтетическая служба RU 04D
+      source_url: "synthetic://v2h-ru-04-d"
+      source_type: synthetic
+      language: ru
+      published_at: "2026-09-16T11:00:00+00:00"
+      fetched_at: "2026-09-16T11:02:00+00:00"
+    expected:
+      urgency_min: 5
+      urgency_max: 6
+      affected_countries: [EE]
+      notification: initial
+      relation: new
+      critical: false
+      facts: {attack_countries: [UA], protection: precaution, status: active}
+    rationale: Эстония принимает конкретную меру предосторожности, но физическая атака происходит на Украине.

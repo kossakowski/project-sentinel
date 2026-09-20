@@ -198,7 +198,7 @@ def test_load_dataset_rejects_empty_dataset(tmp_path, payload):
         compare_models.load_dataset(str(path))
 
 
-@pytest.mark.parametrize("label", ["", "reviewed", None, 7])
+@pytest.mark.parametrize("label", ["", "unreviewed", None, 7])
 def test_load_dataset_rejects_invalid_label_status(tmp_path, label):
     path = _write_dataset(tmp_path, [_case("bad-label", label_status=label)])
 
@@ -332,6 +332,7 @@ async def test_replay_is_chronological_uses_runtime_memory_and_does_not_leak_lab
     ("rows", "planned"),
     [
         ([{"label_status": "provisional", "split": "holdout", "passed": True}], 1),
+        ([{"label_status": "reviewed", "split": "holdout", "passed": True}], 1),
         ([{"label_status": "disputed", "split": "holdout", "passed": True}], 1),
         ([{"label_status": "approved", "split": "holdout", "passed": True}], 2),
         ([{"label_status": "approved", "split": "development", "passed": True}], 1),

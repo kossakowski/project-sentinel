@@ -7,7 +7,9 @@ request, and the response must identify the exact requested model.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import math
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -270,6 +272,7 @@ class CompletionUsage:
     total_tokens: int | None = None
     reasoning_tokens: int | None = None
     cost_usd: Decimal | None = None
+    cached_tokens: int | None = None
 
 
 @dataclass(frozen=True)
@@ -295,14 +298,21 @@ class CompletionResult:
     reservation_usd: Decimal
     error: CompletionError | None = None
     budget_stopped: bool = False
+    request_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return the compact JSON-safe record consumed by the eval runner."""
+        reasoning_used = (
+            self.usage.reasoning_tokens is not None and self.usage.reasoning_tokens > 0
+        ) or self.reasoning not in (None, "")
         return {
             "data": self.data,
             "error": (f"{self.error.kind}: {self.error.message}" if self.error is not None else None),
+            "error_kind": self.error.kind if self.error is not None else None,
+            "http_status": self.error.http_status if self.error is not None else None,
             "usage": {
                 "prompt_tokens": self.usage.prompt_tokens,
+                "cached_tokens": self.usage.cached_tokens,
                 "completion_tokens": self.usage.completion_tokens,
                 "total_tokens": self.usage.total_tokens,
                 "reasoning_tokens": self.usage.reasoning_tokens,
@@ -310,10 +320,13 @@ class CompletionResult:
             "cost_usd": float(self.usage.cost_usd) if self.usage.cost_usd is not None else None,
             "reserved_usd": float(self.reservation_usd),
             "latency_seconds": self.latency_ms / 1000,
+            "request_id": self.request_id,
+            "requested_model": self.requested_model,
             "model": self.returned_model,
             "provider": self.returned_provider,
             "finish_reason": self.finish_reason,
             "reasoning": self.reasoning,
+            "reasoning_mode": reasoning_used,
             "provider_latency_seconds": (
                 self.provider_latency_ms / 1000 if self.provider_latency_ms is not None else None
             ),
@@ -335,6 +348,7 @@ class OpenRouterEvalClient:
         input_overhead_tokens: int = 256,
         max_reasoning_tokens: int = 0,
         timeout_seconds: float = 60.0,
+        provider_only: list[str] | None = None,
         http_client: httpx.AsyncClient | None = None,
         base_url: str = OPENROUTER_BASE_URL,
     ) -> None:
@@ -344,12 +358,18 @@ class OpenRouterEvalClient:
             raise ValueError("Provide exactly one of budget_usd or ledger")
         if max_tokens <= 0 or input_overhead_tokens < 0 or max_reasoning_tokens < 0:
             raise ValueError("Invalid eval token bounds")
+        if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be a positive finite number")
+        if provider_only is not None and not all(isinstance(item, str) and item for item in provider_only):
+            raise ValueError("provider_only entries must be non-empty strings")
         self._api_key = api_key
         self.catalogue = dict(catalogue)
         self.ledger = ledger or BudgetLedger(budget_usd)  # type: ignore[arg-type]
         self.max_tokens = max_tokens
         self.input_overhead_tokens = input_overhead_tokens
         self.max_reasoning_tokens = max_reasoning_tokens
+        self.timeout_seconds = timeout_seconds
+        self.provider_only = list(provider_only) if provider_only is not None else None
         self.base_url = base_url.rstrip("/")
         self._owns_client = http_client is None
         self._http = http_client or httpx.AsyncClient(timeout=timeout_seconds)
@@ -366,6 +386,13 @@ class OpenRouterEvalClient:
         *,
         schema_name: str,
     ) -> dict[str, Any]:
+        provider: dict[str, Any] = {
+            "require_parameters": True,
+            "allow_fallbacks": False,
+            "max_price": model.pricing.max_price_per_million(),
+        }
+        if self.provider_only is not None:
+            provider["only"] = list(self.provider_only)
         return {
             "model": model.id,
             "messages": [dict(message) for message in messages],
@@ -380,11 +407,7 @@ class OpenRouterEvalClient:
                     "schema": dict(json_schema),
                 },
             },
-            "provider": {
-                "require_parameters": True,
-                "allow_fallbacks": False,
-                "max_price": model.pricing.max_price_per_million(),
-            },
+            "provider": provider,
         }
 
     def estimate_reservation(
@@ -461,13 +484,26 @@ class OpenRouterEvalClient:
             )
 
         try:
-            response = await self._http.post(
-                f"{self.base_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self._api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=body,
+            async with asyncio.timeout(self.timeout_seconds):
+                response = await self._http.post(
+                    f"{self.base_url}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self._api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=body,
+                )
+        except asyncio.CancelledError:
+            self.ledger.retain(reservation)
+            raise
+        except TimeoutError as exc:
+            self.ledger.retain(reservation)
+            return self._failure(
+                model_id,
+                started,
+                reservation_amount,
+                "timeout",
+                self._safe_exception("OpenRouter request exceeded its wall-time limit", exc),
             )
         except httpx.TimeoutException as exc:
             self.ledger.retain(reservation)
@@ -511,6 +547,11 @@ class OpenRouterEvalClient:
         else:
             self.ledger.settle(reservation, usage.cost_usd)
 
+        request_id = payload.get("id") if payload and isinstance(payload.get("id"), str) else None
+        returned_model = payload.get("model") if payload and isinstance(payload.get("model"), str) else None
+        returned_provider = payload.get("provider") if payload and isinstance(payload.get("provider"), str) else None
+        provider_latency = self._optional_number(payload.get("latency")) if payload else None
+
         if response.is_error:
             return self._failure(
                 model_id,
@@ -520,6 +561,10 @@ class OpenRouterEvalClient:
                 f"OpenRouter returned HTTP {response.status_code}",
                 http_status=response.status_code,
                 usage=usage,
+                request_id=request_id,
+                returned_model=returned_model,
+                returned_provider=returned_provider,
+                provider_latency_ms=provider_latency,
             )
         if payload is None:
             return self._failure(
@@ -531,9 +576,6 @@ class OpenRouterEvalClient:
                 usage=usage,
             )
 
-        returned_model = payload.get("model") if isinstance(payload.get("model"), str) else None
-        returned_provider = payload.get("provider") if isinstance(payload.get("provider"), str) else None
-        provider_latency = self._optional_number(payload.get("latency"))
         if returned_model != model_id:
             return self._failure(
                 model_id,
@@ -542,6 +584,7 @@ class OpenRouterEvalClient:
                 "model_mismatch",
                 "OpenRouter returned a different model than requested",
                 usage=usage,
+                request_id=request_id,
                 returned_model=returned_model,
                 returned_provider=returned_provider,
                 provider_latency_ms=provider_latency,
@@ -556,6 +599,7 @@ class OpenRouterEvalClient:
                 "invalid_choices",
                 "OpenRouter response must contain exactly one choice",
                 usage=usage,
+                request_id=request_id,
                 returned_model=returned_model,
                 returned_provider=returned_provider,
                 provider_latency_ms=provider_latency,
@@ -571,6 +615,7 @@ class OpenRouterEvalClient:
                 "invalid_message",
                 "OpenRouter choice has no message object",
                 usage=usage,
+                request_id=request_id,
                 returned_model=returned_model,
                 returned_provider=returned_provider,
                 finish_reason=finish_reason,
@@ -586,6 +631,7 @@ class OpenRouterEvalClient:
                 "refusal",
                 "Model refused the eval request",
                 usage=usage,
+                request_id=request_id,
                 returned_model=returned_model,
                 returned_provider=returned_provider,
                 finish_reason=finish_reason,
@@ -601,6 +647,7 @@ class OpenRouterEvalClient:
                 "incomplete",
                 f"Completion did not finish normally ({finish_reason or 'missing'})",
                 usage=usage,
+                request_id=request_id,
                 returned_model=returned_model,
                 returned_provider=returned_provider,
                 finish_reason=finish_reason,
@@ -616,6 +663,7 @@ class OpenRouterEvalClient:
                 "invalid_content",
                 "Completion content is not a string",
                 usage=usage,
+                request_id=request_id,
                 returned_model=returned_model,
                 returned_provider=returned_provider,
                 finish_reason=finish_reason,
@@ -632,6 +680,7 @@ class OpenRouterEvalClient:
                 "invalid_completion_json",
                 "Completion content is not valid JSON",
                 usage=usage,
+                request_id=request_id,
                 returned_model=returned_model,
                 returned_provider=returned_provider,
                 finish_reason=finish_reason,
@@ -646,6 +695,7 @@ class OpenRouterEvalClient:
                 "invalid_completion_json",
                 "Completion JSON must be an object",
                 usage=usage,
+                request_id=request_id,
                 returned_model=returned_model,
                 returned_provider=returned_provider,
                 finish_reason=finish_reason,
@@ -656,6 +706,7 @@ class OpenRouterEvalClient:
             ok=True,
             data=parsed,
             requested_model=model_id,
+            request_id=request_id,
             returned_model=returned_model,
             returned_provider=returned_provider,
             usage=usage,
@@ -678,6 +729,7 @@ class OpenRouterEvalClient:
         *,
         http_status: int | None = None,
         usage: CompletionUsage | None = None,
+        request_id: str | None = None,
         returned_model: str | None = None,
         returned_provider: str | None = None,
         finish_reason: str | None = None,
@@ -689,6 +741,7 @@ class OpenRouterEvalClient:
             ok=False,
             data=None,
             requested_model=model_id,
+            request_id=request_id,
             returned_model=returned_model,
             returned_provider=returned_provider,
             usage=usage or CompletionUsage(),
@@ -722,6 +775,10 @@ class OpenRouterEvalClient:
             return CompletionUsage()
         details = raw.get("completion_tokens_details")
         reasoning_tokens = cls._optional_int(details.get("reasoning_tokens")) if isinstance(details, Mapping) else None
+        prompt_details = raw.get("prompt_tokens_details")
+        cached_tokens = (
+            cls._optional_int(prompt_details.get("cached_tokens")) if isinstance(prompt_details, Mapping) else None
+        )
         try:
             cost = _decimal(raw["cost"]) if raw.get("cost") is not None else None
         except ValueError:
@@ -732,4 +789,5 @@ class OpenRouterEvalClient:
             total_tokens=cls._optional_int(raw.get("total_tokens")),
             reasoning_tokens=reasoning_tokens,
             cost_usd=cost,
+            cached_tokens=cached_tokens,
         )

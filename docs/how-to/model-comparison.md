@@ -6,6 +6,11 @@ Read-only production sampling is a separate, explicit preparation command.
 
 ## Prepared first round
 
+The first exploratory development round has been run. Keep its dataset and raw
+report unchanged. Its labels and prompt contain policy ambiguities, so its combined
+pass rate is not a valid model ranking. Use the version-2 workflow below for the
+next comparison.
+
 The dataset is `tests/fixtures/model_comparison_first50.yaml`: 50 cases in 12 story
 sequences, comprising 44 real stored articles and 6 marked synthetic contrasts.
 The source fields of the real cases were checked against the local production
@@ -58,7 +63,7 @@ In particular Qwen's observed OpenRouter rate differs from the Frankfurt-direct
 rate used in the earlier shortlist. The client considers advertised price overrides
 when reserving a request, so the reservation can exceed its eventual charge.
 
-## Paid exploratory run (not run during preparation)
+## Legacy paid exploratory command
 
 ```bash
 .venv/bin/python -m sentinel.eval.compare_models --live --budget-usd 5 --allow-provisional
@@ -111,3 +116,91 @@ After the development instructions and model settings are frozen, run the held-o
 split once with `--split holdout`. Do not tune against its results and then claim
 it is still an untouched test set. Extend the dataset and obtain annotation review
 before making a production decision.
+
+## Version 2: separate understanding from runtime behaviour
+
+The [clarified plan](../ideas/model-comparison-v2-plan.md) defines the evaluation-only
+contract. Production still uses its existing prompt, model, memory settings and
+alert policy. There is no article-body fetch in either benchmark version.
+
+- `tests/fixtures/model_comparison_v2_development.yaml` contains 34 revised development
+  cases. Sixteen still depend on the operator's near-border and neutralised-drone
+  choices. Their previous labels are marked as placeholders, not accepted answers.
+- `tests/fixtures/model_comparison_v2_holdout.yaml` contains 64 fresh synthetic cases
+  across 16 sequences, equally divided between PL/EN/UA/RU. A separate assistant
+  reviewed them without model predictions: 63 are `reviewed`, one is `disputed`.
+  These diagnostic challenges do not represent everyday news traffic.
+- `tests/fixtures/benchmark_policy_v2.yaml` keeps both operator choices explicitly
+  pending. No revised paid run is allowed until the policy and affected labels agree.
+  Assistant `reviewed` status never becomes human `approved` status automatically.
+
+Both datasets can be validated without credentials, a resolved policy, or network
+access. For example:
+
+```bash
+.venv/bin/python -m sentinel.eval.compare_models --dataset tests/fixtures/model_comparison_v2_development.yaml
+```
+
+Replace the filename with `model_comparison_v2_holdout.yaml` to check its structure.
+Structural validation is not model inference and does not open the held-out answers
+for prompt tuning. Supplying `--policy-file` also checks that the policy is resolved.
+
+After policy resolution, use two distinct run types:
+
+1. **Controlled understanding:** `--context-mode reference` gives every model the
+   same prior source articles, grouped using prior annotations. Current/future labels,
+   expected urgency, rationale and model-generated summaries never enter the request.
+   Prior context is unchanged even when one model fails an earlier request. Disputed
+   prior articles are omitted. This measures facts, urgency and raw incident identity,
+   not the program's notification behaviour.
+2. **Runtime simulation:** `--context-mode model` lets each model build its own
+   temporary incident history. It also tests candidate retrieval, confidence gates,
+   grouping and simulated alerts. Models can consequently see different histories;
+   these scores cannot be presented as a controlled intelligence comparison.
+
+For version 2, both modes require
+`--policy-file tests/fixtures/benchmark_policy_v2.yaml` and the matching version-2
+dataset. The runner rejects mixing clarified prompts with legacy labels, unresolved
+annotations, and unapproved labels without `--allow-provisional`, before network
+access. Freeze policy, labels, prompt and model/provider settings after development;
+run the fresh held-out cases only once on that unchanged bundle.
+
+The report records independent correct/scored counts for attack geography, local
+effects, protective measures, current status, urgency band and incident identity.
+Raw model matches are separate from matches accepted by the program. An expected
+anchor missing from the shown context has no identity score; retrieval failure is
+reported separately. A correctly silent duplicate is not a missed critical alert.
+Required-notification misses and critical score undercalls are separate counters.
+Notification counters describe the simulation; they are not proof of real phone
+delivery or adequate corroboration timing. The `false_alert` counter includes
+unexpected duplicate notifications and therefore overlaps `duplicate_notification`.
+
+Evidence presence is recorded but is not proof that a quotation supports a fact.
+Evidence correctness is scored only where an explicit reference label exists;
+alternative valid quotations can need human review. Missing evidence grades must
+not be converted into perfect grounding scores. Disputed labels are excluded from
+semantic scores, but their API failures and latency remain in operational totals.
+
+`--provider-only PROVIDER` pins an allowed hosting provider without fallback. Use
+separate runs for models requiring different providers, and verify the actual
+provider returned in each report. The default `--timeout-seconds 30` is a total
+request deadline, not just a network-idle timeout. There are no automatic retries.
+Request IDs, provider names, cached tokens, observed reasoning and charges are
+recorded. An absent reasoning count is not proof that no hidden reasoning occurred.
+
+The original evaluation key has a **$5 cumulative allowance**, not $5 per command.
+Check its actual remaining credit before each paid batch and reserve part for the
+held-out comparison. The ongoing production target is separately **$20/month**.
+This test neither enforces that production limit nor proves it will be met.
+
+## Reanalyse an existing report without API spending
+
+The metric-only tool requires the exact original dataset hash and a new output
+path. It does not rerun models, repair old labels, or overwrite the original report:
+
+```bash
+.venv/bin/python -m sentinel.eval.rescore_dimensions --report data/eval/model-comparison-development-20260920.json --dataset tests/fixtures/model_comparison_first50.yaml --output data/eval/model-comparison-development-20260920-reanalysis.json
+```
+
+This can reveal whether a raw correct match was rejected by a runtime gate. It
+cannot turn the first round's ambiguous labels into a reliable model ranking.

@@ -1,6 +1,8 @@
 """Offline tests for the paid, opt-in OpenRouter eval boundary."""
 
+import asyncio
 import json
+import time
 from decimal import Decimal
 
 import httpx
@@ -60,6 +62,7 @@ def _success_payload(**overrides):
         ],
         "usage": {
             "prompt_tokens": 20,
+            "prompt_tokens_details": {"cached_tokens": 12},
             "completion_tokens": 5,
             "total_tokens": 25,
             "completion_tokens_details": {"reasoning_tokens": 0},
@@ -77,6 +80,8 @@ def _client(
     model: CatalogueModel | None = None,
     max_tokens=100,
     key="test-secret-key",
+    timeout_seconds=60.0,
+    provider_only=None,
 ):
     transport = httpx.MockTransport(handler)
     http_client = httpx.AsyncClient(transport=transport)
@@ -86,6 +91,8 @@ def _client(
         budget_usd=budget,
         max_tokens=max_tokens,
         input_overhead_tokens=10,
+        timeout_seconds=timeout_seconds,
+        provider_only=provider_only,
         http_client=http_client,
     )
     return client, http_client
@@ -159,6 +166,8 @@ async def test_complete_sends_strict_controlled_request_and_parses_metadata():
     assert result.data == {"urgency_score": 4}
     assert result.returned_model == MODEL_ID
     assert result.returned_provider == "TestProvider"
+    assert result.request_id == "gen-test"
+    assert result.usage.cached_tokens == 12
     assert result.usage.reasoning_tokens == 0
     assert result.provider_latency_ms == 12.5
     assert result.usage.cost_usd == Decimal("0.00003")
@@ -175,9 +184,39 @@ async def test_complete_sends_strict_controlled_request_and_parses_metadata():
     assert body["provider"]["require_parameters"] is True
     assert body["provider"]["allow_fallbacks"] is False
     assert body["provider"]["max_price"] == {"prompt": 1.0, "completion": 2.0}
+    assert "only" not in body["provider"]
     assert "tools" not in body
-    assert result.to_dict()["cost_usd"] == 0.00003
-    assert result.to_dict()["error"] is None
+    report = result.to_dict()
+    assert report["cost_usd"] == 0.00003
+    assert report["error"] is None
+    assert report["error_kind"] is None
+    assert report["http_status"] is None
+    assert report["request_id"] == "gen-test"
+    assert report["requested_model"] == MODEL_ID
+    assert report["model"] == MODEL_ID
+    assert report["provider"] == "TestProvider"
+    assert report["reasoning_mode"] is False
+    assert report["usage"]["cached_tokens"] == 12
+    assert "test-secret-key" not in json.dumps(report)
+
+
+@pytest.mark.asyncio
+async def test_provider_only_is_propagated_without_enabling_fallbacks():
+    captured = None
+
+    def handler(request: httpx.Request):
+        nonlocal captured
+        captured = json.loads(request.content)
+        return httpx.Response(200, json=_success_payload())
+
+    client, http_client = _client(handler, provider_only=["Nebius", "Novita"])
+    try:
+        await client.complete(model_id=MODEL_ID, messages=MESSAGES, json_schema=SCHEMA)
+    finally:
+        await http_client.aclose()
+
+    assert captured["provider"]["only"] == ["Nebius", "Novita"]
+    assert captured["provider"]["allow_fallbacks"] is False
 
 
 @pytest.mark.asyncio
@@ -289,7 +328,15 @@ async def test_http_error_is_data_and_retains_unknown_cost_reservation():
     def handler(request: httpx.Request):
         nonlocal calls
         calls += 1
-        return httpx.Response(429, json={"error": {"message": "rate limited"}})
+        return httpx.Response(
+            429,
+            json={
+                "id": "gen-rate-limited",
+                "model": MODEL_ID,
+                "provider": "TestProvider",
+                "error": {"message": "rate limited"},
+            },
+        )
 
     client, http_client = _client(handler)
     try:
@@ -299,6 +346,11 @@ async def test_http_error_is_data_and_retains_unknown_cost_reservation():
 
     assert result.error.kind == "http_error"
     assert result.error.http_status == 429
+    assert result.to_dict()["error_kind"] == "http_error"
+    assert result.to_dict()["http_status"] == 429
+    assert result.to_dict()["request_id"] == "gen-rate-limited"
+    assert result.to_dict()["model"] == MODEL_ID
+    assert result.to_dict()["provider"] == "TestProvider"
     assert calls == 1
     assert client.ledger.retained_reservation_usd == result.reservation_usd
 
@@ -323,7 +375,66 @@ async def test_timeout_is_not_retried_retains_bound_and_redacts_key():
     assert result.error.kind == "timeout"
     assert key not in result.error.message
     assert "[redacted]" in result.error.message
+    assert key not in json.dumps(result.to_dict())
     assert client.ledger.retained_reservation_usd == result.reservation_usd
+
+
+class _HeartbeatStream(httpx.AsyncByteStream):
+    async def __aiter__(self):
+        for _ in range(30):
+            await asyncio.sleep(0.01)
+            yield b" "
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("heartbeat", [False, True])
+async def test_wall_time_timeout_stops_slow_or_heartbeat_response(heartbeat):
+    calls = 0
+
+    async def handler(request: httpx.Request):
+        nonlocal calls
+        calls += 1
+        if heartbeat:
+            return httpx.Response(200, stream=_HeartbeatStream())
+        await asyncio.sleep(0.3)
+        return httpx.Response(200, json=_success_payload())
+
+    client, http_client = _client(handler, timeout_seconds=0.04)
+    started = time.monotonic()
+    try:
+        result = await client.complete(model_id=MODEL_ID, messages=MESSAGES, json_schema=SCHEMA)
+    finally:
+        await http_client.aclose()
+
+    elapsed = time.monotonic() - started
+    assert calls == 1
+    assert elapsed < 0.2
+    assert result.error.kind == "timeout"
+    assert client.ledger.retained_reservation_usd == result.reservation_usd
+    assert client.ledger.active_reservation_usd == 0
+
+
+@pytest.mark.asyncio
+async def test_external_cancellation_retains_bound_and_propagates():
+    request_started = asyncio.Event()
+
+    async def handler(request: httpx.Request):
+        request_started.set()
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    client, http_client = _client(handler)
+    task = asyncio.create_task(client.complete(model_id=MODEL_ID, messages=MESSAGES, json_schema=SCHEMA))
+    try:
+        await asyncio.wait_for(request_started.wait(), timeout=1)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    finally:
+        await http_client.aclose()
+
+    assert client.ledger.retained_reservation_usd > 0
+    assert client.ledger.active_reservation_usd == 0
 
 
 @pytest.mark.asyncio
@@ -377,6 +488,7 @@ async def test_unexpected_reasoning_is_recorded_despite_disabled_request():
     assert result.ok is True
     assert result.reasoning == "provider-generated reasoning"
     assert result.usage.reasoning_tokens == 7
+    assert result.to_dict()["reasoning_mode"] is True
 
 
 @pytest.mark.asyncio
