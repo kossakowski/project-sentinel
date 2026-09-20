@@ -169,6 +169,26 @@ Only newly selected articles enter `classification_queue`; historic URL dedup
 is retained, not silently relabelled as new-model output. Every direct result
 persists provider/model/prompt/request provenance and factual extraction.
 
+### `classification.summary_language`
+
+Direct OpenAI summaries pass a local Polish-language check. A failure permits one
+summary-only translation through the same provider and budget. The classifier's
+original danger, facts and incident decision remain unchanged. A failed translation
+uses the configured Polish notice and still proceeds through normal alert rules.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `detector_languages` | `[pl, en, uk, ru, de, cs, sk, lt, lv, et]` | Local Lingua comparison languages; pl/en/uk/ru are mandatory. Cyrillic leakage also triggers repair. |
+| `repair_max_tokens` | `512` | Maximum output for the one allowed repair request. |
+| `repair_timeout_seconds` | `10` | Total repair deadline, capped by the provider's overall timeout setting. |
+| `fallback_pl` | Polish unavailability notice | Used if translation cannot be completed and validated. Validated as Polish at config load. |
+
+`summary_processing` stores the original summary and repair provenance; old rows
+receive `{}`. Accepted repair replies contribute to result token/cost totals.
+The persistent usage ledger also retains refused/incomplete/unknown-charge attempts.
+Local language detection is a statistical guard, not proof of factual fidelity.
+See [design and verification](../ideas/polish-summary-guard.md).
+
 ### `classification.incident_memory`
 
 This opt-in path includes stored incident context in the existing classification

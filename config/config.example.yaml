@@ -500,6 +500,11 @@ classification:
   timeout_seconds: 30
   retry_delay_seconds: 300
   retry_batch_size: 100
+  summary_language:
+    detector_languages: [pl, en, uk, ru, de, cs, sk, lt, lv, et]
+    repair_max_tokens: 512
+    repair_timeout_seconds: 10
+    fallback_pl: "Polskie podsumowanie jest chwilowo niedostępne. Sprawdź źródła dołączone do powiadomienia."
   budget:
     ledger_path: data/model-usage.db
     monthly_usd: 10

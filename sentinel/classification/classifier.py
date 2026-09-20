@@ -13,6 +13,7 @@ from sentinel.classification.incident_memory import MEMORY_INSTRUCTIONS
 from sentinel.classification.openai_provider import ClassificationError, OpenAIProvider
 from sentinel.classification.policy import messages, prompt_hash
 from sentinel.classification.schema import CLASSIFICATION_SCHEMA
+from sentinel.classification.summary_language import GUARD_VERSION, ensure_polish
 from sentinel.config import SentinelConfig
 from sentinel.models import Article, ClassificationResult
 
@@ -186,21 +187,28 @@ class Classifier:
             facts = data.pop("facts")
             if not data["summary_pl"].strip():
                 raise ClassificationError("Empty classification summary; article remains pending")
-            self._track_tokens(reply.input_tokens, reply.output_tokens)
+            data["summary_pl"], summary_processing, repair = await ensure_polish(
+                data["summary_pl"], self.provider, cfg.summary_language
+            )
+            calls = [reply] + ([repair] if repair is not None else [])
+            input_tokens = sum(call.input_tokens for call in calls)
+            output_tokens = sum(call.output_tokens for call in calls)
+            self._track_tokens(input_tokens, output_tokens)
             return ClassificationResult(
                 article_id=article.id,
                 **data,
                 facts=facts,
+                summary_processing=summary_processing,
                 classified_at=datetime.now(UTC),
                 model_used=cfg.model,
                 provider_used="openai",
-                prompt_version="clarified-v2:" + prompt_hash(cfg.policy),
+                prompt_version="clarified-v2:" + prompt_hash(cfg.policy) + ":" + GUARD_VERSION,
                 request_hash=reply.request_hash,
                 response_id=reply.response_id,
-                input_tokens=reply.input_tokens,
-                output_tokens=reply.output_tokens,
-                cached_input_tokens=reply.cached_tokens,
-                estimated_cost_usd=reply.cost_usd,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cached_input_tokens=sum(call.cached_tokens for call in calls),
+                estimated_cost_usd=sum(call.cost_usd for call in calls),
             )
         response = (
             await self._call_api(article)

@@ -18,18 +18,6 @@ from sentinel.config import ModelBudgetConfig
 from sentinel.models import ClassificationResult
 
 
-@pytest.fixture
-def direct_config(config, tmp_path):
-    cfg = config.classification
-    cfg.provider = "openai"
-    cfg.model = "gpt-5.6-luna"
-    cfg.max_tokens = 1024
-    cfg.policy = yaml.safe_load(Path("tests/fixtures/benchmark_policy_v2.yaml").read_text())
-    cfg.incident_memory.enabled = True
-    cfg.budget.ledger_path = str(tmp_path / "usage.db")
-    return config
-
-
 def answer():
     return dict(
         is_military_event=True,

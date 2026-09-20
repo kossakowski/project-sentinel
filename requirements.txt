@@ -17,3 +17,4 @@ flask>=3.1
 flask-cors>=6.0
 openai>=2.11,<3
 jsonschema>=4.23,<5
+lingua-language-detector>=2.1,<3

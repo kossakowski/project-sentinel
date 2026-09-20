@@ -199,6 +199,34 @@ class ModelBudgetConfig(BaseModel):
     cache_write_multiplier: float = Field(default=1.25, ge=1, allow_inf_nan=False)
 
 
+class SummaryLanguageConfig(BaseModel):
+    detector_languages: list[str] = Field(
+        default_factory=lambda: ["pl", "en", "uk", "ru", "de", "cs", "sk", "lt", "lv", "et"]
+    )
+    repair_max_tokens: int = Field(default=512, ge=128, le=1024)
+    repair_timeout_seconds: float = Field(default=10, gt=0, le=30)
+    fallback_pl: str = Field(
+        default="Polskie podsumowanie jest chwilowo niedostępne. Sprawdź źródła dołączone do powiadomienia.",
+        min_length=20,
+        max_length=500,
+    )
+
+    @model_validator(mode="after")
+    def _validate_language_guard(self):
+        from lingua import IsoCode639_1
+
+        from sentinel.classification.summary_language import is_polish
+
+        languages = self.detector_languages
+        if len(set(languages)) != len(languages) or not {"pl", "en", "uk", "ru"} <= set(languages):
+            raise ValueError("Summary detector must include pl/en/uk/ru without duplicates")
+        if any(not hasattr(IsoCode639_1, code.upper()) for code in languages):
+            raise ValueError("Unsupported summary detector language code")
+        if not is_polish(self.fallback_pl, tuple(languages)):
+            raise ValueError("Summary fallback must be Polish")
+        return self
+
+
 class ClassificationConfig(BaseModel):
     # Omitted provider preserves existing installations until explicit migration.
     provider: Literal["anthropic", "openai"] = "anthropic"
@@ -209,6 +237,7 @@ class ClassificationConfig(BaseModel):
     budget: ModelBudgetConfig = Field(default_factory=ModelBudgetConfig)
     retry_delay_seconds: int = Field(default=300, ge=1)
     retry_batch_size: int = Field(default=100, ge=1, le=1000)
+    summary_language: SummaryLanguageConfig = Field(default_factory=SummaryLanguageConfig)
 
     @model_validator(mode="after")
     def _validate_direct_policy(self):

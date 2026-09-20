@@ -6,8 +6,8 @@ This guide covers setting up all external service accounts needed by Project Sen
 
 The local configuration selects `classification.provider: openai` and
 `gpt-5.6-luna`. This requires paid OpenAI API access, separately from a ChatGPT or
-Codex subscription. The key is used by both classification and the existing
-article-quality gate. OpenAI mode does not require an Anthropic key.
+Codex subscription. The key is used by classification, the existing article-quality gate and, only
+when needed, one bounded Polish-summary translation. OpenAI mode does not require an Anthropic key.
 
 Finish coding/offline checks first. For assisted setup, use a visible Playwright
 browser and select/create a dedicated **Project Sentinel** project. If more than
@@ -41,12 +41,14 @@ with a new output filename (existing reports are never overwritten):
 .venv/bin/python -m sentinel.eval.direct_luna --live --max-cost-usd 0.25 --output data/eval/luna-direct-validation.jsonl
 ```
 
-This makes up to twenty classifier requests: ten identical known-miss inputs and
+This makes twenty classifier requests, plus at most one Polish-summary repair per
+non-Polish result: ten identical known-miss inputs and
 ten fresh synthetic cases, with fake phone/SMS/push transports and in-memory event
 storage. It tests the real classifier, memory guards, grouping and notification
 logic. It does not fetch real article bodies or test message delivery. Reports
 include failures, message/request hashes, token usage and estimated costs.
-The reused known-miss case is not a fresh holdout. Fresh labels are engineering
+The current runner also checks Polish output and records generic summary fallbacks
+as degraded results. The reused known-miss case is not a fresh holdout. Fresh labels are engineering
 expectations, not human-approved ground truth. Repeated successes do not establish
 determinism or erase the historical miss.
 

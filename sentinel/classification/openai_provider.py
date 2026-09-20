@@ -138,7 +138,15 @@ class OpenAIProvider:
         self.session_remaining: float | None = None
         self.logger = logging.getLogger("sentinel.openai")
 
-    async def request(self, messages: list[dict], schema: dict, *, purpose: str, max_tokens: int) -> StructuredReply:
+    async def request(
+        self,
+        messages: list[dict],
+        schema: dict,
+        *,
+        purpose: str,
+        max_tokens: int,
+        timeout_seconds: float | None = None,
+    ) -> StructuredReply:
         cfg = self.config
         payload = dict(
             model=cfg.model,
@@ -166,7 +174,8 @@ class OpenAIProvider:
             self.session_remaining -= bound
         reservation = self.ledger.reserve(bound, cfg.model, purpose, request_hash)
         try:
-            async with asyncio.timeout(cfg.timeout_seconds):
+            deadline = min(cfg.timeout_seconds, timeout_seconds if timeout_seconds is not None else cfg.timeout_seconds)
+            async with asyncio.timeout(deadline):
                 response = await self.client.responses.create(**payload)
         except openai.AuthenticationError:
             raise ClassificationError("OpenAI rejected the key. Check the dedicated project's API key.") from None

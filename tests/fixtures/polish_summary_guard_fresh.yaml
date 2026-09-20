@@ -1,0 +1,19 @@
+version: 1
+provenance: Synthetic translation checks fixed before paid repair calls on 2026-09-20; not classifier ground truth.
+cases:
+  - id: english-protection-without-impact
+    language: en
+    summary: Authorities in Estonia ordered residents of Narva to shelter because an unidentified military aircraft was approaching. No impact has been confirmed, and the aircraft's origin remains unknown.
+    expected_facts: Preserve Estonia, Narva, the shelter order, no confirmed impact and unknown origin.
+  - id: ukrainian-ended-measures
+    language: uk
+    summary: Польські військові завершили превентивне патрулювання біля Любліна. Порушень повітряного простору не було, наказів населенню ховатися не видавали.
+    expected_facts: Preserve Poland, Lublin, ended precautionary patrol, no airspace violation and no resident shelter order.
+  - id: russian-uncertain-geography
+    language: ru
+    summary: Источник сообщил о взрыве у границы, но не указал страну или сторону границы. Военные причины не подтверждены; приписывать событие Латвии или Литве оснований нет.
+    expected_facts: Preserve unknown country/border side, unconfirmed military cause and no basis for assigning Latvia or Lithuania.
+  - id: polish-already-correct
+    language: pl
+    summary: W Polsce znaleziono cywilnego drona. Policja nie potwierdziła rosyjskiego pochodzenia ani zagrożenia dla mieszkańców.
+    expected_facts: Keep this Polish text unchanged and make no translation request.

@@ -1,5 +1,6 @@
 import os
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 import yaml
@@ -210,3 +211,15 @@ def sample_alert_record(sample_event):
         sent_at=datetime.now(UTC),
         message_body="Alert test message",
     )
+
+
+@pytest.fixture
+def direct_config(config, tmp_path):
+    cfg = config.classification
+    cfg.provider = "openai"
+    cfg.model = "gpt-5.6-luna"
+    cfg.max_tokens = 1024
+    cfg.policy = yaml.safe_load(Path("tests/fixtures/benchmark_policy_v2.yaml").read_text())
+    cfg.incident_memory.enabled = True
+    cfg.budget.ledger_path = str(tmp_path / "usage.db")
+    return config

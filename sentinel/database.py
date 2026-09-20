@@ -121,6 +121,7 @@ class Database:
             next_attempt_at TEXT NOT NULL, last_error TEXT NOT NULL DEFAULT '')""")
         additions = (
             ("classifications", "facts", "TEXT NOT NULL DEFAULT '{}'"),
+            ("classifications", "summary_processing", "TEXT NOT NULL DEFAULT '{}'"),
             ("classifications", "provider_used", "TEXT NOT NULL DEFAULT 'legacy'"),
             ("classifications", "prompt_version", "TEXT NOT NULL DEFAULT 'legacy-unversioned'"),
             ("classifications", "request_hash", "TEXT NOT NULL DEFAULT ''"),

@@ -157,3 +157,13 @@ prepared behavioural checks passed, but manual review found a non-Polish critica
 summary and five diagnostic repetitions reproduced it. All 25 requests together
 used an estimated $0.00980512. Polish-output reliability remains a rollout issue;
 production is unchanged.
+
+### Polish-summary fix verified
+
+The operator requested the fix after the language defect was reproduced. See
+[Polish summary guard](polish-summary-guard.md): local language validation, one
+bounded same-Luna translation, and an explicit Polish fallback notice that retains
+the original danger and incident decision. All 581 offline tests, twenty live
+runtime-regression cases and six component language checks passed. Total direct
+validation spending across the migration remains approximately $0.01802 of the
+approved $0.25 allowance. SSH access was verified read-only; no deployment occurred.

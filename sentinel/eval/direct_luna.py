@@ -16,6 +16,7 @@ from sentinel.classification.corroborator import Corroborator
 from sentinel.classification.incident_memory import IncidentMemory
 from sentinel.classification.openai_provider import BudgetExceeded, ClassificationError
 from sentinel.classification.policy import messages
+from sentinel.classification.summary_language import is_polish
 from sentinel.eval.compare_models import (
     RecordingAlerts,
     RecordingTransport,
@@ -123,16 +124,24 @@ async def run(args):
                         after = db.get_alert_records(event.id) if event else []
                     notification = "silent" if len(before) == len(after) else ("update" if before else "initial")
                     expected = case["expected"]
+                    behavior_passed = (
+                        expected["band"][0] <= result.urgency_score <= expected["band"][1]
+                        and set(result.affected_countries) == set(expected["countries"])
+                        and notification == expected["notification"]
+                    )
+                    summary_polish = is_polish(
+                        result.summary_pl, tuple(config.classification.summary_language.detector_languages)
+                    )
+                    summary_fallback = result.summary_processing.get("action") == "fallback"
                     row.update(
                         urgency=result.urgency_score,
                         notification=notification,
                         channels=[r.alert_type for r in after[len(before) :]],
                         memory=result.incident_memory,
-                        passed=(
-                            expected["band"][0] <= result.urgency_score <= expected["band"][1]
-                            and set(result.affected_countries) == set(expected["countries"])
-                            and notification == expected["notification"]
-                        ),
+                        behavior_passed=behavior_passed,
+                        summary_polish=summary_polish,
+                        summary_fallback=summary_fallback,
+                        passed=behavior_passed and summary_polish and not summary_fallback,
                     )
                 except ClassificationError as exc:
                     row.update(error=str(exc), passed=False)

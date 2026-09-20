@@ -138,6 +138,7 @@ class ClassificationResult:
     output_tokens: int
     incident_memory: dict = field(default_factory=dict)
     facts: dict = field(default_factory=dict)
+    summary_processing: dict = field(default_factory=dict)
     provider_used: str = "legacy"
     prompt_version: str = "legacy-unversioned"
     request_hash: str = ""
@@ -164,6 +165,7 @@ class ClassificationResult:
             "output_tokens": self.output_tokens,
             "incident_memory": dict_to_json(self.incident_memory),
             "facts": dict_to_json(self.facts),
+            "summary_processing": dict_to_json(self.summary_processing),
             "provider_used": self.provider_used,
             "prompt_version": self.prompt_version,
             "request_hash": self.request_hash,
@@ -190,6 +192,7 @@ class ClassificationResult:
             output_tokens=d.get("output_tokens", 0),
             incident_memory=_json_to_dict(d.get("incident_memory")),
             facts=_json_to_dict(d.get("facts")),
+            summary_processing=_json_to_dict(d.get("summary_processing")),
             provider_used=d.get("provider_used", "legacy"),
             prompt_version=d.get("prompt_version", "legacy-unversioned"),
             request_hash=d.get("request_hash", ""),
