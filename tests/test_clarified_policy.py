@@ -99,9 +99,12 @@ def test_resolved_policy_is_explicit_and_preserves_factual_geography(tmp_path):
     prompt = system_prompt(policy)
     assert "attack_countries" in prompt and "affected_countries" in prompt
     assert "CURRENT remaining danger" in prompt
-    assert "confirmed strike just outside" in prompt
+    assert "confirmed strike inside Ukraine very close to Poland" in prompt
     other = {**policy, "neutralised_drone": "original_severity"}
     assert "retain original incident severity" in system_prompt(other)
+    assert "historical/reaction band below does not override this Poland-only exception" in system_prompt(other)
+    assert "memory must still identify later reports as the same incident" in system_prompt(other)
+    assert "use resolved even in a retrospective report" in system_prompt(other)
 
 
 def test_reference_history_hides_answers_and_skips_disputed_rows():

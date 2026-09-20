@@ -54,13 +54,13 @@ def system_prompt(policy: dict) -> str:
         return f"{lower}–{upper}"
 
     border_rule = {
-        "awareness": f"A confirmed strike just outside a monitored border warrants awareness ({band('precaution')}).",
-        "log_only": f"A strike confirmed outside monitored territory without local protective measures is {band('routine')}, even near the border.",
-        "critical": f"The operator explicitly treats a confirmed strike just outside a monitored border as critical ({band('active_attack')}).",
+        "awareness": f"A confirmed strike inside Ukraine very close to Poland warrants awareness ({band('precaution')}).",
+        "log_only": f"A strike confirmed inside Ukraine without local Polish protective measures is {band('routine')}, even near Poland's border.",
+        "critical": f"The operator explicitly treats a confirmed strike inside Ukraine very close to Poland as critical ({band('active_attack')}).",
     }[policy["near_border_strike"]]
     resolved_rule = {
         "current_danger": f"Score CURRENT remaining danger. An explicitly neutralised/recovered drone with no remaining danger is {band('resolved')}; do not inherit its former severity.",
-        "original_severity": f"For a previously Russian military drone recovered and neutralised, retain original incident severity: Poland {band('russian_drone_unresolved_poland')}, other monitored countries {band('russian_drone_unresolved_other')}. Still mark facts.status resolved; never invent current danger.",
+        "original_severity": f"For a Russian military drone found or recovered and neutralised IN POLAND, retain original incident severity ({band('russian_drone_unresolved_poland')}). Factual reports of this recovered Russian drone retain that severity even when retrospective; the generic historical/reaction band below does not override this Poland-only exception. Determine facts.status from the current source, without inventing current danger. This lets the operator learn about the incident once; memory must still identify later reports as the same incident, not request repeated notifications.",
     }[policy["neutralised_drone"]]
     return f"""You assess military news for a personal alert monitor covering {countries}.
 Return one JSON classification, with Polish summary_pl and the factual and memory fields specified in the schema.
@@ -90,6 +90,9 @@ FACTS BEFORE POLICY
 - facts.status: active for current danger or ongoing measures; resolved for explicitly
   ended/neutralised danger; historical for past-event retrospectives with no new danger;
   unclear when the current status is not supplied. Do not mistake uncertainty for safety.
+  An explicit statement that danger was neutralised or a protective alert/order ended takes precedence
+  over historical: use resolved even in a retrospective report. Merely using past tense
+  or saying an object was found does not establish that danger was resolved.
 - facts.evidence: short VERBATIM excerpts of title/summary (at most 160 characters per field).
   Use an empty string if no supporting text exists. Unknown is preferable to invention.
 

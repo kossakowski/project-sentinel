@@ -124,14 +124,16 @@ contract. Production still uses its existing prompt, model, memory settings and
 alert policy. There is no article-body fetch in either benchmark version.
 
 - `tests/fixtures/model_comparison_v2_development.yaml` contains 34 revised development
-  cases. Sixteen still depend on the operator's near-border and neutralised-drone
-  choices. Their previous labels are marked as placeholders, not accepted answers.
+  cases plus 2 synthetic positive controls for the confirmed Ukraine-side awareness
+  rule. The operator choices are resolved; genuine source ambiguities remain disputed.
 - `tests/fixtures/model_comparison_v2_holdout.yaml` contains 64 fresh synthetic cases
   across 16 sequences, equally divided between PL/EN/UA/RU. A separate assistant
   reviewed them without model predictions: 63 are `reviewed`, one is `disputed`.
   These diagnostic challenges do not represent everyday news traffic.
-- `tests/fixtures/benchmark_policy_v2.yaml` keeps both operator choices explicitly
-  pending. No revised paid run is allowed until the policy and affected labels agree.
+- `tests/fixtures/benchmark_policy_v2.yaml` records the operator's choices: confirmed
+  nearby strikes inside Ukraine score 5–6; Russian military drones recovered and
+  neutralised in Poland score 7–8 for one notification, with repeats suppressed.
+  No revised paid run is allowed if policy choices or affected labels remain pending.
   Assistant `reviewed` status never becomes human `approved` status automatically.
 
 Both datasets can be validated without credentials, a resolved policy, or network

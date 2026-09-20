@@ -1,8 +1,10 @@
 version: 1
 policy_version: 2
-description: Development-only copy reviewed from source text under the clarified evaluation policy. Labels remain
-  provisional; disputed policy-dependent cases retain visibly marked legacy-v1 placeholders and must not be inferred
-  or scored until the operator selects a proposal.
+description: Development annotations reviewed from source text under clarified evaluation policy version 2. Resolved
+  choices are awareness for a confirmed Ukraine-side near-border strike and original severity for an explicitly
+  Russian recovered/neutralised military drone. Includes five synthetic controls in total, of which two are additional
+  v2 near-border controls. Twenty-four labels are independently assistant-reviewed and twelve remain disputed; none
+  is human-approved.
 cases:
 - id: mc-border-train-01
   sequence_id: border-train-near-poland-2026-09-13
@@ -29,7 +31,7 @@ cases:
     published_at: '2026-09-13T09:40:00+00:00'
     fetched_at: '2026-09-13T09:48:28.369319+00:00'
   expected:
-    urgency_min: 1
+    urgency_min: 2
     urgency_max: 3
     affected_countries: []
     notification: silent
@@ -39,27 +41,9 @@ cases:
       attack_countries: []
       protection: none
       status: unclear
-    policy_pending: true
-    placeholder_source: legacy_v1_annotation_not_an_operator_choice
-    proposed_labels:
-      awareness:
-        urgency_min: 5
-        urgency_max: 6
-        notification: initial
-        critical: false
-      log_only:
-        urgency_min: 1
-        urgency_max: 3
-        notification: silent
-        critical: false
-      critical:
-        urgency_min: 9
-        urgency_max: 10
-        notification: initial
-        critical: true
-  rationale: The source states a Russian drone strike near the Polish border but does not locate the impact on either
-    side; Warsaw is only the train destination, and current danger is not stated. Alert severity remains an operator
-    choice.
+  rationale: The title reports a strike near the Polish border but not which side; Warsaw is only the train destination.
+    The selected awareness rule requires a confirmed Ukraine-side strike, so unclear-location 2–3 applies and no
+    notification is sent.
 - id: mc-border-train-02
   sequence_id: border-train-near-poland-2026-09-13
   split: development
@@ -85,7 +69,7 @@ cases:
     published_at: '2026-09-13T18:29:00+00:00'
     fetched_at: '2026-09-13T18:42:11.003141+00:00'
   expected:
-    urgency_min: 1
+    urgency_min: 2
     urgency_max: 3
     affected_countries: []
     notification: silent
@@ -96,26 +80,9 @@ cases:
       attack_countries: []
       protection: none
       status: unclear
-    policy_pending: true
-    placeholder_source: legacy_v1_annotation_not_an_operator_choice
-    proposed_labels:
-      awareness:
-        urgency_min: 5
-        urgency_max: 6
-        notification: silent
-        critical: false
-      log_only:
-        urgency_min: 1
-        urgency_max: 3
-        notification: silent
-        critical: false
-      critical:
-        urgency_min: 9
-        urgency_max: 10
-        notification: silent
-        critical: true
-  rationale: The strike is one kilometre from Poland, not explicitly on either side, and current danger is not stated.
-    Its identity with the train strike is plausible but not conclusive, and alert severity remains an operator choice.
+  rationale: “One kilometre from Poland” does not establish the side of the border. The selected awareness rule
+    therefore does not apply; identity with the train strike is also plausible rather than conclusive, so the 2–3
+    label remains disputed.
 - id: mc-border-train-03
   sequence_id: border-train-near-poland-2026-09-13
   split: development
@@ -143,7 +110,7 @@ cases:
     published_at: '2026-09-16T15:33:24+00:00'
     fetched_at: '2026-09-16T15:50:31.060896+00:00'
   expected:
-    urgency_min: 1
+    urgency_min: 2
     urgency_max: 3
     affected_countries: []
     notification: silent
@@ -154,27 +121,8 @@ cases:
       attack_countries: []
       protection: none
       status: unclear
-    policy_pending: true
-    placeholder_source: legacy_v1_annotation_not_an_operator_choice
-    proposed_labels:
-      awareness:
-        urgency_min: 5
-        urgency_max: 6
-        notification: silent
-        critical: false
-      log_only:
-        urgency_min: 1
-        urgency_max: 3
-        notification: silent
-        critical: false
-      critical:
-        urgency_min: 9
-        urgency_max: 10
-        notification: silent
-        critical: true
-  rationale: The Russian-drone strike beside a train is the same physical episode as mc-border-train-01, but the
-    report still places it only by the NATO border and gives no current status. Alert severity remains an operator
-    choice.
+  rationale: The train detail supports the same physical episode as mc-border-train-01, but “1.2 miles from NATO’s
+    border” still omits the impact country. The current article therefore remains unclear-location 2–3 and silent.
 - id: mc-border-train-04
   sequence_id: border-train-near-poland-2026-09-13
   split: development
@@ -202,7 +150,7 @@ cases:
     published_at: '2026-09-16T16:29:00+00:00'
     fetched_at: '2026-09-16T17:22:45.079661+00:00'
   expected:
-    urgency_min: 1
+    urgency_min: 2
     urgency_max: 3
     affected_countries: []
     notification: silent
@@ -213,30 +161,13 @@ cases:
       attack_countries: []
       protection: none
       status: unclear
-    policy_pending: true
-    placeholder_source: legacy_v1_annotation_not_an_operator_choice
-    proposed_labels:
-      awareness:
-        urgency_min: 5
-        urgency_max: 6
-        notification: silent
-        critical: false
-      log_only:
-        urgency_min: 1
-        urgency_max: 3
-        notification: silent
-        critical: false
-      critical:
-        urgency_min: 9
-        urgency_max: 10
-        notification: silent
-        critical: true
-  rationale: This report places the struck train and gas station near Ukraine’s border with Poland, but “near” still
-    does not establish the side of the border or current danger. Alert severity remains an operator choice.
+  rationale: “Near Ukraine’s border with Poland” names the shared border but does not say which side was struck.
+    Because the awareness choice requires a confirmed Ukraine-side strike, this source remains disputed at unclear-location
+    2–3 and silent.
 - id: mc-scramble-pl-01
   sequence_id: poland-precautionary-scramble-2026-09-16
   split: development
-  label_status: provisional
+  label_status: reviewed
   provenance:
     type: production
     snapshot: data/eval/production-candidates.json
@@ -275,7 +206,7 @@ cases:
 - id: mc-scramble-pl-02
   sequence_id: poland-precautionary-scramble-2026-09-16
   split: development
-  label_status: provisional
+  label_status: reviewed
   provenance:
     type: production
     snapshot: data/eval/production-candidates.json
@@ -314,7 +245,7 @@ cases:
 - id: mc-scramble-pl-03
   sequence_id: poland-precautionary-scramble-2026-09-16
   split: development
-  label_status: provisional
+  label_status: reviewed
   provenance:
     type: production
     snapshot: data/eval/production-candidates.json
@@ -353,7 +284,7 @@ cases:
 - id: mc-scramble-pl-04
   sequence_id: poland-precautionary-scramble-2026-09-16
   split: development
-  label_status: provisional
+  label_status: reviewed
   provenance:
     type: production
     snapshot: data/eval/production-candidates.json
@@ -392,7 +323,7 @@ cases:
 - id: mc-scramble-pl-05
   sequence_id: poland-precautionary-scramble-2026-09-16
   split: development
-  label_status: provisional
+  label_status: disputed
   provenance:
     type: production
     snapshot: data/eval/production-candidates.json
@@ -403,7 +334,7 @@ cases:
     evidence:
       attack_countries: російські дрони на заході України
       protection: У Польщі зранку закривали аеропорти Жешува й Любліна
-      status: зранку закривали аеропорти
+      status: ''
   article:
     title: У Польщі зранку закривали аеропорти Жешува й Любліна через російські дрони на заході України - nv.ua
     summary: У Польщі зранку закривали аеропорти Жешува й Любліна через російські дрони на заході України nv.ua
@@ -426,13 +357,14 @@ cases:
       attack_countries:
       - UA
       protection: precaution
-      status: resolved
-  rationale: The physical attack is explicitly in western Ukraine, while Poland only closed two airports. That makes
-    UA the attack country and PL the country taking a precaution.
+      status: unclear
+  rationale: The source explicitly places the attack in western Ukraine and reports Polish airport closures, but
+    its past-tense wording does not establish that the precaution ended. UA/PL geography and 5–6 remain supported;
+    status is unclear and the case is disputed.
 - id: mc-scramble-pl-06
   sequence_id: poland-precautionary-scramble-2026-09-16
   split: development
-  label_status: provisional
+  label_status: reviewed
   provenance:
     type: production
     snapshot: data/eval/production-candidates.json
@@ -472,7 +404,7 @@ cases:
 - id: mc-scramble-pl-07
   sequence_id: poland-precautionary-scramble-2026-09-16
   split: development
-  label_status: provisional
+  label_status: reviewed
   provenance:
     type: production
     snapshot: data/eval/production-candidates.json
@@ -545,21 +477,9 @@ cases:
       attack_countries: []
       protection: none
       status: resolved
-    policy_pending: true
-    placeholder_source: legacy_v1_annotation_not_an_operator_choice
-    proposed_labels:
-      current_danger:
-        urgency_min: 1
-        urgency_max: 4
-        notification: silent
-        critical: false
-      original_severity:
-        urgency_min: 7
-        urgency_max: 8
-        notification: initial
-        critical: false
-  rationale: The current text reports Russian-drone components on a Polish beach and their detonation, but not the
-    route or a hostile Polish impact. Current-danger versus original-severity scoring remains an operator choice.
+  rationale: The first report explicitly says Russian-drone components were found and detonated on a Polish beach,
+    but “components” and detonation do not conclusively establish a Russian military drone. The retained 7–8 initial
+    label is disputed pending independent review.
 - id: mc-rusinowo-02
   sequence_id: rusinowo-drone-recovery-2026-09-16
   split: development
@@ -598,25 +518,13 @@ cases:
       attack_countries: []
       protection: none
       status: resolved
-    policy_pending: true
-    placeholder_source: legacy_v1_annotation_not_an_operator_choice
-    proposed_labels:
-      current_danger:
-        urgency_min: 1
-        urgency_max: 4
-        notification: silent
-        critical: false
-      original_severity:
-        urgency_min: 7
-        urgency_max: 8
-        notification: silent
-        critical: false
-  rationale: The Rusinowo object and hazardous parts were secured and detonated, so the local Polish incident is
-    resolved. The source does not itself establish a hostile impact or incursion route.
+  rationale: The report explicitly says “Rosyjski dron” and that hazardous parts were detonated, but it still does
+    not conclusively identify a military drone. Its retained 7–8 same-incident silent label is disputed, and cannot
+    validate the first notification by itself.
 - id: mc-rusinowo-03
   sequence_id: rusinowo-drone-recovery-2026-09-16
   split: development
-  label_status: disputed
+  label_status: reviewed
   provenance:
     type: production
     snapshot: data/eval/production-candidates.json
@@ -640,8 +548,8 @@ cases:
     published_at: '2026-09-16T06:45:00+00:00'
     fetched_at: '2026-09-16T06:53:21.203935+00:00'
   expected:
-    urgency_min: 7
-    urgency_max: 8
+    urgency_min: 1
+    urgency_max: 4
     affected_countries:
     - PL
     notification: silent
@@ -652,25 +560,12 @@ cases:
       attack_countries: []
       protection: none
       status: resolved
-    policy_pending: true
-    placeholder_source: legacy_v1_annotation_not_an_operator_choice
-    proposed_labels:
-      current_danger:
-        urgency_min: 1
-        urgency_max: 4
-        notification: silent
-        critical: false
-      original_severity:
-        urgency_min: 7
-        urgency_max: 8
-        notification: silent
-        critical: false
-  rationale: The military says the Rusinowo drone elements were recovered and neutralised. This is the same resolved
-    local incident; its alert band remains policy-dependent.
+  rationale: The article confirms recovery and neutralisation at Rusinowo but never identifies the drone as Russian.
+    Memory establishes continuity only, so current-source severity uses the unknown-drone 1–4 band and stays silent.
 - id: mc-rusinowo-04
   sequence_id: rusinowo-drone-recovery-2026-09-16
   split: development
-  label_status: disputed
+  label_status: reviewed
   provenance:
     type: production
     snapshot: data/eval/production-candidates.json
@@ -692,8 +587,8 @@ cases:
     published_at: '2026-09-16T08:13:50+00:00'
     fetched_at: '2026-09-16T08:22:53.229107+00:00'
   expected:
-    urgency_min: 7
-    urgency_max: 8
+    urgency_min: 1
+    urgency_max: 4
     affected_countries:
     - PL
     notification: silent
@@ -704,25 +599,12 @@ cases:
       attack_countries: []
       protection: none
       status: historical
-    policy_pending: true
-    placeholder_source: legacy_v1_annotation_not_an_operator_choice
-    proposed_labels:
-      current_danger:
-        urgency_min: 1
-        urgency_max: 4
-        notification: silent
-        critical: false
-      original_severity:
-        urgency_min: 7
-        urgency_max: 8
-        notification: silent
-        critical: false
-  rationale: The title is a retrospective prosecutor update about the drone found at Rusinowo and supplies no current
-    danger. The same incident is clear, but its alert band remains policy-dependent.
+  rationale: The prosecutor-update title identifies the same Rusinowo recovery but gives no Russian origin in the
+    current source. It is therefore a historical unknown-drone follow-up at 1–4 and silent.
 - id: mc-rusinowo-05
   sequence_id: rusinowo-drone-recovery-2026-09-16
   split: development
-  label_status: disputed
+  label_status: reviewed
   provenance:
     type: production
     snapshot: data/eval/production-candidates.json
@@ -757,25 +639,12 @@ cases:
       attack_countries: []
       protection: none
       status: resolved
-    policy_pending: true
-    placeholder_source: legacy_v1_annotation_not_an_operator_choice
-    proposed_labels:
-      current_danger:
-        urgency_min: 1
-        urgency_max: 4
-        notification: silent
-        critical: false
-      original_severity:
-        urgency_min: 7
-        urgency_max: 8
-        notification: silent
-        critical: false
-  rationale: The same recovered object is identified as a Russian Gerbera-2 whose warhead was neutralised. That
-    supports resolved status without proving the route or hostile impact from this article.
+  rationale: The current summary explicitly identifies a Russian Gerbera-2 and says its warhead was neutralised.
+    The resolved original-severity exception retains 7–8; the same incident remains silent after the first notification.
 - id: mc-rusinowo-06
   sequence_id: rusinowo-drone-recovery-2026-09-16
   split: development
-  label_status: disputed
+  label_status: reviewed
   provenance:
     type: production
     snapshot: data/eval/production-candidates.json
@@ -797,8 +666,8 @@ cases:
     published_at: '2026-09-16T08:26:00+00:00'
     fetched_at: '2026-09-16T08:29:01.439468+00:00'
   expected:
-    urgency_min: 7
-    urgency_max: 8
+    urgency_min: 1
+    urgency_max: 4
     affected_countries:
     - PL
     notification: silent
@@ -809,25 +678,12 @@ cases:
       attack_countries: []
       protection: none
       status: historical
-    policy_pending: true
-    placeholder_source: legacy_v1_annotation_not_an_operator_choice
-    proposed_labels:
-      current_danger:
-        urgency_min: 1
-        urgency_max: 4
-        notification: silent
-        critical: false
-      original_severity:
-        urgency_min: 7
-        urgency_max: 8
-        notification: silent
-        critical: false
-  rationale: The title reports an investigative finding about the already-found Rusinowo drone and warhead, with
-    no current danger stated. Alert severity remains policy-dependent.
+  rationale: The title says the Rusinowo drone had a warhead but does not explicitly say it was Russian. Warhead
+    and incident memory cannot supply nationality, so the current-source label is 1–4 and silent.
 - id: mc-rusinowo-07
   sequence_id: rusinowo-drone-recovery-2026-09-16
   split: development
-  label_status: disputed
+  label_status: reviewed
   provenance:
     type: production
     snapshot: data/eval/production-candidates.json
@@ -862,25 +718,12 @@ cases:
       attack_countries: []
       protection: none
       status: resolved
-    policy_pending: true
-    placeholder_source: legacy_v1_annotation_not_an_operator_choice
-    proposed_labels:
-      current_danger:
-        urgency_min: 1
-        urgency_max: 4
-        notification: silent
-        critical: false
-      original_severity:
-        urgency_min: 7
-        urgency_max: 8
-        notification: silent
-        critical: false
-  rationale: The report repeats the Gerbera-2 identification and explicitly says the warhead was neutralised. It
-    is a resolved same-incident report with a pending alert band.
+  rationale: The current summary explicitly identifies a Russian Gerbera-2 and a neutralised warhead. It retains
+    original severity 7–8 but is suppressed as the same already-notified incident.
 - id: mc-rusinowo-08
   sequence_id: rusinowo-drone-recovery-2026-09-16
   split: development
-  label_status: disputed
+  label_status: reviewed
   provenance:
     type: production
     snapshot: data/eval/production-candidates.json
@@ -902,8 +745,8 @@ cases:
     published_at: '2026-09-16T08:33:34+00:00'
     fetched_at: '2026-09-16T09:15:20.228834+00:00'
   expected:
-    urgency_min: 7
-    urgency_max: 8
+    urgency_min: 1
+    urgency_max: 4
     affected_countries:
     - PL
     notification: silent
@@ -914,25 +757,12 @@ cases:
       attack_countries: []
       protection: none
       status: historical
-    policy_pending: true
-    placeholder_source: legacy_v1_annotation_not_an_operator_choice
-    proposed_labels:
-      current_danger:
-        urgency_min: 1
-        urgency_max: 4
-        notification: silent
-        critical: false
-      original_severity:
-        urgency_min: 7
-        urgency_max: 8
-        notification: silent
-        critical: false
-  rationale: The investigators’ later findings concern the same found Rusinowo object and report no current danger.
-    Alert severity remains policy-dependent.
+  rationale: This investigator-update title reports a warhead at Rusinowo but no Russian origin. It therefore remains
+    a same-incident unknown-origin follow-up at 1–4 and silent.
 - id: mc-rusinowo-09
   sequence_id: rusinowo-drone-recovery-2026-09-16
   split: development
-  label_status: disputed
+  label_status: reviewed
   provenance:
     type: production
     snapshot: data/eval/production-candidates.json
@@ -966,25 +796,12 @@ cases:
       attack_countries: []
       protection: none
       status: historical
-    policy_pending: true
-    placeholder_source: legacy_v1_annotation_not_an_operator_choice
-    proposed_labels:
-      current_danger:
-        urgency_min: 1
-        urgency_max: 4
-        notification: silent
-        critical: false
-      original_severity:
-        urgency_min: 7
-        urgency_max: 8
-        notification: silent
-        critical: false
-  rationale: This is English coverage of the same Russian drone found off Poland’s Baltic coast, described in the
-    past tense. It gives no current danger or explicit hostile route.
+  rationale: The current title explicitly reports a “Russian drone” with a warhead off Poland’s Baltic coast. The
+    historical factual follow-up retains 7–8 under the selected exception and is silent as the same incident.
 - id: mc-rusinowo-10
   sequence_id: rusinowo-drone-recovery-2026-09-16
   split: development
-  label_status: disputed
+  label_status: reviewed
   provenance:
     type: production
     snapshot: data/eval/production-candidates.json
@@ -1006,8 +823,8 @@ cases:
     published_at: '2026-09-16T09:19:00+00:00'
     fetched_at: '2026-09-16T09:27:39.819436+00:00'
   expected:
-    urgency_min: 7
-    urgency_max: 8
+    urgency_min: 1
+    urgency_max: 4
     affected_countries:
     - PL
     notification: silent
@@ -1018,25 +835,12 @@ cases:
       attack_countries: []
       protection: none
       status: historical
-    policy_pending: true
-    placeholder_source: legacy_v1_annotation_not_an_operator_choice
-    proposed_labels:
-      current_danger:
-        urgency_min: 1
-        urgency_max: 4
-        notification: silent
-        critical: false
-      original_severity:
-        urgency_min: 7
-        urgency_max: 8
-        notification: silent
-        critical: false
-  rationale: Gerbera-2, a warhead, and Rusinowo identify the same recovered object. The report is retrospective,
-    while alert severity remains an operator choice.
+  rationale: Gerbera-2, a warhead, and Rusinowo identify the same object, but the current title does not explicitly
+    call it Russian. The model name and memory cannot establish origin, so severity is 1–4 and silent.
 - id: mc-rusinowo-11
   sequence_id: rusinowo-drone-recovery-2026-09-16
   split: development
-  label_status: disputed
+  label_status: reviewed
   provenance:
     type: production
     snapshot: data/eval/production-candidates.json
@@ -1071,25 +875,12 @@ cases:
       attack_countries: []
       protection: none
       status: resolved
-    policy_pending: true
-    placeholder_source: legacy_v1_annotation_not_an_operator_choice
-    proposed_labels:
-      current_danger:
-        urgency_min: 1
-        urgency_max: 4
-        notification: silent
-        critical: false
-      original_severity:
-        urgency_min: 7
-        urgency_max: 8
-        notification: silent
-        critical: false
-  rationale: The prosecutors’ report ties the Russian Gerbera-2 and warhead to the same beach recovery and expressly
-    says it was safely neutralised.
+  rationale: The current summary explicitly calls the recovered object a Russian Gerbera-2 and says its warhead
+    was safely neutralised. It retains 7–8 but is a silent same-incident follow-up.
 - id: mc-rusinowo-12
   sequence_id: rusinowo-drone-recovery-2026-09-16
   split: development
-  label_status: disputed
+  label_status: reviewed
   provenance:
     type: production
     snapshot: data/eval/production-candidates.json
@@ -1123,25 +914,12 @@ cases:
       attack_countries: []
       protection: none
       status: historical
-    policy_pending: true
-    placeholder_source: legacy_v1_annotation_not_an_operator_choice
-    proposed_labels:
-      current_danger:
-        urgency_min: 1
-        urgency_max: 4
-        notification: silent
-        critical: false
-      original_severity:
-        urgency_min: 7
-        urgency_max: 8
-        notification: silent
-        critical: false
-  rationale: The title retrospectively identifies the drone found in Poland as a Russian Gerbera-2 with a warhead.
-    It states neither a current danger nor the object’s route.
+  rationale: The current title explicitly identifies a Russian Gerbera-2 found in Poland with a warhead. The factual
+    retrospective retains 7–8 under the selected exception, while same-incident memory suppresses another notification.
 - id: mc-tryncza-01
   sequence_id: tryncza-civilian-drone-2026-09-16
   split: development
-  label_status: provisional
+  label_status: disputed
   provenance:
     type: production
     snapshot: data/eval/production-candidates.json
@@ -1152,7 +930,7 @@ cases:
     evidence:
       attack_countries: Dron na dożynkach
       protection: ''
-      status: Zatrzymano mężczyznę
+      status: ''
   article:
     title: Dron na dożynkach z udziałem Karola Nawrockiego. Zatrzymano mężczyznę
     summary: Dron na dożynkach z udziałem Karola Nawrockiego. Zatrzymano mężczyznę
@@ -1173,13 +951,14 @@ cases:
     facts:
       attack_countries: []
       protection: none
-      status: resolved
-  rationale: A drone at a Polish harvest festival and a detention are a concrete local incident, but no military
-    origin or hostile physical attack is stated. The civilian/unknown-ground-drone band is 1–4.
+      status: unclear
+  rationale: The source reports an airborne drone at a Polish festival and a detention, but the explicit 1–4 rule
+    covers ground finds and detention does not prove danger ended. The low silent label and unclear status therefore
+    remain disputed.
 - id: mc-tryncza-02
   sequence_id: tryncza-civilian-drone-2026-09-16
   split: development
-  label_status: provisional
+  label_status: disputed
   provenance:
     type: production
     snapshot: data/eval/production-candidates.json
@@ -1190,7 +969,7 @@ cases:
     evidence:
       attack_countries: Incydent z dronem na Dożynkach Prezydenckich w Tryńczy
       protection: ''
-      status: Prokuratura wszczęła postępowanie
+      status: ''
   article:
     title: Incydent z dronem na Dożynkach Prezydenckich w Tryńczy. Prokuratura wszczęła postępowanie - Rzeszów Info
     summary: Incydent z dronem na Dożynkach Prezydenckich w Tryńczy. Prokuratura wszczęła postępowanie Rzeszów Info
@@ -1212,13 +991,14 @@ cases:
     facts:
       attack_countries: []
       protection: none
-      status: historical
-  rationale: The prosecutor investigation concerns the same Tryńcza festival drone. It is a retrospective local
-    Polish incident with no military attack or protective order.
+      status: unclear
+  rationale: The prosecutor investigation concerns the same airborne Tryńcza festival drone, but the source does
+    not establish military origin, current danger, or resolution. Because the event falls outside the explicit ground-find
+    rule, its 1–4 silent label remains disputed.
 - id: mc-tryncza-03
   sequence_id: tryncza-civilian-drone-2026-09-16
   split: development
-  label_status: provisional
+  label_status: disputed
   provenance:
     type: production
     snapshot: data/eval/production-candidates.json
@@ -1229,7 +1009,7 @@ cases:
     evidence:
       attack_countries: Bezzałogowy statek powietrzny wleciał w zamkniętą strefę
       protection: ''
-      status: policja zatrzymała mężczyznę
+      status: ''
   article:
     title: Incydent podczas dożynek z udziałem Karola Nawrockiego. Mężczyzna zatrzymany
     summary: Podczas niedzielnych dożynek w Tryńczy na Podkarpaciu doszło do incydentu z udziałem drona. Bezzałogowy
@@ -1253,13 +1033,14 @@ cases:
     facts:
       attack_countries: []
       protection: none
-      status: resolved
-  rationale: The fuller report confirms the same drone entered a closed zone and that police detained a man. The
-    local incident is resolved and remains in the 1–4 civilian/unknown band.
+      status: unclear
+  rationale: The fuller report confirms that an airborne drone entered a closed zone and police detained a man,
+    but detention does not establish that drone danger ended. The event is outside the explicit ground-find rule,
+    so status is unclear and the 1–4 silent label is disputed.
 - id: mc-geran-analysis-01
   sequence_id: geran-5-analysis-2026-09-16
   split: development
-  label_status: provisional
+  label_status: reviewed
   provenance:
     type: production
     snapshot: data/eval/production-candidates.json
@@ -1301,7 +1082,7 @@ cases:
 - id: mc-geran-analysis-02
   sequence_id: geran-5-analysis-2026-09-16
   split: development
-  label_status: provisional
+  label_status: reviewed
   provenance:
     type: production
     snapshot: data/eval/production-candidates.json
@@ -1339,7 +1120,7 @@ cases:
 - id: mc-assassination-01
   sequence_id: russian-assassination-network-2026-09-16
   split: development
-  label_status: provisional
+  label_status: reviewed
   provenance:
     type: production
     snapshot: data/eval/production-candidates.json
@@ -1462,7 +1243,7 @@ cases:
 - id: mc-synth-escalation-01
   sequence_id: synthetic-polish-incursion-wave
   split: development
-  label_status: provisional
+  label_status: reviewed
   provenance:
     type: synthetic
     synthetic: true
@@ -1501,7 +1282,7 @@ cases:
 - id: mc-synth-escalation-02
   sequence_id: synthetic-polish-incursion-wave
   split: development
-  label_status: provisional
+  label_status: reviewed
   provenance:
     type: synthetic
     synthetic: true
@@ -1511,7 +1292,7 @@ cases:
     evidence:
       attack_countries: one attack-capable Shahed crossed into Poland
       protection: Air defence tracked it
-      status: no impact was reported
+      status: ''
   article:
     title: Russian Shahed confirmed in Polish airspace during the same overnight alert
     summary: Polish command confirmed that one attack-capable Shahed crossed into Poland during the alert reported
@@ -1535,13 +1316,14 @@ cases:
       attack_countries:
       - PL
       protection: precaution
-      status: active
-  rationale: The same alert now includes an explicit attack-capable Shahed incursion into Poland. That is an active
-    Polish physical incident and a critical same-episode escalation.
+      status: unclear
+  rationale: The source confirms a recent attack-capable Shahed incursion into Poland in the same alert, preserving
+    the 9–10 escalation. Its past crossing/tracking language states neither ongoing danger nor resolution, so facts.status
+    is unclear.
 - id: mc-synth-escalation-03
   sequence_id: synthetic-polish-incursion-wave
   split: development
-  label_status: provisional
+  label_status: reviewed
   provenance:
     type: synthetic
     synthetic: true
@@ -1577,3 +1359,83 @@ cases:
       status: active
   rationale: The text says the prior episode ended before a new wave of strike drones over Lublin and a resident
     shelter order. This is a new critical Polish incident.
+- id: mc-synth-border-awareness-01
+  sequence_id: synthetic-confirmed-ukraine-border-strike
+  split: development
+  label_status: reviewed
+  provenance:
+    type: synthetic
+    synthetic: true
+    content_language: pl
+    language_mismatch: false
+    purpose: Positive control for a confirmed Ukraine-side near-border strike under the awareness choice.
+    evidence:
+      attack_countries: uderzył po ukraińskiej stronie granicy, trzy kilometry od Polski
+      protection: nie wydano ostrzeżenia dla mieszkańców Polski
+      status: Ataki po ukraińskiej stronie nadal trwają
+  article:
+    title: Rosyjski pocisk uderzył wewnątrz Ukrainy, trzy kilometry od granicy z Polską
+    summary: Władze potwierdziły, że rosyjski pocisk uderzył po ukraińskiej stronie granicy, trzy kilometry od Polski.
+      Ataki po ukraińskiej stronie nadal trwają; nie naruszono polskiego terytorium i nie wydano ostrzeżenia dla
+      mieszkańców Polski.
+    source_name: Synthetic policy control PL
+    source_url: synthetic://confirmed-ukraine-border-strike/original
+    source_type: synthetic
+    language: pl
+    published_at: '2026-09-18T01:00:00+00:00'
+    fetched_at: '2026-09-18T01:02:00+00:00'
+  expected:
+    urgency_min: 5
+    urgency_max: 6
+    affected_countries: []
+    notification: initial
+    relation: new
+    critical: false
+    facts:
+      attack_countries:
+      - UA
+      protection: none
+      status: active
+  rationale: The source explicitly places the active Russian strike inside Ukraine near Poland and expressly denies
+    a Polish incursion or resident warning. The selected awareness rule therefore sends one 5–6 initial notification
+    without marking Poland affected.
+- id: mc-synth-border-awareness-02
+  sequence_id: synthetic-confirmed-ukraine-border-strike
+  split: development
+  label_status: reviewed
+  provenance:
+    type: synthetic
+    synthetic: true
+    content_language: en
+    language_mismatch: false
+    purpose: Independent translated confirmation of the same Ukraine-side near-border strike.
+    evidence:
+      attack_countries: the same missile impact occurred inside Ukraine three kilometres from Poland
+      protection: no warning was issued to Polish residents
+      status: Strikes remained active on the Ukrainian side
+  article:
+    title: 'Independent confirmation: missile struck inside Ukraine near the Polish border'
+    summary: A second outlet independently confirmed that the same missile impact occurred inside Ukraine three
+      kilometres from Poland. Strikes remained active on the Ukrainian side; Polish territory was not breached and
+      no warning was issued to Polish residents.
+    source_name: Synthetic policy control EN
+    source_url: synthetic://confirmed-ukraine-border-strike/confirmation
+    source_type: synthetic
+    language: en
+    published_at: '2026-09-18T01:12:00+00:00'
+    fetched_at: '2026-09-18T01:14:00+00:00'
+  expected:
+    urgency_min: 5
+    urgency_max: 6
+    affected_countries: []
+    notification: silent
+    relation: same
+    same_as: mc-synth-border-awareness-01
+    critical: false
+    facts:
+      attack_countries:
+      - UA
+      protection: none
+      status: active
+  rationale: The independent English report explicitly confirms the same Ukraine-side impact and ongoing attack
+    without a Polish incident or resident warning. It remains independently 5–6 but is silent as same-incident confirmation.

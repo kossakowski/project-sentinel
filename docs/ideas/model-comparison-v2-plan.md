@@ -5,15 +5,18 @@ Do not modify the production classifier, runtime configuration or alert routing.
 
 ## Policy decisions
 
-Two consequential choices were sent to the operator and remain pending:
+The operator resolved both choices on 2026-09-20:
 
 - A confirmed strike inside Ukraine very close to Poland, without Polish incursion
-  or resident shelter warning: proposed awareness 5–6; alternatives log 1–4 or call 9–10.
-- A Russian drone already neutralised with no remaining danger: proposed current
-  danger 1–4; alternative retain original incident severity 7–8.
+  or resident shelter warning: awareness 5–6, without a phone call.
+- A Russian military drone found in Poland, already neutralised with no remaining
+  danger: retain incident severity 7–8 so the operator learns of the incident once.
+  Follow-up reports of that same incident remain suppressed. This exception does
+  not invent current danger or establish a hostile impact from recovery alone.
 
-Do not assume approval or run a revised policy until these choices are answered.
-Unrelated scoring, transport controls and unambiguous challenge preparation can proceed.
+The choices are recorded in `tests/fixtures/benchmark_policy_v2.yaml`. Source
+ambiguities remain distinct from policy choices: an unspecified side of a border
+is still unknown, and Russian origin must be supported by the current source.
 
 Retain the existing rule that explicit official resident air-raid/shelter/evacuation
 orders in a monitored country are critical even without confirmed local impact.
@@ -65,10 +68,11 @@ usage estimates, not the deliberately difficult challenge-set error distribution
 ## Preparation status
 
 The evaluation code, revised development copy and independently reviewed synthetic
-holdout are prepared. Both datasets support offline structural validation. Paid
-inference remains blocked by the two unresolved operator choices and the dependent
-development labels. No revised live comparison or production change is implied by
-passing the offline software tests.
+holdout are prepared. Both datasets support offline structural validation. The
+operator choices and dependent development labels are resolved and independently
+reviewed: 24 reviewed development cases and 12 disputed cases, plus the unchanged
+63 reviewed / 1 disputed held-out cases. No production change is implied by software tests or
+benchmark results.
 
 The design follows the task-specific criteria and reviewed-data principles in
 [OpenAI's evaluation guidance](https://developers.openai.com/api/docs/guides/evaluation-best-practices).
