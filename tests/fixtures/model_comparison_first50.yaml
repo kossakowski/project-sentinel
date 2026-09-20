@@ -1,0 +1,1438 @@
+# Frozen first-round model-comparison fixture.
+# Labels are provisional research annotations, not independent human approval.
+version: 1
+description: "Fifty chronological PL/EN/UA/RU cases for offline model comparison: 44 verbatim production snapshot records and 6 explicit synthetic policy contrasts."
+cases:
+  - id: "mc-border-train-01"
+    sequence_id: "border-train-near-poland-2026-09-13"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 0
+      production_article_id: "035b1b51-dae6-4292-8cb0-2c75db6f740c"
+      content_language: "uk"
+      language_mismatch: false
+    article:
+      title: "Рускі дрони атакували поблизу польського кордону, влучили у потяг до Варшави - České noviny"
+      summary: "Рускі дрони атакували поблизу польського кордону, влучили у потяг до Варшави České noviny"
+      source_name: "GoogleNews:дрони Польща"
+      source_url: "https://news.google.com/rss/articles/CBMiZkFVX3lxTE9oSUVHMGw4NmU5YXpyZGF3VjJMa3h2T1dOTlBhcXFRZ2xDNWVoUEVDUFdUTWxZWW8zNWJUcWRvNWNITENpWk9Fb09qRjF2WE9jT1R5OHJhNlVScWNDdHFrN2dhRzdLQQ?oc=5"
+      source_type: "google_news"
+      language: "uk"
+      published_at: "2026-09-13T09:40:00+00:00"
+      fetched_at: "2026-09-13T09:48:28.369319+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 3
+      affected_countries: []
+      notification: silent
+      relation: new
+      critical: false
+    rationale: "The text places the strike near, not inside, Poland and describes a train bound for Warsaw. Under the Ukraine-only rule this is low urgency; it starts the remembered incident but should not notify."
+  - id: "mc-border-train-02"
+    sequence_id: "border-train-near-poland-2026-09-13"
+    split: development
+    label_status: disputed
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 2
+      production_article_id: "155dd5c7-4d84-437d-a617-c891314c4881"
+      content_language: "uk"
+      language_mismatch: false
+    article:
+      title: "Дрони РФ вдарили за кілометр від Польщі: Європа побоюється нових провокацій (ВІДЕО) - uatv.ua"
+      summary: "Дрони РФ вдарили за кілометр від Польщі: Європа побоюється нових провокацій (ВІДЕО) uatv.ua"
+      source_name: "GoogleNews:дрони Польща"
+      source_url: "https://news.google.com/rss/articles/CBMiqAFBVV95cUxOZ3dKemdTSTBLVnAwYlFjOUxGcXpUSkxsMnpDTmxMdWpSRG5zRFdKTFN1QXNyQWJoNjFYVmhWRnhZc2VFa2REV19JOS1DalhyeDBweVpTeXNFcHE3LTQ4ZDVBS3NkVG1CLUdMdUYxV2xaYlBCN1FtbkdhTW0teGdWTTFma3RpUG0xSWJIYm91U2N5aDBGalk5TG5BUk5lZjhyVHVBN2psUGg?oc=5"
+      source_type: "google_news"
+      language: "uk"
+      published_at: "2026-09-13T18:29:00+00:00"
+      fetched_at: "2026-09-13T18:42:11.003141+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 3
+      affected_countries: []
+      notification: silent
+      relation: same
+      same_as: "mc-border-train-01"
+      critical: false
+    rationale: "The one-kilometre proximity and same date support the same border-area strike, but the title-only record lacks the train detail. Identity is plausible rather than conclusive, so the label is disputed."
+  - id: "mc-border-train-03"
+    sequence_id: "border-train-near-poland-2026-09-13"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 73
+      production_article_id: "a065a8a6-5028-4315-b134-41a14e38257d"
+      content_language: "en"
+      language_mismatch: false
+    article:
+      title: "'They're Playing With Fire': A Russian Drone Struck 1.2 Miles From NATO's Border, Beside a Train Carrying Former U.S. Intelligence Officials. - 19FortyFive"
+      summary: "'They're Playing With Fire': A Russian Drone Struck 1.2 Miles From NATO's Border, Beside a Train Carrying Former U.S. Intelligence Officials. 19FortyFive"
+      source_name: "GoogleNews:Russia attack NATO"
+      source_url: "https://news.google.com/rss/articles/CBMi_wFBVV95cUxNRnkxbHZYNUh3YVBVXzJCWnFqSDVvYUVfTHpybng5YzdXZmt3d0FFWHNQTTJCVXBzc1lzaFhlTjFPY3ZYZm5iclVoZjRkQ1QwTkRMeHBfX21LbUZ5YXpSZzFOOVBkdUpIMjFPenktbEtXSG5RZ0YtSGlLWXVJQXRTV1YwMTRPY2RTcEZ0NVpQa291a2tTYzgxZldkOTdEYXJaR0NsYlhsbml5bldZZ0RMT0VPRGt5eWcwNzRicTRwNHRNdFY3VnptZUlnSDBMaGZGeG9fSEFGQXl3NzdJZ012OGFxQlJPRmptVFo5VHhyWVZHdjdrcmN4a2xpWlJYM2c?oc=5"
+      source_type: "google_news"
+      language: "en"
+      published_at: "2026-09-16T15:33:24+00:00"
+      fetched_at: "2026-09-16T15:50:31.060896+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 3
+      affected_countries: []
+      notification: silent
+      relation: same
+      same_as: "mc-border-train-01"
+      critical: false
+    rationale: "The train beside a Russian drone impact 1.2 miles from the NATO border is a later English report of the same near-border strike. The impact is still in Ukraine, so it remains low urgency and silent."
+  - id: "mc-border-train-04"
+    sequence_id: "border-train-near-poland-2026-09-13"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 84
+      production_article_id: "34293c33-f017-448a-b4a9-b2ddfa14493b"
+      content_language: "en"
+      language_mismatch: false
+    article:
+      title: "Kyiv says Belarus reactivated relays that helped Russian drones strike a gas station and passenger train near Ukraine’s border with Poland - Meduza"
+      summary: "Kyiv says Belarus reactivated relays that helped Russian drones strike a gas station and passenger train near Ukraine’s border with Poland Meduza"
+      source_name: "GoogleNews:military attack Poland"
+      source_url: "https://news.google.com/rss/articles/CBMiiwJBVV95cUxNZmFQSWlIalh4akI5WnRuU0hrT1ZDUXdKQ2F2a0dpSFhSYTRkQXFzbDFCT0cwVUZFd1Fzdk5iR0JkZ0JmalgxNjZSLW5IbXRRT0taVlpVcElucUJZWnlhTzE4eGMtRGUtRGp0N2ZCT0N5LWRJRHFqM0xzVHQxZGtEV1FOdmxha3hWekdwZzRfRDVaNmszdlJOaWRVMHpvSnBMaU9tTGtYNTgxR1VjVkRGNlhqSGpuRzRYZXVTdFZDVDNvYzVKeTZNNm4xZXpXSkg1V1phRmpnQzdRQ2NCMHI3Z1BLNXhJZnQtNHc5aU1FeFlTX1AzamIwS1o4eFpwcFBxMkpfQnhaUXg2UG_SAYsCQVVfeXFMTWZhUElpSGpYeGpCOVp0blNIa09WQ1F3SkNhdmtHaUhYUmE0ZEFxc2wxQk9HMFVGRXdRc3ZOYkdCZGdCZmpYMTY2Ui1uSG10UU9LWlZaVXBJbnFCWVp5YU8xOHhjLURlLURqdDdmQk9DeS1kSURxajNMc1R0MWRrRFdRTnZsYWt4VnpHcGc0X0Q1WjZrM3ZSTmlkVTB6b0pwTGlPbUxrWDU4MUdVY1ZERjZYakhqbkc0WGV1U3RWQ1Qzb2M1Snk2TTZuMWV6V0pINVdaYUZqZ0M3UUNjQjByN2dQSzV4SWZ0LTR3OWlNRXhZU19QM2piMEtaOHhacHBQcTJKX0J4WlF4NlBv?oc=5"
+      source_type: "google_news"
+      language: "en"
+      published_at: "2026-09-16T16:29:00+00:00"
+      fetched_at: "2026-09-16T17:22:45.079661+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 3
+      affected_countries: []
+      notification: silent
+      relation: same
+      same_as: "mc-border-train-01"
+      critical: false
+    rationale: "The passenger-train and gas-station details near Ukraine's border with Poland elaborate the same strike without moving the physical impact into Poland. This is a silent same-incident update."
+  - id: "mc-scramble-pl-01"
+    sequence_id: "poland-precautionary-scramble-2026-09-16"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 7
+      production_article_id: "0d5ad366-3dbb-4bcb-b901-57060a9fab42"
+      content_language: "pl"
+      language_mismatch: false
+    article:
+      title: "Rosyjskie drony blisko Polski. Alert dla dwóch województw! - wPolityce.pl"
+      summary: "Rosyjskie drony blisko Polski. Alert dla dwóch województw! wPolityce.pl"
+      source_name: "GoogleNews:rosyjskie drony Polska"
+      source_url: "https://news.google.com/rss/articles/CBMihgFBVV95cUxOZG1RYUJwbllHdC1JRGR6cUhiOG5OVW1NN0JDNUpZN3kyekQ0YmRSYlJJOGR2bGpFNDlHMEJlNVF3MjJ0Y29xbjZmb0IzNUxwQ0kxQ3lydUszci1Lbjl4UDk4RkxEd1BiT3hhckQyT2pEOXZHWktLeUVQQml3UEdleDZzcUFSZw?oc=5"
+      source_type: "google_news"
+      language: "pl"
+      published_at: "2026-09-16T06:15:20+00:00"
+      fetched_at: "2026-09-16T06:19:38.417065+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 10
+      affected_countries: ["PL"]
+      notification: initial
+      relation: new
+      critical: true
+    rationale: "The title explicitly reports an alert for two Polish voivodeships caused by nearby Russian drones. The current shelter/air-alert calibration rule sets a minimum of 9, even though no Polish impact is stated."
+  - id: "mc-scramble-pl-02"
+    sequence_id: "poland-precautionary-scramble-2026-09-16"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 8
+      production_article_id: "a010b6ef-3578-42e7-8ab8-30228bb65228"
+      content_language: "pl"
+      language_mismatch: false
+    article:
+      title: "Poranny alarm, polskie wojsko poderwało lotnictwo. Dwa lotniska wstrzymały pracę, jest komunikat - Goniec.pl"
+      summary: "Poranny alarm, polskie wojsko poderwało lotnictwo. Dwa lotniska wstrzymały pracę, jest komunikat Goniec.pl"
+      source_name: "GoogleNews:atak wojskowy Polska"
+      source_url: "https://news.google.com/rss/articles/CBMiwwFBVV95cUxPR0xpR2FNRjZhUzczdTFwb3lZOC1BYjk1QWFIanNMWFhvbUxnNVR1ekhkMmdtdHh5eEN0V1Myc3ZoUmpraTdyUmo5aTNOY0xvY3p3OGR0LTBMOHcxNnVGdE1KMTB1YkFPb200ZWozR3otRXNiRzJPSDhkVVBVSDNvVGdlS0VDQWFJdURxeG5SZWNIdmlZVndmeUNQS0hMTmQxc0xEaDZrNzJfMmxJMUpoTEZzNmdSeXFPTXlrNDYxZ3ZWYVk?oc=5"
+      source_type: "google_news"
+      language: "pl"
+      published_at: "2026-09-16T06:14:17+00:00"
+      fetched_at: "2026-09-16T06:22:39.993697+00:00"
+    expected:
+      urgency_min: 5
+      urgency_max: 6
+      affected_countries: ["PL"]
+      notification: silent
+      relation: same
+      same_as: "mc-scramble-pl-01"
+      critical: false
+    rationale: "The same morning response is described through scrambled aviation and airport closures, with no strike or incursion into Poland stated. It is precautionary and duplicate coverage, so no new notification."
+  - id: "mc-scramble-pl-03"
+    sequence_id: "poland-precautionary-scramble-2026-09-16"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 13
+      production_article_id: "e08cae17-d5cb-46e0-98b1-9ab139c5d27a"
+      content_language: "pl"
+      language_mismatch: false
+    article:
+      title: "Polskie myśliwce pilnie poderwane, RCB bije na alarm. Zamknięto dwa lotniska - NewMedia24"
+      summary: "Polskie myśliwce pilnie poderwane, RCB bije na alarm. Zamknięto dwa lotniska NewMedia24"
+      source_name: "GoogleNews:atak wojskowy Polska"
+      source_url: "https://news.google.com/rss/articles/CBMitAFBVV95cUxOSlJHMmVNLWJyV0lzSnZsUl9mSk5mTU9lTzBHbW5BeGE3ZUtoVDF2REVadkVLZDlsOUdmY0dJTUNCNjlhZThITHZ6MXluYnRSSUV5eFJsalBISFdrT0VvVTdSZE56RHBYUUJIMktLNWo3dy1pS1NCNDREVkJSaS1ualdWT05mZHNWOFNDaG5paTNRQS1vT2dicHlQVTZYaV92cEM5NGkxT0gxVGNycWNubnhTdko?oc=5"
+      source_type: "google_news"
+      language: "pl"
+      published_at: "2026-09-16T06:34:54+00:00"
+      fetched_at: "2026-09-16T06:44:04.435855+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 10
+      affected_countries: ["PL"]
+      notification: silent
+      relation: same
+      same_as: "mc-scramble-pl-01"
+      critical: true
+    rationale: "This title again combines the same fighter scramble and airport closures with an RCB alert. The resident-alert wording keeps the independent urgency critical, but repeated coverage is silent."
+  - id: "mc-scramble-pl-04"
+    sequence_id: "poland-precautionary-scramble-2026-09-16"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 16
+      production_article_id: "3d5dd2e1-a81b-4dd5-99c1-7dbe5ef10dba"
+      content_language: "pl"
+      language_mismatch: false
+    article:
+      title: "Wojsko postawione w stan gotowości. Zagrożenie trwało godzinę - Głos Wielkopolski"
+      summary: "Wojsko postawione w stan gotowości. Zagrożenie trwało godzinę Głos Wielkopolski"
+      source_name: "GoogleNews:rosyjskie drony Polska"
+      source_url: "https://news.google.com/rss/articles/CBMi7wFBVV95cUxQV2IzRVFxekFma2Z3dUVTRTV5RWV6Z05yUVZLX2twLVZ5M0tCTFlQbnB2U2ZBLUh3V2JBa2lZSzRVdXBDQy04VXotNE1ya2wtZENMc0IxRTB6eE5GNy10NThKN0RYX0lLdEhKYXZCQ0VrS25jT1liTjJYS1VZMWlIRWVrRThRa2FxclV3eExNRjVCVDJhZl9nUlhGcmFEbGhRbS1ocXhaM1lWUERnTmFlNDZHR0J3UWVhTjAtdGlpTjZYUEl6UUljQzluYTg0aG9YRS1lai12ZXNha0xlM21zOEY1Skh4cnNGSXVOTlVHZw?oc=5"
+      source_type: "google_news"
+      language: "pl"
+      published_at: "2026-09-16T07:04:42+00:00"
+      fetched_at: "2026-09-16T07:15:00.757255+00:00"
+    expected:
+      urgency_min: 5
+      urgency_max: 6
+      affected_countries: ["PL"]
+      notification: silent
+      relation: same
+      same_as: "mc-scramble-pl-01"
+      critical: false
+    rationale: "The one-hour readiness period is the same morning precaution and states no impact or territorial violation. It is a silent duplicate at precautionary-scramble urgency."
+  - id: "mc-scramble-pl-05"
+    sequence_id: "poland-precautionary-scramble-2026-09-16"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 17
+      production_article_id: "64c3cace-41e8-496a-8ca8-6c0ce97f3797"
+      content_language: "uk"
+      language_mismatch: false
+    article:
+      title: "У Польщі зранку закривали аеропорти Жешува й Любліна через російські дрони на заході України - nv.ua"
+      summary: "У Польщі зранку закривали аеропорти Жешува й Любліна через російські дрони на заході України nv.ua"
+      source_name: "GoogleNews:дрони Польща"
+      source_url: "https://news.google.com/rss/articles/CBMixAFBVV95cUxPSFdLb1VhX1FTSmZZNFk4NkNMWjhzVFdZX3F2aTQ1Q3hIekZ5YXl3R2NuYVZ2azQxOXFEMzdDMFNncW9OZDktUVNqWXM4Qks4X3M4RWRzMmZPMW1oSXo5dm5aT1FlOG4zbWVWSldOWkFZUzB6aEllbGxxWXBJVThLSW9ObzZmbnpmNTlyeE5wVnFlczZPMi1MSFRobGJwZ3RzVXRraXUwLW9zd29sZ252NzlxdGtZMGw2S202NW9mRW52cE130gG0AUFVX3lxTE5Ydlg4MW1YX2dzMzU4RWNfUTZkcDZjUkxCc2JFUmVZeEdlR1BjNFZ2MjJvaHNhNDFOeDN0NXJ1NWFCanNFR24xbU12U2VmZEVVVW96dGZ2RTk3Mk1DcGF1Z3pkMUNseDRfd0hvLVU2eVg1ckwzRWNmUUdkWHJrWUNNRUhhOEpURlM4R1Y2LVdVS2hZWE5mY3ZtanJhLXRmV0ROMFVOVVpDNUFjY0pVZUIwaW94OA?oc=5"
+      source_type: "google_news"
+      language: "uk"
+      published_at: "2026-09-16T07:26:00+00:00"
+      fetched_at: "2026-09-16T07:30:21.897492+00:00"
+    expected:
+      urgency_min: 5
+      urgency_max: 6
+      affected_countries: ["PL"]
+      notification: silent
+      relation: same
+      same_as: "mc-scramble-pl-01"
+      critical: false
+    rationale: "This Ukrainian report explicitly attributes the Polish airport closures to Russian drones over western Ukraine. It confirms precaution rather than an attack on Poland and should merge silently."
+  - id: "mc-scramble-pl-06"
+    sequence_id: "poland-precautionary-scramble-2026-09-16"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 26
+      production_article_id: "583a5cc0-9801-4a42-a38a-7ddc390a2263"
+      content_language: "en"
+      language_mismatch: false
+    article:
+      title: "Poland scrambles fighter jets, temporarily closes airports while Russian drones attack Ukraine"
+      summary: "Air raid alerts were issued for residents of the Lublin and Podkarpackie regions"
+      source_name: "Kyiv Independent"
+      source_url: "https://kyivindependent.com/poland-scrambles-fighter-jets-temporarily-closes-airports-while-russian-drones-attack-ukraine"
+      source_type: "rss"
+      language: "en"
+      published_at: "2026-09-16T09:03:43+00:00"
+      fetched_at: "2026-09-16T09:06:08.729077+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 10
+      affected_countries: ["PL"]
+      notification: silent
+      relation: same
+      same_as: "mc-scramble-pl-01"
+      critical: true
+    rationale: "The summary explicitly says air raid alerts were issued to residents of Lublin and Podkarpackie. That meets the non-negotiable alert rule, but it is another report of the already-notified morning incident."
+  - id: "mc-scramble-pl-07"
+    sequence_id: "poland-precautionary-scramble-2026-09-16"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 28
+      production_article_id: "e1cf2782-e05f-47ff-a063-61a111a73979"
+      content_language: "en"
+      language_mismatch: false
+    article:
+      title: "Poland scrambles fighter jets, temporarily closes airports while Russian drones attack Ukraine - kyivindependent.com"
+      summary: "Poland scrambles fighter jets, temporarily closes airports while Russian drones attack Ukraine kyivindependent.com"
+      source_name: "GoogleNews:military attack Poland"
+      source_url: "https://news.google.com/rss/articles/CBMivwFBVV95cUxNTDZyTnNJRmh5R3BjWU01ei1nbDlKbTllYzRLTzBSWUFLcXZhcXdhUUFDdU9CTlk0NlAySHVwUHpkVWl5aEVBSFI3cFFraE5rMl9ZWWkwS1JtdGlWWTBoSHhOOFBwSThTTTJrS0xpUmlIcmxGamV0amVvaGZPWTNVWVRvT3ZGbEdZejBvX2pGUDlBQi1UbEVfOE5WVHlXa0gteW96LTRMVTEwaVRtRWtvYlZoMVRVdHFIcjBQMVN2TQ?oc=5"
+      source_type: "google_news"
+      language: "en"
+      published_at: "2026-09-16T09:03:43+00:00"
+      fetched_at: "2026-09-16T09:09:09.874506+00:00"
+    expected:
+      urgency_min: 5
+      urgency_max: 6
+      affected_countries: ["PL"]
+      notification: silent
+      relation: same
+      same_as: "mc-scramble-pl-01"
+      critical: false
+    rationale: "This syndicated title gives only the precautionary scramble and airport closures while drones attack Ukraine. It adds no danger beyond the sequence and is silent."
+  - id: "mc-rusinowo-01"
+    sequence_id: "rusinowo-drone-recovery-2026-09-16"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 10
+      production_article_id: "b16876f5-e2f9-44aa-b31b-760d76224d83"
+      content_language: "pl"
+      language_mismatch: false
+    article:
+      title: "Wybuchy na plaży w Rusinowie. Zdetonowano elementy rosyjskiego drona - Wiadomości Onet"
+      summary: "Wybuchy na plaży w Rusinowie. Zdetonowano elementy rosyjskiego drona Wiadomości Onet"
+      source_name: "GoogleNews:atak wojskowy Polska"
+      source_url: "https://news.google.com/rss/articles/CBMipAFBVV95cUxQY3BDS2NXNmVOdllyaUJaakhMQldNR0lZU0MyY0pvUmpJYkhsZ0RyMkJxU09FRmc2ZTdTWkNyU2xvRFA1Nm1iRmY5YzBIUHN4eGhmZHFYRGtoSnRsZEY3TExJVlp4S3R2M3NWdTAtRloyd0dOVXNNUXhhT0FiZ1NSQ0RsNzhVTUVOM0VrLXhLQ0tENEpvcnotSnZlVXJ6N3M3ZlBTNA?oc=5"
+      source_type: "google_news"
+      language: "pl"
+      published_at: "2026-09-16T06:33:31+00:00"
+      fetched_at: "2026-09-16T06:37:59.734528+00:00"
+    expected:
+      urgency_min: 7
+      urgency_max: 8
+      affected_countries: ["PL"]
+      notification: initial
+      relation: new
+      critical: false
+    rationale: "Russian drone components were handled and detonated on a Polish beach. Poland priority makes this serious, but the text describes controlled recovery rather than an active attack, so it is below the critical-call tier."
+  - id: "mc-rusinowo-02"
+    sequence_id: "rusinowo-drone-recovery-2026-09-16"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 12
+      production_article_id: "6afaa35b-2d6b-4ec4-a0f6-2339212077bf"
+      content_language: "pl"
+      language_mismatch: false
+    article:
+      title: "Rosyjski dron w Bałtyku. Wojsko zdetonowało części bezzałogowca"
+      summary: "Rosyjski dron odnaleziony na plaży w Rusinowie został zabezpieczony do badań laboratoryjnych. Elementy bezzałogowca, które mogły stanowić zagrożenie, zostały wydobyte i zdetonowane przez wojsko."
+      source_name: "Onet Wiadomości"
+      source_url: "https://wiadomosci.onet.pl/kraj/rosyjski-dron-w-baltyku-wojsko-zdetonowalo-czesci-bezzalogowca/ss9z934"
+      source_type: "rss"
+      language: "pl"
+      published_at: "2026-09-16T06:33:31+00:00"
+      fetched_at: "2026-09-16T06:38:12.473827+00:00"
+    expected:
+      urgency_min: 7
+      urgency_max: 8
+      affected_countries: ["PL"]
+      notification: silent
+      relation: same
+      same_as: "mc-rusinowo-01"
+      critical: false
+    rationale: "The same Rusinowo beach recovery, laboratory securing, and controlled detonation are described with more detail. The danger has ended; merge silently."
+  - id: "mc-rusinowo-03"
+    sequence_id: "rusinowo-drone-recovery-2026-09-16"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 14
+      production_article_id: "44af69ff-a0c0-4101-90e2-403498553d87"
+      content_language: "pl"
+      language_mismatch: false
+    article:
+      title: "Dron na plaży w Rusinowie. Nowy komunikat wojska"
+      summary: "Wojsko wydobyło, zbadało i zneutralizowało elementy drona znalezionego na plaży w Rusinowie - przekazał rzecznik Komendanta Głównego Żandarmerii Wojskowej ppłk Dariusz Rozkosz. Bezzałogowiec został zabezpieczony do dalszych badań laboratoryjnych."
+      source_name: "Polsat News"
+      source_url: "https://polsatnews.pl/wiadomosc/2026-09-16/dron-na-plazy-w-rusinowie-nowy-komunikat-wojska"
+      source_type: "rss"
+      language: "pl"
+      published_at: "2026-09-16T06:45:00+00:00"
+      fetched_at: "2026-09-16T06:53:21.203935+00:00"
+    expected:
+      urgency_min: 7
+      urgency_max: 8
+      affected_countries: ["PL"]
+      notification: silent
+      relation: same
+      same_as: "mc-rusinowo-01"
+      critical: false
+    rationale: "The military statement covers the same recovered Rusinowo drone and confirms neutralisation. This is a non-escalating same-incident update and should stay silent."
+  - id: "mc-rusinowo-04"
+    sequence_id: "rusinowo-drone-recovery-2026-09-16"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 20
+      production_article_id: "4d29d850-1be4-4e4e-b53c-1a2c618739f1"
+      content_language: "pl"
+      language_mismatch: false
+    article:
+      title: "Dron znaleziony na plaży w Rusinowie. Nowe informacje z prokuratury - Wiadomości Onet"
+      summary: "Dron znaleziony na plaży w Rusinowie. Nowe informacje z prokuratury Wiadomości Onet"
+      source_name: "GoogleNews:atak wojskowy Polska"
+      source_url: "https://news.google.com/rss/articles/CBMiqgFBVV95cUxPd0hUUGx4X3l3ZTNKZE5tOE8yZ05YSXlHR21kOHZwOGxZTFlTMGFyNFhUaGFON3lKQ0o1OGdILTlhUTBKa09ZX3V4NTJ2dGNIUHpDdjZFOUNfeVI3TjhMQ2YxVGFIdGtUUHBQZndaQ1hyNDJCNmk0RmlVcXp6QnFQeW1aTzgtRU9kVU45dnBmWG5nUDdjZ2RfV2lIcDQweTlFZFdYVEo1VzRkZw?oc=5"
+      source_type: "google_news"
+      language: "pl"
+      published_at: "2026-09-16T08:13:50+00:00"
+      fetched_at: "2026-09-16T08:22:53.229107+00:00"
+    expected:
+      urgency_min: 7
+      urgency_max: 8
+      affected_countries: ["PL"]
+      notification: silent
+      relation: same
+      same_as: "mc-rusinowo-01"
+      critical: false
+    rationale: "The prosecutor update concerns the same drone found on Rusinowo beach. The title alone adds no current danger, so it is a silent update."
+  - id: "mc-rusinowo-05"
+    sequence_id: "rusinowo-drone-recovery-2026-09-16"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 21
+      production_article_id: "3a1ca4f0-e175-4ee9-9fd6-a979afcb7495"
+      content_language: "pl"
+      language_mismatch: false
+    article:
+      title: "Dron znaleziony na plaży w Rusinowie. Nowe informacje z prokuratury"
+      summary: "Znaleziony w poniedziałek w woj. zachodniopomorskim bezzałogowiec to, według wstępnych ustaleń, rosyjski dron Gerbera 2. Miał on głowicę bojową, która została zneutralizowana — przekazała w środę PAP prokuratura."
+      source_name: "Onet Wiadomości"
+      source_url: "https://wiadomosci.onet.pl/kraj/dron-znaleziony-na-plazy-w-rusinowie-nowe-informacje-z-prokuratury/k9wjc7t"
+      source_type: "rss"
+      language: "pl"
+      published_at: "2026-09-16T08:13:50+00:00"
+      fetched_at: "2026-09-16T08:24:58.751985+00:00"
+    expected:
+      urgency_min: 7
+      urgency_max: 8
+      affected_countries: ["PL"]
+      notification: silent
+      relation: same
+      same_as: "mc-rusinowo-01"
+      critical: false
+    rationale: "The report identifies the same recovered object as a Russian Gerbera-2 with a warhead already neutralised. It raises confidence about the past hazard but not present danger; no new notification."
+  - id: "mc-rusinowo-06"
+    sequence_id: "rusinowo-drone-recovery-2026-09-16"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 22
+      production_article_id: "500cadac-754d-4cec-97ec-7b094f97bff2"
+      content_language: "pl"
+      language_mismatch: false
+    article:
+      title: "Dron znaleziony w Rusinowie miał głowicę bojową. Prokuratura ujawnia szczegóły"
+      summary: "Dron znaleziony w Rusinowie miał głowicę bojową. Prokuratura ujawnia szczegóły"
+      source_name: "RMF24"
+      source_url: "https://rmf24.pl/regiony/szczecin/news-dron-znaleziony-w-rusinowie-mial-glowice-bojowa-prokuratura-,nIdn,1017890"
+      source_type: "rss"
+      language: "pl"
+      published_at: "2026-09-16T08:26:00+00:00"
+      fetched_at: "2026-09-16T08:29:01.439468+00:00"
+    expected:
+      urgency_min: 7
+      urgency_max: 8
+      affected_countries: ["PL"]
+      notification: silent
+      relation: same
+      same_as: "mc-rusinowo-01"
+      critical: false
+    rationale: "The warhead headline repeats the prosecutor finding about the same Rusinowo drone. It should merge silently rather than create a new incident."
+  - id: "mc-rusinowo-07"
+    sequence_id: "rusinowo-drone-recovery-2026-09-16"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 24
+      production_article_id: "a3a85d68-f6d5-4b3b-9de6-2477c470b339"
+      content_language: "pl"
+      language_mismatch: false
+    article:
+      title: "Nowe informacje o rosyjskim dronie z Rusinowa. „Miał głowicę bojową”"
+      summary: "Znaleziony w poniedziałek w woj. zachodniopomorskim bezzałogowiec to, według wstępnych ustaleń, rosyjski dron Gerbera 2. Miał on głowicę bojową, która została zneutralizowana – przekazała w środę PAP prokuratura."
+      source_name: "Defence24"
+      source_url: "https://defence24.pl/wojna-na-ukrainie-raport-specjalny-defence24/nowe-informacje-o-rosyjskim-dronie-z-rusinowa-mial-glowice-bojowa"
+      source_type: "rss"
+      language: "pl"
+      published_at: "2026-09-16T08:44:48+00:00"
+      fetched_at: "2026-09-16T08:50:37.724365+00:00"
+    expected:
+      urgency_min: 7
+      urgency_max: 8
+      affected_countries: ["PL"]
+      notification: silent
+      relation: same
+      same_as: "mc-rusinowo-01"
+      critical: false
+    rationale: "The detailed Defence24 summary repeats the Gerbera-2 identification and neutralised warhead. This is corroboration of the same completed recovery."
+  - id: "mc-rusinowo-08"
+    sequence_id: "rusinowo-drone-recovery-2026-09-16"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 30
+      production_article_id: "5231dd46-c817-48c7-9740-cecbdf61e179"
+      content_language: "pl"
+      language_mismatch: false
+    article:
+      title: "Nowe ustalenia śledczych o dronie z Rusinowa. \"Miał głowicę bojową\" - wydarzenia.interia.pl"
+      summary: "Nowe ustalenia śledczych o dronie z Rusinowa. \"Miał głowicę bojową\" wydarzenia.interia.pl"
+      source_name: "GoogleNews:rosyjskie drony Polska"
+      source_url: "https://news.google.com/rss/articles/CBMiswFBVV95cUxNZ3NTdmhjZ2hXWUxlVWo5QnowTEc5SUVHV05aOS16Sm82Snk4em5iNGRnMlVhWEdySHhHMTJHVDd6MVNnLXkyelJCZWR5dTVaUnhsTU9HV3RPYmNqT1BTMEE1RTE4MUFiQUVGODZ6NXZsM010MlpHUk5RZWRSTktYYnVNQmdSakJaeThnSHpDRjFKU2dmZ3JFdUkzOEIwS0FrTFoyWWR6UFRxcXRCVG9VOG9oOA?oc=5"
+      source_type: "google_news"
+      language: "pl"
+      published_at: "2026-09-16T08:33:34+00:00"
+      fetched_at: "2026-09-16T09:15:20.228834+00:00"
+    expected:
+      urgency_min: 7
+      urgency_max: 8
+      affected_countries: ["PL"]
+      notification: silent
+      relation: same
+      same_as: "mc-rusinowo-01"
+      critical: false
+    rationale: "The investigators' warhead finding is duplicate coverage of the same Rusinowo object. It remains a silent same-incident report."
+  - id: "mc-rusinowo-09"
+    sequence_id: "rusinowo-drone-recovery-2026-09-16"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 33
+      production_article_id: "75d261d7-e58f-4e73-9e0a-7a0f5f2e6ce7"
+      content_language: "en"
+      language_mismatch: false
+    article:
+      title: "‘Russian drone’ found off Poland’s Baltic Sea was carrying warhead - TVP World"
+      summary: "‘Russian drone’ found off Poland’s Baltic Sea was carrying warhead TVP World"
+      source_name: "GoogleNews:military attack Poland"
+      source_url: "https://news.google.com/rss/articles/CBMixgFBVV95cUxOQUY2SDRZVERXbjVFYzJRaXNGUXhIa2U5MHRaOWxpb0dkSURPRy1heF9aNFRKcTNyQm15NHByR0NYZ0EyUzlhbUs2eTRQWF9rSnhOX0NHSllhcXpIRV9rN2FYNUxWTkh0ZWRVQ2F4RFd2Z2RpSmwwLXlRdkoxaEVpeVRmeVVDYWZRX19jNGl6Z3BPU3lISEZFMXotUGkzRWk0S2xoMzRxNHNudDFvUXpHa3NwY0Y4ck43UU1MTzNPM3hGOVRHUUE?oc=5"
+      source_type: "google_news"
+      language: "en"
+      published_at: "2026-09-16T09:18:00+00:00"
+      fetched_at: "2026-09-16T09:21:31.261835+00:00"
+    expected:
+      urgency_min: 7
+      urgency_max: 8
+      affected_countries: ["PL"]
+      notification: silent
+      relation: same
+      same_as: "mc-rusinowo-01"
+      critical: false
+    rationale: "The English-language headline translates the same Baltic-coast recovery and warhead fact. Translation and outlet change do not create a new incident."
+  - id: "mc-rusinowo-10"
+    sequence_id: "rusinowo-drone-recovery-2026-09-16"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 34
+      production_article_id: "3be223bd-4f05-464a-beb4-d59b52374817"
+      content_language: "pl"
+      language_mismatch: false
+    article:
+      title: "Dron Gerbera 2 z głowicą bojową znaleziony w Rusinowie. Ustalenia służb - Wprost"
+      summary: "Dron Gerbera 2 z głowicą bojową znaleziony w Rusinowie. Ustalenia służb Wprost"
+      source_name: "GoogleNews:atak wojskowy Polska"
+      source_url: "https://news.google.com/rss/articles/CBMisAFBVV95cUxNTFFoRUh2ZmphQlROUXZ2clptZFZQb2RHOW5qeE83TFJTNVJHWC1ZVGNXa3lPTHgwa2F6VVNrYkN0WEQzS3ZXd3pnU1hlUWcxcXFqUUxFSUJfYWNuOEo4bTZxSFUwSWM0ZndudWp6djUtR0Q3VW54QUVPUngwcFU2czNLZVBWel9oSVhXR29oaUxQUTdqMVB6NThXc1FEWTEyM2t0Y1dsUDZnVTJSWDk4S9IBrwFBVV95cUxNOWhGR3Bac21VNzRxdEpiWmxfTFExemVfNHVlYjZ0MFJmQVQ0bURUbUsxdU5HTUR6VUVnVTRmRmdEd3VkZnlfeHBBaklyT2hHZS1YWW1nSWRLMllDVG5qRVRLSzF5aVI1ZC1yNmt5eXNNMXY1enVQWVkwMmMwYjBmQkc4eDhKX1Y1VlZSWnhkVHNNZ3JiUTQzN3FPNHo1OVhXb3ZNNmN1bUtuVnpNRGJN?oc=5"
+      source_type: "google_news"
+      language: "pl"
+      published_at: "2026-09-16T09:19:00+00:00"
+      fetched_at: "2026-09-16T09:27:39.819436+00:00"
+    expected:
+      urgency_min: 7
+      urgency_max: 8
+      affected_countries: ["PL"]
+      notification: silent
+      relation: same
+      same_as: "mc-rusinowo-01"
+      critical: false
+    rationale: "The Gerbera-2 and warhead details identify the same Rusinowo recovery. The report is silent duplicate coverage."
+  - id: "mc-rusinowo-11"
+    sequence_id: "rusinowo-drone-recovery-2026-09-16"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 47
+      production_article_id: "313ca553-7619-4fde-9b5f-ffacf836dfb1"
+      content_language: "en"
+      language_mismatch: false
+    article:
+      title: "Polish prosecutors say drone found on beach carried warhead"
+      summary: "Polish prosecutors say a Russian Gerbera-2 drone found on a beach carried an explosive warhead, which was safely neutralised."
+      source_name: "Ukrainska Pravda EN"
+      source_url: "https://pravda.com.ua/eng/news/2026/09/16/8053696"
+      source_type: "rss"
+      language: "en"
+      published_at: "2026-09-16T10:08:00+00:00"
+      fetched_at: "2026-09-16T11:03:24.773846+00:00"
+    expected:
+      urgency_min: 7
+      urgency_max: 8
+      affected_countries: ["PL"]
+      notification: silent
+      relation: same
+      same_as: "mc-rusinowo-01"
+      critical: false
+    rationale: "Polish prosecutors and safe neutralisation tie this report directly to the same beach drone. It adds corroboration without escalation."
+  - id: "mc-rusinowo-12"
+    sequence_id: "rusinowo-drone-recovery-2026-09-16"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 54
+      production_article_id: "44e76b3b-2c07-4d6d-8273-d13b17759fe1"
+      content_language: "en"
+      language_mismatch: false
+    article:
+      title: "A drone found in Poland turned out to be a Russian Gerbera 2 equipped with a warhead - UA.NEWS"
+      summary: "A drone found in Poland turned out to be a Russian Gerbera 2 equipped with a warhead UA.NEWS"
+      source_name: "GoogleNews:military attack Poland"
+      source_url: "https://news.google.com/rss/articles/CBMipgFBVV95cUxON3lDWG9jOWhKS0NQSkUxTTZhRThDbE51ZXhOazNRUU1lM3JHdmpXcVQ4eWlMdEc3S2FzdndYc0NlTUpVTzlVaHZrWjVhWWFfRWZVSFZFLTNHVk9VTmlDUzR2N2dJZVdMVVc5LWlOSlp4SVJ6UklNbXNZbUpQY0NLU0ZaSnFZNzRmOXlXdE9EUHBqbkRaWEpRUnRKTEFHcC12bE9VdVBB?oc=5"
+      source_type: "google_news"
+      language: "en"
+      published_at: "2026-09-16T12:37:29+00:00"
+      fetched_at: "2026-09-16T12:39:05.772790+00:00"
+    expected:
+      urgency_min: 7
+      urgency_max: 8
+      affected_countries: ["PL"]
+      notification: silent
+      relation: same
+      same_as: "mc-rusinowo-01"
+      critical: false
+    rationale: "The English title repeats that the Polish drone was a Russian Gerbera-2 with a warhead. This is the same resolved incident and stays silent."
+  - id: "mc-lithuania-drone-01"
+    sequence_id: "lithuania-gerbera-intercept-2026-09-16"
+    split: holdout
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 27
+      production_article_id: "e76e2c9f-4b34-4151-9c38-0647aa558930"
+      content_language: "en"
+      language_mismatch: false
+    article:
+      title: "Jets down drone over Lithuania - Northwest Arkansas Democrat-Gazette"
+      summary: "Jets down drone over Lithuania Northwest Arkansas Democrat-Gazette"
+      source_name: "GoogleNews:invasion Baltic states"
+      source_url: "https://news.google.com/rss/articles/CBMif0FVX3lxTE1tekdVRnN0eWtLZFBLQmlORUp5OXdiMWxPQ21yS2hDUGc1WExUV2dHajRLLVoxallnX01OWFJRSHFSREs5VERxcGstVXJsS1YwZzlsbXo2aUVVWncwUVRzOGQtbFpVM3NyY1NVZnpfNkxfdHM2QldBU1VyTjcxU00?oc=5"
+      source_type: "google_news"
+      language: "en"
+      published_at: "2026-09-16T09:00:00+00:00"
+      fetched_at: "2026-09-16T09:06:09.485574+00:00"
+    expected:
+      urgency_min: 7
+      urgency_max: 8
+      affected_countries: ["LT"]
+      notification: initial
+      relation: new
+      critical: false
+    rationale: "Fighter jets downing a drone over Lithuania is active air-defence engagement. The sparse title does not establish an attack-capable Russian weapon, so the provisional range is 7-8 and the first report notifies."
+  - id: "mc-lithuania-drone-02"
+    sequence_id: "lithuania-gerbera-intercept-2026-09-16"
+    split: holdout
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 40
+      production_article_id: "4a271a69-cc0f-4c03-94dc-a8bd1f8326b5"
+      content_language: "en"
+      language_mismatch: false
+    article:
+      title: "Nausėda: drone shot down over Lithuania was Russian Gerbera headed for Ukraine"
+      summary: "A Russian-made Gerbera drone shot down over central Lithuania early Tuesday was apparently headed for Ukraine but veered off course after being affected by Ukrainian electronic warfare, Lithuanian President Gitanas Nausėda said Wednesday."
+      source_name: "LRT Lithuania"
+      source_url: "https://lrt.lt/en/news-in-english/19/3054232/nauseda-drone-shot-down-over-lithuania-was-russian-gerbera-headed-for-ukraine"
+      source_type: "rss"
+      language: "en"
+      published_at: "2026-09-16T10:03:00+00:00"
+      fetched_at: "2026-09-16T10:11:18.937388+00:00"
+    expected:
+      urgency_min: 7
+      urgency_max: 8
+      affected_countries: ["LT"]
+      notification: silent
+      relation: same
+      same_as: "mc-lithuania-drone-01"
+      critical: false
+    rationale: "The official account identifies the same downed drone as a Russian-made Gerbera apparently diverted while headed for Ukraine. It is a resolved same-incident update, not a new danger."
+  - id: "mc-lithuania-drone-03"
+    sequence_id: "lithuania-gerbera-intercept-2026-09-16"
+    split: holdout
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 50
+      production_article_id: "e051399e-6f65-49be-8770-5e7cf59997bb"
+      content_language: "en"
+      language_mismatch: false
+    article:
+      title: "Naouseda commented on the first drone shoot-down in Lithuania: it is likely a \"Gerbera,\" and this attack will not be the last - LIGA.net"
+      summary: "Naouseda commented on the first drone shoot-down in Lithuania: it is likely a \"Gerbera,\" and this attack will not be the last LIGA.net"
+      source_name: "GoogleNews:Russia attack NATO"
+      source_url: "https://news.google.com/rss/articles/CBMi7AFBVV95cUxQWF9STVVQNFVaNHRoV1dDNDRVenBwQjFkLTNJWG54NXBTUUlPT213WmV0bktmblAtZUsxLWx2TzVLOXFISXZjTnY0OXFqQTg0SkhZd09DdzdVdXJsWHllZWtCZWlqaDZEOVFUQlB2NjNrcl9XQlI2LWxnM1NUc3JqSjJPT3doV2xpSS1qdU83V0F6cTR4Z2RUR052SkhSZ2Y4TTlKZjJMMm5nZ2pPVmdTRGJIcmctRlU2WUdLYmVvRHNkQm5FckhpU0Z1TnNiRVpFd3pjME40WE5LNkNDNjI3U3lRZ2lNLW5OdDJaQdIB8gFBVV95cUxQczFmTkJGTFlMQ28yZ2hKaUZSSDNYWXZGRVRUdVNNcEdTTEs5dUJJYnVIMEdkbm9xYkNPUzktTVRvMHhUWi0yR1RpclhJZFM2OVBYV3NvR3JGa3hpdENkcmdDWXFxR21XcmQ0LU5CbE1lTnF1ZEVHVnpnNndTN2NYcUY0cDZITnVESjhnR21RYlVPdFh4UHhPVzE1VmJKMmJ5X250YURDdjJXbW1OUnhwSEVfdDFEdzhCUm16Si1kZVpSN0JXbTgycXZJeXNab0VhN0VWOGIwN1Rrb3dwMERLV05SOGR2WG9aMlktN0o5ZjZCUQ?oc=5"
+      source_type: "google_news"
+      language: "en"
+      published_at: "2026-09-16T11:33:00+00:00"
+      fetched_at: "2026-09-16T11:55:55.329496+00:00"
+    expected:
+      urgency_min: 7
+      urgency_max: 8
+      affected_countries: ["LT"]
+      notification: silent
+      relation: same
+      same_as: "mc-lithuania-drone-01"
+      critical: false
+    rationale: "The president's comment refers to Lithuania's first shoot-down and the likely Gerbera. The forward-looking warning is reaction, while the physical incident is already represented."
+  - id: "mc-lithuania-drone-04"
+    sequence_id: "lithuania-gerbera-intercept-2026-09-16"
+    split: holdout
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 52
+      production_article_id: "b95160f9-660a-4e62-8b99-a3f6a2f78306"
+      content_language: "en"
+      language_mismatch: false
+    article:
+      title: "Lithuania's Nausėda: Drone downed by NATO jets probably Russian - Yahoo"
+      summary: "Lithuania's Nausėda: Drone downed by NATO jets probably Russian Yahoo"
+      source_name: "GoogleNews:Russia attack NATO"
+      source_url: "https://news.google.com/rss/articles/CBMijgFBVV95cUxQcl9yakRiOTU0QVg2UmJqWGZmSEIwb0NCdEZTeUl3em9IN3F6Nml3WnNpWmlGamtoeVlUTHZVb05pZzh6dzA2YjJaTEJTcmg3Zmt2c040VnQydWtWYk5OU1lKT2VUb3haWWxrTWZsZUFlTjQzTGp2RUNjRmV5TGxINktocDRTZGEzaXVCSDdR?oc=5"
+      source_type: "google_news"
+      language: "en"
+      published_at: "2026-09-16T11:48:26+00:00"
+      fetched_at: "2026-09-16T12:36:02.470980+00:00"
+    expected:
+      urgency_min: 7
+      urgency_max: 8
+      affected_countries: ["LT"]
+      notification: silent
+      relation: same
+      same_as: "mc-lithuania-drone-01"
+      critical: false
+    rationale: "This short headline is another outlet's confirmation that NATO jets downed the probably Russian drone. It should merge silently."
+  - id: "mc-lithuania-drone-05"
+    sequence_id: "lithuania-gerbera-intercept-2026-09-16"
+    split: holdout
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 61
+      production_article_id: "dc1ec3f4-6791-4630-8086-94aefde4bf34"
+      content_language: "en"
+      language_mismatch: false
+    article:
+      title: "Lithuania Says Downed Drone Was Russian-Made, Veered Off Course Toward Ukraine - news.sbs.co.kr"
+      summary: "Lithuania Says Downed Drone Was Russian-Made, Veered Off Course Toward Ukraine news.sbs.co.kr"
+      source_name: "GoogleNews:airspace violation Poland"
+      source_url: "https://news.google.com/rss/articles/CBMibkFVX3lxTE9PUUxpRFh4Q1c0eEJ1Z0gtWi1nWHBnUkYwT0dYZDQyMWltSGlHREtydUdIUFNvalhmbldvNVdzcDBTajQxOVozOHpyaU5LbXh2QUNPR2xjUVhOTFZiLXNsdGlHUUhhTGNaZkZuZVRn?oc=5"
+      source_type: "google_news"
+      language: "en"
+      published_at: "2026-09-16T14:23:52+00:00"
+      fetched_at: "2026-09-16T14:33:14.685148+00:00"
+    expected:
+      urgency_min: 7
+      urgency_max: 8
+      affected_countries: ["LT"]
+      notification: silent
+      relation: same
+      same_as: "mc-lithuania-drone-01"
+      critical: false
+    rationale: "Russian manufacture and diversion toward Ukraine repeat the same official explanation. No renewed wave, impact, or current threat is stated."
+  - id: "mc-lithuania-drone-06"
+    sequence_id: "lithuania-gerbera-intercept-2026-09-16"
+    split: holdout
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 63
+      production_article_id: "bd23a687-1bce-44c7-842e-5ce1022b8ce8"
+      content_language: "en"
+      language_mismatch: false
+    article:
+      title: "Drone Downed in Lithuania Was Russian and Likely Aimed at Ukraine, President Nausėda Says - The Moscow Times"
+      summary: "Drone Downed in Lithuania Was Russian and Likely Aimed at Ukraine, President Nausėda Says The Moscow Times"
+      source_name: "GoogleNews:Russia attack NATO"
+      source_url: "https://news.google.com/rss/articles/CBMi0gFBVV95cUxPMTBwWVhTdHF6bjNod0VSdTFqWW1WZURHZUh6OWN5V2NMVmpLVHBnbHBYZVQwY2U4Sk5saWlUdFFRV1d1aUxKZ2NDUURTbHVCaTBXaDFhRFdMYjMtSG9SU3ZKX1MwaXFQdjR3d3d2b2g1MENPLUZqUWVvRWlTeU00UEJjdEQtZlljb2tTOW5qVF9nc293M2dSTFVHaEV1dFQwaEgzSmo5dDRPQXlDQmtUWTg1QWRpWTBFdUFEQ1JPWXhDaGwwQ2otdXZRaE05djBsZEE?oc=5"
+      source_type: "google_news"
+      language: "en"
+      published_at: "2026-09-16T14:31:29+00:00"
+      fetched_at: "2026-09-16T14:36:23.773141+00:00"
+    expected:
+      urgency_min: 7
+      urgency_max: 8
+      affected_countries: ["LT"]
+      notification: silent
+      relation: same
+      same_as: "mc-lithuania-drone-01"
+      critical: false
+    rationale: "The same president and same downed Russian drone are reported. It is silent corroboration."
+  - id: "mc-lithuania-drone-07"
+    sequence_id: "lithuania-gerbera-intercept-2026-09-16"
+    split: holdout
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 75
+      production_article_id: "7f022452-6ca0-4caf-8009-f567b6b74c22"
+      content_language: "en"
+      language_mismatch: false
+    article:
+      title: "Ukrainian electronic warfare apparently knocked a Russian attack drone off course and into Lithuanian airspace, the country’s president says - Meduza"
+      summary: "Ukrainian electronic warfare apparently knocked a Russian attack drone off course and into Lithuanian airspace, the country’s president says Meduza"
+      source_name: "GoogleNews:Russia attack NATO"
+      source_url: "https://news.google.com/rss/articles/CBMihwJBVV95cUxOYnhiTXN1V09uRm9WalB4Y1I2UFh2bTNPdEQ5NGU1LXRjN1NBeVY2N0ZOWVUydFBsTmo4R1NwcmNYSkd3VDFtOWFyZEFLYXZfcFFrSWwzd3lLeXEyRGNTa3lZbUtUZTZKV19yTVgzeExNYnpZRmFKa0dqcW5EUzZXNkdfckE2S2t5SEVnLWdVZXo0dmhQRWxtN00xUDRSbm9FMEZEN3ZTREhMdmlzOHh0RHVOYzJRNWk2cENZcWZwdFREenY3bklSZjAtMkFSSnFmVU84M0JVcWc3RTdWSVd1NGVHLU5CU2JtcEtBZHd2SEtIdUwwWkhnV1dMNVBveHR1UFAwLXJWNNIBjAJBVV95cUxQUjBNYjRaTXg4RmxRbGNMUGd4TlZ6aEh4N21lZ2hRNjR3UERQY3cyZVBhUVRvUV8xTndZbFM4OWJmWWd4N3oyQm8tLVFPTmFaWUlidzQzeVlMd3VtNFFpck5sXy1haFFvaER0cl9wTmRQSFU1UFllWk1OMDVGUlFuWThtckc4eUJiZHBlYnhOQzJKS1dzbXptMDNka0hQSUxzRkZwNVpmOVlicGdHTXZiNTdEdklFX1dIcVFFRWxtLVhfdmJNLXZlb0E4QU1SR1ZtWkZrczdrOXl5VmlHZ3BEWUpSVnQxZ3p3WktoOHRMaTBnbjhDaGVvZVluNHhMRUIwMVZBWVJ4UFIzNVpT?oc=5"
+      source_type: "google_news"
+      language: "en"
+      published_at: "2026-09-16T16:34:00+00:00"
+      fetched_at: "2026-09-16T16:39:43.969180+00:00"
+    expected:
+      urgency_min: 7
+      urgency_max: 8
+      affected_countries: ["LT"]
+      notification: silent
+      relation: same
+      same_as: "mc-lithuania-drone-01"
+      critical: false
+    rationale: "The electronic-warfare explanation and Lithuanian airspace identify the same intercepted drone. The added causal theory does not increase present danger."
+  - id: "mc-lithuania-drone-08"
+    sequence_id: "lithuania-gerbera-intercept-2026-09-16"
+    split: holdout
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 81
+      production_article_id: "8a23811f-d7b0-4d29-9b8a-1d30f74d0d25"
+      content_language: "en"
+      language_mismatch: false
+    article:
+      title: "The drone shot down by NATO fighter jets in Lithuania turned out to be a Russian \"Gerbera\" - UA.NEWS"
+      summary: "The drone shot down by NATO fighter jets in Lithuania turned out to be a Russian \"Gerbera\" UA.NEWS"
+      source_name: "GoogleNews:Russia attack NATO"
+      source_url: "https://news.google.com/rss/articles/CBMinwFBVV95cUxOZldqSndXbTM2djBMUUc2NkxOME1GaC1EU29UMW1DRGQ2a3IzV0puR2Z5RkRJaXhBa0R5VHJoY0ZhblM0YlRtOUYzZC1qV3dXRUdqUlR3MUFCdWs4T0R6OG14VEtWZzdiZzlNc0U5WjJ3blRscWdOb2k4Y0haNW5jMjhqTmNpX0NRWEtuems2RmNEdWNuczduSWhzYktaWlk?oc=5"
+      source_type: "google_news"
+      language: "en"
+      published_at: "2026-09-16T17:13:22+00:00"
+      fetched_at: "2026-09-16T17:16:35.513061+00:00"
+    expected:
+      urgency_min: 7
+      urgency_max: 8
+      affected_countries: ["LT"]
+      notification: silent
+      relation: same
+      same_as: "mc-lithuania-drone-01"
+      critical: false
+    rationale: "This report repeats the Gerbera identification and NATO shoot-down. It is a straightforward same-incident duplicate."
+  - id: "mc-lithuania-drone-09"
+    sequence_id: "lithuania-gerbera-intercept-2026-09-16"
+    split: holdout
+    label_status: disputed
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 113
+      production_article_id: "822bfd19-8cd5-49ff-8ea9-53036d6b3215"
+      content_language: "en"
+      language_mismatch: false
+    article:
+      title: "Lithuania Says Russian Gerbera Drone Entered its Airspace From Belarus, Carrying Explosives - Kyiv Post"
+      summary: "Lithuania Says Russian Gerbera Drone Entered its Airspace From Belarus, Carrying Explosives Kyiv Post"
+      source_name: "GoogleNews:Russia attack NATO"
+      source_url: "https://news.google.com/rss/articles/CBMiS0FVX3lxTFBwNUQ1RV9KTWlqV0lwUmZScXBKZ0x6TkpnaHlJX1RDbUxNVDZmSFhSS3paWGQxTmxicF9uNlhtaHlQc1l6STVnNENqMA?oc=5"
+      source_type: "google_news"
+      language: "en"
+      published_at: "2026-09-16T18:58:42+00:00"
+      fetched_at: "2026-09-16T19:19:48.538181+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 10
+      affected_countries: ["LT"]
+      notification: update
+      relation: same
+      same_as: "mc-lithuania-drone-01"
+      critical: true
+    rationale: "The later headline states that the same Gerbera entered Lithuania from Belarus carrying explosives. Offensive-weapon presence meets the critical rule and crosses the critical threshold; current plumbing treats that as an escalation update, although the drone was already downed, so human review is required."
+  - id: "mc-tryncza-01"
+    sequence_id: "tryncza-civilian-drone-2026-09-16"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 69
+      production_article_id: "71a7b976-0efb-450e-8809-e7e754f027e4"
+      content_language: "pl"
+      language_mismatch: false
+    article:
+      title: "Dron na dożynkach z udziałem Karola Nawrockiego. Zatrzymano mężczyznę"
+      summary: "Dron na dożynkach z udziałem Karola Nawrockiego. Zatrzymano mężczyznę"
+      source_name: "RMF24"
+      source_url: "https://rmf24.pl/regiony/rzeszow/news-dron-na-dozynkach-z-udzialem-karola-nawrockiego-zatrzymano-m,nIdn,1017978"
+      source_type: "rss"
+      language: "pl"
+      published_at: "2026-09-16T15:19:00+00:00"
+      fetched_at: "2026-09-16T15:22:34.252784+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 3
+      affected_countries: ["PL"]
+      notification: silent
+      relation: new
+      critical: false
+    rationale: "A man was detained over a drone at a harvest festival, with no military origin or hostile act stated. This is a new but low-threat civilian/security incident and remains silent."
+  - id: "mc-tryncza-02"
+    sequence_id: "tryncza-civilian-drone-2026-09-16"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 74
+      production_article_id: "b0a9464d-7307-4c31-bfe3-51cfd1881feb"
+      content_language: "pl"
+      language_mismatch: false
+    article:
+      title: "Incydent z dronem na Dożynkach Prezydenckich w Tryńczy. Prokuratura wszczęła postępowanie - Rzeszów Info"
+      summary: "Incydent z dronem na Dożynkach Prezydenckich w Tryńczy. Prokuratura wszczęła postępowanie Rzeszów Info"
+      source_name: "GoogleNews:rosyjskie drony Polska"
+      source_url: "https://news.google.com/rss/articles/CBMiygFBVV95cUxNWHBUU1hKS3lMMlR3cmtNamlEM19iTE51MUZncnpZeGtaR2ZQbHpuRE5TNmc1U0E2NE1USmFsRTdNRDl5MmxWTFFCNmpqRFVpRXFERFZsdmpPOVJDbnVQbjhNTFFINmNoRmJBOVFCSjNaUGx2Zk02dEZGRmdUalZPeVYzZnRIQmpMWHUxTVk1R3lxOXEzV0dFOEszVUl3eURxb1lreXRPSDJnd1NSZ05JZFlaS3hGTl9hcHNjS1NsWm1rT0x5b0ZQUU93?oc=5"
+      source_type: "google_news"
+      language: "pl"
+      published_at: "2026-09-16T16:03:00+00:00"
+      fetched_at: "2026-09-16T16:12:04.967776+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 3
+      affected_countries: ["PL"]
+      notification: silent
+      relation: same
+      same_as: "mc-tryncza-01"
+      critical: false
+    rationale: "The prosecutor investigation concerns the same presidential harvest-festival drone incident in Tryńcza. It remains non-military and silent."
+  - id: "mc-tryncza-03"
+    sequence_id: "tryncza-civilian-drone-2026-09-16"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 76
+      production_article_id: "68b127bf-463c-410d-a7ff-b00f8568bfff"
+      content_language: "pl"
+      language_mismatch: false
+    article:
+      title: "Incydent podczas dożynek z udziałem Karola Nawrockiego. Mężczyzna zatrzymany"
+      summary: "Podczas niedzielnych dożynek w Tryńczy na Podkarpaciu doszło do incydentu z udziałem drona. Bezzałogowy statek powietrzny wleciał w zamkniętą strefę, w której przebywała para prezydencka. W związku ze zdarzeniem policja zatrzymała mężczyznę z okolic Tarnowa."
+      source_name: "Onet Wiadomości"
+      source_url: "https://wiadomosci.onet.pl/kraj/zamieszanie-podczas-dozynek-w-trynczy-dron-w-poblizu-prezydenta-karola-nawrockiego/n241rtb"
+      source_type: "rss"
+      language: "pl"
+      published_at: "2026-09-16T16:39:31+00:00"
+      fetched_at: "2026-09-16T16:48:09.960817+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 3
+      affected_countries: ["PL"]
+      notification: silent
+      relation: same
+      same_as: "mc-tryncza-01"
+      critical: false
+    rationale: "The fuller summary confirms a drone entered a closed zone at the same Tryńcza festival and a local man was detained. Those facts support the same harmless-to-Sentinel incident."
+  - id: "mc-skwiecinski-01"
+    sequence_id: "skwiecinski-opinion-2026-09-16"
+    split: holdout
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 70
+      production_article_id: "101be93d-2e7b-4ce5-a7fd-fcb719f9f59a"
+      content_language: "pl"
+      language_mismatch: false
+    article:
+      title: "Piotr Skwieciński: Rosyjskie zagrożenie jest realne. Opozycję trzeba zaprosić do rozmów - Wiadomości Onet"
+      summary: "Piotr Skwieciński: Rosyjskie zagrożenie jest realne. Opozycję trzeba zaprosić do rozmów Wiadomości Onet"
+      source_name: "GoogleNews:rosyjskie drony Polska"
+      source_url: "https://news.google.com/rss/articles/CBMivwFBVV95cUxNOUY2eHN3cDNxRTV5UlpNb2V2dUYtWlRWMW9sYmZtbllVWk12Tll3RVNsR2Fmbm0zdXNwTTlTdmF6WUxiZ3IyVXQ1X1g5dmRCVHVKajdZYVFBcTdXZWFVRUFlY0xtcU9Kc0Y3SFkyUDF3a2EtY1U1cmttWmFqbXRNem1acFZzcEdzWnVCUm1udEpFckVMSUZvZi1kSm1hd2VRUU91cUxwTTQ2THhRdVZOVnA4Q2dJakxGQWhOdkpaTQ?oc=5"
+      source_type: "google_news"
+      language: "pl"
+      published_at: "2026-09-16T15:37:09+00:00"
+      fetched_at: "2026-09-16T15:44:14.887758+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 3
+      affected_countries: []
+      notification: silent
+      relation: new
+      critical: false
+    rationale: "This is political commentary about Russian danger and opposition consultations, not a new physical military event. A standalone low-threat article is new and silent."
+  - id: "mc-skwiecinski-02"
+    sequence_id: "skwiecinski-opinion-2026-09-16"
+    split: holdout
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 72
+      production_article_id: "10b9e40e-2de9-45a6-8206-613d070de654"
+      content_language: "pl"
+      language_mismatch: false
+    article:
+      title: "Piotr Skwieciński: Rosyjskie zagrożenie jest realne. Ale obaw o proces demokratyczny nie należy lekceważyć"
+      summary: "Możne warto zapoczątkować stały obyczaj rozważania sytuacji związanej z zagrożeniami ze strony Rosji na zamkniętych zebraniach z udziałem najważniejszych polityków opozycji. Rada Bezpieczeństwa Narodowego? Cykliczne konsultacje premiera z przedstawicielami opozycji? Cykliczne zapraszanie tych przedstawicieli jako gości na posiedzenia rządu wtedy, kiedy takie zagrożenia są omawiane? Możliwe są różne rozwiązania. Ważna jest wola."
+      source_name: "Onet Wiadomości"
+      source_url: "https://wiadomosci.onet.pl/kraj/piotr-skwiecinski-rosyjskie-zagrozenie-jest-realne-ale-obaw-o-proces-demokratyczny/ywe54kn"
+      source_type: "rss"
+      language: "pl"
+      published_at: "2026-09-16T15:37:09+00:00"
+      fetched_at: "2026-09-16T15:47:13.979842+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 3
+      affected_countries: []
+      notification: silent
+      relation: same
+      same_as: "mc-skwiecinski-01"
+      critical: false
+    rationale: "The matching author, publication time, and subject show this is the underlying Onet opinion article. It is same-content coverage and stays silent."
+  - id: "mc-geran-analysis-01"
+    sequence_id: "geran-5-analysis-2026-09-16"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 66
+      production_article_id: "4a357c5a-d3d2-4d9c-b725-15270a1c0328"
+      content_language: "pl"
+      language_mismatch: false
+    article:
+      title: "Jak zwalczać rosyjskie drony turboodrzutowe? Gierań-5 wymusza nową generację interceptorów"
+      summary: "Rosja szybko zmienia charakter swoich bezzałogowych środków napadu powietrznego, a rozwój turboodrzutowych wariantów rodziny Geran pokazuje, że Ukraina wchodzi obecnie w zupełnie nowy etap wojny powietrznej. Przez długi czas podstawowym problemem były stosunkowo wolne Gieranie-2, które można było zwalczać za pomocą szerokiej gamy relatywnie prostych i tanich środków: mobilnych grup ogniowych, karabinów maszynowych, coraz liczniejszych dronów przechwytujących. Ten model obrony został przez Ukrainę rozwinięty do bardzo wysokiego poziomu, jednak pojawienie się Gierania-5 oznacza, że część dotychczasowych rozwiązań zaczyna tracić swoją przewagę."
+      source_name: "Defence24"
+      source_url: "https://defence24.pl/polityka-obronna/jak-zwalczac-rosyjskie-drony-turboodrzutowe-gieran-5-wymusza-nowa-generacje-interceptorow"
+      source_type: "rss"
+      language: "pl"
+      published_at: "2026-09-16T15:12:24+00:00"
+      fetched_at: "2026-09-16T15:16:30.488446+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 3
+      affected_countries: []
+      notification: silent
+      relation: new
+      critical: false
+    rationale: "This is analysis of drone capability and defensive technology in Ukraine, not an ongoing attack on a monitored country. It is low urgency and silent."
+  - id: "mc-geran-analysis-02"
+    sequence_id: "geran-5-analysis-2026-09-16"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 68
+      production_article_id: "0ad11663-9f6c-42f8-b1a0-1c417dbf5650"
+      content_language: "pl"
+      language_mismatch: false
+    article:
+      title: "Jak zwalczać rosyjskie drony turboodrzutowe? Gierań-5 wymusza nową generację interceptorów - Defence24"
+      summary: "Jak zwalczać rosyjskie drony turboodrzutowe? Gierań-5 wymusza nową generację interceptorów Defence24"
+      source_name: "GoogleNews:rosyjskie drony Polska"
+      source_url: "https://news.google.com/rss/articles/CBMixgFBVV95cUxQWjdaNzJyZmwzbnVXMnU4TDByeHJkOFdlamczMTAzblhqT21IZUQ2a3d6VFRfcXZFaE5neVk3WFJRNXdNTXNER1VWaFdNa0NMMWJkSnllSWFFQUZzVEhVWEZ2Vjl2R1V1UjI0dGk2a2VUcWdsMGRaSnd3MWp3YkJsVXlab3JTc29SeGE5NzJQaDNDRlJrMkFqYkxsUlg5UXQ1SDM3cE1XSkxaODJsYjNTdkdiN3NuUGJYLTZaMlpsbFBNVTVuTEE?oc=5"
+      source_type: "google_news"
+      language: "pl"
+      published_at: "2026-09-16T15:12:24+00:00"
+      fetched_at: "2026-09-16T15:19:34.577221+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 3
+      affected_countries: []
+      notification: silent
+      relation: same
+      same_as: "mc-geran-analysis-01"
+      critical: false
+    rationale: "The Google News record is a syndication of the same Defence24 analysis at the same publication time. It should merge silently."
+  - id: "mc-warsaw-airport-01"
+    sequence_id: "warsaw-airport-false-alarm-2026-09-15"
+    split: holdout
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 19
+      production_article_id: "e9693a1d-c50a-4c49-8dc8-1abb27fc2976"
+      content_language: "ru"
+      language_mismatch: true
+      language_mismatch_note: "Source metadata says uk, but the preserved Telegram title and summary are Russian."
+    article:
+      title: "**🚨 В аэропорту Варшавы эвакуировали часть терминала из-за угрозы теракта** Вечером 15 сентября в аэропорту Шопена пришлось эвакуировать зоны вылета A и B и часть прилёта у входа A1 после обнаружения"
+      summary: "**🚨 В аэропорту Варшавы эвакуировали часть терминала из-за угрозы теракта** Вечером 15 сентября в аэропорту Шопена пришлось эвакуировать зоны вылета A и B и часть прилёта у входа A1 после обнаружения оставленного без присмотра багажа. На место прибыли полиция, пограничники и пиротехники. На время проверки ограничили доступ к части зон вылета и прилёта, а также движение у терминала. Спустя примерно полтора часа тревогу сняли: взрывчатки не обнаружили, угрозы не подтвердились. Работа аэропорта"
+      source_name: "Ukrainian Air Force"
+      source_url: "https://t.me/kpszsu/123670"
+      source_type: "telegram"
+      language: "uk"
+      published_at: "2026-09-16T08:08:21+00:00"
+      fetched_at: "2026-09-16T08:09:18.857511+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 2
+      affected_countries: []
+      notification: silent
+      relation: new
+      critical: false
+    rationale: "The Russian text says unattended luggage caused a Warsaw airport evacuation, no explosives were found, and the alert was lifted. This is neither a military event nor a continuing threat, so the standalone case is new and silent."
+  - id: "mc-belarus-drills-01"
+    sequence_id: "belarus-border-drills-2026-09-16"
+    split: holdout
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 55
+      production_article_id: "f8fd47c5-8fa6-4c81-9290-28ab6e18565b"
+      content_language: "ru"
+      language_mismatch: true
+      language_mismatch_note: "Source metadata says uk, but the preserved Telegram title and summary are Russian."
+    article:
+      title: "**🫡**** Вассал Путина снова бряцает оружием. Режим Лукашенко начал крупные военные учения вблизи границ Польши и Литвы** Танковые и механизированные подразделения [тренируются](https://youtu.be/NjthR"
+      summary: "**🫡**** Вассал Путина снова бряцает оружием. Режим Лукашенко начал крупные военные учения вблизи границ Польши и Литвы** Танковые и механизированные подразделения [тренируются](https://youtu.be/NjthR5wog2I?si=DAp8x_xaBhHGxU2j) в том числе возле стратегического Сувалкского коридора — единственной сухопутной связи стран Балтии с остальной территорией НАТО. Военные будут отрабатывать прикрытие границы, действия в условиях военного положения, борьбу с диверсантами, беспилотниками и лёгкой авиацией"
+      source_name: "Ukrainian Air Force"
+      source_url: "https://t.me/kpszsu/123682"
+      source_type: "telegram"
+      language: "uk"
+      published_at: "2026-09-16T12:54:58+00:00"
+      fetched_at: "2026-09-16T12:55:25.584189+00:00"
+    expected:
+      urgency_min: 1
+      urgency_max: 3
+      affected_countries: []
+      notification: silent
+      relation: new
+      critical: false
+    rationale: "The article explicitly describes conventional Belarusian military exercises near the Polish and Lithuanian borders, not an attack or nuclear activity. Exercises are excluded from attack alerts, so this standalone case is new and silent."
+  - id: "mc-assassination-01"
+    sequence_id: "russian-assassination-network-2026-09-16"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 71
+      production_article_id: "ba790ed9-5d35-4506-9673-0f936468a6be"
+      content_language: "ru"
+      language_mismatch: true
+      language_mismatch_note: "Source metadata says uk, but the preserved Telegram title and summary are Russian."
+    article:
+      title: "**🚨 $40 тысяч за убийство в США и $25 тысяч — в Литве: Минюст США раскрыл предполагаемую сеть российских спецслужб** Американские власти предъявили обвинения пяти людям, которые, по версии следствия,"
+      summary: "**🚨 $40 тысяч за убийство в США и $25 тысяч — в Литве: Минюст США раскрыл предполагаемую сеть российских спецслужб** Американские власти предъявили обвинения пяти людям, которые, по версии следствия, работали на российские спецслужбы и искали исполнителей для слежки, убийств и диверсий в США и Европе. Один из эпизодов произошёл в США. Завербованному человеку сначала поручили следить за известным российским диссидентом, а затем предложили $40 тысяч, чтобы его устранить или заставить исчезнуть."
+      source_name: "Ukrainian Air Force"
+      source_url: "https://t.me/kpszsu/123689"
+      source_type: "telegram"
+      language: "uk"
+      published_at: "2026-09-16T15:45:39+00:00"
+      fetched_at: "2026-09-16T15:46:27.023609+00:00"
+    expected:
+      urgency_min: 2
+      urgency_max: 4
+      affected_countries: []
+      notification: silent
+      relation: new
+      critical: false
+    rationale: "The Russian-language Telegram text reports alleged intelligence-linked murder and sabotage recruitment, chiefly a US plot. It is serious security news but not a military attack in the monitored territory, so it is silent."
+  - id: "mc-assassination-02"
+    sequence_id: "russian-assassination-network-2026-09-16"
+    split: development
+    label_status: disputed
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 124
+      production_article_id: "a454fcb3-276d-4e87-8027-a1dfeccea885"
+      content_language: "pl"
+      language_mismatch: false
+    article:
+      title: "FBI udaremniło zamach na dysydenta. Rosyjskie służby werbują w USA i Europie"
+      summary: "Służby wywiadowcze Federacji Rosyjskiej planują przeprowadzenie zabójstw w USA oraz w krajach europejskich wspierających Ukrainę, poinformowały władze federalne - podała agencja AP. FBI udaremniło zamach na życie prominentnego dysydenta, który przebywa na terytorium Stanów Zjednoczonych."
+      source_name: "Polsat News"
+      source_url: "https://polsatnews.pl/wiadomosc/2026-09-16/wywiad-usa-fbi"
+      source_type: "rss"
+      language: "pl"
+      published_at: "2026-09-16T20:40:00+00:00"
+      fetched_at: "2026-09-16T20:50:54.649074+00:00"
+    expected:
+      urgency_min: 2
+      urgency_max: 4
+      affected_countries: []
+      notification: silent
+      relation: same
+      same_as: "mc-assassination-01"
+      critical: false
+    rationale: "The FBI-thwarted dissident plot and Russian recruitment in the US and Europe likely come from the same AP/US-justice disclosure. The abbreviated first record makes exact identity uncertain, so this same label needs review."
+  - id: "mc-assassination-03"
+    sequence_id: "russian-assassination-network-2026-09-16"
+    split: development
+    label_status: disputed
+    provenance:
+      type: "production"
+      snapshot: "data/eval/production-candidates.json"
+      source_index: 132
+      production_article_id: "458c6257-2d68-40d6-b0d6-4cf4fe00a685"
+      content_language: "en"
+      language_mismatch: false
+    article:
+      title: "Russian intelligence created a global network for assassinations and sabotage in the US and Europe – Bloomberg - Українські Національні Новини (УНН)"
+      summary: "Russian intelligence created a global network for assassinations and sabotage in the US and Europe – Bloomberg Українські Національні Новини (УНН)"
+      source_name: "GoogleNews:Russia attack NATO"
+      source_url: "https://news.google.com/rss/articles/CBMiywFBVV95cUxPQk5UTVR1V2NGd3I4cUU4c0xESGhJMGctbkw5VTlIeHkzLTY3YWlpcUl4VXhUbWZMUFhITXBhRkkzRGJqSGtKam5wazdmTTFCRUt3X2VjVXR0N01RMFVGbGluaXpSenc4XzhGVk8wWHJnbXBnWEpZeUtuVzJmN1lwUWFmU0JVOGFWZV91U0FRVTMtYWhnN2Fhbi1UUFdsZGxtQXNzWF9VUEdIcXhRdHJ1YWZDaTl1ZlVmbjBGak9hQkV4YllUQ2I1LWM0Z9IBygFBVV95cUxOMHJUNkEtNndDcDR1SjFpTFh2STBGX2xLZDlEODUyNXBFYXY1Q0lsOXcxUXNMSWpZTXBhemdGQUFBeVRNemZNNmVQUXlwVEhuQ3MzUVhPVkhsZFdrY3A4dWZPSDVhTUlNNVp0VHh6Nm5XRGF1Q2NsajFYLU1mMjlPU29GcEgwN3Ata1ZRYVB6LUJzWTdHSmR5T3dld1dnV3h0RFppR0lRbm91TUhfa0xhc2ZpTnh6ZXpWczYzVkNuaVgwelozNThNekZ3?oc=5"
+      source_type: "google_news"
+      language: "en"
+      published_at: "2026-09-16T22:55:47+00:00"
+      fetched_at: "2026-09-16T23:04:33.544594+00:00"
+    expected:
+      urgency_min: 2
+      urgency_max: 4
+      affected_countries: []
+      notification: silent
+      relation: same
+      same_as: "mc-assassination-01"
+      critical: false
+    rationale: "The Bloomberg headline describes the same broad Russian assassination and sabotage network, but the title-only evidence may cover a separate publication or case set. Treating it as the same disclosure is disputed and silent."
+  - id: "mc-synth-escalation-01"
+    sequence_id: "synthetic-polish-incursion-wave"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "synthetic"
+      synthetic: true
+      content_language: "pl"
+      language_mismatch: false
+      purpose: "Same-incident transition from precaution to confirmed offensive-weapon incursion."
+    article:
+      title: "Polska poderwała myśliwce podczas rosyjskiego ataku na zachodnią Ukrainę"
+      summary: "Dowództwo poinformowało o prewencyjnym poderwaniu polskich i sojuszniczych samolotów. Nie stwierdzono naruszenia polskiej przestrzeni powietrznej."
+      source_name: "Synthetic policy contrast"
+      source_url: "synthetic://polish-incursion-wave/precaution"
+      source_type: "synthetic"
+      language: "pl"
+      published_at: "2026-09-17T01:00:00+00:00"
+      fetched_at: "2026-09-17T01:02:00+00:00"
+    expected:
+      urgency_min: 5
+      urgency_max: 6
+      affected_countries: ["PL"]
+      notification: "initial"
+      relation: "new"
+      critical: false
+    rationale: "The first report is explicitly precautionary and says Polish airspace was not violated. It warrants an initial awareness notification at 5-6."
+  - id: "mc-synth-escalation-02"
+    sequence_id: "synthetic-polish-incursion-wave"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "synthetic"
+      synthetic: true
+      content_language: "en"
+      language_mismatch: false
+      purpose: "Critical escalation of the same precautionary incident."
+    article:
+      title: "Russian Shahed confirmed in Polish airspace during the same overnight alert"
+      summary: "Polish command confirmed that one attack-capable Shahed crossed into Poland during the alert reported two hours earlier. Air defence tracked it; no impact was reported."
+      source_name: "Synthetic policy contrast"
+      source_url: "synthetic://polish-incursion-wave/confirmed-incursion"
+      source_type: "synthetic"
+      language: "en"
+      published_at: "2026-09-17T03:00:00+00:00"
+      fetched_at: "2026-09-17T03:01:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 10
+      affected_countries: ["PL"]
+      notification: "update"
+      relation: "same"
+      same_as: "mc-synth-escalation-01"
+      critical: true
+    rationale: "A named offensive weapon is now confirmed over Poland in the same alert. This is a significant new danger and must advance the notification revision."
+  - id: "mc-synth-escalation-03"
+    sequence_id: "synthetic-polish-incursion-wave"
+    split: development
+    label_status: provisional
+    provenance:
+      type: "synthetic"
+      synthetic: true
+      content_language: "uk"
+      language_mismatch: false
+      purpose: "A renewed attack wave at a later incident time must remain a new incident."
+    article:
+      title: "Нова хвиля російських дронів над Люблінщиною, мешканців закликали сховатися"
+      summary: "Через три години після завершення попереднього інциденту польська влада повідомила про нову хвилю щонайменше шести ударних дронів і наказала мешканцям Люблінщини перейти в укриття."
+      source_name: "Synthetic policy contrast"
+      source_url: "synthetic://polish-incursion-wave/new-wave"
+      source_type: "synthetic"
+      language: "uk"
+      published_at: "2026-09-17T06:15:00+00:00"
+      fetched_at: "2026-09-17T06:16:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 10
+      affected_countries: ["PL"]
+      notification: "initial"
+      relation: "new"
+      critical: true
+    rationale: "The text explicitly says the prior incident ended and a new multi-drone wave began three hours later, with shelter orders. It is a new critical incident, not an update."
+  - id: "mc-synth-location-01"
+    sequence_id: "synthetic-baltic-location-contrast"
+    split: holdout
+    label_status: provisional
+    provenance:
+      type: "synthetic"
+      synthetic: true
+      content_language: "ru"
+      language_mismatch: false
+      purpose: "Critical Russian-language shelter-order case in Lithuania."
+    article:
+      title: "В Вильнюсе объявили воздушную тревогу из-за российского ударного беспилотника"
+      summary: "Власти Литвы призвали жителей Вильнюса укрыться после обнаружения российского ударного дрона над городом."
+      source_name: "Synthetic policy contrast"
+      source_url: "synthetic://baltic-location-contrast/vilnius"
+      source_type: "synthetic"
+      language: "ru"
+      published_at: "2026-09-18T08:00:00+00:00"
+      fetched_at: "2026-09-18T08:01:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 10
+      affected_countries: ["LT"]
+      notification: "initial"
+      relation: "new"
+      critical: true
+    rationale: "A shelter order in Vilnius due to a named Russian attack drone is a critical Lithuanian incident and starts a notification."
+  - id: "mc-synth-location-02"
+    sequence_id: "synthetic-baltic-location-contrast"
+    split: holdout
+    label_status: provisional
+    provenance:
+      type: "synthetic"
+      synthetic: true
+      content_language: "en"
+      language_mismatch: false
+      purpose: "Different country and location must not merge despite similar drone vocabulary."
+    article:
+      title: "Latvia orders residents of Daugavpils to shelter after a separate drone is detected"
+      summary: "Four hours after the Vilnius alert ended, Latvian authorities reported a different attack drone above Daugavpils and issued a shelter order."
+      source_name: "Synthetic policy contrast"
+      source_url: "synthetic://baltic-location-contrast/daugavpils"
+      source_type: "synthetic"
+      language: "en"
+      published_at: "2026-09-18T12:10:00+00:00"
+      fetched_at: "2026-09-18T12:11:00+00:00"
+    expected:
+      urgency_min: 9
+      urgency_max: 10
+      affected_countries: ["LV"]
+      notification: "initial"
+      relation: "new"
+      critical: true
+    rationale: "The later drone is explicitly separate and located in Latvia, not Lithuania. Shelter orders make it critical, but incident identity is new."
+  - id: "mc-synth-location-03"
+    sequence_id: "synthetic-baltic-location-contrast"
+    split: holdout
+    label_status: disputed
+    provenance:
+      type: "synthetic"
+      synthetic: true
+      content_language: "pl"
+      language_mismatch: false
+      purpose: "Cross-language duplicate of the Latvian incident, with danger ended."
+    article:
+      title: "Łotewskie wojsko przechwyciło drona nad Dyneburgiem; alarm odwołano"
+      summary: "Wojsko potwierdziło przechwycenie tego samego drona, z powodu którego mieszkańcy Dyneburga otrzymali nakaz ukrycia się. Nie ma poszkodowanych."
+      source_name: "Synthetic policy contrast"
+      source_url: "synthetic://baltic-location-contrast/daugavpils-update"
+      source_type: "synthetic"
+      language: "pl"
+      published_at: "2026-09-18T12:40:00+00:00"
+      fetched_at: "2026-09-18T12:41:00+00:00"
+    expected:
+      urgency_min: 3
+      urgency_max: 4
+      affected_countries: ["LV"]
+      notification: "silent"
+      relation: "same"
+      same_as: "mc-synth-location-02"
+      critical: false
+    rationale: "The article explicitly says it is the same Daugavpils drone, that it was intercepted, and that the alert ended. The provisional policy reading treats this resolution report as retrospective 3-4 rather than inheriting the earlier article's criticality; operator review is required because it still reports an attack drone over Latvia."
