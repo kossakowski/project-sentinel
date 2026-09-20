@@ -148,3 +148,12 @@ setting was not changed, and the operator was asked whether to disable it.
 Paid inference validation remains pending the separately requested $0.25 test
 allowance. No live classification, real notification or production deployment has
 been performed as part of this setup.
+
+### Subsequent approved live validation
+
+The operator subsequently approved the $0.25 test. See the
+[direct validation record](luna-direct-api-validation-20260920.md): all twenty
+prepared behavioural checks passed, but manual review found a non-Polish critical
+summary and five diagnostic repetitions reproduced it. All 25 requests together
+used an estimated $0.00980512. Polish-output reliability remains a rollout issue;
+production is unchanged.
