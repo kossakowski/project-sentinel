@@ -126,3 +126,25 @@ also describes enforced project spend limits, separately from spend alerts;
 account setup must verify the actual hard-limit setting. Added explicit handling
 for project/organisation spend limits, exhausted credit and assigned usage limits.
 The focused configuration/direct-provider run passed **49 tests** after this change.
+
+### Account setup verification
+
+Completed through the Playwright Chrome extension on 2026-09-20, using the
+operator's normal Chrome profile and no desktop app. Created the dedicated
+**Project Sentinel** project and its **$10/month enforced hard spend limit**.
+The saved project page explicitly states that requests fail at the limit.
+OpenAI documents slight possible overshoot while enforcement propagates.
+
+Created `sentinel-luna-local`, restricted to Responses write and model-list read
+permissions, with no automatic expiration. Transferred its value directly to the
+ignored local `.env` through a one-shot loopback receiver, without returning the
+key in chat/tool output. Verified file mode `0600`, Git exclusion, and no generated
+key in browser diagnostic files. Direct `GET /v1/models/gpt-5.6-luna` returned HTTP
+200 and the requested model ID; this checks authentication/access without inference.
+
+The billing UI confirmed $10 credit. It also showed automatic reload enabled
+(balance below $5 reloads to $10, without a monthly reload cap); this account-level
+setting was not changed, and the operator was asked whether to disable it.
+Paid inference validation remains pending the separately requested $0.25 test
+allowance. No live classification, real notification or production deployment has
+been performed as part of this setup.
