@@ -1,0 +1,81 @@
+# Small release smoke set, not a representative accuracy benchmark.
+# The first two cases reproduce production fragmentation observed on 2026-09-16.
+cases:
+  - id: scramble_paraphrase
+    prior: Polska poderwała myśliwce w odpowiedzi na dzisiejszy rosyjski atak dronami na Ukrainę. Działania są prewencyjne.
+    prior_type: airstrike
+    prior_urgency: 5
+    title: Trwają rosyjskie ataki na Ukrainę. Polskie wojsko poderwało myśliwce
+    summary: W związku z rosyjskimi atakami dronów na Ukrainę rozpoczęło się operowanie lotnictwa wojskowego w polskiej przestrzeni powietrznej. Dowództwo podkreśla, że działania mają charakter prewencyjny.
+    expected: [duplicate]
+  - id: rusinowo_recovery
+    prior: Wojsko zabrało znalezionego drona z plaży w Rusinowie. Niebezpieczne elementy zostały zdetonowane.
+    prior_type: drone_attack
+    prior_urgency: 5
+    title: Nocna akcja wojska na plaży. Rosyjski dron wydobyty i zbadany
+    summary: Wojsko wydobyło i zabezpieczyło rosyjskiego drona znalezionego na plaży w Rusinowie. Bezzałogowiec został zabezpieczony do badań laboratoryjnych.
+    expected: [duplicate, update]
+  - id: critical_repeat
+    prior: RCB wydało dziś o 06:00 nakaz schronienia w Lublinie z powodu rosyjskich dronów nad miastem.
+    prior_type: airspace_violation
+    prior_urgency: 9
+    title: Lublin. RCB nakazuje schronienie przed rosyjskimi dronami
+    summary: Kolejne media informują o wydanym dziś o 06:00 nakazie schronienia w Lublinie z powodu rosyjskich dronów. Nie podano żadnych nowych zdarzeń.
+    expected: [duplicate]
+  - id: new_wave
+    prior: Wczorajszy nalot rosyjskich dronów nad Lublinem zakończył się o 08:00. Odwołano alarm.
+    prior_type: airspace_violation
+    prior_urgency: 9
+    title: Nowa fala rosyjskich dronów nad Lublinem. Ponowny nakaz schronienia
+    summary: Po zakończeniu wczorajszego incydentu dziś rozpoczął się odrębny nalot. Nowa grupa rosyjskich dronów wleciała nad Lublin. RCB wydało nowy nakaz schronienia.
+    expected: [new]
+  - id: different_city
+    prior: Rosyjski dron uderzył w budynek w Lublinie dziś rano.
+    prior_type: drone_attack
+    prior_urgency: 9
+    title: Rosyjski dron uderzył w Białymstoku
+    summary: Potwierdzono odrębne uderzenie rosyjskiego drona w budynek w Białymstoku. Nie jest to wcześniejszy incydent z Lublina.
+    expected: [new]
+  - id: real_escalation
+    prior: Trwa incydent z rosyjskim dronem krążącym nad Lublinem. Nie ma dotąd doniesień o uderzeniu ani ofiarach.
+    prior_type: airspace_violation
+    prior_urgency: 9
+    title: Dron znad Lublina uderzył w budynek. Są ranni
+    summary: Ten sam rosyjski dron, o którym informowano wcześniej, uderzył w budynek w Lublinie. W trwającym incydencie potwierdzono pierwszych pięciu rannych i nakazano ewakuację okolicznych mieszkańców.
+    expected: [escalation]
+  - id: vague_identity
+    prior: Rosyjski dron został zestrzelony nad Litwą koło Wilna dziś rano.
+    prior_type: airspace_violation
+    prior_urgency: 8
+    prior_countries: [LT]
+    title: Zestrzelono drona. Pilny komunikat
+    summary: Media podają, że zestrzelono drona. Nie podano kraju, miejscowości ani czasu zdarzenia.
+    expected: [uncertain]
+  - id: estonia_russian_paraphrase
+    prior: Rosyjski wojskowy dron naruszył dziś o 07:20 przestrzeń powietrzną Estonii w pobliżu Narwy. Został przechwycony przez NATO.
+    prior_type: airspace_violation
+    prior_urgency: 9
+    prior_countries: [EE]
+    language: ru
+    title: НАТО перехватило российский беспилотник у Нарвы
+    summary: Эстонское министерство обороны подтвердило, что сегодня в 07:20 российский военный беспилотник вошёл в воздушное пространство Эстонии возле Нарвы и был перехвачен силами НАТО. Сообщение повторяет ранее опубликованные данные, новых нарушений не зафиксировано.
+    expected: [duplicate]
+  - id: different_day_english
+    prior: W poniedziałek o 05:00 rosyjski dron naruszył przestrzeń powietrzną Łotwy przy Daugavpils. Tego samego dnia incydent zakończono.
+    prior_type: airspace_violation
+    prior_urgency: 9
+    prior_countries: [LV]
+    language: en
+    title: Russian drone enters Latvian airspace near Daugavpils on Tuesday morning
+    summary: Latvia's defence ministry says a Russian military drone crossed the border near Daugavpils at 05:00 on Tuesday. Air defence units are responding to the incursion.
+    expected: [new]
+  - id: lithuania_ukrainian_confirmation
+    prior: Rosyjski дрон został zestrzelony dziś o 04:15 w pobliżu Wilna. Nie ma ofiar; terytorium Litwy jest zabezpieczone.
+    prior_type: drone_attack
+    prior_urgency: 8
+    prior_countries: [LT]
+    language: uk
+    title: У Литві підтвердили збиття російського дрона поблизу Вільнюса
+    summary: Міністерство оборони Литви підтвердило ранкове збиття російського безпілотника о 04:15 поблизу Вільнюса. Загиблих та поранених немає. Йдеться про інцидент, про який влада повідомила раніше.
+    # Both decisions keep the same incident and suppress a repeat notification.
+    expected: [duplicate, update]

@@ -23,7 +23,24 @@ class AlertDispatcher:
         clobbered by concurrent events.
         In dry_run mode, logs the intended action without sending anything.
         """
-        sorted_events = sorted(events, key=lambda e: e.urgency_score, reverse=True)
+        # Classification can emit the same incident more than once in a batch
+        # (for example, after sequential corroboration).  Alerting is an
+        # event-level side effect, so process each id once and resolve the
+        # persisted row before sorting/dispatching rather than trust a stale
+        # in-memory snapshot from earlier in that batch.
+        current_events: list[Event] = []
+        seen_event_ids: set[str] = set()
+        db = None if self.dry_run else getattr(self.state_machine, "db", None)
+        for event in events:
+            if event.id in seen_event_ids:
+                continue
+            seen_event_ids.add(event.id)
+            if db is not None:
+                current_events.append(db.get_event_by_id(event.id) or event)
+            else:
+                current_events.append(event)
+
+        sorted_events = sorted(current_events, key=lambda e: e.urgency_score, reverse=True)
 
         for event in sorted_events:
             if self.dry_run:

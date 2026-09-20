@@ -61,7 +61,8 @@ class Database:
                     classified_at TEXT NOT NULL,
                     model_used TEXT NOT NULL,
                     input_tokens INTEGER,
-                    output_tokens INTEGER
+                    output_tokens INTEGER,
+                    incident_memory TEXT NOT NULL DEFAULT '{}'
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_classifications_article_id ON classifications(article_id);
@@ -79,7 +80,8 @@ class Database:
                     source_count INTEGER NOT NULL DEFAULT 1,
                     article_ids TEXT NOT NULL,
                     alert_status TEXT NOT NULL DEFAULT 'pending',
-                    acknowledged_at TEXT
+                    acknowledged_at TEXT,
+                    notification_revision INTEGER NOT NULL DEFAULT 1
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_events_alert_status ON events(alert_status);
@@ -95,11 +97,38 @@ class Database:
                     duration_seconds INTEGER,
                     attempt_number INTEGER NOT NULL DEFAULT 1,
                     sent_at TEXT NOT NULL,
-                    message_body TEXT
+                    message_body TEXT,
+                    event_revision INTEGER NOT NULL DEFAULT 1
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_alerts_event_id ON alert_records(event_id);
             """)
+            self._migrate_schema()
+
+    def _migrate_schema(self) -> None:
+        """Add incident-memory columns to pre-existing SQLite databases.
+
+        SQLite's ``CREATE TABLE IF NOT EXISTS`` leaves an existing table unchanged,
+        so these additive checks are required for deployments created before
+        incident memory. Defaults retain the historical notification state: every
+        old event and alert belongs to revision 1, and old classifications have no
+        decision metadata.
+        """
+        additions = (
+            ("classifications", "incident_memory", "TEXT NOT NULL DEFAULT '{}'"),
+            ("events", "notification_revision", "INTEGER NOT NULL DEFAULT 1"),
+            ("alert_records", "event_revision", "INTEGER NOT NULL DEFAULT 1"),
+        )
+        for table, column, definition in additions:
+            existing = {row["name"] for row in self.conn.execute(f"PRAGMA table_info({table})").fetchall()}
+            if column not in existing:
+                self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+        # Be defensive about databases created by an interrupted/manual migration.
+        # This preserves all historical rows while making their legacy meaning explicit.
+        self.conn.execute("UPDATE classifications SET incident_memory = '{}' WHERE incident_memory IS NULL")
+        self.conn.execute("UPDATE events SET notification_revision = 1 WHERE notification_revision IS NULL")
+        self.conn.execute("UPDATE alert_records SET event_revision = 1 WHERE event_revision IS NULL")
 
     def insert_article(self, article: Article) -> bool:
         """Insert an article. Returns False if URL hash already exists (duplicate)."""
@@ -143,17 +172,20 @@ class Database:
         return [(row["source_name"], row["title_normalized"]) for row in cursor.fetchall()]
 
     def insert_classification(self, result: ClassificationResult) -> None:
-        """Insert a classification result."""
+        """Insert a classification result, ignoring an exact replay by its ID."""
         data = result.to_dict()
         columns = ", ".join(data.keys())
         placeholders = ", ".join("?" for _ in data)
 
         with self.conn:
-            self.conn.execute(
-                f"INSERT INTO classifications ({columns}) VALUES ({placeholders})",
+            cursor = self.conn.execute(
+                f"INSERT OR IGNORE INTO classifications ({columns}) VALUES ({placeholders})",
                 list(data.values()),
             )
-        self.logger.debug("Classification inserted for article: %s", result.article_id)
+        if cursor.rowcount:
+            self.logger.debug("Classification inserted for article: %s", result.article_id)
+        else:
+            self.logger.debug("Classification replay ignored: %s", result.id)
 
     def insert_event(self, event: Event) -> None:
         """Insert a new event."""
@@ -204,6 +236,62 @@ class Database:
             (str(-within_hours),),
         )
         return [Event.from_row(row) for row in cursor.fetchall()]
+
+    def get_memory_events(self, within_hours: int, limit: int) -> list[Event]:
+        """Return recent incidents for classification memory, regardless of status.
+
+        Stored timestamps are ISO 8601 strings and may use differing UTC offsets.
+        ``julianday`` compares their absolute UTC moments rather than their text
+        representation. Expired, resolved and acknowledged incidents remain useful
+        memory because identity matching is independent of notification state.
+        """
+        cursor = self.conn.execute(
+            "SELECT * FROM events "
+            "WHERE julianday(last_updated_at) >= julianday('now') - (? / 24.0) "
+            "ORDER BY julianday(last_updated_at) DESC, id DESC "
+            "LIMIT ?",
+            (within_hours, limit),
+        )
+        return [Event.from_row(row) for row in cursor.fetchall()]
+
+    def get_event_evidence(self, event_id: str, limit: int = 3) -> list[dict]:
+        """Return the newest distinct classified articles attached to an event.
+
+        The event's persisted article IDs, rather than title similarity, are the
+        source of truth for evidence. If an article was classified more than once,
+        the latest classification supplies its Polish summary.
+        """
+        event = self.get_event_by_id(event_id)
+        if event is None or limit <= 0:
+            return []
+
+        article_ids = list(dict.fromkeys(event.article_ids))
+        if not article_ids:
+            return []
+
+        placeholders = ", ".join("?" for _ in article_ids)
+        cursor = self.conn.execute(
+            f"""
+            SELECT
+                articles.id AS article_id,
+                articles.title AS title,
+                classifications.summary_pl AS summary_pl,
+                articles.published_at AS published_at
+            FROM articles
+            JOIN classifications ON classifications.id = (
+                SELECT latest.id
+                FROM classifications AS latest
+                WHERE latest.article_id = articles.id
+                ORDER BY julianday(latest.classified_at) DESC, latest.rowid DESC
+                LIMIT 1
+            )
+            WHERE articles.id IN ({placeholders})
+            ORDER BY julianday(articles.published_at) DESC, articles.id DESC
+            LIMIT ?
+            """,
+            [*article_ids, limit],
+        )
+        return [dict(row) for row in cursor.fetchall()]
 
     def insert_alert_record(self, record: AlertRecord) -> None:
         """Insert an alert record."""

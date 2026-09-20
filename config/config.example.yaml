@@ -494,6 +494,26 @@ processing:
 # CLASSIFICATION -- LLM settings
 # -----------------------------------------------------------------------------
 classification:
+  # Persistent incident identity, included in the existing classifier request.
+  # Keep disabled until labelled replay and total model cost have been reviewed.
+  incident_memory:
+    enabled: false
+    lookback_hours: 168
+    candidate_pool_size: 100
+    max_candidates: 5
+    evidence_per_event: 2
+    max_text_chars: 300
+    min_confidence: 0.85
+    critical_min_confidence: 0.9
+    extra_output_tokens: 256
+    weekday_aliases:
+      monday: [monday, poniedziałek, poniedziałku, poniedziałkowy, poniedziałkowego, понедельник, понедельника, понеділок, понеділка]
+      tuesday: [tuesday, wtorek, wtorku, wtorkowy, wtorkowego, вторник, вторника, вівторок, вівторка]
+      wednesday: [wednesday, środa, środę, środowy, środowego, среда, среду, среды, середа, середу, середи]
+      thursday: [thursday, czwartek, czwartku, czwartkowy, czwartkowego, четверг, четверга, четвер, четверга]
+      friday: [friday, piątek, piątku, piątkowy, piątkowego, пятница, пятницу, пятницы, пʼятниця, пʼятницю, пʼятниці]
+      saturday: [saturday, sobota, sobotę, soboty, sobotni, sobotniego, суббота, субботу, субботы, субота, суботу, суботи]
+      sunday: [sunday, niedziela, niedzielę, niedzieli, niedzielny, niedzielnego, воскресенье, воскресенья, неділя, неділю, неділі]
   model: claude-haiku-4-5-20251001
   max_tokens: 512
   temperature: 0.0

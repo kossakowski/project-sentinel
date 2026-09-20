@@ -46,11 +46,31 @@ class Corroborator:
         alertable_events: list[Event] = []
 
         for result in results:
-            # Store every classification for auditing/cost tracking
-            self.db.insert_classification(result)
-
+            if self.config.classification.incident_memory.enabled:
+                # Article identity is stronger than any fresh model response.
+                # Replaying the same result must not create another incident or
+                # advance its notification revision, even when the decision is new.
+                linked = self.db.conn.execute(
+                    "SELECT events.id FROM events, json_each(events.article_ids) a WHERE a.value = ? LIMIT 1",
+                    (result.article_id,),
+                ).fetchone()
+                if linked is not None:
+                    existing = self.db.get_event_by_id(linked["id"])
+                    if existing is not None:
+                        result.incident_memory = {
+                            "decision": "duplicate",
+                            "matched_event_id": existing.id,
+                            "confidence": 1.0,
+                            "reason": "Article already attached to this incident",
+                            "candidate_ids": [existing.id],
+                            "article_replay": True,
+                        }
+                        self.db.insert_classification(result)
+                        alertable_events.append(existing)
+                    continue
             # Only create events for military classifications with urgency >= 5
             if not result.is_military_event or result.urgency_score < _MIN_EVENT_URGENCY:
+                self.db.insert_classification(result)
                 self.logger.debug(
                     "Skipping low-urgency/non-military classification: article=%s urgency=%d",
                     result.article_id,
@@ -59,7 +79,10 @@ class Corroborator:
                 continue
 
             # Try to match to an existing event
-            matching_event = self._find_matching_event(result)
+            memory_enabled = self.config.classification.incident_memory.enabled
+            matching_event = self._find_memory_match(result) if memory_enabled else self._find_matching_event(result)
+            # Store the final accepted/rejected memory decision with its classification.
+            self.db.insert_classification(result)
 
             if matching_event is not None:
                 # Check source independence before incrementing source_count
@@ -71,6 +94,54 @@ class Corroborator:
                 alertable_events.append(new_event)
 
         return alertable_events
+
+    def _find_memory_match(self, result: ClassificationResult) -> Event | None:
+        """Only explicit, validated incident identity may suppress a new alert.
+
+        Unlike legacy fuzzy matching, new/uncertain decisions never absorb a fresh
+        attack solely because it uses the same country and military vocabulary.
+        """
+        memory = result.incident_memory
+        if (
+            not isinstance(memory, dict)
+            or not isinstance(memory.get("decision"), str)
+            or memory.get("decision") not in {"duplicate", "update", "escalation"}
+        ):
+            return None
+        event_id = memory.get("matched_event_id")
+        candidate_ids = memory.get("candidate_ids")
+        confidence = memory.get("confidence", 0)
+        cfg = self.config.classification.incident_memory
+        threshold = (
+            cfg.critical_min_confidence if result.urgency_score >= self._phone_call_threshold() else cfg.min_confidence
+        )
+        if (
+            not isinstance(confidence, (int, float))
+            or isinstance(confidence, bool)
+            or not threshold <= confidence <= 1
+            or not isinstance(event_id, str)
+            or not isinstance(candidate_ids, list)
+            or not all(isinstance(candidate, str) for candidate in candidate_ids)
+            or event_id not in candidate_ids
+        ):
+            return None
+        event = self.db.get_event_by_id(event_id)
+        if event is None:
+            return None
+        age_hours = (self._as_utc(result.classified_at) - self._as_utc(event.last_updated_at)).total_seconds() / 3600
+        compatible = self._countries_compatible(
+            result.affected_countries, event.affected_countries, urgency=result.urgency_score
+        )
+        if not compatible or not 0 <= age_hours <= self.config.classification.incident_memory.lookback_hours:
+            memory.update(
+                decision="uncertain", matched_event_id=None, reason="Country or memory-age safety guard rejected match"
+            )
+            return None
+        # A low-severity memory must never silence the first critical report.
+        if result.urgency_score >= self._phone_call_threshold() > event.urgency_score:
+            memory["decision"] = "escalation"
+            memory["reason"] = "First critical report for a previously noncritical incident"
+        return event
 
     def _find_matching_event(self, result: ClassificationResult) -> Event | None:
         """Find an existing active event that matches this classification."""
@@ -297,9 +368,17 @@ class Corroborator:
         is_independent: bool,
     ) -> Event:
         """Add a new source to an existing event."""
+        if result.article_id in event.article_ids:
+            return event
         # Update in-memory event
         event.article_ids.append(result.article_id)
-        event.urgency_score = max(event.urgency_score, result.urgency_score)
+        memory_enabled = self.config.classification.incident_memory.enabled
+        escalation = memory_enabled and result.incident_memory.get("decision") == "escalation"
+        if not memory_enabled or escalation:
+            event.urgency_score = max(event.urgency_score, result.urgency_score)
+        if escalation:
+            event.notification_revision += 1
+            event.summary_pl = result.summary_pl
         event.last_updated_at = datetime.now(UTC)
 
         if is_independent:
@@ -314,7 +393,12 @@ class Corroborator:
         event.affected_countries = sorted(merged)
 
         # Re-evaluate alert status
-        event.alert_status = self._determine_alert_status(urgency=event.urgency_score, source_count=event.source_count)
+        # Keep acknowledgement/call lifecycle state; incident identity is separate
+        # from notification delivery. The dispatcher computes current routing.
+        if not memory_enabled or event.alert_status not in {"acknowledged", "retry_pending", "call_placed", "expired"}:
+            event.alert_status = self._determine_alert_status(
+                urgency=event.urgency_score, source_count=event.source_count
+            )
 
         # Persist changes
         self.db.update_event(
@@ -324,6 +408,8 @@ class Corroborator:
             article_ids=list_to_json(event.article_ids),
             affected_countries=list_to_json(event.affected_countries),
             alert_status=event.alert_status,
+            summary_pl=event.summary_pl,
+            notification_revision=event.notification_revision,
         )
 
         self.logger.info(

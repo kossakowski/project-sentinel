@@ -304,12 +304,12 @@ async def test_cooldown_prevents_recall(state_machine, mock_twilio):
 
 
 # --------------------------------------------------------------------------
-# 11. test_cooldown_expired_allows_call
+# 11. test_acknowledged_event_never_restarts_call
 # --------------------------------------------------------------------------
 @pytest.mark.asyncio
 @patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
-async def test_cooldown_expired_allows_call(_sleep, state_machine, mock_twilio, config):
-    """Acknowledged event after cooldown -> can call again."""
+async def test_acknowledged_event_never_restarts_call(_sleep, state_machine, mock_twilio, config):
+    """Acknowledgement prevents another initial call even after cooldown."""
     cooldown_hours = config.alerts.acknowledgment.cooldown_hours
     event = _make_event(
         urgency_score=10,
@@ -319,8 +319,7 @@ async def test_cooldown_expired_allows_call(_sleep, state_machine, mock_twilio, 
 
     await state_machine.process_event(event)
 
-    # The cooldown has expired — calls are attempted
-    assert mock_twilio.make_alert_call.call_count >= 1
+    mock_twilio.make_alert_call.assert_not_called()
 
 
 # --------------------------------------------------------------------------
@@ -367,8 +366,8 @@ async def test_acknowledged_event_gets_sms_update(state_machine, db, mock_twilio
     )
     db.insert_alert_record(record)
 
-    # The event was updated after the last alert
-    event.last_updated_at = datetime.now(UTC)
+    # A semantic escalation, not a timestamp change, advances the revision.
+    event.notification_revision = 2
 
     await state_machine.process_event(event)
 
@@ -1113,7 +1112,7 @@ async def test_push_self_dedup_on_second_cycle(db, mock_twilio, config):
 
 @pytest.mark.asyncio
 async def test_acknowledged_update_sends_sms_and_push(db, mock_twilio, config):
-    """[1.4] An acknowledged event whose last_updated_at advanced sends update SMS AND an additive push."""
+    """[1.4] An acknowledged event with a higher revision sends SMS and push."""
     _enable_push(config)
     push = _make_push_client()
     sm = AlertStateMachine(db, mock_twilio, config, push_client=push)
@@ -1127,7 +1126,7 @@ async def test_acknowledged_update_sends_sms_and_push(db, mock_twilio, config):
         sent_at=past_time,
     )
     db.insert_alert_record(record)
-    event.last_updated_at = datetime.now(UTC)
+    event.notification_revision = 2
 
     await sm.process_event(event)
 
@@ -1232,11 +1231,12 @@ async def test_push_dedup_on_existing_push_record(db, mock_twilio, config):
 
 @pytest.mark.asyncio
 async def test_push_update_bypasses_dedup(db, mock_twilio, config):
-    """An update push fires despite an existing push record (caller-gated; is_update retained)."""
+    """An update push fires for a newer notification revision."""
     _enable_push(config)
     push = _make_push_client()
     sm = AlertStateMachine(db, mock_twilio, config, push_client=push)
     event = _make_event(urgency_score=10, source_count=2)
+    event.notification_revision = 2
     db.insert_event(event)
     existing = [_make_alert_record(event.id, alert_type="push", status="sent")]
 
@@ -1742,13 +1742,14 @@ async def test_push_behavior_preserved(config):
     assert twilio_d.make_alert_call.call_count >= 1
     push_d.send_push.assert_called_once()  # additive push for the call
 
-    # ---- (e) is_update=True pushes despite an existing push record.
+    # ---- (e) a new revision sends an update despite an existing push record.
     db_e = Database(":memory:")
     twilio_e = _fresh_twilio()
     captured_e: list = []
     push_e = _fresh_push(captured_e)
     sm_e = AlertStateMachine(db_e, twilio_e, config, push_client=push_e)
     event_e = _make_event(urgency_score=10, source_count=2)
+    event_e.notification_revision = 2
     db_e.insert_event(event_e)
     existing_e = [_make_alert_record(event_e.id, alert_type="push", status="sent")]
     await sm_e._maybe_send_push(event_e, existing_e, is_update=True)

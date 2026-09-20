@@ -352,7 +352,7 @@ async def test_run_cycle_awaits_dispatch_and_check_pending(real_cycle_pipeline):
 
     # Produce one alertable event so dispatch is driven with real data
     # (alert_status != "pending" => included in alertable_events).
-    event = SimpleNamespace(alert_status="phone_call")
+    event = SimpleNamespace(id="test-event", alert_status="phone_call")
     pipeline.corroborator.process_classifications = MagicMock(return_value=[event])
 
     dispatch = AsyncMock()

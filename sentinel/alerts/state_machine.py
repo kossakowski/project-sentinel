@@ -389,20 +389,28 @@ class AlertStateMachine:
         self.logger = logging.getLogger("sentinel.alerts.state_machine")
 
     async def process_event(self, event: Event) -> None:
-        """Determine and execute the appropriate alert action for an event."""
-        if self._is_in_cooldown(event):
-            self.logger.debug("Event %s in cooldown, skipping", event.id)
-            return
+        """Determine and execute the appropriate alert action for an event.
 
+        The caller can hold an event snapshot from before an incident-memory
+        merge or escalation.  Prefer the row just persisted by that workflow so
+        delivery decisions always use its current notification revision.
+        """
+        persisted_event = self.db.get_event_by_id(event.id)
+        if persisted_event is not None:
+            event = persisted_event
         existing_alerts = self.db.get_alert_records(event.id)
 
-        if self._is_acknowledged(existing_alerts):
-            if event.last_updated_at > self._last_alert_time(existing_alerts):
-                # Acknowledged 9-10 escalation update: send the update SMS and an
-                # additive Expo push (AD-3). The is_update dedup-bypass is
-                # intended so each escalation update pushes the latest state.
-                await self._send_update_sms(event)
-                await self._maybe_send_push(event, existing_alerts, is_update=True)
+        if self._is_acknowledged(existing_alerts) or event.acknowledged_at is not None:
+            # An acknowledgement stops further calls, but it must not hide a
+            # genuine escalation.  Only the incident grouper increments this
+            # revision; source-count and timestamp changes therefore cannot
+            # manufacture an update.  Cooldown intentionally does not apply to
+            # a new revision.
+            if self._has_new_delivered_revision(event, existing_alerts):
+                if not self._channel_delivered(existing_alerts, "sms", event.notification_revision):
+                    await self._send_update_sms(event)
+                if not self._channel_delivered(existing_alerts, "push", event.notification_revision):
+                    await self._maybe_send_push(event, existing_alerts, is_update=True)
             return
 
         # If there are pending call records (initiated but not yet resolved),
@@ -427,19 +435,20 @@ class AlertStateMachine:
         send_push = action in ("push", "both", "phone_call")
         send_sms = action in ("sms", "both")
 
-        # Existing re-alert suppression, now applied only to the SMS half: a
-        # prior perceivable alert for this event suppresses a redundant re-SMS.
-        # The push half is not gated by this — it self-dedups on a prior push
-        # record inside _maybe_send_push.
-        if send_sms and self._user_already_notified(existing_alerts):
+        # SMS and push are each suppressed only after *that channel* has
+        # successfully delivered this notification revision.  A failed attempt
+        # stays retryable, and a real revision increment can notify again.
+        if send_sms and self._channel_delivered(existing_alerts, "sms", event.notification_revision):
             self.logger.debug(
-                "Event %s already has prior alert; suppressing re-SMS",
+                "Event %s already has SMS delivery for revision %d; suppressing re-SMS",
                 event.id,
+                event.notification_revision,
             )
             send_sms = False
 
-        # Push reaches the phone immediately and self-dedups on a prior push
-        # record (so call-retry / re-corroboration cycles don't re-push).
+        # Push reaches the phone immediately and self-dedups on a successful
+        # push for this revision (so call-retry/re-corroboration cycles do not
+        # re-push, while failed pushes remain retryable).
         if send_push:
             await self._maybe_send_push(event, existing_alerts)
 
@@ -501,36 +510,42 @@ class AlertStateMachine:
 
         return "log_only"
 
-    def _is_in_cooldown(self, event: Event) -> bool:
-        """Check if the event is within the cooldown period after acknowledgment."""
-        if event.acknowledged_at is None:
-            return False
+    # ``sms_update`` is accepted for historical/operational compatibility even
+    # though the current transport returns ``sms`` for both bodies.
+    _SMS_ALERT_TYPES = ("sms", "sms_update")
+    _SUCCESSFUL_DELIVERY_STATUSES = ("sent", "delivered", "acknowledged")
 
-        cooldown_hours = self.config.alerts.acknowledgment.cooldown_hours
-        cooldown_end = event.acknowledged_at + timedelta(hours=cooldown_hours)
-        return datetime.now(UTC) < cooldown_end
+    def _channel_delivered(self, alerts: list[AlertRecord], channel: str, revision: int) -> bool:
+        """Return whether a channel successfully delivered ``revision``.
 
-    # Alert types that, once recorded, mean we have already notified the user
-    # for this event and a further SMS would be a redundant ping.
-    # A phone call counts because it ships its own confirmation SMS.
-    # SMS→phone_call ESCALATION is still allowed: phone_call action skips
-    # this suppression (its own retry-interval logic in _execute_phone_call
-    # governs re-firing).
-    _USER_NOTIFIED_ALERT_TYPES = ("sms", "whatsapp", "phone_call")
+        A database migration gives legacy records revision 1.  Looking at both
+        type and successful status is important: a retained failed push/SMS
+        attempt must never suppress the next retry.
+        """
+        alert_types = self._SMS_ALERT_TYPES if channel == "sms" else ("push",)
+        return any(
+            alert.alert_type in alert_types
+            and alert.status in self._SUCCESSFUL_DELIVERY_STATUSES
+            and alert.event_revision == revision
+            for alert in alerts
+        )
 
-    def _user_already_notified(self, alerts: list[AlertRecord]) -> bool:
-        """True if any prior alert that the user can perceive exists."""
-        return any(a.alert_type in self._USER_NOTIFIED_ALERT_TYPES for a in alerts)
+    def _has_new_delivered_revision(self, event: Event, alerts: list[AlertRecord]) -> bool:
+        """True when the event advanced beyond a previously delivered revision.
+
+        Do not compare only against the maximum delivery revision: after the
+        SMS half of a revision succeeds, a failed push half still needs a retry.
+        Any earlier successful revision establishes that this is an update;
+        per-channel checks above decide which outstanding half to send.
+        """
+        return any(
+            alert.status in self._SUCCESSFUL_DELIVERY_STATUSES and alert.event_revision < event.notification_revision
+            for alert in alerts
+        )
 
     def _is_acknowledged(self, alerts: list[AlertRecord]) -> bool:
         """Check if any alert for this event was acknowledged."""
         return any(a.status == "acknowledged" for a in alerts)
-
-    def _last_alert_time(self, alerts: list[AlertRecord]) -> datetime:
-        """Return the sent_at time of the most recent alert."""
-        if not alerts:
-            return datetime.min.replace(tzinfo=UTC)
-        return max(a.sent_at for a in alerts)
 
     async def _execute_phone_call(self, event: Event, existing_alerts: list[AlertRecord] | None = None) -> None:
         """Place a phone call alert with aggressive immediate retries.
@@ -590,7 +605,7 @@ class AlertStateMachine:
                 continue
 
             record.attempt_number = total_attempts
-            self.db.insert_alert_record(record)
+            self._record_alert(record, event)
             self.db.update_event(event.id, alert_status="call_placed")
 
             # Wait for call to finish, polling SMS in the meantime
@@ -660,7 +675,7 @@ class AlertStateMachine:
         record = await asyncio.to_thread(self.twilio.send_sms, phone_number, message, event.id)
         if record is not None:
             self._confirmation_sms_sid = record.twilio_sid
-            self.db.insert_alert_record(record)
+            self._record_alert(record, event)
             self.logger.info(
                 "SMS confirmation request sent for event %s (code=%s, SID=%s)",
                 event.id[:8],
@@ -761,7 +776,7 @@ class AlertStateMachine:
 
         record = await asyncio.to_thread(self.twilio.send_sms, phone_number, message, event.id)
         if record is not None:
-            self.db.insert_alert_record(record)
+            self._record_alert(record, event)
             self.db.update_event(event.id, alert_status="sms_sent")
 
     async def _handle_call_result(self, record: AlertRecord, status: dict) -> None:
@@ -804,7 +819,7 @@ class AlertStateMachine:
         message = _format_sms_message(event, self.db, self.config)
         record = await asyncio.to_thread(self.twilio.send_sms, phone_number, message, event_id)
         if record is not None:
-            self.db.insert_alert_record(record)
+            self._record_alert(record, event)
 
     async def _send_update_sms(self, event: Event) -> None:
         """Send an SMS update for an event that was already acknowledged."""
@@ -812,7 +827,7 @@ class AlertStateMachine:
         message = _format_update_sms(event, self.db, self.config)
         record = await asyncio.to_thread(self.twilio.send_sms, phone_number, message, event.id)
         if record is not None:
-            self.db.insert_alert_record(record)
+            self._record_alert(record, event)
             self.logger.info("Update SMS sent for acknowledged event %s", event.id)
 
     async def _maybe_send_push(
@@ -826,17 +841,15 @@ class AlertStateMachine:
         Invoked by process_event when the resolved tier channel is "push" or
         "both" (per-tier routing), additively on the 9-10 "phone_call" action
         (AD-2), and on acknowledged-event escalation updates (AD-3). No-op when
-        push is disabled or no tokens are configured. The initial alert is deduped
-        on the presence of a prior 'push' record so re-corroboration cycles don't
-        re-push every few minutes. Updates (is_update=True) skip that dedup — the
-        caller only invokes them when genuinely new corroboration arrived, and the
-        new record's sent_at rate-limits the next one. The blocking HTTP POST is
-        offloaded to a thread like the Twilio calls.
+        push is disabled or no tokens are configured. Delivery is deduped only by
+        a successful push record for the current notification revision, so a
+        failed attempt retries and an escalation revision can notify once. The
+        blocking HTTP POST is offloaded to a thread like the Twilio calls.
         """
         push_cfg = self.config.alerts.push
         if not push_cfg.enabled or not push_cfg.tokens:
             return
-        if not is_update and any(a.alert_type == "push" for a in existing_alerts):
+        if self._channel_delivered(existing_alerts, "push", event.notification_revision):
             return
 
         title, body = _format_push(event, is_update=is_update)
@@ -849,8 +862,19 @@ class AlertStateMachine:
             data,
         )
         if record is not None:
-            self.db.insert_alert_record(record)
+            self._record_alert(record, event)
             self.logger.info("Push alert recorded for event %s", event.id[:8])
+
+    def _record_alert(self, record: AlertRecord, event: Event) -> None:
+        """Persist an attempt with the incident revision it belongs to.
+
+        Transports return a record only when they accepted an attempt, but test
+        doubles and later providers can return a failed record.  Persisting that
+        diagnostic is useful; the revision dedup logic deliberately treats only
+        successful statuses as delivered.
+        """
+        record.event_revision = event.notification_revision
+        self.db.insert_alert_record(record)
 
     def _update_alert_record(
         self,

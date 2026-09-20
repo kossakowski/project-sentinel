@@ -3,7 +3,7 @@ import re
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, HttpUrl, field_validator, model_validator
+from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
 
 
 class ConfigError(Exception):
@@ -169,7 +169,29 @@ class AlertsConfig(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class IncidentMemoryConfig(BaseModel):
+    enabled: bool = False
+    lookback_hours: int = Field(default=168, ge=1, le=2160)
+    candidate_pool_size: int = Field(default=100, ge=1, le=1000)
+    max_candidates: int = Field(default=5, ge=1, le=20)
+    evidence_per_event: int = Field(default=2, ge=1, le=5)
+    max_text_chars: int = Field(default=300, ge=100, le=2000)
+    min_confidence: float = Field(default=0.85, ge=0.5, le=1.0)
+    critical_min_confidence: float = Field(default=0.9, ge=0.5, le=1.0)
+    extra_output_tokens: int = Field(default=256, ge=128, le=1024)
+    weekday_aliases: dict[str, list[str]] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _check_candidate_limits(self) -> "IncidentMemoryConfig":
+        if self.max_candidates > self.candidate_pool_size:
+            raise ValueError("max_candidates must not exceed candidate_pool_size")
+        if self.critical_min_confidence < self.min_confidence:
+            raise ValueError("critical_min_confidence must be at least min_confidence")
+        return self
+
+
 class ClassificationConfig(BaseModel):
+    incident_memory: IncidentMemoryConfig = Field(default_factory=IncidentMemoryConfig)
     model: str = "claude-haiku-4-5-20251001"
     max_tokens: int = 512
     temperature: float = 0.0

@@ -45,6 +45,22 @@ def _json_to_list(s: str | None) -> list:
     return json.loads(s)
 
 
+def dict_to_json(value: dict | None) -> str:
+    """Serialize optional structured incident-memory metadata for SQLite."""
+    return json.dumps(value or {}, ensure_ascii=False)
+
+
+def _json_to_dict(value: str | dict | None) -> dict:
+    """Restore structured incident-memory metadata, defaulting legacy rows to {}."""
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+
+    parsed = json.loads(value)
+    return parsed if isinstance(parsed, dict) else {}
+
+
 @dataclass
 class Article:
     source_name: str
@@ -120,6 +136,7 @@ class ClassificationResult:
     model_used: str
     input_tokens: int
     output_tokens: int
+    incident_memory: dict = field(default_factory=dict)
     id: str = field(default_factory=lambda: str(uuid4()))
 
     def to_dict(self) -> dict:
@@ -138,6 +155,7 @@ class ClassificationResult:
             "model_used": self.model_used,
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
+            "incident_memory": dict_to_json(self.incident_memory),
         }
 
     @classmethod
@@ -156,6 +174,7 @@ class ClassificationResult:
             model_used=d["model_used"],
             input_tokens=d.get("input_tokens", 0),
             output_tokens=d.get("output_tokens", 0),
+            incident_memory=_json_to_dict(d.get("incident_memory")),
             id=d.get("id", str(uuid4())),
         )
 
@@ -177,6 +196,7 @@ class Event:
     article_ids: list[str]
     alert_status: str = "pending"
     acknowledged_at: datetime | None = None
+    notification_revision: int = 1
     id: str = field(default_factory=lambda: str(uuid4()))
 
     def to_dict(self) -> dict:
@@ -193,6 +213,7 @@ class Event:
             "article_ids": list_to_json(self.article_ids),
             "alert_status": self.alert_status,
             "acknowledged_at": _dt_to_iso(self.acknowledged_at),
+            "notification_revision": self.notification_revision,
         }
 
     @classmethod
@@ -209,6 +230,7 @@ class Event:
             article_ids=_json_to_list(d.get("article_ids")),
             alert_status=d.get("alert_status", "pending"),
             acknowledged_at=_iso_to_dt(d.get("acknowledged_at")),
+            notification_revision=d.get("notification_revision", 1),
             id=d.get("id", str(uuid4())),
         )
 
@@ -227,6 +249,7 @@ class AlertRecord:
     sent_at: datetime
     message_body: str
     duration_seconds: int | None = None
+    event_revision: int = 1
     id: str = field(default_factory=lambda: str(uuid4()))
 
     def to_dict(self) -> dict:
@@ -240,6 +263,7 @@ class AlertRecord:
             "attempt_number": self.attempt_number,
             "sent_at": _dt_to_iso(self.sent_at),
             "message_body": self.message_body,
+            "event_revision": self.event_revision,
         }
 
     @classmethod
@@ -253,6 +277,7 @@ class AlertRecord:
             sent_at=_iso_to_dt(d["sent_at"]),
             message_body=d.get("message_body", ""),
             duration_seconds=d.get("duration_seconds"),
+            event_revision=d.get("event_revision", 1),
             id=d.get("id", str(uuid4())),
         )
 

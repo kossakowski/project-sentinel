@@ -28,6 +28,12 @@ class Deduplicator:
             self.logger.debug("URL duplicate: %s", article.source_url[:80])
             return "URL already seen"
 
+        # In the memory path, another URL can be independent corroboration or a
+        # new attack with almost the same headline. Preserve it for incident
+        # comparison; notification dedup belongs after classification.
+        if self.config.classification.incident_memory.enabled:
+            return None
+
         # Strategy 2: fuzzy title dedup
         dedup_cfg = self.config.processing.dedup
         recent_titles = self.db.get_recent_titles(dedup_cfg.lookback_minutes)
@@ -45,10 +51,7 @@ class Deduplicator:
                 return f"Title ~{ratio:.0f}% (cross-source)"
 
             # Similar within same source -> duplicate (republished)
-            if (
-                ratio >= dedup_cfg.same_source_title_threshold
-                and source_name == article.source_name
-            ):
+            if ratio >= dedup_cfg.same_source_title_threshold and source_name == article.source_name:
                 self.logger.debug(
                     "Same-source title duplicate (%.0f%%): %s",
                     ratio,
@@ -62,9 +65,7 @@ class Deduplicator:
         """Check if article is a duplicate. Returns True if it should be skipped."""
         return self._check_duplicate(article) is not None
 
-    def deduplicate_batch(
-        self, articles: list[Article], *, diagnostic: bool = False
-    ) -> list[Article]:
+    def deduplicate_batch(self, articles: list[Article], *, diagnostic: bool = False) -> list[Article]:
         """Filter out duplicates from a batch. Non-duplicates are inserted into DB."""
         unique: list[Article] = []
         seen_hashes: set[str] = set()
@@ -76,9 +77,7 @@ class Deduplicator:
             # Batch-internal dedup: skip if we already accepted an article
             # with the same url_hash in this batch
             if article.url_hash in seen_hashes:
-                self.logger.debug(
-                    "Batch-internal duplicate: %s", article.title[:60]
-                )
+                self.logger.debug("Batch-internal duplicate: %s", article.title[:60])
                 if diagnostic:
                     self.diagnostic_reasons[article.id] = "Batch-internal duplicate"
                 continue

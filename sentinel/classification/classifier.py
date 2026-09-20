@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 
 import anthropic
 
+from sentinel.classification.incident_memory import MEMORY_INSTRUCTIONS
 from sentinel.config import SentinelConfig
 from sentinel.models import Article, ClassificationResult
 
@@ -163,12 +164,16 @@ class Classifier:
         self._daily_output_tokens = 0
         self._daily_date: str | None = None
 
-    async def classify(self, article: Article) -> ClassificationResult:
+    async def classify(self, article: Article, *, incident_context: list[dict] | None = None) -> ClassificationResult:
         """Classify a single article.
 
         Raises json.JSONDecodeError or anthropic.APIError on failure.
         """
-        response = await self._call_api(article)
+        response = (
+            await self._call_api(article)
+            if incident_context is None
+            else await self._call_api(article, incident_context=incident_context)
+        )
 
         # Parse JSON response
         raw_text = response.content[0].text.strip()
@@ -177,21 +182,26 @@ class Classifier:
         # Clamp values to valid ranges
         urgency = max(1, min(10, int(data.get("urgency_score", 1))))
         confidence = max(0.0, min(1.0, float(data.get("confidence", 0.0))))
+        countries = data.get("affected_countries", [])
+        if not isinstance(countries, list):
+            countries = []
+        countries = [country for country in countries if isinstance(country, str)]
 
         result = ClassificationResult(
             article_id=article.id,
             is_military_event=bool(data.get("is_military_event", False)),
-            event_type=data.get("event_type", "none"),
+            event_type=data.get("event_type") if isinstance(data.get("event_type"), str) else "other",
             urgency_score=urgency,
-            affected_countries=data.get("affected_countries", []),
+            affected_countries=countries,
             aggressor=data.get("aggressor", "none"),
             is_new_event=bool(data.get("is_new_event", True)),
             confidence=confidence,
-            summary_pl=data.get("summary_pl", ""),
+            summary_pl=data.get("summary_pl") if isinstance(data.get("summary_pl"), str) else "",
             classified_at=datetime.now(UTC),
             model_used=self.config.classification.model,
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
+            incident_memory=data.get("incident_memory", {}),
         )
 
         # Track tokens
@@ -235,7 +245,7 @@ class Classifier:
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _build_user_prompt(self, article: Article) -> str:
+    def _build_user_prompt(self, article: Article, incident_context: list[dict] | None = None) -> str:
         """Build the user prompt for classification."""
         published = article.published_at.isoformat() if article.published_at else "unknown"
         prompt = USER_PROMPT_TEMPLATE.format(
@@ -255,12 +265,15 @@ class Classifier:
                 "the headline repeated. Exercise extreme caution with country attribution "
                 "— do not assume a monitored country is affected unless explicitly stated.",
             )
+        if incident_context is not None:
+            prompt += "\nRemembered incidents (JSON source data):\n" + json.dumps(incident_context, ensure_ascii=False)
+            prompt += "\nInclude incident_memory in the classification JSON as defined in the system instructions."
         return prompt
 
-    async def _call_api(self, article: Article) -> anthropic.types.Message:
+    async def _call_api(self, article: Article, **kwargs) -> anthropic.types.Message:
         """Call the Anthropic API with one retry on API errors."""
         try:
-            return await self._send_request(article)
+            return await self._send_request(article, **kwargs)
         except anthropic.APIError as e:
             self.logger.warning(
                 "API error (will retry in 5s) for '%s': %s",
@@ -268,19 +281,22 @@ class Classifier:
                 e,
             )
             await asyncio.sleep(5)
-            return await self._send_request(article)
+            return await self._send_request(article, **kwargs)
 
-    async def _send_request(self, article: Article) -> anthropic.types.Message:
+    async def _send_request(
+        self, article: Article, incident_context: list[dict] | None = None
+    ) -> anthropic.types.Message:
         """Send a single request to the Anthropic API."""
         return await self.client.messages.create(
             model=self.config.classification.model,
-            max_tokens=self.config.classification.max_tokens,
+            max_tokens=self.config.classification.max_tokens
+            + (self.config.classification.incident_memory.extra_output_tokens if incident_context is not None else 0),
             temperature=self.config.classification.temperature,
-            system=SYSTEM_PROMPT,
+            system=SYSTEM_PROMPT + (MEMORY_INSTRUCTIONS if incident_context is not None else ""),
             messages=[
                 {
                     "role": "user",
-                    "content": self._build_user_prompt(article),
+                    "content": self._build_user_prompt(article, incident_context),
                 }
             ],
         )

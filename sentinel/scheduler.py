@@ -20,6 +20,7 @@ from sentinel.alerts.state_machine import AlertStateMachine
 from sentinel.alerts.twilio_client import TwilioClient
 from sentinel.classification.classifier import Classifier
 from sentinel.classification.corroborator import Corroborator
+from sentinel.classification.incident_memory import IncidentMemory
 from sentinel.config import SentinelConfig
 from sentinel.database import Database
 from sentinel.diagnostic import DiagnosticArticle, DiagnosticData
@@ -155,6 +156,7 @@ class SentinelPipeline:
         self.enricher = ArticleEnricher(config)
         self.classifier = Classifier(config)
         self.corroborator = Corroborator(self.db, config)
+        self.incident_memory = IncidentMemory(self.db, config)
         self.twilio_client = TwilioClient(config)
         self.push_client = ExpoPushClient(config)
         self.state_machine = AlertStateMachine(self.db, self.twilio_client, config, push_client=self.push_client)
@@ -242,7 +244,24 @@ class SentinelPipeline:
 
             # Step 6: Classify (only if there are relevant articles)
             classifications = []
-            if relevant:
+            events = []
+            if relevant and self.config.classification.incident_memory.enabled:
+                # Each persisted result becomes context for the very next article,
+                # including articles fetched during the same scheduler cycle.
+                for article in relevant:
+                    try:
+                        candidates = self.incident_memory.candidates(article)
+                        result = await self.classifier.classify(article, incident_context=candidates)
+                    except Exception as e:
+                        self.logger.error("Classification failed for %s: %s", article.id, e, exc_info=True)
+                        continue
+                    self.incident_memory.validate(result, candidates, article)
+                    classifications.append(result)
+                    try:
+                        events.extend(self.corroborator.process_classifications([result]))
+                    except Exception:
+                        self.logger.exception("Incident grouping failed for article %s", article.id)
+            elif relevant:
                 try:
                     classifications = await self.classifier.classify_batch(relevant)
                     self.logger.info("Classified %d articles", len(classifications))
@@ -255,7 +274,10 @@ class SentinelPipeline:
                     classifications = []
 
             # Step 6: Corroborate (group into events)
-            events = self.corroborator.process_classifications(classifications)
+            if not self.config.classification.incident_memory.enabled:
+                events = self.corroborator.process_classifications(classifications)
+            # Keep the final snapshot of each incident, never earlier batch versions.
+            events = list({event.id: event for event in events}.values())
             alertable_events = [e for e in events if e.alert_status != "pending"]
             self.logger.info("Events needing alerts: %d", len(alertable_events))
 

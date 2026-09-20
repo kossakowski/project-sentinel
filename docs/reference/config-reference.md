@@ -136,10 +136,58 @@ Consumed by: `sentinel/classification/classifier.py` (LLM call) and `sentinel/cl
 | `summary_similarity_threshold` | int | `50` | `50` | Score (0-100) from the metric above, at/above which a new summary is treated as the same event. Lower = more aggressive merging. Live & default `50`. Tune in config without a code deploy. |
 | `syndication_similarity_threshold` | int | `90` | `90` | Source-independence guard. A source counts as *independent* only if it is a different domain AND its (normalized) title similarity to an already-counted source is `< 90` (`fuzz.ratio`), checked across all source types to catch wire/syndication reuse. Range 0-100. |
 
-**Event-grouping notes (corroborator):**
+**Legacy event-grouping notes (when incident memory is disabled):**
 - **Sliding window + max-age cap together:** the 6h window is re-anchored on every update, so the 48h cap is what ultimately retires a long-running event.
 - **Country gate:** at/above the phone-call urgency threshold (9), a match requires a concrete-country intersection — a Poland-critical article whose country wasn't extracted spawns its OWN event/call (empty/"unknown" does NOT relax the gate at critical urgency). Below the threshold, empty/"unknown" labels don't block a merge, but two concrete-but-different country sets (e.g. PL vs RO) stay separate. Countries are normalized (uppercased; blank/"unknown" dropped) on merge.
 - **Critical-urgency safety guard:** a phone-call-eligible article is NEVER absorbed into an event that already has `acknowledged_at` set (already alerted / in cooldown). It forces a NEW event and a NEW call so a fresh escalation can't be silenced by an earlier event's cooldown.
+
+### `classification.incident_memory`
+
+This opt-in path includes stored incident context in the existing classification
+request. It does not change the configured model or add another model call.
+It is disabled in the example and repository configuration pending evaluation and
+production rollout. The existing fuzzy grouping parameters above apply to the legacy
+path; memory uses the independent retrieval window below.
+
+| Field | Default | Purpose |
+|---|---|---|
+| `enabled` | `false` | Activate sequential classification with incident context and validated semantic grouping. |
+| `lookback_hours` | `168` | Retrieve recently updated incidents regardless of acknowledgement or expiry status. |
+| `candidate_pool_size` | `100` | Bound the database search before relevance ranking. |
+| `max_candidates` | `5` | Bound the incident list sent to the model; retain the newest incident and rank the others by text overlap. |
+| `evidence_per_event` | `2` | Include bounded recent article evidence so memory does not rely only on the original summary. |
+| `max_text_chars` | `300` | Limit each summary/title field in candidate context. |
+| `min_confidence` | `0.85` | Minimum incident-identity confidence to accept a noncritical match to a supplied candidate ID. |
+| `critical_min_confidence` | `0.9` | Stricter minimum for incoming phone-call-eligible reports. |
+| `extra_output_tokens` | `256` | Add room for the memory decision to the existing output limit. |
+| `weekday_aliases` | `{}` in code; multilingual map in YAML | Map weekday names across PL/EN/UA/RU to catch conflicting incident days. Explicit ISO and DD.MM.YYYY dates are also checked. |
+
+The output distinguishes a new incident, duplicate coverage, a nonurgent update,
+an escalation, and uncertain identity. Only a validated match can bypass the old
+event-type mismatch. Concrete country conflicts and the critical-country guard
+still prevent merging. An uncertain or invalid memory decision creates a separate
+incident rather than suppressing it. A first critical report cannot be silently
+absorbed into a previously noncritical event.
+
+Duplicate coverage and routine details do not create a notification revision.
+Significant escalation updates the alert summary and advances its durable revision.
+SMS and push independently remember successful revisions; a failed attempt does
+not mark the channel delivered. An acknowledged incident can receive a new-revision
+SMS/push update during its call cooldown, but cannot initiate another call. New
+attack waves remain separate events. Unacknowledged-call retries are unchanged.
+Here, successful means provider acceptance (`sent`), not confirmed handset delivery.
+The existing system does not process final SMS/push receipts. Immediate failed attempts
+remain retryable on re-dispatch; later provider-side delivery failures are not yet
+tracked. It also has no idle-cycle sweep of `retry_pending` incidents; this repair
+does not resurrect old retry records.
+
+The model budget target is **USD 20/month total**, including future content verification.
+This configuration does not enforce a billing cap. Candidate context adds input
+tokens without adding a second call per article. The memory path also bypasses fuzzy-title rejection for different
+URLs, preserving corroboration and new developments; that can increase classified
+article volume. Measure tokens and volume before activation; do not silently disable
+critical alerts to meet a budget.
+See [the implementation plan](../ideas/incident-memory-plan.md) for evaluation and rollout.
 
 ---
 
