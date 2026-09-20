@@ -167,3 +167,10 @@ the original danger and incident decision. All 581 offline tests, twenty live
 runtime-regression cases and six component language checks passed. Total direct
 validation spending across the migration remains approximately $0.01802 of the
 approved $0.25 allowance. SSH access was verified read-only; no deployment occurred.
+
+### Production deployment approved and completed
+
+The operator subsequently approved deployment. Tag `deploy-20260920-232235`
+(`7048a91`) is running in production. The first real classification cycle and a
+subsequent scheduled healthy cycle were verified, and all historical row IDs were
+preserved. See the [deployment and rollback record](../reference/luna-deployment-20260920.md).

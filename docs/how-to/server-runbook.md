@@ -1,7 +1,7 @@
 # Server Runbook — Project Sentinel
 
 > **Owner:** Łukasz (kossakowski87@gmail.com)
-> **Last updated:** 2026-05-30
+> **Last updated:** 2026-09-20
 
 ## Prerequisites
 
@@ -9,7 +9,18 @@ Before running anything in this runbook:
 
 - **SSH only as `deploy@178.104.76.254` on port 2222.** `ssh -p 2222 deploy@178.104.76.254`. **Never** use `root@` or `kossa@` — a wrong username counts as a failed login and 5 failures in 10 min trips fail2ban, banning your IP for 1 hour. Port 22 is firewalled.
 - **Read-only by default.** Do **NOT** modify files on the production server unless explicitly authorised. Log/health/DB inspection commands below are safe; anything that writes (deploy, config edits, session re-auth) needs a deliberate decision.
-- **Required env vars (in `/etc/sentinel/sentinel.env`, loaded by systemd):** `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`, `ALERT_PHONE_NUMBER`, `ANTHROPIC_API_KEY`, `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`. See [Secrets](#secrets).
+- **Required env vars (loaded by systemd):** `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`, `ALERT_PHONE_NUMBER`, `OPENAI_API_KEY`, `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`. OpenAI is loaded from a separate protected file; the existing Anthropic credential is retained only for explicit rollback. See [Secrets](#secrets).
+
+## Current deployment
+
+Production uses direct OpenAI Luna with incident memory, the persistent model-budget
+ledger and the Polish-summary guard. Deployed tag: `deploy-20260920-232235`, code
+commit `7048a91`. See the [deployment and rollback record](../reference/luna-deployment-20260920.md).
+
+Preserve live settings when deploying: merge reviewed classification fields instead
+of copying the repository YAML wholesale. The old `/deploy` skill also excludes the
+existing secrets file; the Luna credential uses its own environment file and service
+drop-in.
 
 ## Server Facts
 
@@ -49,10 +60,12 @@ Emergency (SSH blocked): Hetzner Cloud web console → server → Console tab �
 
 /etc/sentinel/                       # Secrets and config (root:sentinel 750)
 ├── config.yaml                      # Live config with absolute paths (root:sentinel 640)
-└── sentinel.env                     # API keys — loaded by systemd, never read by sentinel user (root:deploy 640)
+├── sentinel.env                     # Existing credentials (root:deploy 640); retained unchanged
+└── openai.env                       # OPENAI_API_KEY, loaded by systemd (root:root 600)
 
 /var/lib/sentinel/                   # Runtime state (sentinel:sentinel 750)
-├── sentinel.db                      # SQLite DB (articles, events, alerts)
+├── sentinel.db                      # SQLite DB (articles, events, alerts, pending classification queue)
+├── model-usage.db                   # Persistent OpenAI reservations/accounting (sentinel:sentinel 600)
 ├── sentinel_session.session         # Telegram auth session (sentinel:sentinel 600)
 └── health.json                      # Updated each pipeline cycle
 
@@ -168,7 +181,13 @@ sudo systemctl restart sentinel
 
 ## Secrets
 
-File: `/etc/sentinel/sentinel.env` — loaded by systemd `EnvironmentFile=` before dropping to `sentinel` user.
+Files are loaded by systemd before dropping to the `sentinel` user:
+
+- `/etc/sentinel/sentinel.env` retains the existing Twilio/Telegram credentials and legacy Anthropic key.
+- `/etc/sentinel/openai.env` contains only `OPENAI_API_KEY`, with owner `root:root` and mode `0600`.
+- `/etc/systemd/system/sentinel.service.d/20-openai.conf` adds the OpenAI environment file; it does not replace the existing one.
+
+Never print credential values in logs or deployment output.
 
 Required variables:
 ```
@@ -176,14 +195,14 @@ TWILIO_ACCOUNT_SID
 TWILIO_AUTH_TOKEN
 TWILIO_PHONE_NUMBER
 ALERT_PHONE_NUMBER
-ANTHROPIC_API_KEY
+OPENAI_API_KEY
 TELEGRAM_API_ID
 TELEGRAM_API_HASH
 ```
 
-Edit secrets:
+Edit the dedicated OpenAI key only when authorised:
 ```bash
-sudo nano /etc/sentinel/sentinel.env
+sudo nano /etc/sentinel/openai.env
 sudo systemctl restart sentinel
 ```
 
@@ -305,6 +324,7 @@ sudo fail2ban-client get sshd ignoreip    # verify
 
 | Source | Issue | Status |
 |---|---|---|
+| Rzeczpospolita RSS | Returns HTTP 403 from the VPS; confirmed before and after the Luna deployment on 2026-09-20. Other RSS sources and pipeline health remain operational. | Existing issue; source configuration preserved |
 | PAP RSS | WAF blocks server IPs — malformed XML or connection refused | `enabled: false` in config |
 | TVN24 RSS | Returns 403 Forbidden from server IPs | `enabled: false` in config |
 | GDELT | IP-level 429 throttling (~20% success); previously a 429 on the first pipeline cycle | `enabled: false` in config — fetcher is not instantiated while disabled, so the "429 on first cycle" symptom cannot occur. Re-enable only if the throttling clears |
