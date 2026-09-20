@@ -209,11 +209,14 @@ class RecordingTransport:
 class RecordingAlerts(AlertStateMachine):
     async def _execute_phone_call(self, event: Event, existing_alerts=None) -> None:
         # Simulate one answered and acknowledged alarm, without any retry timers,
-        # telephony SDK or inbound SMS polling. This measures notification policy.
+        # telephony SDK or inbound SMS polling. Keep the production confirmation
+        # and follow-up SMS bookkeeping: otherwise a later same-revision article
+        # incorrectly looks like it still owes an SMS after the acknowledged call.
+        await self._send_confirmation_sms(event)
         record = RecordingTransport.record(event.id, "phone_call", event.summary_pl)
         record.status = "acknowledged"
         self._record_alert(record, event)
-        self.db.update_event(event.id, acknowledged_at=ReplayClock.current.isoformat(), alert_status="acknowledged")
+        await self._acknowledge_event(event, total_attempts=1)
 
 
 def make_config(path: str) -> SentinelConfig:

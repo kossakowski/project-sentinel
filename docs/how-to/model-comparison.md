@@ -206,3 +206,29 @@ path. It does not rerun models, repair old labels, or overwrite the original rep
 
 This can reveal whether a raw correct match was rejected by a runtime gate. It
 cannot turn the first round's ambiguous labels into a reliable model ranking.
+
+## Replay saved runtime answers without calling a model again
+
+For a finished version-2 `--context-mode model` report, the offline replay tool can
+recheck runtime behaviour using the original raw model answers:
+
+```bash
+.venv/bin/python -m sentinel.eval.cached_runtime --report data/eval/v2-runtime-development-20260920-luna.json --dataset tests/fixtures/model_comparison_v2_development.yaml --output data/eval/v2-runtime-development-20260920-luna-replayed.json
+```
+
+The tool requires the original dataset and policy hashes, matching classification
+settings and alert tiers, and a new output path. It restores original event IDs
+and verifies each newly generated model-message hash before releasing its saved
+response. If history or messages differ, replay stops rather than pretending the
+old answer applies to a different question. This is not a way to evaluate a new
+prompt without calling the model.
+
+The derived report explicitly records zero new API requests and charges. Its
+per-case provider costs and response times are original evidence, not newly
+measured performance or additional spending. Original reports remain unchanged.
+
+The simulated acknowledged-call path includes the production confirmation and
+follow-up SMS bookkeeping through local recording transports. Omitting those SMS
+records would falsely suggest that a later same-revision article triggered a
+duplicate. No real call, inbound-SMS polling, delivery confirmation or retry is
+performed by the simulation.

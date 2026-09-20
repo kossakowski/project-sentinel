@@ -9,6 +9,7 @@ from copy import deepcopy
 import pytest
 import yaml
 
+from sentinel.config import UrgencyLevel
 from sentinel.eval import compare_models
 
 
@@ -389,3 +390,53 @@ async def test_default_main_only_validates_dataset_without_api_access(tmp_path, 
     output = json.loads(capsys.readouterr().out)
     assert output["cases"] == 1
     assert output["approved_for_release"] is True
+
+
+@pytest.mark.asyncio
+async def test_simulated_acknowledgement_records_sms_so_followup_stays_silent(sample_config_yaml, monkeypatch):
+    cases = [
+        _case("precaution", urgency_min=5, urgency_max=6),
+        _case(
+            "critical",
+            fetched_at="2026-09-20T08:03:00+00:00",
+            urgency_min=9,
+            urgency_max=10,
+            critical=True,
+            relation="same",
+            same_as="precaution",
+            notification="update",
+        ),
+        _case(
+            "routine-followup",
+            fetched_at="2026-09-20T08:06:00+00:00",
+            urgency_min=5,
+            urgency_max=6,
+            relation="same",
+            same_as="precaution",
+            notification="silent",
+        ),
+    ]
+
+    def no_network(*args, **kwargs):
+        raise AssertionError("The replay must not construct any network client")
+
+    monkeypatch.setattr("httpx.AsyncClient", no_network)
+
+    def respond(index, messages):
+        target = _remembered_incidents(messages)[0]["id"] if index else None
+        return _Completion(
+            data=_prediction(
+                urgency=9 if index == 1 else 6,
+                decision=["new", "escalation", "update"][index],
+                matched_event_id=target,
+            )
+        )
+
+    config = compare_models.make_config(sample_config_yaml)
+    config.alerts.urgency_levels["medium"] = UrgencyLevel(min_score=5, action="sms", channel="push")
+    rows = await compare_models.replay(cases, "test/model", _ScriptedClient(respond), config)
+    assert [row["notification"] for row in rows] == ["initial", "update", "silent"]
+    assert "phone_call" in rows[1]["channels"]
+    assert rows[1]["channels"].count("sms") == 2  # Confirmation request and acknowledged follow-up.
+    assert rows[2]["channels"] == []
+    assert len({row["event_id"] for row in rows}) == 1
