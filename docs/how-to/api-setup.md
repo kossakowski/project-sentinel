@@ -52,6 +52,8 @@ determinism or erase the historical miss.
 
 ### Budget, failure and rollback
 
+The operator selected **$10/month** on 2026-09-20.
+
 `classification.budget` controls a persistent SQLite ledger shared by classifier
 and quality-gate requests. Keep its writable path stable across restarts and use
 an absolute path on a server. Each call reserves an upper estimate before sending;
@@ -69,8 +71,9 @@ exhaustion and malformed answers also leave work pending for retry. Do not delet
 queued work or the usage ledger to make health appear green.
 
 The guard is an application spending control at configured token rates, not a
-provider-wide guarantee. Dashboard budget alerts are not asserted to be a hard
-cap. Other applications, purchases, tax and Twilio charges are outside this ledger.
+provider-wide guarantee. Dashboard spend alerts do not impose a hard cap. OpenAI also supports a distinct
+project hard limit; verify that **Enforce a hard limit** is enabled before calling
+it an enforced cap. Enforcement can lag slightly. See [OpenAI spend limits](https://developers.openai.com/api/docs/guides/spend-limits). Other applications, purchases, tax and Twilio charges are outside this ledger.
 Review rates when changing the model. Legacy Anthropic rollback retains its older
 token estimate and does not use this OpenAI ledger.
 

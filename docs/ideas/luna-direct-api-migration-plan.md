@@ -116,3 +116,13 @@ No paid direct OpenAI request has been made yet. Browser billing/key setup and t
 explicitly capped live run remain the final gates. No production files, credentials,
 services or notification transports were changed or invoked. The historic awareness
 miss is still unresolved; moving the prompt unchanged cannot establish its cure.
+
+### Operator budget update
+
+On 2026-09-20 the operator selected a **$10 monthly limit**, superseding the
+original $20 ceiling as the active allowance, and reported adding $10 credit.
+Local/example YAML and the code default now use $10. Current OpenAI documentation
+also describes enforced project spend limits, separately from spend alerts;
+account setup must verify the actual hard-limit setting. Added explicit handling
+for project/organisation spend limits, exhausted credit and assigned usage limits.
+The focused configuration/direct-provider run passed **49 tests** after this change.

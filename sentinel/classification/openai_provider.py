@@ -173,8 +173,12 @@ class OpenAIProvider:
         except openai.PermissionDeniedError:
             raise ClassificationError("OpenAI access denied. Check project model and Responses permissions.") from None
         except openai.RateLimitError as exc:
-            if exc.code == "insufficient_quota":
+            if exc.code in {"insufficient_quota", "credit_balance_exhausted"}:
                 message = "OpenAI credit/quota exhausted. Check API billing; classification is paused."
+            elif exc.code in {"organization_spend_limit_exceeded", "project_spend_limit_exceeded"}:
+                message = "OpenAI monthly spending limit reached. Classification is paused until the limit resets."
+            elif exc.code == "organization_usage_limit_exceeded":
+                message = "OpenAI-assigned usage limit reached. Review the account usage tier; articles remain pending."
             else:
                 message = "OpenAI rate limit reached. Articles remain pending for a later retry."
             raise ClassificationError(message) from None

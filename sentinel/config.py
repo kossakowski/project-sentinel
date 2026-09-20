@@ -192,7 +192,7 @@ class IncidentMemoryConfig(BaseModel):
 
 class ModelBudgetConfig(BaseModel):
     ledger_path: str = "data/model-usage.db"
-    monthly_usd: float = Field(default=20, gt=0, le=20, allow_inf_nan=False)
+    monthly_usd: float = Field(default=10, gt=0, le=20, allow_inf_nan=False)
     input_per_million: float = Field(default=0.20, gt=0, allow_inf_nan=False)
     cached_input_per_million: float = Field(default=0.02, ge=0, allow_inf_nan=False)
     output_per_million: float = Field(default=1.20, gt=0, allow_inf_nan=False)

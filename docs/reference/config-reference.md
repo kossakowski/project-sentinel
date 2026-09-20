@@ -154,7 +154,7 @@ Consumed by: `sentinel/classification/classifier.py` (LLM call) and `sentinel/cl
 | `retry_delay_seconds` | `300` | Delay before reattempting queued failed work. |
 | `retry_batch_size` | `100` | Maximum pending articles processed per cycle, oldest arrival first. |
 | `budget.ledger_path` | `data/model-usage.db` | Shared persistent OpenAI reservation/usage ledger; use an absolute writable path in production. |
-| `budget.monthly_usd` | `20` | UTC monthly application allowance (maximum 20); exhaustion stops paid work and degrades health. |
+| `budget.monthly_usd` | `10` | UTC monthly application allowance (maximum configurable 20); exhaustion stops paid work and degrades health. |
 | `budget.input_per_million` | `0.20` | Configured standard input estimate in USD. |
 | `budget.cached_input_per_million` | `0.02` | Cached input estimate in USD. |
 | `budget.output_per_million` | `1.20` | Output estimate in USD. |
