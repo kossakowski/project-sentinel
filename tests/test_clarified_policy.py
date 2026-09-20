@@ -169,6 +169,21 @@ def test_reference_mode_does_not_count_unsent_notifications_as_missed():
     assert result["required_notification_miss"] is False
 
 
+def test_v2_summary_uses_dimension_denominators_not_legacy_identity_counter():
+    sample = case("b", "a")
+    row = {
+        "data": prediction(),
+        "context_mode": "reference",
+        "candidate_ids": [],
+        "label_status": "reviewed",
+        "split": "development",
+    }
+    row["evaluation"] = score_dimensions(sample, row, {"a": None})
+    summary = compare_models.summarize_v2([row], planned=1)
+    assert "identity_unscorable" not in summary
+    assert summary["separate_dimensions"]["dimensions"]["raw_incident_identity"]["scored"] == 0
+
+
 @pytest.mark.parametrize(
     "memory",
     [

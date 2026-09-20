@@ -447,7 +447,14 @@ def summarize(rows: list[dict], planned: int) -> dict:
 
 def summarize_v2(rows: list[dict], planned: int) -> dict:
     result = summarize(rows, planned)
-    for legacy_name in ("passed", "critical_miss", "wrong_merge", "duplicate_notification", "false_alert"):
+    for legacy_name in (
+        "passed",
+        "critical_miss",
+        "identity_unscorable",
+        "wrong_merge",
+        "duplicate_notification",
+        "false_alert",
+    ):
         result.pop(legacy_name, None)
     result["metrics_version"] = 2
     return result
