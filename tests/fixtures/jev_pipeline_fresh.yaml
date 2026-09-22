@@ -1,0 +1,1526 @@
+version: 1
+policy_version: 2
+description: Fresh assistant-authored stage-two cases. Labels frozen before inference,
+  pending human review; not a release holdout.
+cases:
+- id: j2-pl-01
+  sequence_id: j2-pl
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: pl
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Wrogi pocisk leci nad Siedlcami w Polsce od 05:00
+    summary: Wrogi pocisk leci nad Siedlcami w Polsce od 05:00. Nadal pozostaje nad
+      polskim terytorium. Nie trafił dotąd w cel i nie wydano nakazu schronienia.
+    language: pl
+    source_name: Fresh diagnostic pl outlet 1
+    source_type: synthetic
+    source_url: https://j2-pl-1.example.invalid/article
+    published_at: '2026-09-23T05:02:00+00:00'
+    fetched_at: '2026-09-23T05:02:00+00:00'
+  expected:
+    urgency_min: 9
+    urgency_max: 10
+    affected_countries:
+    - PL
+    notification: initial
+    relation: new
+    critical: true
+    facts:
+      attack_countries:
+      - PL
+      protection: none
+      status: active
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: active incursion. No actual event
+    is asserted.'
+- id: j2-pl-02
+  sequence_id: j2-pl
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: pl
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Drugie źródło potwierdza ten sam pocisk obserwowany od 05:00 nad Siedlcami
+      w Polsce
+    summary: Drugie źródło potwierdza ten sam pocisk obserwowany od 05:00 nad Siedlcami
+      w Polsce. Nadal leci nad Polską; nie ma nowych trafień ani ostrzeżeń. To potwierdzenie
+      wcześniejszej wiadomości, nie nowe zdarzenie.
+    language: pl
+    source_name: Fresh diagnostic pl outlet 2
+    source_type: synthetic
+    source_url: https://j2-pl-2.example.invalid/article
+    published_at: '2026-09-23T05:07:00+00:00'
+    fetched_at: '2026-09-23T05:07:00+00:00'
+  expected:
+    urgency_min: 9
+    urgency_max: 10
+    affected_countries:
+    - PL
+    notification: silent
+    relation: same
+    critical: true
+    facts:
+      attack_countries:
+      - PL
+      protection: none
+      status: active
+    same_as: j2-pl-01
+    incident_decisions:
+    - duplicate
+  rationale: 'Provisional engineering expectation: confirmation. No actual event is
+    asserted.'
+- id: j2-pl-03
+  sequence_id: j2-pl
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: pl
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Ten sam pocisk obserwowany od 05:00 nad Siedlcami w Polsce po raz pierwszy
+      uderzył w magazyn
+    summary: Ten sam pocisk obserwowany od 05:00 nad Siedlcami w Polsce po raz pierwszy
+      uderzył w magazyn. Są ranni. W ramach tego trwającego incydentu władze wydały
+      pierwszy oficjalny nakaz schronienia mieszkańców Siedlec.
+    language: pl
+    source_name: Fresh diagnostic pl outlet 3
+    source_type: synthetic
+    source_url: https://j2-pl-3.example.invalid/article
+    published_at: '2026-09-23T05:12:00+00:00'
+    fetched_at: '2026-09-23T05:12:00+00:00'
+  expected:
+    urgency_min: 9
+    urgency_max: 10
+    affected_countries:
+    - PL
+    notification: update
+    relation: same
+    critical: true
+    facts:
+      attack_countries:
+      - PL
+      protection: official_warning
+      status: active
+    same_as: j2-pl-01
+    incident_decisions:
+    - escalation
+  rationale: 'Provisional engineering expectation: same missile first impact. No actual
+    event is asserted.'
+- id: j2-pl-04
+  sequence_id: j2-pl
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: pl
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Poprzedni incydent pod Siedlcami zakończył się
+    summary: Poprzedni incydent pod Siedlcami zakończył się. Odrębna nowa fala wrogich
+      pocisków leci teraz nad Białą Podlaską w Polsce. To inne pociski i nowy incydent;
+      nie wydano jeszcze ostrzeżenia dla mieszkańców.
+    language: pl
+    source_name: Fresh diagnostic pl outlet 4
+    source_type: synthetic
+    source_url: https://j2-pl-4.example.invalid/article
+    published_at: '2026-09-23T05:17:00+00:00'
+    fetched_at: '2026-09-23T05:17:00+00:00'
+  expected:
+    urgency_min: 9
+    urgency_max: 10
+    affected_countries:
+    - PL
+    notification: initial
+    relation: new
+    critical: true
+    facts:
+      attack_countries:
+      - PL
+      protection: none
+      status: active
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: separate wave. No actual event
+    is asserted.'
+- id: j2-pl-05
+  sequence_id: j2-pl
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: pl
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Nowa fala pocisków nad Białą Podlaską, opisana w poprzednim raporcie, została
+      całkowicie zneutralizowana
+    summary: Nowa fala pocisków nad Białą Podlaską, opisana w poprzednim raporcie,
+      została całkowicie zneutralizowana. Wszystkie pociski zniszczono; aktualnie
+      nie ma zagrożenia. To zakończenie tego samego drugiego incydentu.
+    language: pl
+    source_name: Fresh diagnostic pl outlet 5
+    source_type: synthetic
+    source_url: https://j2-pl-5.example.invalid/article
+    published_at: '2026-09-23T05:22:00+00:00'
+    fetched_at: '2026-09-23T05:22:00+00:00'
+  expected:
+    urgency_min: 1
+    urgency_max: 4
+    affected_countries:
+    - PL
+    notification: silent
+    relation: same
+    critical: false
+    facts:
+      attack_countries:
+      - PL
+      protection: none
+      status: resolved
+    same_as: j2-pl-04
+    incident_decisions:
+    - update
+  rationale: 'Provisional engineering expectation: wave neutralised. No actual event
+    is asserted.'
+- id: j2-pl-06
+  sequence_id: j2-pl
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: pl
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Archivalny przegląd przypomina rutynowe ćwiczenia polskiej armii z 2019
+      roku
+    summary: Archivalny przegląd przypomina rutynowe ćwiczenia polskiej armii z 2019
+      roku. Nie używano broni jądrowej. Tekst nie opisuje rzeczywistego ataku ani
+      żadnego obecnego zagrożenia.
+    language: pl
+    source_name: Fresh diagnostic pl outlet 6
+    source_type: synthetic
+    source_url: https://j2-pl-6.example.invalid/article
+    published_at: '2026-09-23T05:27:00+00:00'
+    fetched_at: '2026-09-23T05:27:00+00:00'
+  expected:
+    urgency_min: 1
+    urgency_max: 3
+    affected_countries: []
+    notification: silent
+    relation: new
+    critical: false
+    facts:
+      attack_countries: []
+      protection: none
+      status: historical
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: archived conventional drill. No
+    actual event is asserted.'
+- id: j2-pl-07
+  sequence_id: j2-pl
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: pl
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Rosyjskie uderzenia na obiekty w środkowej Ukrainie nadal trwają
+    summary: Rosyjskie uderzenia na obiekty w środkowej Ukrainie nadal trwają. Cała
+      walka odbywa się w Ukrainie, daleko od polskiej granicy. Polska i państwa bałtyckie
+      nie zgłosiły lokalnych incydentów ani działań ochronnych.
+    language: pl
+    source_name: Fresh diagnostic pl outlet 7
+    source_type: synthetic
+    source_url: https://j2-pl-7.example.invalid/article
+    published_at: '2026-09-23T05:32:00+00:00'
+    fetched_at: '2026-09-23T05:32:00+00:00'
+  expected:
+    urgency_min: 1
+    urgency_max: 3
+    affected_countries: []
+    notification: silent
+    relation: new
+    critical: false
+    facts:
+      attack_countries:
+      - UA
+      protection: none
+      status: active
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: ongoing combat only inside Ukraine.
+    No actual event is asserted.'
+- id: j2-pl-08
+  sequence_id: j2-pl
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: pl
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Łotwa poderwała myśliwce zapobiegawczo podczas trwających rosyjskich nalotów
+      w środkowej Ukrainie
+    summary: Łotwa poderwała myśliwce zapobiegawczo podczas trwających rosyjskich
+      nalotów w środkowej Ukrainie. Łotewski patrol nadal trwa; nie stwierdzono naruszenia
+      Łotwy ani nakazu schronienia. Litwa nie podjęła żadnych działań.
+    language: pl
+    source_name: Fresh diagnostic pl outlet 8
+    source_type: synthetic
+    source_url: https://j2-pl-8.example.invalid/article
+    published_at: '2026-09-23T05:37:00+00:00'
+    fetched_at: '2026-09-23T05:37:00+00:00'
+  expected:
+    urgency_min: 5
+    urgency_max: 6
+    affected_countries:
+    - LV
+    notification: initial
+    relation: new
+    critical: false
+    facts:
+      attack_countries:
+      - UA
+      protection: precaution
+      status: active
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: local precautionary patrol. No
+    actual event is asserted.'
+- id: j2-pl-09
+  sequence_id: j2-pl
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: pl
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Polskie władze zdementowały wpis o rzekomym ataku na Poznań
+    summary: Polskie władze zdementowały wpis o rzekomym ataku na Poznań. Żaden atak
+      ani alarm dla mieszkańców nie wystąpił. Nie prowadzono działań ochronnych; wpis
+      był całkowicie zmyślony.
+    language: pl
+    source_name: Fresh diagnostic pl outlet 9
+    source_type: synthetic
+    source_url: https://j2-pl-9.example.invalid/article
+    published_at: '2026-09-23T05:42:00+00:00'
+    fetched_at: '2026-09-23T05:42:00+00:00'
+  expected:
+    urgency_min: 1
+    urgency_max: 3
+    affected_countries: []
+    notification: silent
+    relation: new
+    critical: false
+    facts:
+      attack_countries: []
+      protection: none
+      status: unclear
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: fabricated attack denied. No actual
+    event is asserted.'
+- id: j2-pl-10
+  sequence_id: j2-pl
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: pl
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: 'Autor analizuje hipotetyczny scenariusz: gdyby pociski zaatakowały Litwę,
+      mogłaby nastąpić ewakuacja'
+    summary: 'Autor analizuje hipotetyczny scenariusz: gdyby pociski zaatakowały Litwę,
+      mogłaby nastąpić ewakuacja. Tekst wyraźnie stwierdza, że żaden opisany atak
+      ani nakaz ewakuacji nie miał miejsca.'
+    language: pl
+    source_name: Fresh diagnostic pl outlet 10
+    source_type: synthetic
+    source_url: https://j2-pl-10.example.invalid/article
+    published_at: '2026-09-23T05:47:00+00:00'
+    fetched_at: '2026-09-23T05:47:00+00:00'
+  expected:
+    urgency_min: 1
+    urgency_max: 3
+    affected_countries: []
+    notification: silent
+    relation: new
+    critical: false
+    facts:
+      attack_countries: []
+      protection: none
+      status: unclear
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: explicitly hypothetical attack.
+    No actual event is asserted.'
+- id: j2-en-01
+  sequence_id: j2-en
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: en
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: A hostile missile has been flying above Rezekne in Latvia since 05:00
+    summary: A hostile missile has been flying above Rezekne in Latvia since 05:00.
+      It remains over Latvian territory. No impact or resident shelter order has been
+      reported.
+    language: en
+    source_name: Fresh diagnostic en outlet 1
+    source_type: synthetic
+    source_url: https://j2-en-1.example.invalid/article
+    published_at: '2026-09-23T05:02:00+00:00'
+    fetched_at: '2026-09-23T05:02:00+00:00'
+  expected:
+    urgency_min: 9
+    urgency_max: 10
+    affected_countries:
+    - LV
+    notification: initial
+    relation: new
+    critical: true
+    facts:
+      attack_countries:
+      - LV
+      protection: none
+      status: active
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: active incursion. No actual event
+    is asserted.'
+- id: j2-en-02
+  sequence_id: j2-en
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: en
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: A second outlet confirms the same missile tracked over Rezekne in Latvia
+      since 05:00
+    summary: A second outlet confirms the same missile tracked over Rezekne in Latvia
+      since 05:00. It is still airborne over Latvia. There are no new impacts or warnings;
+      this confirms the previous report, not a separate event.
+    language: en
+    source_name: Fresh diagnostic en outlet 2
+    source_type: synthetic
+    source_url: https://j2-en-2.example.invalid/article
+    published_at: '2026-09-23T05:07:00+00:00'
+    fetched_at: '2026-09-23T05:07:00+00:00'
+  expected:
+    urgency_min: 9
+    urgency_max: 10
+    affected_countries:
+    - LV
+    notification: silent
+    relation: same
+    critical: true
+    facts:
+      attack_countries:
+      - LV
+      protection: none
+      status: active
+    same_as: j2-en-01
+    incident_decisions:
+    - duplicate
+  rationale: 'Provisional engineering expectation: confirmation. No actual event is
+    asserted.'
+- id: j2-en-03
+  sequence_id: j2-en
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: en
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: The same missile tracked over Rezekne in Latvia since 05:00 has now hit
+      a warehouse for the first time
+    summary: The same missile tracked over Rezekne in Latvia since 05:00 has now hit
+      a warehouse for the first time. People are injured. Authorities issued the first
+      official resident shelter order during this continuing incident.
+    language: en
+    source_name: Fresh diagnostic en outlet 3
+    source_type: synthetic
+    source_url: https://j2-en-3.example.invalid/article
+    published_at: '2026-09-23T05:12:00+00:00'
+    fetched_at: '2026-09-23T05:12:00+00:00'
+  expected:
+    urgency_min: 9
+    urgency_max: 10
+    affected_countries:
+    - LV
+    notification: update
+    relation: same
+    critical: true
+    facts:
+      attack_countries:
+      - LV
+      protection: official_warning
+      status: active
+    same_as: j2-en-01
+    incident_decisions:
+    - escalation
+  rationale: 'Provisional engineering expectation: same missile first impact. No actual
+    event is asserted.'
+- id: j2-en-04
+  sequence_id: j2-en
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: en
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: The earlier Rezekne incident has ended
+    summary: The earlier Rezekne incident has ended. A separate new wave of hostile
+      missiles is now over Liepaja in Latvia. These are different missiles in a new
+      incident; no resident warning has yet been issued.
+    language: en
+    source_name: Fresh diagnostic en outlet 4
+    source_type: synthetic
+    source_url: https://j2-en-4.example.invalid/article
+    published_at: '2026-09-23T05:17:00+00:00'
+    fetched_at: '2026-09-23T05:17:00+00:00'
+  expected:
+    urgency_min: 9
+    urgency_max: 10
+    affected_countries:
+    - LV
+    notification: initial
+    relation: new
+    critical: true
+    facts:
+      attack_countries:
+      - LV
+      protection: none
+      status: active
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: separate wave. No actual event
+    is asserted.'
+- id: j2-en-05
+  sequence_id: j2-en
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: en
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: The new missile wave over Liepaja described in the previous report has
+      been fully neutralised
+    summary: The new missile wave over Liepaja described in the previous report has
+      been fully neutralised. Every missile was destroyed. There is no remaining danger;
+      this closes that same second incident.
+    language: en
+    source_name: Fresh diagnostic en outlet 5
+    source_type: synthetic
+    source_url: https://j2-en-5.example.invalid/article
+    published_at: '2026-09-23T05:22:00+00:00'
+    fetched_at: '2026-09-23T05:22:00+00:00'
+  expected:
+    urgency_min: 1
+    urgency_max: 4
+    affected_countries:
+    - LV
+    notification: silent
+    relation: same
+    critical: false
+    facts:
+      attack_countries:
+      - LV
+      protection: none
+      status: resolved
+    same_as: j2-en-04
+    incident_decisions:
+    - update
+  rationale: 'Provisional engineering expectation: wave neutralised. No actual event
+    is asserted.'
+- id: j2-en-06
+  sequence_id: j2-en
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: en
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: An archive feature recalls routine Latvian military exercises in 2018
+    summary: An archive feature recalls routine Latvian military exercises in 2018.
+      No nuclear weapons were involved. It describes neither a real attack nor a current
+      threat.
+    language: en
+    source_name: Fresh diagnostic en outlet 6
+    source_type: synthetic
+    source_url: https://j2-en-6.example.invalid/article
+    published_at: '2026-09-23T05:27:00+00:00'
+    fetched_at: '2026-09-23T05:27:00+00:00'
+  expected:
+    urgency_min: 1
+    urgency_max: 3
+    affected_countries: []
+    notification: silent
+    relation: new
+    critical: false
+    facts:
+      attack_countries: []
+      protection: none
+      status: historical
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: archived conventional drill. No
+    actual event is asserted.'
+- id: j2-en-07
+  sequence_id: j2-en
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: en
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Russian strikes on central Ukraine are continuing
+    summary: Russian strikes on central Ukraine are continuing. All combat is inside
+      Ukraine, far from monitored borders. Poland and the Baltic states report no
+      local incidents or protective measures.
+    language: en
+    source_name: Fresh diagnostic en outlet 7
+    source_type: synthetic
+    source_url: https://j2-en-7.example.invalid/article
+    published_at: '2026-09-23T05:32:00+00:00'
+    fetched_at: '2026-09-23T05:32:00+00:00'
+  expected:
+    urgency_min: 1
+    urgency_max: 3
+    affected_countries: []
+    notification: silent
+    relation: new
+    critical: false
+    facts:
+      attack_countries:
+      - UA
+      protection: none
+      status: active
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: ongoing combat only inside Ukraine.
+    No actual event is asserted.'
+- id: j2-en-08
+  sequence_id: j2-en
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: en
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Lithuania has scrambled fighters as a precaution during continuing Russian
+      raids in central Ukraine
+    summary: Lithuania has scrambled fighters as a precaution during continuing Russian
+      raids in central Ukraine. The Lithuanian patrol is ongoing; no Lithuanian incursion
+      or civilian shelter order is reported. Latvia has taken no action.
+    language: en
+    source_name: Fresh diagnostic en outlet 8
+    source_type: synthetic
+    source_url: https://j2-en-8.example.invalid/article
+    published_at: '2026-09-23T05:37:00+00:00'
+    fetched_at: '2026-09-23T05:37:00+00:00'
+  expected:
+    urgency_min: 5
+    urgency_max: 6
+    affected_countries:
+    - LT
+    notification: initial
+    relation: new
+    critical: false
+    facts:
+      attack_countries:
+      - UA
+      protection: precaution
+      status: active
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: local precautionary patrol. No
+    actual event is asserted.'
+- id: j2-en-09
+  sequence_id: j2-en
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: en
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Latvian officials deny a fabricated claim of an attack on Jelgava
+    summary: Latvian officials deny a fabricated claim of an attack on Jelgava. No
+      attack, resident warning or protective operation occurred. The entire claim
+      was false.
+    language: en
+    source_name: Fresh diagnostic en outlet 9
+    source_type: synthetic
+    source_url: https://j2-en-9.example.invalid/article
+    published_at: '2026-09-23T05:42:00+00:00'
+    fetched_at: '2026-09-23T05:42:00+00:00'
+  expected:
+    urgency_min: 1
+    urgency_max: 3
+    affected_countries: []
+    notification: silent
+    relation: new
+    critical: false
+    facts:
+      attack_countries: []
+      protection: none
+      status: unclear
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: fabricated attack denied. No actual
+    event is asserted.'
+- id: j2-en-10
+  sequence_id: j2-en
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: en
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: 'The author discusses a hypothetical scenario: if missiles attacked Estonia,
+      evacuation might follow'
+    summary: 'The author discusses a hypothetical scenario: if missiles attacked Estonia,
+      evacuation might follow. The article explicitly says that none of these attacks
+      or evacuation orders has occurred.'
+    language: en
+    source_name: Fresh diagnostic en outlet 10
+    source_type: synthetic
+    source_url: https://j2-en-10.example.invalid/article
+    published_at: '2026-09-23T05:47:00+00:00'
+    fetched_at: '2026-09-23T05:47:00+00:00'
+  expected:
+    urgency_min: 1
+    urgency_max: 3
+    affected_countries: []
+    notification: silent
+    relation: new
+    critical: false
+    facts:
+      attack_countries: []
+      protection: none
+      status: unclear
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: explicitly hypothetical attack.
+    No actual event is asserted.'
+- id: j2-ru-01
+  sequence_id: j2-ru
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: ru
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Вражеская ракета летит над Каунасом в Литве с 05:00
+    summary: Вражеская ракета летит над Каунасом в Литве с 05:00. Она всё ещё находится
+      над литовской территорией. Попаданий и приказа жителям укрыться пока не было.
+    language: ru
+    source_name: Fresh diagnostic ru outlet 1
+    source_type: synthetic
+    source_url: https://j2-ru-1.example.invalid/article
+    published_at: '2026-09-23T05:02:00+00:00'
+    fetched_at: '2026-09-23T05:02:00+00:00'
+  expected:
+    urgency_min: 9
+    urgency_max: 10
+    affected_countries:
+    - LT
+    notification: initial
+    relation: new
+    critical: true
+    facts:
+      attack_countries:
+      - LT
+      protection: none
+      status: active
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: active incursion. No actual event
+    is asserted.'
+- id: j2-ru-02
+  sequence_id: j2-ru
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: ru
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Второй источник подтверждает ту же ракету, которую наблюдают над Каунасом
+      в Литве с 05:00
+    summary: Второй источник подтверждает ту же ракету, которую наблюдают над Каунасом
+      в Литве с 05:00. Она продолжает полёт над Литвой. Новых попаданий или предупреждений
+      нет; это подтверждение прежнего сообщения, а не новое событие.
+    language: ru
+    source_name: Fresh diagnostic ru outlet 2
+    source_type: synthetic
+    source_url: https://j2-ru-2.example.invalid/article
+    published_at: '2026-09-23T05:07:00+00:00'
+    fetched_at: '2026-09-23T05:07:00+00:00'
+  expected:
+    urgency_min: 9
+    urgency_max: 10
+    affected_countries:
+    - LT
+    notification: silent
+    relation: same
+    critical: true
+    facts:
+      attack_countries:
+      - LT
+      protection: none
+      status: active
+    same_as: j2-ru-01
+    incident_decisions:
+    - duplicate
+  rationale: 'Provisional engineering expectation: confirmation. No actual event is
+    asserted.'
+- id: j2-ru-03
+  sequence_id: j2-ru
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: ru
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Та же ракета, наблюдаемая над Каунасом в Литве с 05:00, впервые попала
+      в склад
+    summary: Та же ракета, наблюдаемая над Каунасом в Литве с 05:00, впервые попала
+      в склад. Есть раненые. В рамках этого продолжающегося инцидента власти впервые
+      официально приказали жителям Каунаса укрыться.
+    language: ru
+    source_name: Fresh diagnostic ru outlet 3
+    source_type: synthetic
+    source_url: https://j2-ru-3.example.invalid/article
+    published_at: '2026-09-23T05:12:00+00:00'
+    fetched_at: '2026-09-23T05:12:00+00:00'
+  expected:
+    urgency_min: 9
+    urgency_max: 10
+    affected_countries:
+    - LT
+    notification: update
+    relation: same
+    critical: true
+    facts:
+      attack_countries:
+      - LT
+      protection: official_warning
+      status: active
+    same_as: j2-ru-01
+    incident_decisions:
+    - escalation
+  rationale: 'Provisional engineering expectation: same missile first impact. No actual
+    event is asserted.'
+- id: j2-ru-04
+  sequence_id: j2-ru
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: ru
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Предыдущий инцидент в Каунасе завершён
+    summary: Предыдущий инцидент в Каунасе завершён. Отдельная новая волна вражеских
+      ракет сейчас летит над Клайпедой в Литве. Это другие ракеты и новый инцидент;
+      предупреждения жителям пока нет.
+    language: ru
+    source_name: Fresh diagnostic ru outlet 4
+    source_type: synthetic
+    source_url: https://j2-ru-4.example.invalid/article
+    published_at: '2026-09-23T05:17:00+00:00'
+    fetched_at: '2026-09-23T05:17:00+00:00'
+  expected:
+    urgency_min: 9
+    urgency_max: 10
+    affected_countries:
+    - LT
+    notification: initial
+    relation: new
+    critical: true
+    facts:
+      attack_countries:
+      - LT
+      protection: none
+      status: active
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: separate wave. No actual event
+    is asserted.'
+- id: j2-ru-05
+  sequence_id: j2-ru
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: ru
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Новая волна ракет над Клайпедой, описанная в предыдущем сообщении, полностью
+      нейтрализована
+    summary: Новая волна ракет над Клайпедой, описанная в предыдущем сообщении, полностью
+      нейтрализована. Все ракеты уничтожены, текущей угрозы нет. Это завершение того
+      же второго инцидента.
+    language: ru
+    source_name: Fresh diagnostic ru outlet 5
+    source_type: synthetic
+    source_url: https://j2-ru-5.example.invalid/article
+    published_at: '2026-09-23T05:22:00+00:00'
+    fetched_at: '2026-09-23T05:22:00+00:00'
+  expected:
+    urgency_min: 1
+    urgency_max: 4
+    affected_countries:
+    - LT
+    notification: silent
+    relation: same
+    critical: false
+    facts:
+      attack_countries:
+      - LT
+      protection: none
+      status: resolved
+    same_as: j2-ru-04
+    incident_decisions:
+    - update
+  rationale: 'Provisional engineering expectation: wave neutralised. No actual event
+    is asserted.'
+- id: j2-ru-06
+  sequence_id: j2-ru
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: ru
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Архивная статья вспоминает обычные учения литовской армии в 2017 году
+    summary: Архивная статья вспоминает обычные учения литовской армии в 2017 году.
+      Ядерных сил не было. Статья не описывает реального нападения или нынешней угрозы.
+    language: ru
+    source_name: Fresh diagnostic ru outlet 6
+    source_type: synthetic
+    source_url: https://j2-ru-6.example.invalid/article
+    published_at: '2026-09-23T05:27:00+00:00'
+    fetched_at: '2026-09-23T05:27:00+00:00'
+  expected:
+    urgency_min: 1
+    urgency_max: 3
+    affected_countries: []
+    notification: silent
+    relation: new
+    critical: false
+    facts:
+      attack_countries: []
+      protection: none
+      status: historical
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: archived conventional drill. No
+    actual event is asserted.'
+- id: j2-ru-07
+  sequence_id: j2-ru
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: ru
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Российские удары по объектам в центральной Украине продолжаются
+    summary: Российские удары по объектам в центральной Украине продолжаются. Все
+      боевые действия идут внутри Украины, далеко от границ наблюдаемых стран. В Польше
+      и странах Балтии нет местных инцидентов или защитных мер.
+    language: ru
+    source_name: Fresh diagnostic ru outlet 7
+    source_type: synthetic
+    source_url: https://j2-ru-7.example.invalid/article
+    published_at: '2026-09-23T05:32:00+00:00'
+    fetched_at: '2026-09-23T05:32:00+00:00'
+  expected:
+    urgency_min: 1
+    urgency_max: 3
+    affected_countries: []
+    notification: silent
+    relation: new
+    critical: false
+    facts:
+      attack_countries:
+      - UA
+      protection: none
+      status: active
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: ongoing combat only inside Ukraine.
+    No actual event is asserted.'
+- id: j2-ru-08
+  sequence_id: j2-ru
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: ru
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Эстония превентивно подняла истребители во время продолжающихся российских
+      ударов в центральной Украине
+    summary: Эстония превентивно подняла истребители во время продолжающихся российских
+      ударов в центральной Украине. Эстонское патрулирование продолжается; нарушений
+      Эстонии и приказа жителям укрыться нет. Латвия и Литва не принимали мер.
+    language: ru
+    source_name: Fresh diagnostic ru outlet 8
+    source_type: synthetic
+    source_url: https://j2-ru-8.example.invalid/article
+    published_at: '2026-09-23T05:37:00+00:00'
+    fetched_at: '2026-09-23T05:37:00+00:00'
+  expected:
+    urgency_min: 5
+    urgency_max: 6
+    affected_countries:
+    - EE
+    notification: initial
+    relation: new
+    critical: false
+    facts:
+      attack_countries:
+      - UA
+      protection: precaution
+      status: active
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: local precautionary patrol. No
+    actual event is asserted.'
+- id: j2-ru-09
+  sequence_id: j2-ru
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: ru
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Литовские власти опровергли выдуманное сообщение об атаке на Шяуляй
+    summary: Литовские власти опровергли выдуманное сообщение об атаке на Шяуляй.
+      Ни нападения, ни предупреждения населению, ни защитной операции не было. Всё
+      сообщение было ложным.
+    language: ru
+    source_name: Fresh diagnostic ru outlet 9
+    source_type: synthetic
+    source_url: https://j2-ru-9.example.invalid/article
+    published_at: '2026-09-23T05:42:00+00:00'
+    fetched_at: '2026-09-23T05:42:00+00:00'
+  expected:
+    urgency_min: 1
+    urgency_max: 3
+    affected_countries: []
+    notification: silent
+    relation: new
+    critical: false
+    facts:
+      attack_countries: []
+      protection: none
+      status: unclear
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: fabricated attack denied. No actual
+    event is asserted.'
+- id: j2-ru-10
+  sequence_id: j2-ru
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: ru
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: 'Автор разбирает гипотетический сценарий: если бы ракеты атаковали Польшу,
+      могла бы начаться эвакуация'
+    summary: 'Автор разбирает гипотетический сценарий: если бы ракеты атаковали Польшу,
+      могла бы начаться эвакуация. В статье прямо сказано, что ни одной из этих атак
+      или эвакуационных команд в действительности не было.'
+    language: ru
+    source_name: Fresh diagnostic ru outlet 10
+    source_type: synthetic
+    source_url: https://j2-ru-10.example.invalid/article
+    published_at: '2026-09-23T05:47:00+00:00'
+    fetched_at: '2026-09-23T05:47:00+00:00'
+  expected:
+    urgency_min: 1
+    urgency_max: 3
+    affected_countries: []
+    notification: silent
+    relation: new
+    critical: false
+    facts:
+      attack_countries: []
+      protection: none
+      status: unclear
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: explicitly hypothetical attack.
+    No actual event is asserted.'
+- id: j2-uk-01
+  sequence_id: j2-uk
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: uk
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Ворожа ракета летить над Тарту в Естонії з 05:00
+    summary: Ворожа ракета летить над Тарту в Естонії з 05:00. Вона досі перебуває
+      над естонською територією. Влучань та наказу мешканцям перейти в укриття поки
+      не було.
+    language: uk
+    source_name: Fresh diagnostic uk outlet 1
+    source_type: synthetic
+    source_url: https://j2-uk-1.example.invalid/article
+    published_at: '2026-09-23T05:02:00+00:00'
+    fetched_at: '2026-09-23T05:02:00+00:00'
+  expected:
+    urgency_min: 9
+    urgency_max: 10
+    affected_countries:
+    - EE
+    notification: initial
+    relation: new
+    critical: true
+    facts:
+      attack_countries:
+      - EE
+      protection: none
+      status: active
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: active incursion. No actual event
+    is asserted.'
+- id: j2-uk-02
+  sequence_id: j2-uk
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: uk
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Друге джерело підтверджує ту саму ракету, яку спостерігають над Тарту в
+      Естонії з 05:00
+    summary: Друге джерело підтверджує ту саму ракету, яку спостерігають над Тарту
+      в Естонії з 05:00. Вона продовжує політ над Естонією. Нових влучань чи попереджень
+      немає; це підтвердження попередньої звістки, а не нова подія.
+    language: uk
+    source_name: Fresh diagnostic uk outlet 2
+    source_type: synthetic
+    source_url: https://j2-uk-2.example.invalid/article
+    published_at: '2026-09-23T05:07:00+00:00'
+    fetched_at: '2026-09-23T05:07:00+00:00'
+  expected:
+    urgency_min: 9
+    urgency_max: 10
+    affected_countries:
+    - EE
+    notification: silent
+    relation: same
+    critical: true
+    facts:
+      attack_countries:
+      - EE
+      protection: none
+      status: active
+    same_as: j2-uk-01
+    incident_decisions:
+    - duplicate
+  rationale: 'Provisional engineering expectation: confirmation. No actual event is
+    asserted.'
+- id: j2-uk-03
+  sequence_id: j2-uk
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: uk
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Та сама ракета, яку спостерігають над Тарту в Естонії з 05:00, вперше влучила
+      у склад
+    summary: Та сама ракета, яку спостерігають над Тарту в Естонії з 05:00, вперше
+      влучила у склад. Є поранені. Під час цього триваючого інциденту влада вперше
+      офіційно наказала мешканцям Тарту перейти в укриття.
+    language: uk
+    source_name: Fresh diagnostic uk outlet 3
+    source_type: synthetic
+    source_url: https://j2-uk-3.example.invalid/article
+    published_at: '2026-09-23T05:12:00+00:00'
+    fetched_at: '2026-09-23T05:12:00+00:00'
+  expected:
+    urgency_min: 9
+    urgency_max: 10
+    affected_countries:
+    - EE
+    notification: update
+    relation: same
+    critical: true
+    facts:
+      attack_countries:
+      - EE
+      protection: official_warning
+      status: active
+    same_as: j2-uk-01
+    incident_decisions:
+    - escalation
+  rationale: 'Provisional engineering expectation: same missile first impact. No actual
+    event is asserted.'
+- id: j2-uk-04
+  sequence_id: j2-uk
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: uk
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Попередній інцидент у Тарту завершився
+    summary: Попередній інцидент у Тарту завершився. Окрема нова хвиля ворожих ракет
+      зараз летить над Пярну в Естонії. Це інші ракети та новий інцидент; попередження
+      для мешканців поки немає.
+    language: uk
+    source_name: Fresh diagnostic uk outlet 4
+    source_type: synthetic
+    source_url: https://j2-uk-4.example.invalid/article
+    published_at: '2026-09-23T05:17:00+00:00'
+    fetched_at: '2026-09-23T05:17:00+00:00'
+  expected:
+    urgency_min: 9
+    urgency_max: 10
+    affected_countries:
+    - EE
+    notification: initial
+    relation: new
+    critical: true
+    facts:
+      attack_countries:
+      - EE
+      protection: none
+      status: active
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: separate wave. No actual event
+    is asserted.'
+- id: j2-uk-05
+  sequence_id: j2-uk
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: uk
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Нову хвилю ракет над Пярну, описану в попередньому повідомленні, повністю
+      нейтралізовано
+    summary: Нову хвилю ракет над Пярну, описану в попередньому повідомленні, повністю
+      нейтралізовано. Усі ракети знищено, поточної загрози немає. Це завершення того
+      самого другого інциденту.
+    language: uk
+    source_name: Fresh diagnostic uk outlet 5
+    source_type: synthetic
+    source_url: https://j2-uk-5.example.invalid/article
+    published_at: '2026-09-23T05:22:00+00:00'
+    fetched_at: '2026-09-23T05:22:00+00:00'
+  expected:
+    urgency_min: 1
+    urgency_max: 4
+    affected_countries:
+    - EE
+    notification: silent
+    relation: same
+    critical: false
+    facts:
+      attack_countries:
+      - EE
+      protection: none
+      status: resolved
+    same_as: j2-uk-04
+    incident_decisions:
+    - update
+  rationale: 'Provisional engineering expectation: wave neutralised. No actual event
+    is asserted.'
+- id: j2-uk-06
+  sequence_id: j2-uk
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: uk
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Архівна стаття згадує звичайні навчання естонської армії у 2016 році
+    summary: Архівна стаття згадує звичайні навчання естонської армії у 2016 році.
+      Ядерної зброї не було. Стаття не описує реального нападу або нинішньої загрози.
+    language: uk
+    source_name: Fresh diagnostic uk outlet 6
+    source_type: synthetic
+    source_url: https://j2-uk-6.example.invalid/article
+    published_at: '2026-09-23T05:27:00+00:00'
+    fetched_at: '2026-09-23T05:27:00+00:00'
+  expected:
+    urgency_min: 1
+    urgency_max: 3
+    affected_countries: []
+    notification: silent
+    relation: new
+    critical: false
+    facts:
+      attack_countries: []
+      protection: none
+      status: historical
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: archived conventional drill. No
+    actual event is asserted.'
+- id: j2-uk-07
+  sequence_id: j2-uk
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: uk
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Російські удари по об’єктах у центральній Україні тривають
+    summary: Російські удари по об’єктах у центральній Україні тривають. Усі бойові
+      дії відбуваються всередині України, далеко від кордонів країн спостереження.
+      Польща та країни Балтії не повідомляли про місцеві інциденти чи захисні заходи.
+    language: uk
+    source_name: Fresh diagnostic uk outlet 7
+    source_type: synthetic
+    source_url: https://j2-uk-7.example.invalid/article
+    published_at: '2026-09-23T05:32:00+00:00'
+    fetched_at: '2026-09-23T05:32:00+00:00'
+  expected:
+    urgency_min: 1
+    urgency_max: 3
+    affected_countries: []
+    notification: silent
+    relation: new
+    critical: false
+    facts:
+      attack_countries:
+      - UA
+      protection: none
+      status: active
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: ongoing combat only inside Ukraine.
+    No actual event is asserted.'
+- id: j2-uk-08
+  sequence_id: j2-uk
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: uk
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Польща підняла винищувачі як запобіжний захід під час триваючих російських
+      нальотів у центральній Україні
+    summary: Польща підняла винищувачі як запобіжний захід під час триваючих російських
+      нальотів у центральній Україні. Польське патрулювання триває; порушення Польщі
+      та наказу мешканцям перейти в укриття немає. Литва й Латвія не вживали заходів.
+    language: uk
+    source_name: Fresh diagnostic uk outlet 8
+    source_type: synthetic
+    source_url: https://j2-uk-8.example.invalid/article
+    published_at: '2026-09-23T05:37:00+00:00'
+    fetched_at: '2026-09-23T05:37:00+00:00'
+  expected:
+    urgency_min: 5
+    urgency_max: 6
+    affected_countries:
+    - PL
+    notification: initial
+    relation: new
+    critical: false
+    facts:
+      attack_countries:
+      - UA
+      protection: precaution
+      status: active
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: local precautionary patrol. No
+    actual event is asserted.'
+- id: j2-uk-09
+  sequence_id: j2-uk
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: uk
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: Естонська влада спростувала вигадане повідомлення про атаку на Нарву
+    summary: Естонська влада спростувала вигадане повідомлення про атаку на Нарву.
+      Нападу, попередження населенню та захисної операції не було. Усе повідомлення
+      було неправдивим.
+    language: uk
+    source_name: Fresh diagnostic uk outlet 9
+    source_type: synthetic
+    source_url: https://j2-uk-9.example.invalid/article
+    published_at: '2026-09-23T05:42:00+00:00'
+    fetched_at: '2026-09-23T05:42:00+00:00'
+  expected:
+    urgency_min: 1
+    urgency_max: 3
+    affected_countries: []
+    notification: silent
+    relation: new
+    critical: false
+    facts:
+      attack_countries: []
+      protection: none
+      status: unclear
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: fabricated attack denied. No actual
+    event is asserted.'
+- id: j2-uk-10
+  sequence_id: j2-uk
+  split: holdout
+  label_status: provisional
+  provenance:
+    kind: synthetic
+    content_language: uk
+    label_author: assistant
+    note: Authored and frozen before stage-two model calls; requires human review.
+      Four related scenario families, not 40 independent incidents.
+  article:
+    title: 'Автор розглядає гіпотетичний сценарій: якби ракети атакували Латвію, могла
+      б початися евакуація'
+    summary: 'Автор розглядає гіпотетичний сценарій: якби ракети атакували Латвію,
+      могла б початися евакуація. У статті прямо сказано, що жодної з цих атак або
+      команд на евакуацію насправді не було.'
+    language: uk
+    source_name: Fresh diagnostic uk outlet 10
+    source_type: synthetic
+    source_url: https://j2-uk-10.example.invalid/article
+    published_at: '2026-09-23T05:47:00+00:00'
+    fetched_at: '2026-09-23T05:47:00+00:00'
+  expected:
+    urgency_min: 1
+    urgency_max: 3
+    affected_countries: []
+    notification: silent
+    relation: new
+    critical: false
+    facts:
+      attack_countries: []
+      protection: none
+      status: unclear
+    incident_decisions:
+    - new
+  rationale: 'Provisional engineering expectation: explicitly hypothetical attack.
+    No actual event is asserted.'
