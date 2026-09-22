@@ -125,7 +125,12 @@ def validate_answers(payload, response):
         values = [*probabilities.values(), answer.get("confidence")]
         if any(type(v) not in (int, float) or not math.isfinite(v) or not 0 <= v <= 1 for v in values):
             raise ValueError("Invalid Jev probability or confidence")
-        if not math.isclose(sum(probabilities.values()), 1, abs_tol=1e-3):
+        # The live API rounds each probability to hundredths (e.g. ten
+        # individually rounded entries can sum to 0.99). Keep raw values;
+        # tolerate at most half a rounding unit per option, not arbitrary drift.
+        rounded = all(math.isclose(v * 100, round(v * 100), abs_tol=1e-8) for v in probabilities.values())
+        tolerance = len(probabilities) * 0.005 + 1e-9 if rounded else 1e-6
+        if sum(probabilities.values()) <= 0 or not math.isclose(sum(probabilities.values()), 1, abs_tol=tolerance):
             raise ValueError("Jev probabilities do not sum to one")
         chosen = answer.get("choice")
         if chosen not in probabilities or probabilities[chosen] + 1e-6 < max(probabilities.values()):

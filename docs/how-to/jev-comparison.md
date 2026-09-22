@@ -45,6 +45,14 @@ balances, buy credits, or change the runtime's monthly budget.
 `--max-sequences N` limits whole incident sequences for a small integration check.
 It never cuts an article away from the preceding context needed to evaluate it.
 
+If local validation needs correction after a run, `--resume-from OLD_DIRECTORY`
+reuses its saved responses in a new output directory and copies the usage ledger.
+Exact requests, data, policy and provider settings must match. The original spending
+cap cannot increase. Saved raw Jev responses are validated again locally; an API
+failure without a usable response requires review rather than an automatic retry.
+The original run remains intact. Probabilities rounded to hundredths are accepted
+within their mathematical rounding bound and are preserved without normalisation.
+
 ## Read the results
 
 - `manifest.json` records the dataset, policy and implementation hashes, settings,

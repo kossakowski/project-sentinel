@@ -7,8 +7,10 @@ import json
 import math
 import os
 import re
+import sqlite3
 import time
 from collections import Counter
+from contextlib import closing
 from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
@@ -123,11 +125,17 @@ def score_row(item, provider, result):
     return row
 
 
-async def evaluate(prepared, jev, luna, settings, checkpoint):
+async def evaluate(prepared, jev, luna, settings, checkpoint, cached=None):
     rows = []
     for number, item in enumerate(prepared):
         # Alternate order to avoid always measuring one service first.
         for provider in ("jev", "luna") if number % 2 == 0 else ("luna", "jev"):
+            saved = (cached or {}).get((item["case"]["id"], provider))
+            if saved is not None:
+                row = score_row(item, provider, saved)
+                rows.append(row)
+                checkpoint(row)
+                continue
             start = time.perf_counter()
             result = {}
             stop = False
@@ -243,6 +251,35 @@ def summarize(rows, planned, threshold, planned_languages=None):
     return output
 
 
+def load_cached(source, manifest, prepared, settings):
+    previous = json.loads((source / "manifest.json").read_text())
+    for key in ("dataset_sha256", "policy_sha256", "settings", "luna_request_settings"):
+        if previous[key] != manifest[key]:
+            raise ValueError(f"Cannot resume after changing {key}")
+    expected_requests = [{"case_id": i["case"]["id"], "jev": i["jev"], "luna": i["luna"]} for i in prepared]
+    previous_requests = [json.loads(line) for line in (source / "requests.jsonl").read_text().splitlines()]
+    if previous_requests != expected_requests:
+        raise ValueError("Cannot resume: exact model requests changed")
+    report = json.loads((source / "report.json").read_text())
+    by_id = {i["case"]["id"]: i for i in prepared}
+    cached = {}
+    for line in (source / "results.jsonl").read_text().splitlines():
+        row = json.loads(line)
+        key = (row["case_id"], row["provider"])
+        if key in cached or key[0] not in by_id or key[1] not in {"jev", "luna"}:
+            raise ValueError("Invalid or duplicate cached result")
+        if key[1] == "jev" and "raw_response" in row and "cost_usd" in row:
+            row["data"], row["diagnostics"] = decode(by_id[key[0]]["jev"], row["raw_response"], settings)
+            if row.get("error"):
+                row["recovered_validation_error"] = row.pop("error")
+                row.pop("budget_stopped", None)
+        elif row.get("error") or "data" not in row:
+            raise ValueError("Unrecoverable cached API error; review it before starting another paid run")
+        row["reused_from"] = str(source)
+        cached[key] = row
+    return cached, report
+
+
 async def run(args):
     dataset = load_dataset(args.dataset)
     if dataset.get("policy_version") != 2:
@@ -288,6 +325,14 @@ async def run(args):
         * settings["input_per_million"]
         / 1_000_000,
     }
+    cached = {}
+    source = Path(args.resume_from) if args.resume_from else None
+    if source:
+        cached, previous_report = load_cached(source, manifest, prepared, settings)
+        manifest.update(resume_from=str(source), reused_responses=len(cached))
+        manifest["planned_api_calls"] -= len(cached)
+        if args.live and args.budget_usd is not None and args.budget_usd > previous_report["budget_usd"]:
+            raise ValueError("Resume must preserve or lower the original combined spending cap")
     if args.live:
         if args.budget_usd is None or not math.isfinite(args.budget_usd) or not 0 < args.budget_usd <= 5:
             raise ValueError("Live comparison requires an explicit --budget-usd >0 and <=5")
@@ -316,6 +361,13 @@ async def run(args):
     baseline = deepcopy(config.classification)
     baseline.budget.ledger_path = str(output / "usage.db")
     baseline.budget.monthly_usd = args.budget_usd
+    if source:
+        # Carry forward all charges and reservations; the old evidence stays intact.
+        with (
+            closing(sqlite3.connect(f"file:{source / 'usage.db'}?mode=ro", uri=True)) as old,
+            closing(sqlite3.connect(baseline.budget.ledger_path)) as new,
+        ):
+            old.backup(new)
     jev = TypeSafeEvalClient(settings, baseline.budget.ledger_path, args.budget_usd)
     luna = None
     rows = []
@@ -330,12 +382,14 @@ async def run(args):
                 os.fsync(journal.fileno())
                 print(f"{row['provider']} {row['case_id']}: {'ERROR' if row.get('error') else 'recorded'}", flush=True)
 
-            await evaluate(prepared, jev, luna, settings, checkpoint)
+            await evaluate(prepared, jev, luna, settings, checkpoint, cached)
     finally:
         report = {
             "complete": len(rows) == 2 * len(cases) and not any(r.get("error") for r in rows),
             "budget_usd": args.budget_usd,
             "charged_or_reserved_estimate_usd": jev.ledger.total(),
+            "reused_responses": sum("reused_from" in r for r in rows),
+            "new_result_rows": sum("reused_from" not in r for r in rows),
             "limitations": LIMITATIONS,
             **summarize(
                 rows,
@@ -361,6 +415,7 @@ def parser():
     result.add_argument("--split", choices=("all", "development", "holdout"), default="all")
     result.add_argument("--max-sequences", type=int, help="Limit complete sequences, never truncate incident history")
     result.add_argument("--output", help="New directory for manifest, exact requests, results and spending ledger")
+    result.add_argument("--resume-from", help="Reuse saved responses and carry spending into a new output directory")
     result.add_argument("--live", action="store_true")
     result.add_argument("--budget-usd", type=float)
     result.add_argument("--allow-provisional", action="store_true")

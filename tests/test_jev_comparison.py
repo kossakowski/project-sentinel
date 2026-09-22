@@ -250,3 +250,53 @@ def test_settings_reject_credential_redirect(tmp_path, settings):
     path.write_text(yaml.safe_dump(settings))
     with pytest.raises(ValueError, match="official endpoint"):
         comparison.load_settings(path)
+
+
+def test_rounded_live_probabilities_are_preserved(prepared):
+    raw = fake_response(prepared[1])
+    answer = raw["answers"]["urgency"]
+    answer["choice"] = "10"
+    answer["probabilities"] = {str(n): 0.0 for n in range(1, 11)}
+    answer["probabilities"].update({"1": 0.01, "2": 0.01, "9": 0.4, "10": 0.5700000000000001})
+    before = deepcopy(raw)
+    validate_answers(prepared[1]["jev"], raw)
+    assert raw == before
+    assert sum(answer["probabilities"].values()) == pytest.approx(0.99)
+    answer["probabilities"]["10"] = 0.3
+    with pytest.raises(ValueError):
+        validate_answers(prepared[1]["jev"], raw)
+
+
+@pytest.mark.asyncio
+async def test_saved_responses_recover_without_new_calls_and_reject_changed_requests(tmp_path, prepared, settings):
+    manifest = {
+        "dataset_sha256": "test",
+        "policy_sha256": "test",
+        "settings": settings,
+        "luna_request_settings": {"model": "test"},
+    }
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest))
+    requests = [{"case_id": i["case"]["id"], "jev": i["jev"], "luna": i["luna"]} for i in prepared]
+    (tmp_path / "requests.jsonl").write_text("\n".join(json.dumps(r) for r in requests))
+    (tmp_path / "report.json").write_text(json.dumps({"budget_usd": 0.25}))
+    rows = []
+    for item in prepared:
+        raw = fake_response(item)
+        data, _ = decode(item["jev"], raw, settings)
+        for provider in ["jev", "luna"]:
+            result = {"data": data, "cost_usd": 0.001, "latency_seconds": 2.0}
+            if provider == "jev":
+                result.update(raw_response=raw, error="Old local validation error")
+            rows.append(comparison.score_row(item, provider, result))
+    (tmp_path / "results.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
+    original = (tmp_path / "results.jsonl").read_bytes()
+    cached, _ = comparison.load_cached(tmp_path, manifest, prepared, settings)
+    recovered = await comparison.evaluate(prepared, None, None, settings, lambda row: None, cached)
+    assert len(recovered) == 2 * len(prepared)
+    assert not any(row.get("error") for row in recovered)
+    assert all(row["latency_seconds"] == 2 for row in recovered)
+    assert (tmp_path / "results.jsonl").read_bytes() == original
+    changed = deepcopy(prepared)
+    changed[0]["jev"]["state"]["article"]["title"] = "Changed input"
+    with pytest.raises(ValueError, match="exact model requests changed"):
+        comparison.load_cached(tmp_path, manifest, changed, settings)
