@@ -120,9 +120,13 @@ def enforce_geography(data, monitored):
 
 
 def decode_pipeline(payload, response, settings, monitored):
-    answers = validate_answers(payload, response)
+    # Optional quotations must not block an otherwise valid danger decision.
+    core = {name: q for name, q in payload["questions"].items() if not name.startswith("evidence_")}
+    core_payload = {**payload, "questions": core}
+    core_response = {**response, "answers": {name: a for name, a in response["answers"].items() if name in core}}
+    answers = validate_answers(core_payload, core_response)
     # The v1 decoder ignores extra question names, retaining all raw probabilities.
-    raw, diagnostics = decode(payload, response, settings)
+    raw, diagnostics = decode(core_payload, core_response, settings)
     result, added = enforce_geography(raw, monitored)
     candidates = payload["state"]["remembered_incidents"]
     matched = []
@@ -156,14 +160,24 @@ def decode_pipeline(payload, response, settings, monitored):
         aggressor=answers["aggressor"]["choice"],
         confidence=answers["urgency"]["confidence"],
     )
-    result["facts"]["evidence"] = {
-        field: payload["state"]["source_spans"][answers[f"evidence_{field}"]["choice"]]
-        for field in ("attack_countries", "protection", "status")
-    }
+    evidence, evidence_errors = {}, {}
+    for field in ("attack_countries", "protection", "status"):
+        name = f"evidence_{field}"
+        try:
+            selected = validate_answers(
+                {**payload, "questions": {name: payload["questions"][name]}},
+                {**response, "answers": {name: response["answers"].get(name)}},
+            )[name]["choice"]
+            evidence[field] = payload["state"]["source_spans"][selected]
+        except (ValueError, KeyError):
+            evidence[field] = ""
+            evidence_errors[field] = "Invalid optional quotation answer; discarded without changing classification."
+    result["facts"]["evidence"] = evidence
     diagnostics.update(
         raw_affected_countries=raw["affected_countries"],
         added_affected_countries=added,
         identity_conflicts=conflicts,
         question_version=VERSION,
+        evidence_validation_errors=evidence_errors,
     )
     return result, diagnostics

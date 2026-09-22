@@ -2,6 +2,7 @@
 
 import json
 from copy import deepcopy
+from types import SimpleNamespace
 from uuid import NAMESPACE_URL, uuid5
 
 import pytest
@@ -187,3 +188,70 @@ async def test_offline_preflight_never_opens_providers(tmp_path, config, monkeyp
     saved = json.loads((tmp_path / "preview/manifest.json").read_text())
     assert saved["inventory"]["cases"] == 40 and not saved["live"]
     assert not (tmp_path / "preview/usage.db").exists()
+
+
+def test_invalid_optional_quote_cannot_discard_a_valid_critical_decision(cases, settings):
+    policy = load_policy("tests/fixtures/benchmark_policy_v2.yaml")
+    payload = build_pipeline_request(make_article(cases[0]), [], policy, settings)
+    raw = response(payload, {"attack_PL": "yes", "urgency": "10", "military": "yes"})
+    raw["answers"]["evidence_attack_countries"]["choice"] = "span_1"  # Winner disagrees with probabilities.
+    data, diagnostics = decode_pipeline(payload, raw, settings, policy["monitored_countries"])
+    assert data["urgency_score"] == 10 and data["affected_countries"] == ["PL"]
+    assert data["facts"]["evidence"]["attack_countries"] == ""
+    assert "attack_countries" in diagnostics["evidence_validation_errors"]
+    raw["answers"]["urgency"]["choice"] = "1"
+    with pytest.raises(ValueError, match="winning choice"):
+        decode_pipeline(payload, raw, settings, policy["monitored_countries"])
+
+
+@pytest.mark.asyncio
+async def test_resume_reuses_exact_jev_and_writer_calls_without_network(tmp_path, cases, settings, config, monkeypatch):
+    async def forbidden(*args, **kwargs):
+        pytest.fail("Sent a new paid request instead of replaying the saved response")
+
+    monkeypatch.setattr(
+        jev_pipeline, "Classifier", lambda cfg: SimpleNamespace(provider=SimpleNamespace(request=forbidden))
+    )
+    monkeypatch.setattr(jev_pipeline, "TypeSafeEvalClient", lambda *args: SimpleNamespace(request=forbidden))
+    article = make_article(cases[0])
+    policy = load_policy("tests/fixtures/benchmark_policy_v2.yaml")
+    payload = build_pipeline_request(article, [], policy, settings)
+    summary = "Wrogi pocisk nadal znajduje się nad Polską. Nie wydano ostrzeżenia dla mieszkańców."
+    cached = {
+        ("typesafe", "jev", article.id, None): {
+            "request": payload,
+            "raw_response": response(payload, {"attack_PL": "yes", "military": "yes", "urgency": "10"}),
+            "request_sha256": "hash",
+            "cost_usd": 0.001,
+            "usage": {"prompt_tokens": 100, "completion_tokens": 20},
+        },
+        ("openai", "jev", article.id, "jev_summary"): {
+            "messages": [
+                {"role": "system", "content": jev_pipeline.SUMMARY_PROMPT},
+                {
+                    "role": "user",
+                    "content": json.dumps({"title": article.title, "summary": article.summary}, ensure_ascii=False),
+                },
+            ],
+            "schema": jev_pipeline.TRANSLATION_SCHEMA,
+            "options": {"purpose": "jev_summary", "max_tokens": settings["summary_max_tokens"]},
+            "data": {"summary_pl": summary},
+            "input_tokens": 100,
+            "output_tokens": 20,
+            "cached_input_tokens": 0,
+            "cost_usd": 0.001,
+            "request_sha256": "hash",
+            "response_id": "id",
+        },
+    }
+    with (tmp_path / "calls.jsonl").open("x") as journal:
+        models = jev_pipeline.PipelineModels(config, policy, settings, journal, cached)
+        result, diagnostics = await models.classify("jev", article, [])
+        assert result.summary_pl == summary and diagnostics["reused_api_response"]
+        assert result.urgency_score == 10
+        altered = deepcopy(article)
+        altered.summary += " Changed source."
+        with pytest.raises(ClassificationError, match="exact request changed"):
+            await models.classify("jev", altered, [])
+    logs = [json.loads(line) for line in (tmp_path / "calls.jsonl").read_text().splitlines()]
+    assert len(logs) == 3 and logs[0]["cached"] and logs[1]["cached"]

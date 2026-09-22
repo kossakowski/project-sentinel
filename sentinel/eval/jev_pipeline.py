@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 from sentinel.classification.classifier import Classifier
 from sentinel.classification.corroborator import Corroborator
 from sentinel.classification.incident_memory import IncidentMemory
-from sentinel.classification.openai_provider import ClassificationError, validate_json
+from sentinel.classification.openai_provider import ClassificationError, StructuredReply, validate_json
 from sentinel.classification.policy import prompt_hash
 from sentinel.classification.schema import CLASSIFICATION_SCHEMA, FIELDS
 from sentinel.classification.summary_language import TRANSLATION_SCHEMA, ensure_polish, is_polish
@@ -57,7 +57,7 @@ def append_row(handle, row):
 
 
 class PipelineModels:
-    def __init__(self, config, policy, settings, journal):
+    def __init__(self, config, policy, settings, journal, cached=None):
         self.config, self.policy, self.settings = config, policy, settings
         self.luna = Classifier(config)
         self.jev = TypeSafeEvalClient(
@@ -65,12 +65,33 @@ class PipelineModels:
         )
         self.journal = journal
         self.context = {}
+        self.cached = cached or {}
+        self.reused_case = False
         original = self.luna.provider.request
 
         async def logged_request(content, schema, **kwargs):
             row = {**self.context, "api": "openai", "messages": content, "schema": schema, "options": kwargs}
             try:
-                reply = await original(content, schema, **kwargs)
+                saved = self.cached.get(
+                    ("openai", self.context["pipeline"], self.context["case_id"], kwargs["purpose"])
+                )
+                if saved is not None:
+                    if any(saved[k] != row[k] for k in ("messages", "schema", "options")) or saved.get("error"):
+                        raise ClassificationError("Cached OpenAI call failed or its exact request changed")
+                    validate_json(json.dumps(saved["data"]), schema)
+                    reply = StructuredReply(
+                        saved["data"],
+                        saved["input_tokens"],
+                        saved["cached_input_tokens"],
+                        saved["output_tokens"],
+                        saved["cost_usd"],
+                        saved["request_sha256"],
+                        saved["response_id"],
+                    )
+                    row["cached"] = True
+                    self.reused_case = True
+                else:
+                    reply = await original(content, schema, **kwargs)
                 row.update(
                     data=reply.data,
                     request_sha256=reply.request_hash,
@@ -91,13 +112,22 @@ class PipelineModels:
 
     async def classify(self, provider, article, candidates):
         self.context = {"pipeline": provider, "case_id": article.id}
+        self.reused_case = False
         if provider == "luna":
             result = await self.luna.classify(article, incident_context=candidates)
-            return result, {"summary_processing": result.summary_processing}
+            return result, {"summary_processing": result.summary_processing, "reused_api_response": self.reused_case}
         payload = build_pipeline_request(article, candidates, self.policy, self.settings)
         log = {**self.context, "api": "typesafe", "request": payload}
         try:
-            response = await self.jev.request(payload)
+            saved = self.cached.get(("typesafe", provider, article.id, None))
+            if saved is not None:
+                if saved["request"] != payload or saved.get("error"):
+                    raise ClassificationError("Cached TypeSafe call failed or its exact request changed")
+                response = {k: saved[k] for k in ("raw_response", "request_sha256", "cost_usd", "usage")}
+                log["cached"] = True
+                self.reused_case = True
+            else:
+                response = await self.jev.request(payload)
             log.update(response)
         except ClassificationError as exc:
             log["error"] = str(exc)
@@ -146,7 +176,9 @@ class PipelineModels:
             estimated_cost_usd=response["cost_usd"] + sum(c.cost_usd for c in writing_calls),
             summary_processing=processing,
         )
-        diagnostics.update(summary_processing=processing, raw_response=response["raw_response"])
+        diagnostics.update(
+            summary_processing=processing, raw_response=response["raw_response"], reused_api_response=self.reused_case
+        )
         return result, diagnostics
 
     async def aclose(self):
@@ -226,7 +258,9 @@ async def replay_pipeline(cases, config, classify, checkpoint):
                         )
                     except (ClassificationError, ValueError, TypeError, KeyError) as exc:
                         row["error"] = str(exc)
-                    row["latency_seconds"] = time.perf_counter() - start
+                    row["latency_seconds"] = (
+                        None if row.get("diagnostics", {}).get("reused_api_response") else time.perf_counter() - start
+                    )
                     row["evaluation"] = score_dimensions(case, row, prior[provider])
                     # Distinguish identity from the duplicate/update/escalation label.
                     expected_decisions = case["expected"].get("incident_decisions")
@@ -257,6 +291,9 @@ def summarize(rows, cases):
             simulated_channels=dict(Counter(channel for r in selected for channel in r.get("channels", []))),
             non_polish_summaries=sum(r.get("summary_polish") is False for r in selected),
             summary_fallbacks=sum(bool(r.get("summary_fallback")) for r in selected),
+            discarded_quote_answers=sum(
+                len(r.get("diagnostics", {}).get("evidence_validation_errors", {})) for r in selected
+            ),
             review_case_ids=[
                 r["case_id"]
                 for r in scored
@@ -329,6 +366,31 @@ async def run(args):
         load_dotenv(Path.cwd() / ".env")
         if any(not os.environ.get(k, "").strip() for k in ("TYPESAFE_API_KEY", "OPENAI_API_KEY")):
             raise ValueError("Both provider keys must be set locally")
+    cached = {}
+    if args.resume_from:
+        source = Path(args.resume_from)
+        old_manifest = json.loads((source / "manifest.json").read_text())
+        old_report = json.loads((source / "report.json").read_text())
+        for key in (
+            "dataset_sha256",
+            "policy_sha256",
+            "settings",
+            "classification_config",
+            "alert_levels",
+            "summary_prompt",
+        ):
+            if old_manifest[key] != manifest[key]:
+                raise ValueError(f"Resume would change {key}")
+        if args.live and args.budget_usd > old_report["budget_usd"]:
+            raise ValueError("Resume cannot increase the original spending cap")
+        for line in (source / "calls.jsonl").read_text().splitlines():
+            call = json.loads(line)
+            key = (call["api"], call["pipeline"], call["case_id"], call.get("options", {}).get("purpose"))
+            if key in cached:
+                raise ValueError("Duplicate cached API call")
+            cached[key] = call
+        args.carry_ledger = str(source / "usage.db")
+        manifest.update(resume_from=str(source), cached_api_calls=len(cached))
     output = Path(args.output) if args.output else None
     if output:
         output.mkdir(parents=True, exist_ok=False)
@@ -349,7 +411,7 @@ async def run(args):
         (output / "calls.jsonl").open("x", encoding="utf-8") as calls,
         (output / "results.jsonl").open("x", encoding="utf-8") as results,
     ):
-        models = PipelineModels(config, policy, settings, calls)
+        models = PipelineModels(config, policy, settings, calls, cached)
         initial_cost = models.jev.ledger.total()
         try:
 
@@ -380,6 +442,7 @@ async def run(args):
                     }
                     for provider in ("jev", "luna")
                 },
+                "cached_api_calls": sum(bool(c.get("cached")) for c in api_calls),
                 "limitations": manifest["limitations"],
             }
             (output / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2))
@@ -395,6 +458,7 @@ def parser():
     p.add_argument("--policy-file", default="tests/fixtures/benchmark_policy_v2.yaml")
     p.add_argument("--config", default="config/config.yaml")
     p.add_argument("--carry-ledger", default="data/eval/jev-luna-pilot-20260922-complete/usage.db")
+    p.add_argument("--resume-from", help="Reuse exact saved API responses and carry their spending ledger forward")
     p.add_argument("--live", action="store_true")
     p.add_argument("--allow-provisional", action="store_true")
     p.add_argument("--budget-usd", type=float)
