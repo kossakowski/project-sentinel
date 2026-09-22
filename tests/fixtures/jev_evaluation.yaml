@@ -1,0 +1,12 @@
+# Local evaluation settings only. Never loaded by the production classifier.
+version: 1
+model: jev-1.13.0
+endpoint: https://api.typesafe.ai/v1/systemone
+input_per_million: 0.042
+request_token_limit: 64000
+state_question_token_limit: 32000
+timeout_seconds: 30
+# Fixed before evaluation; never inferred from the expected answers.
+attack_countries: [PL, LT, LV, EE, UA, RU, BY]
+# Diagnostic reporting only; this is NOT an alert/fallback threshold.
+confidence_review_threshold: 0.9
