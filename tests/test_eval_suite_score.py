@@ -118,9 +118,9 @@ def test_sequence_metrics_wrong_merge_and_duplicate_notification():
         "x2": item("x2", chain="ch", pos=2),
     }
     truth = {
-        "x0": {"same_as": None, "notify": None, "critical": True},
-        "x1": {"same_as": "x0", "notify": False, "critical": True},
-        "x2": {"same_as": None, "notify": True, "critical": True},
+        "x0": {"same_as": None, "notify": None, "critical": True, "low": 9},
+        "x1": {"same_as": "x0", "notify": False, "critical": True, "low": 9},
+        "x2": {"same_as": None, "notify": True, "critical": True, "low": 9},
     }
     calls = [
         call("m", "x0", 9, chain_id="ch", event_id="e1", notification="initial"),
@@ -151,3 +151,25 @@ def test_score_run_end_to_end(tmp_path):
     assert cand["false_call_rate"][0] == 0.5 and cand["invalid_call_rate"][0] == pytest.approx(1 / 3)
     assert result["paired_vs_baseline"]["cand"]["critical_hit"]["n"] == 1
     assert result["critical_items"] == 1
+
+
+def test_sequence_metrics_skips_low_pairs_and_outage_runs():
+    items = {"y0": item("y0", chain="ch", pos=0), "y1": item("y1", chain="ch", pos=1)}
+    truth = {
+        "y0": {"same_as": None, "notify": None, "critical": False, "low": 2},
+        "y1": {"same_as": "y0", "notify": False, "critical": False, "low": 2},
+    }
+    low = [call("m", "y0", 2, chain_id="ch"), call("m", "y1", 2, chain_id="ch", notification="silent")]
+    result = sequence_metrics(low, truth, items)
+    assert result["same_unscorable"] == 1 and result.get("same_expected", 0) == 0
+    outage = dict(call("m", "y0", None, chain_id="ch"), error_kind="timeout")
+    result = sequence_metrics([outage, call("m", "y1", 2, chain_id="ch")], truth, items)
+    assert result == {"chain_runs_skipped_outage": 1}
+
+
+def test_even_repeat_ties_are_scored_pessimistically():
+    critical = {"critical": True, "possible_call": True, "actions": {"call"}, "low": 9, "high": 9, "countries": set()}
+    calm = {"critical": False, "possible_call": False, "actions": {"alert"}, "low": 8, "high": 8, "countries": set()}
+    tie = majority([call("m", "a", 9, countries=()), call("m", "a", 8, countries=()), call("m", "a", None)])
+    assert item_outcomes(tie, critical)["critical_hit"] is False
+    assert item_outcomes(tie, calm)["false_call"] is True

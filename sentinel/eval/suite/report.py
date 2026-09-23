@@ -19,6 +19,7 @@ from sentinel.eval.suite.price import price_table
 MAX_INVALID_RATE = 0.005
 TIER_MARGIN = 0.02
 RECALL_MARGIN = 0.02
+FALSE_CALL_MARGIN = 0.01
 
 
 def pct(value, digits=0) -> str:
@@ -42,36 +43,41 @@ def usd(value, digits=2) -> str:
 
 
 def decide(model: str, baseline: str, score: dict, prices: dict) -> dict:
-    """Pre-registered rule: every check must pass for a candidate to replace the baseline."""
+    """Pre-registered rule: every check must pass for a candidate to replace the baseline.
+
+    Quality checks use the paired difference on items both models answered, so a model
+    that skipped hard items cannot look better; the coverage check fails any model that
+    left items unanswered after retries.
+    """
     report = score["models"][model]
-    base = score["models"][baseline]
     paired = score["paired_vs_baseline"].get(model, {})
     cost = prices["models"].get(model, {})
     base_cost = prices["models"].get(baseline, {})
 
-    def point(rate):
-        return rate[0] if rate else None
+    def diff(key):
+        entry = paired.get(key) or {}
+        interval = entry.get("difference")
+        return (interval[0] if interval else None), entry.get("verdict", "")
 
-    recall, base_recall = point(report["critical_recall"]), point(base["critical_recall"])
-    tier, base_tier = point(report["tier_accuracy"]), point(base["tier_accuracy"])
-    invalid = point(report["invalid_call_rate"]) or 0.0
-    critical_verdict = (paired.get("critical_hit") or {}).get("verdict", "")
-    false_call_verdict = (paired.get("false_call") or {}).get("verdict", "")
-    tier_verdict = (paired.get("tier_ok") or {}).get("verdict", "")
+    recall_diff, recall_verdict = diff("critical_hit")
+    false_diff, false_verdict = diff("false_call")
+    tier_diff, tier_verdict = diff("tier_ok")
+    invalid = (report["invalid_call_rate"] or (0.0,))[0]
     checks = {
-        "Nie przegapia więcej sytuacji „uciekaj”": recall is not None
-        and base_recall is not None
-        and recall >= base_recall - RECALL_MARGIN
-        and not critical_verdict.startswith("gorszy"),
-        "Nie dzwoni częściej bez powodu": not false_call_verdict.startswith("gorszy"),
+        "Odpowiedział na każdy artykuł": report.get("unavailable_items", 0) == 0,
+        "Nie przegapia więcej sytuacji „uciekaj”": recall_diff is not None
+        and recall_diff >= -RECALL_MARGIN
+        and not recall_verdict.startswith("gorszy"),
+        f"Telefonów bez powodu najwyżej {pct(FALSE_CALL_MARGIN)} pkt więcej": (
+            false_diff is None or false_diff <= FALSE_CALL_MARGIN
+        )
+        and not false_verdict.startswith("gorszy"),
         f"Zepsute odpowiedzi ≤ {pct(MAX_INVALID_RATE, 1)}": invalid <= MAX_INVALID_RATE,
-        f"Trafność reakcji najwyżej {pct(TIER_MARGIN)} pkt gorsza": tier is not None
-        and base_tier is not None
-        and tier >= base_tier - TIER_MARGIN,
+        f"Trafność reakcji najwyżej {pct(TIER_MARGIN)} pkt gorsza": tier_diff is not None and tier_diff >= -TIER_MARGIN,
         "Mieści się w limicie w tłocznym miesiącu": bool(cost.get("within_cap_busy_month")),
         "Tańszy albo udowodnienie lepszy": bool(
             (cost.get("total") and base_cost.get("total") and cost["total"] < base_cost["total"])
-            or critical_verdict.startswith("lepszy")
+            or recall_verdict.startswith("lepszy")
             or tier_verdict.startswith("lepszy")
         ),
     }
@@ -219,6 +225,11 @@ def build_html(score: dict, prices: dict, labels: dict) -> str:
         if not winners
         else "Warunki spełnia: " + ", ".join(html.escape(labels.get(m, m)) for m in winners) + "."
     )
+    if score["manifest"].get("pool") != "locked":
+        verdict = (
+            "To pula robocza – wynik służy do sprawdzenia testu, nie do decyzji. "
+            "Decyzję daje dopiero jednorazowy przebieg na puli zablokowanej. Podgląd: " + verdict
+        )
     out.append(f"<div class='card verdict'><b>Werdykt:</b> {verdict}</div>")
     if retest.get("pairs"):
         same = retest["same_action"]
@@ -314,15 +325,18 @@ def build_html(score: dict, prices: dict, labels: dict) -> str:
     return "".join(out)
 
 
-async def model_prices(model_ids: list[str]) -> dict:
-    catalogue = await fetch_model_catalogue(model_ids=frozenset(model_ids))
+async def model_prices(specs: list[str]) -> dict:
+    """Catalogue prices per run spec (``vendor/model@host+reasoning`` → the bare model's price)."""
+    ids = {spec: spec.removesuffix("+reasoning").partition("@")[0] for spec in specs}
+    catalogue = await fetch_model_catalogue(model_ids=frozenset(ids.values()))
     return {
-        m: {
-            "input": float(c.pricing.prompt) * 1e6,
-            "cached_input": float(c.pricing.input_cache_read or c.pricing.prompt) * 1e6,
-            "output": float(c.pricing.completion) * 1e6,
+        spec: {
+            "input": float(catalogue[i].pricing.prompt) * 1e6,
+            "cached_input": float(catalogue[i].pricing.input_cache_read or catalogue[i].pricing.prompt) * 1e6,
+            "output": float(catalogue[i].pricing.completion) * 1e6,
         }
-        for m, c in catalogue.items()
+        for spec, i in ids.items()
+        if i in catalogue
     }
 
 

@@ -648,11 +648,13 @@ class OpenRouterEvalClient:
                 provider_latency_ms=provider_latency,
             )
         if finish_reason != "stop":
+            # "error" or a missing reason is an upstream provider failure, not the model's
+            # answer; "length"/"content_filter" are the model's own incomplete answers.
             return self._failure(
                 model_id,
                 started,
                 reservation_amount,
-                "incomplete",
+                "provider_error" if finish_reason in (None, "error") else "incomplete",
                 f"Completion did not finish normally ({finish_reason or 'missing'})",
                 usage=usage,
                 request_id=request_id,

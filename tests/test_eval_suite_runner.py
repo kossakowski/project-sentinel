@@ -124,17 +124,55 @@ def test_replay_chain_records_events_and_notifications():
     assert "candidate_ids" in rows[1]
 
 
-def test_load_done_drops_half_finished_chains(tmp_path):
+def test_load_done_drops_half_finished_chains_and_outages(tmp_path):
     chains = [[item("a", "ch", 0), item("b", "ch", 1)]]
     path = tmp_path / "calls.jsonl"
     rows = [
-        {"model": "m", "repeat": 0, "item_id": "s", "chain_id": None},
-        {"model": "m", "repeat": 0, "item_id": "a", "chain_id": "ch"},
+        {"model": "m", "repeat": 0, "item_id": "s", "chain_id": None, "urgency": 5, "cost_usd": 0.01},
+        {"model": "m", "repeat": 0, "item_id": "a", "chain_id": "ch", "urgency": 5, "cost_usd": 0.01},
         {"model": "m", "repeat": 1, "item_id": "x", "chain_id": None, "error_kind": "budget_exhausted"},
+        {"model": "m", "repeat": 1, "item_id": "y", "chain_id": None, "error_kind": "http_error", "http_status": 402},
+        {"model": "m", "repeat": 1, "item_id": "z", "chain_id": None, "error_kind": "invalid_output", "cost_usd": 0.01},
     ]
     path.write_text("".join(json.dumps(r) + "\n" for r in rows))
-    kept, done = runner.load_done(path, chains)
-    assert done == {("m", 0, "s")} and len(path.read_text().splitlines()) == 1
+    kept, done, spent = runner.load_done(path, chains)
+    assert done == {("m", 0, "s"), ("m", 1, "z")}  # the model's own bad answer is final
+    assert spent == 0.03 and len(path.read_text().splitlines()) == 2
+
+
+def test_budget_stop_mid_chain_redoes_the_whole_chain_without_duplicates(tmp_path):
+    chains = [[item("a", "ch", 0), item("b", "ch", 1), item("c", "ch", 2)]]
+    path = tmp_path / "calls.jsonl"
+    rows = [
+        {"model": "m", "repeat": 0, "item_id": "a", "chain_id": "ch", "urgency": 9},
+        {"model": "m", "repeat": 0, "item_id": "b", "chain_id": "ch", "error_kind": "budget_exhausted"},
+        {"model": "m", "repeat": 0, "item_id": "c", "chain_id": "ch", "error_kind": "budget_exhausted"},
+    ]
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    kept, done, _ = runner.load_done(path, chains)
+    assert kept == [] and done == set() and path.read_text() == ""
+
+
+def test_two_setups_of_one_model_stay_separate(tmp_path):
+    path = tmp_path / "calls.jsonl"
+    rows = [
+        {"model": "z/glm@Together+reasoning", "repeat": 0, "item_id": "s", "chain_id": None, "urgency": 5},
+        {"model": "z/glm@Fireworks+reasoning", "repeat": 0, "item_id": "s", "chain_id": None, "error_kind": "timeout"},
+    ]
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    _, done, _ = runner.load_done(path, [])
+    assert done == {("z/glm@Together+reasoning", 0, "s")}
+    row = runner.base_row("z/glm@Together+reasoning", 0, item("s"), [], ok(answer()))
+    assert row["model"] == "z/glm@Together+reasoning" and row["model_id"] == "z/glm" and row["reasoning"]
+
+
+def test_spent_so_far_counts_unknown_cost_timeouts_at_their_reservation():
+    rows = [
+        {"cost_usd": 0.01},
+        {"cost_usd": None, "error_kind": "timeout", "reserved_usd": 0.02},
+        {"cost_usd": None, "error_kind": "http_error", "reserved_usd": 0.5},
+    ]
+    assert runner.spent_so_far(rows) == 0.03
 
 
 def test_scoring_separates_model_faults_from_outages():

@@ -214,6 +214,11 @@ def make_handler(store: LabelStore):
             if self.path != "/api/label":
                 self._send(404, '{"error": "not found"}')
                 return
+            # Only JSON bodies: a cross-site form or text POST cannot plant labels, because
+            # a browser must first ask permission (preflight) for this content type.
+            if not (self.headers.get("Content-Type") or "").startswith("application/json"):
+                self._send(415, '{"error": "JSON only"}')
+                return
             try:
                 length = int(self.headers.get("Content-Length", 0))
                 saved = store.save(json.loads(self.rfile.read(length)))

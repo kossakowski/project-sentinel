@@ -38,11 +38,14 @@ from sentinel.eval.compare_models import (
     parse_prediction,
 )
 from sentinel.eval.openrouter_client import BudgetLedger, OpenRouterEvalClient, fetch_model_catalogue
+from sentinel.eval.suite.score import MODEL_FAULTS
 
 RUNS = Path("data/eval/suite/runs")
 SCHEMA_SHA256 = hashlib.sha256(json.dumps(CLASSIFICATION_SCHEMA, sort_keys=True).encode()).hexdigest()
 # Provider-side failures (not the model's answer): retried, then recorded as unavailable.
-TRANSIENT = {"timeout", "transport_error"}
+TRANSIENT = {"timeout", "transport_error", "provider_error"}
+# The key is wrong, out of credit or forbidden: stop instead of recording hundreds of outages.
+FATAL_HTTP = {401, 402, 403}
 RETRY_DELAYS = (3, 10, 30)
 
 
@@ -102,14 +105,21 @@ def validate_output(data, article, model: str, usage: dict):
         raise ValueError(f"invalid_output: {str(exc)[:200]}") from None
 
 
-def base_row(model: str, repeat: int, item: dict, messages: list[dict], completion: dict) -> dict:
+def base_row(spec: str, repeat: int, item: dict, messages: list[dict], completion: dict) -> dict:
+    """``model`` is the full spec (host pin and reasoning flag included), so two setups of
+    one model never mix; ``model_id`` is the bare catalogue id."""
     row = {
-        "model": model,
+        "model": spec,
+        "model_id": parse_model_spec(spec)[0],
+        "reasoning": parse_model_spec(spec)[2],
         "repeat": repeat,
         "item_id": item["id"],
         "chain_id": item["chain_id"],
         "request_sha256": hashlib.sha256(json.dumps(messages, ensure_ascii=False, sort_keys=True).encode()).hexdigest(),
-        **{k: completion.get(k) for k in ("usage", "cost_usd", "latency_seconds", "provider", "request_id")},
+        **{
+            k: completion.get(k)
+            for k in ("usage", "cost_usd", "reserved_usd", "latency_seconds", "provider", "request_id", "finish_reason")
+        },
         "error_kind": completion.get("error_kind"),
         "http_status": completion.get("http_status"),
         "attempts": completion.get("attempts", 1),
@@ -135,11 +145,12 @@ def outcome_fields(result, config, data: dict) -> dict:
     }
 
 
-async def classify_single(client, model: str, repeat: int, item: dict, config, policy: dict) -> dict:
+async def classify_single(client, spec: str, repeat: int, item: dict, config, policy: dict) -> dict:
+    model = parse_model_spec(spec)[0]
     article = make_article({"id": item["id"], "article": item["article"]})
     messages = production_messages(article, [], policy)
     completion = await complete_with_retry(client, model, messages)
-    row = base_row(model, repeat, item, messages, completion)
+    row = base_row(spec, repeat, item, messages, completion)
     if completion.get("error"):
         return row
     try:
@@ -151,7 +162,8 @@ async def classify_single(client, model: str, repeat: int, item: dict, config, p
     return row
 
 
-async def replay_chain(client, model: str, repeat: int, chain: list[dict], config, policy: dict) -> list[dict]:
+async def replay_chain(client, spec: str, repeat: int, chain: list[dict], config, policy: dict) -> list[dict]:
+    model = parse_model_spec(spec)[0]
     rows = []
     db = ReplayDatabase(":memory:")
     memory = IncidentMemory(db, config)
@@ -165,7 +177,7 @@ async def replay_chain(client, model: str, repeat: int, chain: list[dict], confi
             candidates = memory.candidates(article)
             messages = production_messages(article, candidates, policy)
             completion = await complete_with_retry(client, model, messages)
-            row = base_row(model, repeat, item, messages, completion)
+            row = base_row(spec, repeat, item, messages, completion)
             row["candidate_ids"] = [c["id"] for c in candidates]
             rows.append(row)
             if completion.get("error"):
@@ -199,27 +211,51 @@ async def replay_chain(client, model: str, repeat: int, chain: list[dict], confi
     return rows
 
 
-def load_done(path: Path, chains: list[list[dict]]) -> tuple[list[dict], set]:
-    """Keep finished work; drop rows of chains that stopped half-way (they are redone)."""
+def _retryable(row: dict) -> bool:
+    """No answer from the model (outage, budget stop): redo it on resume."""
+    return row.get("urgency") is None and row.get("error_kind") not in MODEL_FAULTS
+
+
+def spent_so_far(rows: list[dict]) -> float:
+    """Money already committed by earlier sessions, including requests of unknown cost."""
+    total = 0.0
+    for row in rows:
+        if row.get("cost_usd") is not None:
+            total += row["cost_usd"]
+        elif row.get("error_kind") in TRANSIENT:
+            total += row.get("reserved_usd") or 0.0
+    return total
+
+
+def load_done(path: Path, chains: list[list[dict]]) -> tuple[list[dict], set, float]:
+    """Keep finished answers; drop outages and any chain replay that is incomplete or had one.
+
+    Returns the kept rows, the (spec, repeat, item) keys already answered, and the
+    money already spent by earlier sessions (so the budget cap spans resumes).
+    """
     if not path.exists():
-        return [], set()
+        return [], set(), 0.0
     rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    spent = spent_so_far(rows)
     chain_size = {c[0]["chain_id"]: len(c) for c in chains}
-    seen: dict[tuple, int] = {}
+    groups: dict[tuple, list[dict]] = {}
     for row in rows:
         if row["chain_id"]:
-            key = (row["model"], row["repeat"], row["chain_id"])
-            seen[key] = seen.get(key, 0) + 1
+            groups.setdefault((row["model"], row["repeat"], row["chain_id"]), []).append(row)
+    broken = {
+        key
+        for key, group in groups.items()
+        if len(group) != chain_size.get(key[2]) or any(_retryable(r) for r in group)
+    }
     kept = [
         r
         for r in rows
-        if not r["chain_id"] or seen[(r["model"], r["repeat"], r["chain_id"])] == chain_size.get(r["chain_id"])
+        if (r["chain_id"] and (r["model"], r["repeat"], r["chain_id"]) not in broken)
+        or (not r["chain_id"] and not _retryable(r))
     ]
-    # A budget stop is not a model answer: retry those rows on resume.
-    kept = [r for r in kept if r.get("error_kind") != "budget_exhausted"]
     if len(kept) != len(rows):
         path.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in kept), encoding="utf-8")
-    return kept, {(r["model"], r["repeat"], r["item_id"]) for r in kept}
+    return kept, {(r["model"], r["repeat"], r["item_id"]) for r in kept}, spent
 
 
 async def run(args) -> int:
@@ -262,9 +298,15 @@ async def run(args) -> int:
         for key in ("items_sha256", "prompt_sha256", "schema_sha256", "pool"):
             if previous[key] != manifest[key]:
                 raise SystemExit(f"Resume refused: {key} changed since this run started")
-    manifest_path.write_text(json.dumps(manifest, indent=1), encoding="utf-8")
+        manifest["created_at"] = previous["created_at"]
+        manifest["sessions"] = previous.get("sessions", [])
+    manifest.setdefault("sessions", [])
     calls_path = out / "calls.jsonl"
-    _, done = load_done(calls_path, chains)
+    _, done, spent = load_done(calls_path, chains)
+    remaining = args.budget_usd - spent
+    if remaining <= 0:
+        raise SystemExit(f"Budget used up: ${spent:.4f} of ${args.budget_usd} already spent in this run")
+    manifest_path.write_text(json.dumps(manifest, indent=1), encoding="utf-8")
     load_dotenv()
     api_key = os.environ.get("OPENROUTER_API_KEY", "")
     model_ids = frozenset(m for m, _, _ in specs)
@@ -272,7 +314,8 @@ async def run(args) -> int:
     missing = model_ids - set(catalogue)
     if missing:
         raise SystemExit(f"Not in the OpenRouter catalogue: {sorted(missing)}")
-    ledger = BudgetLedger(Decimal(str(args.budget_usd)))
+    ledger = BudgetLedger(Decimal(str(round(remaining, 6))))
+    session = {"started_at": datetime.now(UTC).isoformat(), "spent_before_usd": spent, "stop_reason": None}
     lock = asyncio.Lock()
     handle = calls_path.open("a", encoding="utf-8")
     stopped = False
@@ -282,11 +325,14 @@ async def run(args) -> int:
         async with lock:
             for row in rows:
                 handle.write(json.dumps(row, ensure_ascii=False) + "\n")
-                stopped = stopped or row.get("budget_stopped")
+                if row.get("budget_stopped"):
+                    stopped, session["stop_reason"] = True, "budget"
+                elif row.get("http_status") in FATAL_HTTP:
+                    stopped, session["stop_reason"] = True, f"http {row['http_status']} (key, credit or access)"
             handle.flush()
 
     try:
-        for model, provider, reasoning in specs:
+        for spec, (_model, provider, reasoning) in zip(args.models, specs, strict=True):
             client = OpenRouterEvalClient(
                 reasoning={"effort": "low"} if reasoning else None,
                 max_tokens=4096 if reasoning else 1024,
@@ -304,27 +350,31 @@ async def run(args) -> int:
                     if stopped:
                         break
 
-                    async def single(item, repeat=repeat, client=client, model=model, semaphore=semaphore):
-                        if stopped or (model, repeat, item["id"]) in done:
+                    async def single(item, repeat=repeat, client=client, spec=spec, semaphore=semaphore):
+                        if stopped or (spec, repeat, item["id"]) in done:
                             return
                         async with semaphore:
-                            await write([await classify_single(client, model, repeat, item, config, policy)])
+                            if stopped:
+                                return
+                            await write([await classify_single(client, spec, repeat, item, config, policy)])
 
-                    async def all_chains(repeat=repeat, client=client, model=model):
+                    async def all_chains(repeat=repeat, client=client, spec=spec):
                         for chain in chains:
-                            if stopped or all((model, repeat, i["id"]) in done for i in chain):
+                            if stopped or all((spec, repeat, i["id"]) in done for i in chain):
                                 continue
-                            await write(await replay_chain(client, model, repeat, chain, config, policy))
+                            await write(await replay_chain(client, spec, repeat, chain, config, policy))
 
                     await asyncio.gather(all_chains(), *(single(i) for i in singles))
-                    print(f"{model} repeat {repeat + 1}: done; spent ${float(ledger.committed_usd):.4f}", flush=True)
+                    print(f"{spec} repeat {repeat + 1}: done; spent ${float(ledger.committed_usd):.4f}", flush=True)
             finally:
                 await client.aclose()
     finally:
         handle.close()
-        manifest["budget"] = ledger.summary()
+        session["budget"] = ledger.summary()
+        manifest["sessions"].append(session)
+        manifest["spent_usd"] = spent + float(ledger.committed_usd)
         manifest_path.write_text(json.dumps(manifest, indent=1, default=str), encoding="utf-8")
-    print(json.dumps(manifest["budget"], default=str), flush=True)
+    print(json.dumps({"spent_usd": manifest["spent_usd"], "stop_reason": session["stop_reason"]}), flush=True)
     return 1 if stopped else 0
 
 
@@ -336,9 +386,9 @@ def main() -> None:
     parser.add_argument("--models", nargs="+", required=True, help="vendor/model or vendor/model@provider")
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--name", required=True, help="Run folder under data/eval/suite/runs/")
-    parser.add_argument("--budget-usd", type=float)
+    parser.add_argument("--budget-usd", type=float, help="Total cap for this run, across resumes")
     parser.add_argument("--concurrency", type=int, default=6)
-    parser.add_argument("--timeout-seconds", type=float, default=45.0)
+    parser.add_argument("--timeout-seconds", type=float, default=30.0, help="Production uses 30 s")
     parser.add_argument("--limit", type=int, help="Smoke test: only the first N single items")
     parser.add_argument("--live", action="store_true")
     raise SystemExit(asyncio.run(run(parser.parse_args())))

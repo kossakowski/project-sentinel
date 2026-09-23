@@ -120,6 +120,9 @@ def majority(rows: list[dict]) -> dict:
     if len(valid) <= len(invalid):
         return {"invalid": True, "repeats": len(rows), "valid": len(valid)}
     urgency = int(statistics.median_low(r["urgency"] for r in valid))
+    # With an even number of valid repeats a tie is scored pessimistically per metric:
+    # the lower middle value decides a missed call, the higher one a false call.
+    urgency_high = int(statistics.median_high(r["urgency"] for r in valid))
     actions = Counter(action(r["urgency"]) for r in valid)
     countries = Counter(frozenset(r["countries"]) for r in valid).most_common(1)[0][0]
     return {
@@ -127,6 +130,7 @@ def majority(rows: list[dict]) -> dict:
         "repeats": len(rows),
         "valid": len(valid),
         "urgency": urgency,
+        "urgency_high": urgency_high,
         "action": action(urgency),
         "countries": set(countries),
         "flip": len(actions) > 1,
@@ -138,9 +142,10 @@ def majority(rows: list[dict]) -> dict:
 def item_outcomes(pred: dict, truth: dict) -> dict:
     """Binary per-item outcomes used for rates and paired tests (None = not applicable)."""
     call = not pred["invalid"] and pred["action"] == "call"
+    call_on_tie = not pred["invalid"] and action(pred["urgency_high"]) == "call"
     return {
         "critical_hit": call if truth["critical"] else None,
-        "false_call": call if not truth["possible_call"] else None,
+        "false_call": call_on_tie if not truth["possible_call"] else None,
         "tier_ok": (not pred["invalid"]) and pred["action"] in truth["actions"],
         "urgency_in_range": (not pred["invalid"]) and truth["low"] <= pred["urgency"] <= truth["high"],
         "countries_ok": (not pred["invalid"]) and pred["countries"] == truth["countries"],
@@ -175,28 +180,46 @@ def rate(values: list) -> tuple | None:
 
 
 def sequence_metrics(calls: list[dict], truth: dict, items: dict) -> dict:
-    """Incident identity and notification behaviour on chains, per repeat, summed."""
+    """Incident identity and notification behaviour on chains, per repeat, summed.
+
+    A chain replay with a provider outage is skipped: the missing answer changes every
+    later memory lookup, so its notifications say nothing about the model. Same-incident
+    pairs are not scored when either article is below urgency 5, because production
+    creates no event for them and a correct low score would look like a miss.
+    """
     counts = Counter()
     by_run = defaultdict(dict)
     for row in calls:
         if row.get("chain_id"):
             by_run[(row["repeat"], row["chain_id"])][row["item_id"]] = row
     for rows in by_run.values():
+        if any(unavailable(r) for r in rows.values()):
+            counts["chain_runs_skipped_outage"] += 1
+            continue
         for item_id, row in rows.items():
             label = truth.get(item_id)
             item = items[item_id]
             if label is None or not item["chain_pos"]:
                 continue
-            if row.get("urgency") is None:
+            if model_fault(row):
                 counts["invalid"] += 1
                 continue
             earlier = [r.get("event_id") for i, r in rows.items() if items[i]["chain_pos"] < item["chain_pos"]]
             event = row.get("event_id")
             counts["scored"] += 1
             if label["same_as"]:
-                target = rows.get(label["same_as"], {}).get("event_id")
-                counts["same_expected"] += 1
-                counts["same_ok"] += bool(event and event == target)
+                target_row = rows.get(label["same_as"], {})
+                target_label = truth.get(label["same_as"])
+                if (
+                    label["low"] < 5
+                    or target_label is None
+                    or target_label["low"] < 5
+                    or target_row.get("urgency") is None
+                ):
+                    counts["same_unscorable"] += 1
+                else:
+                    counts["same_expected"] += 1
+                    counts["same_ok"] += bool(event and event == target_row.get("event_id"))
             else:
                 counts["new_expected"] += 1
                 merged = bool(event and event in earlier)
@@ -278,6 +301,7 @@ def model_report(model: str, calls: list[dict], truth: dict, items: dict) -> dic
         "latency_p50": percentile([r["latency_seconds"] for r in paid if r.get("latency_seconds")], 0.5),
         "latency_p95": percentile([r["latency_seconds"] for r in paid if r.get("latency_seconds")], 0.95),
         "cost_usd": sum(r.get("cost_usd") or 0 for r in paid),
+        "known_cost_calls": sum(r.get("cost_usd") is not None for r in paid),
         "unknown_cost_calls": sum(r.get("cost_usd") is None for r in paid),
         "mean_prompt_tokens": statistics.mean([u.get("prompt_tokens") or 0 for u in usage]) if usage else None,
         "mean_cached_tokens": statistics.mean([u.get("cached_tokens") or 0 for u in usage]) if usage else None,
@@ -334,6 +358,11 @@ def score_run(run_dir: Path, labels_path: Path, queue_path: Path, items_path: Pa
     truth = truth_from_labels(labels, queue, adjudicated)
     calls = load_jsonl(run_dir / "calls.jsonl")
     models = list(dict.fromkeys(c["model"] for c in calls))
+    if baseline not in models:
+        # Accept the bare id for a spec such as "openai/gpt-5.6-luna@openai".
+        matches = [m for m in models if m.removesuffix("+reasoning").partition("@")[0] == baseline]
+        if len(matches) == 1:
+            baseline = matches[0]
     reports = {m: model_report(m, calls, truth, items) for m in models}
     comparisons = {
         m: paired(reports[baseline], reports[m], items) for m in models if m != baseline and baseline in reports

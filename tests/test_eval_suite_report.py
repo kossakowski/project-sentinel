@@ -110,3 +110,18 @@ def test_build_html_contains_every_section(tmp_path):
         assert heading in page
     assert "<svg" in page and "GPT-5.6 Luna" in page
     (tmp_path / "report.html").write_text(page)
+
+
+def test_decision_rule_coverage_false_call_margin_and_pool(tmp_path):
+    score, prices = build_run(tmp_path)
+    score["models"]["cheap_good"]["unavailable_items"] = 3
+    assert not decide("cheap_good", "base", score, prices)["checks"]["Odpowiedział na każdy artykuł"]
+    score["models"]["cheap_good"]["unavailable_items"] = 0
+    score["paired_vs_baseline"]["cheap_good"]["false_call"] = {
+        "difference": (0.02, 0.0, 0.05),
+        "verdict": "bez udowodnionej różnicy",
+    }
+    checks = decide("cheap_good", "base", score, prices)["checks"]
+    assert not checks["Telefonów bez powodu najwyżej 1% pkt więcej"]
+    page = build_html(score, prices, {})
+    assert "To pula robocza" in page

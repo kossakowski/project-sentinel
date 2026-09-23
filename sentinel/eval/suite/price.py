@@ -29,7 +29,8 @@ VOLUME_SQL = (
 )
 BASELINE_SQL = (
     "SELECT count(*) AS n, avg(input_tokens) AS input, avg(cached_input_tokens) AS cached, "
-    "avg(output_tokens) AS output FROM classifications WHERE model_used = 'gpt-5.6-luna'"
+    "avg(output_tokens) AS output FROM classifications "
+    "WHERE model_used = 'gpt-5.6-luna' AND classified_at >= '2026-09-20T21:30'"
 )
 
 
@@ -69,14 +70,19 @@ def token_cost(usage: dict, prices: dict) -> float:
     ) / 1e6
 
 
+def repair_cost(report: dict, prices: dict) -> float:
+    """Expected cost of the Polish-summary repair call per article."""
+    not_polish = (report["summary_not_polish_rate"] or (0.0,))[0]
+    return not_polish * (REPAIR_INPUT_TOKENS * prices["input"] + REPAIR_OUTPUT_TOKENS * prices["output"]) / 1e6
+
+
 def per_article(report: dict, scale: float, prices: dict) -> dict:
     """Projected production cost of one article for one model."""
-    calls = max(1, report["calls"])
+    calls = max(1, report.get("known_cost_calls", report["calls"]))
     eval_cost = report["cost_usd"] / calls
     classification = eval_cost * scale
     invalid = (report["invalid_call_rate"] or (0.0,))[0]
-    not_polish = (report["summary_not_polish_rate"] or (0.0,))[0]
-    repair = not_polish * (REPAIR_INPUT_TOKENS * prices["input"] + REPAIR_OUTPUT_TOKENS * prices["output"]) / 1e6
+    repair = repair_cost(report, prices)
     retry = invalid * classification
     return {
         "eval_cost_per_call": eval_cost,
@@ -94,8 +100,12 @@ def price_table(reports: dict, baseline: str, snapshot: dict, prices: dict, mont
     """
     base = reports[baseline]
     base_prod_cost = token_cost(snapshot["baseline_usage"], prices[baseline])
-    base_eval_cost = base["cost_usd"] / max(1, base["calls"])
-    scale = base_prod_cost / base_eval_cost if base_eval_cost else 1.0
+    # Production token counts already include the baseline's own summary repairs; take
+    # them out so the scale covers the classification request only (repairs are added
+    # back per model from its own measured non-Polish rate).
+    base_prod_classification = max(0.0, base_prod_cost - repair_cost(base, prices[baseline]))
+    base_eval_cost = base["cost_usd"] / max(1, base.get("known_cost_calls", base["calls"]))
+    scale = base_prod_classification / base_eval_cost if base_eval_cost else 1.0
     volumes = volume_scenarios(snapshot["daily"])
     table = {}
     for model, report in reports.items():
