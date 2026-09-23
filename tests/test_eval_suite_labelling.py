@@ -104,7 +104,10 @@ def test_public_view_never_leaks_scores_origin_or_target():
         "published_at",
         "in_chain",
         "chain_earlier",
+        "translation",
     }
+    translated = public_view(item("p1"), {"slot": "s001", "retest_of": None}, [], {"title_pl": "T", "summary_pl": "S"})
+    assert translated["translation"] == {"title_pl": "T", "summary_pl": "S"}
 
 
 def test_validate_label_enforces_tier_ranges_and_countries():

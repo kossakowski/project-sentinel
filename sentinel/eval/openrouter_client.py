@@ -162,6 +162,7 @@ async def fetch_model_catalogue(
     http_client: httpx.AsyncClient | None = None,
     base_url: str = OPENROUTER_BASE_URL,
     timeout_seconds: float = 15.0,
+    model_ids: frozenset[str] = APPROVED_MODEL_IDS,
 ) -> dict[str, CatalogueModel]:
     """Fetch the public model catalogue.  No API key is sent."""
     owns_client = http_client is None
@@ -177,9 +178,7 @@ async def fetch_model_catalogue(
         # pricing shapes irrelevant to this frozen comparison.  Parse only the
         # exact allow-list so an unrelated catalogue entry cannot block preflight.
         models = [
-            CatalogueModel.from_dict(row)
-            for row in rows
-            if isinstance(row, Mapping) and row.get("id") in APPROVED_MODEL_IDS
+            CatalogueModel.from_dict(row) for row in rows if isinstance(row, Mapping) and row.get("id") in model_ids
         ]
         return {model.id: model for model in models}
     finally:
@@ -300,6 +299,7 @@ class CompletionResult:
     error: CompletionError | None = None
     budget_stopped: bool = False
     request_id: str | None = None
+    raw_content: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return the compact JSON-safe record consumed by the eval runner."""
@@ -332,6 +332,7 @@ class CompletionResult:
                 self.provider_latency_ms / 1000 if self.provider_latency_ms is not None else None
             ),
             "budget_stopped": self.budget_stopped,
+            "raw_content": self.raw_content,
         }
 
 
@@ -352,6 +353,7 @@ class OpenRouterEvalClient:
         provider_only: list[str] | None = None,
         http_client: httpx.AsyncClient | None = None,
         base_url: str = OPENROUTER_BASE_URL,
+        approved_models: frozenset[str] = APPROVED_MODEL_IDS,
     ) -> None:
         if not api_key:
             raise ValueError("An OpenRouter API key is required for live eval calls")
@@ -364,6 +366,7 @@ class OpenRouterEvalClient:
         if provider_only is not None and not all(isinstance(item, str) and item for item in provider_only):
             raise ValueError("provider_only entries must be non-empty strings")
         self._api_key = api_key
+        self.approved_models = frozenset(approved_models)
         self.catalogue = dict(catalogue)
         self.ledger = ledger or BudgetLedger(budget_usd)  # type: ignore[arg-type]
         self.max_tokens = max_tokens
@@ -447,7 +450,7 @@ class OpenRouterEvalClient:
         """Make exactly one paid request, or return an error without making one."""
         started = time.monotonic()
         model = self.catalogue.get(model_id)
-        if model_id not in APPROVED_MODEL_IDS:
+        if model_id not in self.approved_models:
             return self._failure(
                 model_id, started, Decimal("0"), "model_not_approved", "Model is not approved for this eval"
             )
@@ -687,6 +690,7 @@ class OpenRouterEvalClient:
                 finish_reason=finish_reason,
                 reasoning=reasoning,
                 provider_latency_ms=provider_latency,
+                raw_content=content,
             )
         if not isinstance(parsed, dict):
             return self._failure(
@@ -702,6 +706,7 @@ class OpenRouterEvalClient:
                 finish_reason=finish_reason,
                 reasoning=reasoning,
                 provider_latency_ms=provider_latency,
+                raw_content=content,
             )
         return CompletionResult(
             ok=True,
@@ -737,6 +742,7 @@ class OpenRouterEvalClient:
         refusal: Any | None = None,
         reasoning: Any | None = None,
         provider_latency_ms: float | None = None,
+        raw_content: str | None = None,
     ) -> CompletionResult:
         return CompletionResult(
             ok=False,
@@ -754,6 +760,7 @@ class OpenRouterEvalClient:
             reservation_usd=reservation_usd,
             error=CompletionError(kind=kind, message=message, http_status=http_status),
             budget_stopped=kind == "budget_exhausted" or self.ledger.overrun,
+            raw_content=raw_content,
         )
 
     def _safe_exception(self, prefix: str, exc: Exception) -> str:

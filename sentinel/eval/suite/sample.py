@@ -210,7 +210,7 @@ def production_item(row: dict, cluster_id: str, chain: tuple[str, int] | None) -
     }
 
 
-def synthetic_items() -> list[dict]:
+def synthetic_items(include_holdout: bool) -> list[dict]:
     items = []
     for raw in yaml.safe_load(Path(SYNTHETIC).read_text(encoding="utf-8"))["items"]:
         items.append(
@@ -225,6 +225,8 @@ def synthetic_items() -> list[dict]:
                 "target": raw["target"],
             }
         )
+    if not include_holdout:
+        return items
     cases = yaml.safe_load(Path(HOLDOUT).read_text(encoding="utf-8"))["cases"]
     order = defaultdict(list)
     for case in sorted(cases, key=lambda c: c["article"]["fetched_at"]):
@@ -287,7 +289,7 @@ async def enrich(items: list[dict], config_path: str, cache_path: Path) -> None:
         cache_path.write_text(json.dumps(cache, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
-def build(seed: int, config_path: str, cache_path: Path) -> dict:
+def build(seed: int, config_path: str, cache_path: Path, include_holdout: bool = False) -> dict:
     rng = random.Random(seed)
     rows = dedupe(prod_query(ARTICLES_SQL))
     events = prod_query(EVENTS_SQL)
@@ -300,7 +302,7 @@ def build(seed: int, config_path: str, cache_path: Path) -> dict:
     singles = pick_singles([r for r in rows if r["id"] not in chain_of], rng)
     chosen = singles + [row for chain in chains for row in chain]
     items = [production_item(r, clusters[r["id"]], chain_of.get(r["id"])) for r in chosen]
-    items += synthetic_items()
+    items += synthetic_items(include_holdout)
     asyncio.run(enrich(items, config_path, cache_path))
     assign_pools(items, rng)
     return {
@@ -332,11 +334,12 @@ def main() -> None:
     parser.add_argument("--config", default="config/config.yaml")
     parser.add_argument("--output", default=DEFAULT_OUTPUT)
     parser.add_argument("--enrichment-cache", default="data/eval/suite/enrichment-cache.json")
+    parser.add_argument("--with-holdout", action="store_true", help="Also label the 64 old synthetic hold-out cases")
     args = parser.parse_args()
     output = Path(args.output)
     if output.exists():
         raise SystemExit(f"{output} exists; the item pool is frozen once built. Use a new --output.")
-    data = build(args.seed, args.config, Path(args.enrichment_cache))
+    data = build(args.seed, args.config, Path(args.enrichment_cache), args.with_holdout)
     data["items_sha256"] = items_hash(data["items"])
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")

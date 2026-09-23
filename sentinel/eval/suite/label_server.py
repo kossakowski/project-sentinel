@@ -19,7 +19,8 @@ PAGE = Path(__file__).with_name("label_page.html")
 ITEMS = Path("data/eval/suite/items.json")
 QUEUE = Path("data/eval/suite/queue.json")
 LABELS = Path("data/eval/suite/labels.jsonl")
-RETEST_COUNT = 40
+TRANSLATIONS = Path("data/eval/suite/translations.json")
+RETEST_COUNT = 20
 TIERS = {"FLEE": (9, 10), "WATCH": (7, 8), "NOTE": (5, 6), "NOISE": (1, 4)}
 COUNTRIES = {"PL", "LT", "LV", "EE"}
 
@@ -50,8 +51,8 @@ def build_queue(items: list[dict], seed: int, retest_count: int = RETEST_COUNT) 
     return slots
 
 
-def public_view(item: dict, slot: dict, chain_earlier: list[dict]) -> dict:
-    """The only item data the page ever receives."""
+def public_view(item: dict, slot: dict, chain_earlier: list[dict], translation: dict | None = None) -> dict:
+    """The only item data the page ever receives (plus a Polish translation, if any)."""
     article = item["article"]
     return {
         "slot": slot["slot"],
@@ -63,6 +64,7 @@ def public_view(item: dict, slot: dict, chain_earlier: list[dict]) -> dict:
         "published_at": article["published_at"],
         "in_chain": bool(item["chain_id"]) and slot["retest_of"] is None,
         "chain_earlier": chain_earlier,
+        "translation": translation,
     }
 
 
@@ -116,8 +118,15 @@ def latest_labels(path: Path) -> dict[str, dict]:
 
 
 class LabelStore:
-    def __init__(self, items_path: Path, queue_path: Path, labels_path: Path, seed: int):
+    def __init__(
+        self, items_path: Path, queue_path: Path, labels_path: Path, seed: int, translations_path: Path | None = None
+    ):
         data = json.loads(items_path.read_text(encoding="utf-8"))
+        self.translations = (
+            json.loads(translations_path.read_text(encoding="utf-8"))
+            if translations_path is not None and translations_path.exists()
+            else {}
+        )
         self.items = {i["id"]: i for i in data["items"]}
         if queue_path.exists():
             queue = json.loads(queue_path.read_text(encoding="utf-8"))
@@ -144,12 +153,15 @@ class LabelStore:
             earlier = []
             if item["chain_id"] and slot["retest_of"] is None:
                 earlier = [
-                    {"slot": first_slot[other["id"]], "title": other["article"]["title"]}
+                    {
+                        "slot": first_slot[other["id"]],
+                        "title": self.translations.get(other["id"], {}).get("title_pl") or other["article"]["title"],
+                    }
                     for other in self.items.values()
                     if other["chain_id"] == item["chain_id"] and (other["chain_pos"] or 0) < (item["chain_pos"] or 0)
                 ]
                 earlier.sort(key=lambda e: e["slot"])
-            views.append(public_view(item, slot, earlier))
+            views.append(public_view(item, slot, earlier, self.translations.get(item["id"])))
         return views
 
     def save(self, label: dict) -> dict:
@@ -206,8 +218,9 @@ def main() -> None:
     parser.add_argument("--items", default=str(ITEMS))
     parser.add_argument("--queue", default=str(QUEUE))
     parser.add_argument("--labels", default=str(LABELS))
+    parser.add_argument("--translations", default=str(TRANSLATIONS))
     args = parser.parse_args()
-    store = LabelStore(Path(args.items), Path(args.queue), Path(args.labels), args.seed)
+    store = LabelStore(Path(args.items), Path(args.queue), Path(args.labels), args.seed, Path(args.translations))
     socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer(("0.0.0.0", args.port), make_handler(store)) as server:
         done = len(latest_labels(store.labels_path))

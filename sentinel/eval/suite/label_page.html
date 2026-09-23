@@ -61,7 +61,7 @@ const TIERS = [
 ];
 const COUNTRIES = [["PL","Polska"],["LT","Litwa"],["LV","Łotwa"],["EE","Estonia"]];
 const BATCH = 100;
-let queue = [], labels = {}, pos = 0, draft = null, pausedAt = null;
+let queue = [], labels = {}, pos = 0, draft = null, pausedAt = null, showOrig = false;
 
 function fmtTime(iso){ try { return new Date(iso).toLocaleString("pl-PL",{timeZone:"Europe/Warsaw",dateStyle:"medium",timeStyle:"short"}); } catch(e){ return iso; } }
 function esc(s){ return String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
@@ -107,8 +107,11 @@ function render(status=""){
   const tier = TIERS.find(x => x.t === draft.tier);
   let h = `<div class="card">
     <div class="meta">${esc(item.source_name)} · ${esc(item.source_type)} · język: ${esc(item.language)} · ${esc(fmtTime(item.published_at))}</div>
-    <h1>${esc(item.title)}</h1>
-    <div class="summary">${esc(item.summary)}</div>`;
+    ${item.translation ? `<div class="meta">🔤 Tłumaczenie z języka ${esc({uk:"ukraińskiego",ru:"rosyjskiego"}[item.language] || item.language)} – model widzi oryginał.
+        <button onclick="showOrig=!showOrig;render()">${showOrig?"Ukryj oryginał":"Pokaż oryginał"}</button></div>` : ""}
+    <h1>${esc(item.translation ? item.translation.title_pl : item.title)}</h1>
+    <div class="summary">${esc(item.translation ? item.translation.summary_pl : item.summary)}</div>
+    ${item.translation && showOrig ? `<div class="chain"><b>Oryginał:</b><br><b>${esc(item.title)}</b><br>${esc(item.summary)}</div>` : ""}`;
   if (item.in_chain && item.chain_earlier.length){
     h += `<div class="chain">Ten artykuł należy do serii. Wcześniej w tej serii:<ol>` +
       item.chain_earlier.map(e => `<li>${esc(e.title)}</li>`).join("") + `</ol></div>`;
@@ -148,7 +151,7 @@ function setAlt(n){ draft.urgency_alt = draft.urgency_alt===n ? null : n; render
 function toggleC(c){ draft.countries = draft.countries.includes(c) ? draft.countries.filter(x=>x!==c) : [...draft.countries,c]; }
 function setSame(s){ draft.same_as=s; render(); }
 function setNotify(v){ draft.notify=v; render(); }
-function go(d){ pos=Math.max(0,Math.min(queue.length-1,pos+d)); draft=freshDraft(queue[pos].slot); render(); }
+function go(d){ showOrig=false; pos=Math.max(0,Math.min(queue.length-1,pos+d)); draft=freshDraft(queue[pos].slot); render(); }
 
 async function save(){
   const item = queue[pos];
@@ -165,6 +168,7 @@ async function save(){
   while (next < queue.length && labels[queue[next].slot]) next++;
   if (next >= queue.length) next = queue.findIndex(q => !labels[q.slot]);
   pos = next === -1 ? queue.length : next;
+  showOrig = false;
   if (pos < queue.length) draft = freshDraft(queue[pos].slot);
   if (before % BATCH === 0 && pos < queue.length) pausedAt = before;
   render("Zapisano ✓");
