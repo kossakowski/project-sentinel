@@ -38,7 +38,8 @@ from sentinel.eval.compare_models import (
     parse_time,
 )
 from sentinel.eval.jev_comparison import load_settings
-from sentinel.eval.jev_pipeline_questions import VERSION, build_pipeline_request, decode_pipeline
+from sentinel.eval.jev_observations import load_observations, summarize_observations
+from sentinel.eval.jev_pipeline_questions import SCOPED_VERSION, VERSION, build_pipeline_request, decode_pipeline
 from sentinel.eval.separate_metrics import aggregate_dimensions, score_dimensions
 from sentinel.eval.typesafe_client import TypeSafeEvalClient, check_size
 from sentinel.models import ClassificationResult, Event
@@ -186,7 +187,7 @@ class PipelineModels:
         await self.luna.aclose()
 
 
-async def replay_pipeline(cases, config, classify, checkpoint):
+async def replay_pipeline(cases, config, classify, checkpoint, *, score_labels=True):
     rows = []
     for sequence in sorted({c["sequence_id"] for c in cases}):
         databases = {provider: ReplayDatabase(":memory:") for provider in ("jev", "luna")}
@@ -209,12 +210,13 @@ async def replay_pipeline(cases, config, classify, checkpoint):
                         "sequence_id": sequence,
                         "split": case["split"],
                         "label_status": case["label_status"],
-                        "expected": case["expected"],
                         "language": case["provenance"].get("content_language", article.language),
                         "context_mode": "model",
                         "candidate_ids": [c["id"] for c in candidates],
                         "candidates": candidates,
                     }
+                    if score_labels:
+                        row["expected"] = case["expected"]
                     start = time.perf_counter()
                     try:
                         result, diagnostics = await classify(provider, article, candidates)
@@ -261,9 +263,9 @@ async def replay_pipeline(cases, config, classify, checkpoint):
                     row["latency_seconds"] = (
                         None if row.get("diagnostics", {}).get("reused_api_response") else time.perf_counter() - start
                     )
-                    row["evaluation"] = score_dimensions(case, row, prior[provider])
+                    row["evaluation"] = score_dimensions(case, row, prior[provider]) if score_labels else None
                     # Distinguish identity from the duplicate/update/escalation label.
-                    expected_decisions = case["expected"].get("incident_decisions")
+                    expected_decisions = case["expected"].get("incident_decisions") if score_labels else None
                     if expected_decisions and not row.get("error"):
                         row["evaluation"]["dimensions"]["raw_incident_decision"] = (
                             row["data"]["incident_memory"]["decision"] in expected_decisions
@@ -309,7 +311,7 @@ def summarize(rows, cases):
 
 
 async def run(args):
-    dataset = load_dataset(args.dataset)
+    dataset = load_observations(args.dataset) if args.unlabelled else load_dataset(args.dataset)
     if dataset.get("policy_version") != 2:
         raise ValueError("Pipeline test requires version-2 labels")
     settings = load_settings(args.settings)
@@ -317,25 +319,26 @@ async def run(args):
     config = make_config(args.config)
     if config.classification.provider != "openai" or config.classification.model != "gpt-5.6-luna":
         raise ValueError("Expected the configured direct Luna baseline")
-    if settings.get("question_version") != VERSION or not set(settings["attack_countries"]) <= set(
-        settings["country_names"]
-    ):
+    if settings.get("question_version") not in {VERSION, SCOPED_VERSION} or not set(
+        settings["attack_countries"]
+    ) <= set(settings["country_names"]):
         raise ValueError("Pipeline settings require named countries and the current question version")
     config.classification.policy = policy
     cases = dataset["cases"]
-    if any(c["expected"].get("policy_pending") for c in cases):
+    if not args.unlabelled and any(c["expected"].get("policy_pending") for c in cases):
         raise ValueError("Policy expectations still unresolved")
     # Size checks are repeated against real retrieved history before every call.
     for case in cases:
         check_size(build_pipeline_request(make_article(case), [], policy, settings), settings)
     manifest = {
         "created_at": datetime.now(UTC).isoformat(),
-        "question_version": VERSION,
+        "question_version": settings["question_version"],
         "inventory": inventory(dataset),
         "dataset_sha256": hashlib.sha256(Path(args.dataset).read_bytes()).hexdigest(),
         "policy_sha256": prompt_hash(policy),
         "settings": settings,
         "live": args.live,
+        "unlabelled": args.unlabelled,
         "classification_config": config.classification.model_dump(),
         "alert_levels": {name: level.model_dump() for name, level in config.alerts.urgency_levels.items()},
         "planned_classifications": 2 * len(cases),
@@ -347,7 +350,9 @@ async def run(args):
         },
         "release_eligible": False,
         "limitations": [
-            "Synthetic related scenario families; labels require human review.",
+            "Unlabelled real-article sample; no accuracy or alert-correctness claims. Sampled history is incomplete."
+            if args.unlabelled
+            else "Synthetic related scenario families; labels require human review.",
             "Real grouping and alert routing, with immediate simulated acknowledgement; no real delivery or retry timing.",
             "Each model builds its own history; this is a pipeline comparison, not identical-context classification.",
             "Existing confidence gates are unchanged; Jev confidence has not been calibrated for them.",
@@ -361,7 +366,7 @@ async def run(args):
             or not 0 < args.budget_usd <= 0.25
         ):
             raise ValueError("Live pilot requires new --output and --budget-usd >0 and <=0.25")
-        if not args.allow_provisional and any(c["label_status"] != "approved" for c in cases):
+        if not args.unlabelled and not args.allow_provisional and any(c["label_status"] != "approved" for c in cases):
             raise ValueError("Use --allow-provisional only for exploratory unapproved labels")
         load_dotenv(Path.cwd() / ".env")
         if any(not os.environ.get(k, "").strip() for k in ("TYPESAFE_API_KEY", "OPENAI_API_KEY")):
@@ -371,6 +376,8 @@ async def run(args):
         source = Path(args.resume_from)
         old_manifest = json.loads((source / "manifest.json").read_text())
         old_report = json.loads((source / "report.json").read_text())
+        if old_manifest.get("unlabelled", False) != args.unlabelled:
+            raise ValueError("Resume cannot change scoring mode")
         for key in (
             "dataset_sha256",
             "policy_sha256",
@@ -420,12 +427,12 @@ async def run(args):
                 append_row(results, row)
                 print(f"{row['provider']} {row['case_id']}: {row.get('error') or row.get('notification')}", flush=True)
 
-            await replay_pipeline(cases, config, models.classify, checkpoint)
+            await replay_pipeline(cases, config, models.classify, checkpoint, score_labels=not args.unlabelled)
         finally:
             total = models.jev.ledger.total()
             api_calls = [json.loads(line) for line in (output / "calls.jsonl").read_text().splitlines()]
             report = {
-                **summarize(rows, cases),
+                **(summarize_observations(rows, cases) if args.unlabelled else summarize(rows, cases)),
                 "complete": len(rows) == 2 * len(cases) and not any(r.get("error") for r in rows),
                 "prior_estimated_usd": initial_cost,
                 "new_estimated_usd": total - initial_cost,
@@ -460,6 +467,9 @@ def parser():
     p.add_argument("--carry-ledger", default="data/eval/jev-luna-pilot-20260922-complete/usage.db")
     p.add_argument("--resume-from", help="Reuse exact saved API responses and carry their spending ledger forward")
     p.add_argument("--live", action="store_true")
+    p.add_argument(
+        "--unlabelled", action="store_true", help="Observe real articles without manufacturing expected answers"
+    )
     p.add_argument("--allow-provisional", action="store_true")
     p.add_argument("--budget-usd", type=float)
     p.add_argument("--output")

@@ -6,6 +6,7 @@ from copy import deepcopy
 from sentinel.eval.jev_questions import build_request, decode, validate_answers
 
 VERSION = "jev-pipeline-v2"
+SCOPED_VERSION = "jev-pipeline-v3-scope"
 
 
 def source_spans(article):
@@ -107,6 +108,13 @@ def build_pipeline_request(article, candidates, policy, settings):
             f"Which CURRENT source span most directly supports {condition}? Select none if there is no supporting text.",
             {key: text if text else "No supporting source span." for key, text in spans.items()},
         )
+    if settings.get("question_version") == SCOPED_VERSION:
+        payload["state"]["monitoring_scope"] = {code: names[code] for code in policy["monitored_countries"]}
+        for question in questions.values():
+            question["instructions"]["monitoring_scope"] = (
+                "A monitored country means one listed in `monitoring_scope`. Apply the supplied cross-border "
+                "exceptions as written. NATO membership alone does not put a country in scope."
+            )
     return payload
 
 
@@ -177,7 +185,7 @@ def decode_pipeline(payload, response, settings, monitored):
         raw_affected_countries=raw["affected_countries"],
         added_affected_countries=added,
         identity_conflicts=conflicts,
-        question_version=VERSION,
+        question_version=settings.get("question_version", VERSION),
         evidence_validation_errors=evidence_errors,
     )
     return result, diagnostics
