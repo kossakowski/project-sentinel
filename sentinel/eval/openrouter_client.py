@@ -24,6 +24,7 @@ EVAL_MODEL_IDS = (
     "deepseek/deepseek-v4.1-flash",
     "qwen/qwen3.8-flash",
     "openai/gpt-5.6-luna",
+    "openai/gpt-6-luna",
 )
 APPROVED_MODEL_IDS = frozenset(EVAL_MODEL_IDS)
 
