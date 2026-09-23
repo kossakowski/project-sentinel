@@ -123,8 +123,9 @@ function render(status=""){
     <div class="q">2. Pilność (1–10) <span class="hint">– w granicach wybranej reakcji</span></div><div class="row">` +
     [...Array(10)].map((_,i)=>{ const n=i+1, ok = tier && n>=tier.range[0] && n<=tier.range[1];
        return `<button class="num ${draft.urgency===n?"on":""}" ${ok?"":"disabled"} onclick="setU(${n})">${n}</button>`; }).join("") + `</div>
-    <div class="q">Wahasz się? Druga możliwa ocena <span class="hint">(opcjonalne – kliknij ponownie, by odznaczyć)</span></div><div class="row">` +
-    [...Array(10)].map((_,i)=>{ const n=i+1; return `<button class="num ${draft.urgency_alt===n?"on":""}" onclick="setAlt(${n})">${n}</button>`; }).join("") + `</div>
+    <div class="q">Wahasz się? Druga możliwa ocena <span class="hint">(opcjonalne, najwyżej 2 punkty od pierwszej – kliknij ponownie, by odznaczyć)</span></div><div class="row">` +
+    [...Array(10)].map((_,i)=>{ const n=i+1, ok = draft.urgency && n!==draft.urgency && Math.abs(n-draft.urgency)<=2;
+       return `<button class="num ${draft.urgency_alt===n?"on":""}" ${ok?"":"disabled"} onclick="setAlt(${n})">${n}</button>`; }).join("") + `</div>
     <div class="q">3. Których krajów to dotyczy? <span class="hint">– atak lub zagrożenie na ich terytorium; nic nie zaznaczaj, jeśli żadnego z nich</span></div><div class="row">` +
     COUNTRIES.map(([c,n]) => `<label class="chip"><input type="checkbox" ${draft.countries.includes(c)?"checked":""} onchange="toggleC('${c}')">${n}</label>`).join("") + `</div>`;
   if (item.in_chain && item.chain_earlier.length){
@@ -145,8 +146,8 @@ function render(status=""){
   app.innerHTML = h;
 }
 
-function setTier(t){ draft.tier=t; const r=TIERS.find(x=>x.t===t).range; if(!(draft.urgency>=r[0]&&draft.urgency<=r[1])) draft.urgency=null; render(); }
-function setU(n){ draft.urgency=n; render(); }
+function setTier(t){ draft.tier=t; const r=TIERS.find(x=>x.t===t).range; if(!(draft.urgency>=r[0]&&draft.urgency<=r[1])){ draft.urgency=null; draft.urgency_alt=null; } render(); }
+function setU(n){ draft.urgency=n; if (draft.urgency_alt!==null && (draft.urgency_alt===n || Math.abs(draft.urgency_alt-n)>2)) draft.urgency_alt=null; render(); }
 function setAlt(n){ draft.urgency_alt = draft.urgency_alt===n ? null : n; render(); }
 function toggleC(c){ draft.countries = draft.countries.includes(c) ? draft.countries.filter(x=>x!==c) : [...draft.countries,c]; }
 function setSame(s){ draft.same_as=s; render(); }

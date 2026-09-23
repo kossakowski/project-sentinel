@@ -23,13 +23,17 @@ TRANSLATIONS = Path("data/eval/suite/translations.json")
 RETEST_COUNT = 20
 TIERS = {"FLEE": (9, 10), "WATCH": (7, 8), "NOTE": (5, 6), "NOISE": (1, 4)}
 COUNTRIES = {"PL", "LT", "LV", "EE"}
+# A second possible score may differ by at most this much; wider ranges would make
+# almost every model answer count as correct.
+MAX_ALT_GAP = 2
 
 
 def build_queue(items: list[dict], seed: int, retest_count: int = RETEST_COUNT) -> list[dict]:
-    """Shuffle labelling units (a chain stays together, in time order); append hidden repeats.
+    """Shuffle labelling units (a chain stays together, in time order); add hidden repeats.
 
-    Repeats are drawn from single production items in the first 60% of the queue, so
-    there is a long gap before they reappear. They are indistinguishable on screen.
+    Repeats are drawn from single production items in the first 60% of the queue and
+    placed at random in the last 40%, so there is a long gap before they reappear. They
+    are indistinguishable on screen.
     """
     rng = random.Random(seed)
     units: dict[str, list[dict]] = {}
@@ -46,8 +50,13 @@ def build_queue(items: list[dict], seed: int, retest_count: int = RETEST_COUNT) 
         i["id"] for i in items if i["origin"] == "production" and not i["chain_id"] and i["id"] in early
     )
     repeats = rng.sample(candidates, min(retest_count, len(candidates)))
+    # Hide repeats among the last 40% of the queue, never next to their original.
+    tail_start = int(len(slots) * 0.6)
     for item_id in repeats:
-        slots.append({"slot": f"s{len(slots) + 1:03d}", "item_id": item_id, "retest_of": item_id})
+        position = rng.randint(tail_start, len(slots))
+        slots.insert(position, {"slot": "", "item_id": item_id, "retest_of": item_id})
+    for number, slot in enumerate(slots, 1):
+        slot["slot"] = f"s{number:03d}"
     return slots
 
 
@@ -80,8 +89,10 @@ def validate_label(label: dict, slots: dict[str, dict]) -> dict:
     if type(urgency) is not int or not low <= urgency <= high:
         raise ValueError("urgency must lie inside the chosen tier")
     alternative = label.get("urgency_alt")
-    if alternative is not None and (type(alternative) is not int or not 1 <= alternative <= 10):
-        raise ValueError("alternative urgency must be 1-10")
+    if alternative is not None and (
+        type(alternative) is not int or not 1 <= alternative <= 10 or abs(alternative - urgency) > MAX_ALT_GAP
+    ):
+        raise ValueError(f"alternative urgency must be 1-10 and within {MAX_ALT_GAP} of the main one")
     countries = label.get("countries", [])
     if not isinstance(countries, list) or not set(countries) <= COUNTRIES:
         raise ValueError("invalid countries")
@@ -115,6 +126,12 @@ def latest_labels(path: Path) -> dict[str, dict]:
                 row = json.loads(line)
                 labels[row["slot"]] = row
     return labels
+
+
+def page_labels(path: Path) -> dict[str, dict]:
+    """Saved answers for the page, without item ids (they would reveal origin)."""
+    hidden = {"item_id", "retest_of", "labelled_at"}
+    return {slot: {k: v for k, v in row.items() if k not in hidden} for slot, row in latest_labels(path).items()}
 
 
 class LabelStore:
@@ -189,7 +206,7 @@ def make_handler(store: LabelStore):
             elif self.path == "/api/queue":
                 self._send(200, json.dumps(store.view(), ensure_ascii=False))
             elif self.path == "/api/labels":
-                self._send(200, json.dumps(latest_labels(store.labels_path), ensure_ascii=False))
+                self._send(200, json.dumps(page_labels(store.labels_path), ensure_ascii=False))
             else:
                 self._send(404, '{"error": "not found"}')
 

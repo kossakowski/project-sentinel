@@ -5,7 +5,14 @@ import random
 
 import pytest
 
-from sentinel.eval.suite.label_server import LabelStore, build_queue, latest_labels, public_view, validate_label
+from sentinel.eval.suite.label_server import (
+    LabelStore,
+    build_queue,
+    latest_labels,
+    page_labels,
+    public_view,
+    validate_label,
+)
 from sentinel.eval.suite.sample import assign_pools, cluster, dedupe, pick_chains, stratum
 
 
@@ -85,10 +92,13 @@ def test_queue_keeps_chains_in_order_and_hides_repeats_at_end():
     ids = [s["item_id"] for s in queue]
     chain_positions = [ids.index(f"k{n}") for n in range(4)]
     assert chain_positions == sorted(chain_positions) and chain_positions[-1] - chain_positions[0] == 3
-    repeats = queue[-10:]
-    assert all(s["retest_of"] == s["item_id"] for s in repeats)
+    repeats = [s for s in queue if s["retest_of"]]
+    assert len(repeats) == 10 and all(s["retest_of"] == s["item_id"] for s in repeats)
     first_60 = {s["item_id"] for s in queue[: int(104 * 0.6)]}
     assert all(s["item_id"] in first_60 for s in repeats)
+    assert all(queue.index(s) >= int(104 * 0.6) for s in repeats)
+    assert queue[-10:] != repeats  # spread out, not a block at the end
+    assert [s["slot"] for s in queue] == [f"s{n:03d}" for n in range(1, 115)]
     assert build_queue(items, seed=3, retest_count=10) == queue
 
 
@@ -119,6 +129,7 @@ def test_validate_label_enforces_tier_ranges_and_countries():
         {"slot": "s001", "tier": "FLEE", "urgency": 9, "countries": ["DE"]},
         {"slot": "s999", "tier": "FLEE", "urgency": 9},
         {"slot": "s001", "tier": "FLEE", "urgency": 9, "urgency_alt": 11},
+        {"slot": "s001", "tier": "FLEE", "urgency": 9, "urgency_alt": 2},
         {"slot": "s001", "tier": "FLEE", "urgency": 9, "notify": "yes"},
     ):
         with pytest.raises(ValueError):
@@ -138,3 +149,9 @@ def test_store_appends_and_last_answer_wins(tmp_path):
     items_path.write_text(json.dumps({"items": items, "items_sha256": "changed"}))
     with pytest.raises(SystemExit):
         LabelStore(items_path, tmp_path / "queue.json", tmp_path / "labels.jsonl", seed=1)
+
+
+def test_page_labels_hide_item_ids(tmp_path):
+    path = tmp_path / "labels.jsonl"
+    path.write_text(json.dumps({"slot": "s001", "item_id": "syn-ru-01", "retest_of": None, "tier": "NOTE"}) + "\n")
+    assert page_labels(path) == {"s001": {"slot": "s001", "tier": "NOTE"}}
