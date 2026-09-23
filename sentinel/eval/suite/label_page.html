@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiz ocen – Sentinel</title>
+<style>
+  :root { --bg:#f6f5f2; --card:#fff; --ink:#1d1d1f; --muted:#6b6b70; --line:#dcdad4; --accent:#1f5eff;
+          --flee:#c62828; --watch:#e07b00; --note:#2e7d32; --noise:#5f6368; --sel:#e8efff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#16171a; --card:#1f2024; --ink:#ececf0; --muted:#a0a0a8; --line:#34353b; --accent:#7aa2ff; --sel:#26314d; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 system-ui, "Segoe UI", sans-serif; }
+  main { max-width:860px; margin:0 auto; padding:16px; }
+  .top { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+  .bar { height:8px; background:var(--line); border-radius:4px; overflow:hidden; margin:8px 0 16px; }
+  .bar > div { height:100%; background:var(--accent); width:0; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:14px; }
+  .meta { color:var(--muted); font-size:14px; }
+  h1 { font-size:21px; margin:6px 0 10px; }
+  .summary { white-space:pre-wrap; }
+  .chain { border-left:4px solid var(--accent); padding:8px 12px; background:var(--sel); border-radius:6px; margin-top:12px; font-size:14px; }
+  .q { margin:14px 0 6px; font-weight:600; }
+  .hint { color:var(--muted); font-size:13px; font-weight:400; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; }
+  button, label.chip { font:inherit; border:1px solid var(--line); background:var(--card); color:var(--ink);
+    border-radius:8px; padding:8px 12px; cursor:pointer; }
+  button:disabled { opacity:.35; cursor:default; }
+  .tier { flex:1 1 180px; text-align:left; border-width:2px; }
+  .tier b { display:block; }
+  .tier small { color:var(--muted); }
+  .tier[data-t=FLEE] { border-color:var(--flee); } .tier[data-t=WATCH] { border-color:var(--watch); }
+  .tier[data-t=NOTE] { border-color:var(--note); } .tier[data-t=NOISE] { border-color:var(--noise); }
+  .on { background:var(--sel) !important; outline:2px solid var(--accent); }
+  .num { width:46px; text-align:center; }
+  label.chip input { margin-right:6px; }
+  textarea { width:100%; min-height:48px; font:inherit; border:1px solid var(--line); border-radius:8px; padding:8px; background:var(--card); color:var(--ink); }
+  .nav { display:flex; justify-content:space-between; gap:12px; margin-top:16px; }
+  .primary { background:var(--accent); color:#fff; border-color:var(--accent); padding:10px 20px; font-weight:600; }
+  .status { color:var(--muted); font-size:14px; min-height:20px; }
+  .err { color:var(--flee); }
+  .pause { text-align:center; padding:28px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <div><b>Quiz ocen</b> <span class="meta">– oceniasz tak, jak sam byś zareagował. Nie ma złych odpowiedzi.</span></div>
+    <div class="meta" id="progress"></div>
+  </div>
+  <div class="bar"><div id="barfill"></div></div>
+  <div id="app"></div>
+</main>
+<script>
+const TIERS = [
+  {t:"FLEE",  name:"UCIEKAJ (FLEE)",   range:[9,10], desc:"Atak na Polskę / Bałtyk. Wyjeżdżam teraz."},
+  {t:"WATCH", name:"OBSERWUJ (WATCH)", range:[7,8],  desc:"Poważna eskalacja. Pakuję się, sprawdzam co godzinę."},
+  {t:"NOTE",  name:"ODNOTUJ (NOTE)",   range:[5,6],  desc:"Warto wiedzieć. Zajrzę do wiadomości."},
+  {t:"NOISE", name:"SZUM (NOISE)",     range:[1,4],  desc:"Tło. Nic nie robię."},
+];
+const COUNTRIES = [["PL","Polska"],["LT","Litwa"],["LV","Łotwa"],["EE","Estonia"]];
+const BATCH = 100;
+let queue = [], labels = {}, pos = 0, draft = null, pausedAt = null;
+
+function fmtTime(iso){ try { return new Date(iso).toLocaleString("pl-PL",{timeZone:"Europe/Warsaw",dateStyle:"medium",timeStyle:"short"}); } catch(e){ return iso; } }
+function esc(s){ return String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function answered(){ return Object.keys(labels).length; }
+
+function freshDraft(slot){
+  const saved = labels[slot];
+  return saved ? {tier:saved.tier, urgency:saved.urgency, urgency_alt:saved.urgency_alt, countries:[...saved.countries],
+                  bad_input:saved.bad_input, note:saved.note, same_as:saved.same_as, notify:saved.notify}
+               : {tier:null, urgency:null, urgency_alt:null, countries:[], bad_input:false, note:"", same_as:undefined, notify:null};
+}
+
+function progress(){
+  const n = answered(), total = queue.length;
+  document.getElementById("progress").textContent =
+    `Odpowiedzi: ${n} z ${total} · pytanie ${pos+1} · partia ${Math.floor(pos/BATCH)+1} z ${Math.ceil(total/BATCH)}`;
+  document.getElementById("barfill").style.width = (100*n/total)+"%";
+}
+
+function ready(item){
+  if (!draft.tier || !draft.urgency) return false;
+  if (item.in_chain && item.chain_earlier.length){
+    if (draft.same_as === undefined || draft.notify === null) return false;
+  }
+  return true;
+}
+
+function render(status=""){
+  progress();
+  const app = document.getElementById("app");
+  if (pausedAt !== null){
+    app.innerHTML = `<div class="card pause"><h1>Koniec partii ${pausedAt/BATCH}.</h1>
+      <p>Wszystko jest zapisane. Możesz zrobić przerwę albo zamknąć kartę – wrócisz w to samo miejsce.</p>
+      <button class="primary" onclick="pausedAt=null;render()">Dalej</button></div>`;
+    return;
+  }
+  if (pos >= queue.length){
+    app.innerHTML = `<div class="card pause"><h1>Gotowe – dziękuję!</h1><p>Wszystkie ${queue.length} odpowiedzi są zapisane.</p>
+      <button onclick="pos=0;draft=freshDraft(queue[0].slot);render()">Przejrzyj od początku</button></div>`;
+    return;
+  }
+  const item = queue[pos];
+  const tier = TIERS.find(x => x.t === draft.tier);
+  let h = `<div class="card">
+    <div class="meta">${esc(item.source_name)} · ${esc(item.source_type)} · język: ${esc(item.language)} · ${esc(fmtTime(item.published_at))}</div>
+    <h1>${esc(item.title)}</h1>
+    <div class="summary">${esc(item.summary)}</div>`;
+  if (item.in_chain && item.chain_earlier.length){
+    h += `<div class="chain">Ten artykuł należy do serii. Wcześniej w tej serii:<ol>` +
+      item.chain_earlier.map(e => `<li>${esc(e.title)}</li>`).join("") + `</ol></div>`;
+  }
+  h += `</div><div class="card">
+    <div class="q">1. Jak byś zareagował?</div><div class="row">` +
+    TIERS.map(x => `<button class="tier ${draft.tier===x.t?"on":""}" data-t="${x.t}" onclick="setTier('${x.t}')">
+       <b>${x.name}</b><small>${x.range[0]}–${x.range[1]} · ${x.desc}</small></button>`).join("") + `</div>
+    <div class="q">2. Pilność (1–10) <span class="hint">– w granicach wybranej reakcji</span></div><div class="row">` +
+    [...Array(10)].map((_,i)=>{ const n=i+1, ok = tier && n>=tier.range[0] && n<=tier.range[1];
+       return `<button class="num ${draft.urgency===n?"on":""}" ${ok?"":"disabled"} onclick="setU(${n})">${n}</button>`; }).join("") + `</div>
+    <div class="q">Wahasz się? Druga możliwa ocena <span class="hint">(opcjonalne – kliknij ponownie, by odznaczyć)</span></div><div class="row">` +
+    [...Array(10)].map((_,i)=>{ const n=i+1; return `<button class="num ${draft.urgency_alt===n?"on":""}" onclick="setAlt(${n})">${n}</button>`; }).join("") + `</div>
+    <div class="q">3. Których krajów to dotyczy? <span class="hint">– atak lub zagrożenie na ich terytorium; nic nie zaznaczaj, jeśli żadnego z nich</span></div><div class="row">` +
+    COUNTRIES.map(([c,n]) => `<label class="chip"><input type="checkbox" ${draft.countries.includes(c)?"checked":""} onchange="toggleC('${c}')">${n}</label>`).join("") + `</div>`;
+  if (item.in_chain && item.chain_earlier.length){
+    h += `<div class="q">4. Czy to ten sam incydent, co któryś wcześniejszy artykuł z serii?</div><div class="row">` +
+      item.chain_earlier.map((e,i) => `<button class="${draft.same_as===e.slot?"on":""}" onclick="setSame('${e.slot}')">Tak – jak nr ${i+1}</button>`).join("") +
+      `<button class="${draft.same_as===null?"on":""}" onclick="setSame(null)">Nie – nowe, osobne zdarzenie</button></div>
+      <div class="q">5. Czy chciałbyś dostać o tym NOWE powiadomienie?</div><div class="row">
+      <button class="${draft.notify===true?"on":""}" onclick="setNotify(true)">Tak</button>
+      <button class="${draft.notify===false?"on":""}" onclick="setNotify(false)">Nie, już wiem</button></div>`;
+  }
+  h += `<div class="q"><label><input type="checkbox" ${draft.bad_input?"checked":""} onchange="draft.bad_input=this.checked">
+      Tekst zbyt urwany lub nieczytelny, żeby ocenić</label> <span class="hint">(i tak wybierz najlepszą ocenę powyżej)</span></div>
+    <div class="q">Uzasadnienie <span class="hint">(opcjonalne)</span></div>
+    <textarea id="note" oninput="draft.note=this.value">${esc(draft.note)}</textarea>
+    <div class="nav"><button onclick="go(-1)" ${pos===0?"disabled":""}>← Wstecz</button>
+      <span class="status ${status.startsWith("Błąd")?"err":""}">${esc(status)}</span>
+      <button class="primary" onclick="save()" ${ready(item)?"":"disabled"}>Zapisz i dalej → <span class="hint" style="color:#fff">(Enter)</span></button></div></div>`;
+  app.innerHTML = h;
+}
+
+function setTier(t){ draft.tier=t; const r=TIERS.find(x=>x.t===t).range; if(!(draft.urgency>=r[0]&&draft.urgency<=r[1])) draft.urgency=null; render(); }
+function setU(n){ draft.urgency=n; render(); }
+function setAlt(n){ draft.urgency_alt = draft.urgency_alt===n ? null : n; render(); }
+function toggleC(c){ draft.countries = draft.countries.includes(c) ? draft.countries.filter(x=>x!==c) : [...draft.countries,c]; }
+function setSame(s){ draft.same_as=s; render(); }
+function setNotify(v){ draft.notify=v; render(); }
+function go(d){ pos=Math.max(0,Math.min(queue.length-1,pos+d)); draft=freshDraft(queue[pos].slot); render(); }
+
+async function save(){
+  const item = queue[pos];
+  if (!ready(item)) return;
+  const body = {slot:item.slot, ...draft, same_as: draft.same_as === undefined ? null : draft.same_as};
+  try {
+    const r = await fetch("/api/label",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.status);
+  } catch(e){ render("Błąd zapisu: " + e.message + " – spróbuj ponownie"); return; }
+  labels[item.slot] = body;
+  const before = answered();
+  let next = pos+1;
+  while (next < queue.length && labels[queue[next].slot]) next++;
+  if (next >= queue.length) next = queue.findIndex(q => !labels[q.slot]);
+  pos = next === -1 ? queue.length : next;
+  if (pos < queue.length) draft = freshDraft(queue[pos].slot);
+  if (before % BATCH === 0 && pos < queue.length) pausedAt = before;
+  render("Zapisano ✓");
+}
+
+document.addEventListener("keydown", e => {
+  if (e.key === "Enter" && e.target.tagName !== "TEXTAREA") { e.preventDefault(); if (pausedAt!==null){pausedAt=null;render();} else save(); }
+});
+
+(async () => {
+  queue = await (await fetch("/api/queue")).json();
+  labels = await (await fetch("/api/labels")).json();
+  pos = queue.findIndex(q => !labels[q.slot]); if (pos === -1) pos = queue.length;
+  if (pos < queue.length) draft = freshDraft(queue[pos].slot);
+  render();
+})();
+</script>
+</body>
+</html>

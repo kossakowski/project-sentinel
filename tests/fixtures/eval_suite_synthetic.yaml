@@ -1,0 +1,483 @@
+version: 1
+description: >-
+  Invented, unlabelled hard cases for the model-eval suite. Labels come only from the operator's blind labelling.
+items:
+  - id: syn-pl-01
+    target: past_tense_unresolved
+    article:
+      title: Nocny alarm dla lotnictwa po incydencie nad wschodnią Polską
+      summary: W nocy podniesiono w powietrze dyżurną parę myśliwców po wykryciu nieznanego obiektu nad wschodnią Polską. Rzecznik operacyjny poinformował, że obiekt zniknął z radarów, a szczegóły są wyjaśniane.
+      source_name: Głos Podlasia
+      source_url: "synthetic://suite-syn-pl-01"
+      source_type: rss
+      language: pl
+      published_at: "2026-09-03T04:10:00+00:00"
+      fetched_at: "2026-09-03T04:16:00+00:00"
+
+  - id: syn-pl-02
+    target: ended_alarm
+    article:
+      title: Alarm dla lotnictwa cywilnego w Rzeszowie odwołany
+      summary: Władze lotniska w Rzeszowie poinformowały o odwołaniu porannego alarmu i wznowieniu normalnego ruchu lotniczego. Wcześniejsze ograniczenia wprowadzono zapobiegawczo po doniesieniach z granicy.
+      source_name: Kurier Rzeszowski
+      source_url: "synthetic://suite-syn-pl-02"
+      source_type: rss
+      language: pl
+      published_at: "2026-09-03T09:40:00+00:00"
+      fetched_at: "2026-09-03T09:45:00+00:00"
+
+  - id: syn-pl-03
+    target: ended_alarm
+    article:
+      title: Schrony w Lublinie nadal otwarte, mieszkańcy proszeni o pozostanie w budynkach
+      summary: Miejski zespół zarządzania kryzysowego podtrzymuje zalecenie pozostania w schronach do odwołania. Sytuacja wciąż jest oceniana jako niejasna po wieczornym komunikacie o zagrożeniu.
+      source_name: Panorama Lubelska
+      source_url: "synthetic://suite-syn-pl-03"
+      source_type: rss
+      language: pl
+      published_at: "2026-09-04T20:05:00+00:00"
+      fetched_at: "2026-09-04T20:09:00+00:00"
+
+  - id: syn-pl-04
+    target: civilian_object_found
+    article:
+      title: Rolnik znalazł balon meteorologiczny na polu pod Białymstokiem
+      summary: Na polu w gminie Juchnowiec Kościelny znaleziono uszkodzony balon meteorologiczny z sondą pomiarową. Służby ustaliły, że urządzenie należało do cywilnej stacji badawczej i nie stanowi zagrożenia.
+      source_name: Wieści Podlaskie
+      source_url: "synthetic://suite-syn-pl-04"
+      source_type: rss
+      language: pl
+      published_at: "2026-09-05T11:20:00+00:00"
+      fetched_at: "2026-09-05T11:26:00+00:00"
+
+  - id: syn-pl-05
+    target: drills_vs_attack
+    article:
+      title: Wojsko Polskie rozpoczyna coroczne ćwiczenia "Żelazna Brama" na wschodzie kraju
+      summary: Ćwiczenia potrwają tydzień i obejmą manewry wojsk lądowych oraz sprawdzenie procedur mobilizacyjnych. Organizatorzy zapowiadają okresowe ograniczenia ruchu w rejonach poligonów.
+      source_name: Serwis Obronny PL
+      source_url: "synthetic://suite-syn-pl-05"
+      source_type: rss
+      language: pl
+      published_at: "2026-09-06T08:00:00+00:00"
+      fetched_at: "2026-09-06T08:07:00+00:00"
+
+  - id: syn-pl-06
+    target: dramatic_headline_no_facts
+    article:
+      title: "SZOK: Polska na krawędzi wojny?! To, co się dzieje, mrozi krew w żyłach"
+      summary: "SZOK: Polska na krawędzi wojny?! To, co się dzieje, mrozi krew w żyłach - Fakt Alarmowy"
+      source_name: Fakt Alarmowy
+      source_url: "synthetic://suite-syn-pl-06"
+      source_type: google_news
+      language: pl
+      published_at: "2026-09-07T14:30:00+00:00"
+      fetched_at: "2026-09-07T14:35:00+00:00"
+
+  - id: syn-pl-07
+    target: nationality_vs_geography
+    article:
+      title: Rosyjski pocisk manewrujący uderzył w elektrownię pod Charkowem
+      summary: Rosyjska rakieta manewrująca trafiła w stację energetyczną pod Charkowem, pozostawiając bez prądu kilkadziesiąt tysięcy odbiorców. Władze obwodu nie zgłaszały żadnych incydentów w Polsce.
+      source_name: Serwis Wschodni
+      source_url: "synthetic://suite-syn-pl-07"
+      source_type: rss
+      language: pl
+      published_at: "2026-09-08T07:15:00+00:00"
+      fetched_at: "2026-09-08T07:20:00+00:00"
+
+  - id: syn-pl-08
+    target: reaction_vs_event
+    article:
+      title: Premier komentuje wczorajsze naruszenie polskiej przestrzeni powietrznej
+      summary: Szef rządu ocenił wczorajsze wydarzenie jako "niedopuszczalne naruszenie suwerenności" i zapowiedział rozmowy z sojusznikami z NATO. Nie przekazano nowych informacji o bieżącym zagrożeniu.
+      source_name: Kancelaria Info
+      source_url: "synthetic://suite-syn-pl-08"
+      source_type: rss
+      language: pl
+      published_at: "2026-09-09T10:00:00+00:00"
+      fetched_at: "2026-09-09T10:05:00+00:00"
+
+  - id: syn-pl-09
+    target: past_tense_unresolved
+    article:
+      title: Mieszkańcy Suwałk spędzili noc w piwnicach po komunikacie o zagrożeniu
+      summary: Po wieczornym komunikacie straży pożarnej część mieszkańców Suwałk zeszła do piwnic i schronów. Rano ulice wróciły do normalnego ruchu, ale urzędnicy nie wydali jeszcze oficjalnego stanowiska w sprawie źródła zagrożenia.
+      source_name: Głos Suwalszczyzny
+      source_url: "synthetic://suite-syn-pl-09"
+      source_type: telegram
+      language: pl
+      published_at: "2026-09-10T06:30:00+00:00"
+      fetched_at: "2026-09-10T06:35:00+00:00"
+
+  - id: syn-pl-10
+    target: civilian_object_found
+    article:
+      title: Wojsko odnalazło szczątki rosyjskiego drona rozpoznawczego pod Białą Podlaską
+      summary: Żołnierze zabezpieczyli szczątki bezzałogowca z cyrylicznymi oznaczeniami na polu uprawnym pod Białą Podlaską. Saperzy potwierdzili, że obiekt nie posiadał głowicy bojowej, a teren jest nadal przeczesywany.
+      source_name: Wojskowy Przegląd Wschodni
+      source_url: "synthetic://suite-syn-pl-10"
+      source_type: rss
+      language: pl
+      published_at: "2026-09-11T13:45:00+00:00"
+      fetched_at: "2026-09-11T13:50:00+00:00"
+
+  - id: syn-en-01
+    target: dramatic_headline_no_facts
+    article:
+      title: "'It could happen any day': fears grow along NATO's eastern edge"
+      summary: "'It could happen any day': fears grow along NATO's eastern edge - Baltic Herald Wire"
+      source_name: Baltic Herald Wire
+      source_url: "synthetic://suite-syn-en-01"
+      source_type: google_news
+      language: en
+      published_at: "2026-09-02T09:00:00+00:00"
+      fetched_at: "2026-09-02T09:06:00+00:00"
+
+  - id: syn-en-02
+    target: russian_drone_other_monitored
+    article:
+      title: Estonian air force shoots down Russian military drone near Narva
+      summary: The Estonian Defence Forces confirmed an air-force unit intercepted and destroyed a Russian military reconnaissance drone that crossed into Estonian airspace near Narva overnight. No casualties were reported and debris has been recovered.
+      source_name: Baltic Defence Bulletin
+      source_url: "synthetic://suite-syn-en-02"
+      source_type: rss
+      language: en
+      published_at: "2026-09-04T02:20:00+00:00"
+      fetched_at: "2026-09-04T02:27:00+00:00"
+
+  - id: syn-en-03
+    target: russian_drone_other_monitored
+    article:
+      title: Latvian border guard recovers downed Russian drone, no injuries reported
+      summary: Border guard units in Latgale recovered the wreckage of a Russian-made drone that crashed in a forested area near the Latvian-Russian border. Officials said the drone appears to have lost connection during a routine strike mission over Belarus.
+      source_name: Riga Morning Post
+      source_url: "synthetic://suite-syn-en-03"
+      source_type: rss
+      language: en
+      published_at: "2026-09-05T15:10:00+00:00"
+      fetched_at: "2026-09-05T15:17:00+00:00"
+
+  - id: syn-en-04
+    target: drills_vs_attack
+    article:
+      title: Lithuania tests national mobilisation alert system in scheduled drill
+      summary: The Lithuanian Ministry of Defence confirmed Wednesday's nationwide siren test was part of a pre-announced mobilisation readiness drill. Officials said the exercise involved no live units and residents were notified in advance via text message.
+      source_name: Vilnius Civic Wire
+      source_url: "synthetic://suite-syn-en-04"
+      source_type: rss
+      language: en
+      published_at: "2026-09-06T11:00:00+00:00"
+      fetched_at: "2026-09-06T11:05:00+00:00"
+
+  - id: syn-en-05
+    target: ended_alarm
+    article:
+      title: Vilnius airport reopens after precautionary closure is lifted
+      summary: Vilnius International Airport resumed normal operations Thursday evening after aviation authorities lifted a precautionary closure imposed earlier in the day. The closure followed an unconfirmed report of an airspace incursion that officials say could not be substantiated.
+      source_name: Vilnius Civic Wire
+      source_url: "synthetic://suite-syn-en-05"
+      source_type: rss
+      language: en
+      published_at: "2026-09-07T18:45:00+00:00"
+      fetched_at: "2026-09-07T18:50:00+00:00"
+
+  - id: syn-en-06
+    target: nationality_vs_geography
+    article:
+      title: Belarusian-flagged cargo train involved in border incident stays inside Belarus
+      summary: A freight train registered in Belarus was reportedly used to transport military equipment near the Lithuanian border, according to open-source analysts. There is no indication the train or any equipment crossed into Lithuanian territory.
+      source_name: Eastern Frontier Monitor
+      source_url: "synthetic://suite-syn-en-06"
+      source_type: rss
+      language: en
+      published_at: "2026-09-08T13:00:00+00:00"
+      fetched_at: "2026-09-08T13:06:00+00:00"
+
+  - id: syn-en-07
+    target: past_tense_unresolved
+    article:
+      title: Residents near Suwalki gap told to shelter after unidentified aircraft sighting
+      summary: Local authorities issued a shelter recommendation Tuesday evening after residents reported an unidentified aircraft flying low over the area. The regional crisis office has not yet issued a follow-up statement on the source of the report.
+      source_name: Suwalki Gap Watch
+      source_url: "synthetic://suite-syn-en-07"
+      source_type: telegram
+      language: en
+      published_at: "2026-09-09T19:15:00+00:00"
+      fetched_at: "2026-09-09T19:20:00+00:00"
+
+  - id: syn-en-08
+    target: reaction_vs_event
+    article:
+      title: NATO Secretary General calls emergency consultations following Tuesday's incursion
+      summary: NATO's Secretary General announced Article 4 consultations among allies in response to Tuesday's reported airspace incursion. The statement reiterated alliance solidarity but did not describe any new developments since the original incident.
+      source_name: Brussels Policy Wire
+      source_url: "synthetic://suite-syn-en-08"
+      source_type: rss
+      language: en
+      published_at: "2026-09-10T08:30:00+00:00"
+      fetched_at: "2026-09-10T08:36:00+00:00"
+
+  - id: syn-en-09
+    target: civilian_object_found
+    article:
+      title: Hikers find weather balloon debris in Estonian forest, no security concern
+      summary: Hikers near Otepää discovered the deflated remains of a weather balloon with an attached sensor package. Local police confirmed the equipment belonged to a civilian meteorological research programme and posed no threat.
+      source_name: Tartu Outdoors Bulletin
+      source_url: "synthetic://suite-syn-en-09"
+      source_type: rss
+      language: en
+      published_at: "2026-09-11T10:05:00+00:00"
+      fetched_at: "2026-09-11T10:10:00+00:00"
+
+  - id: syn-en-10
+    target: dramatic_headline_no_facts
+    article:
+      title: "Baltic states on edge as tensions reportedly spiral out of control"
+      summary: "Baltic states on edge as tensions reportedly spiral out of control - Northern Watch Daily"
+      source_name: Northern Watch Daily
+      source_url: "synthetic://suite-syn-en-10"
+      source_type: google_news
+      language: en
+      published_at: "2026-09-12T16:00:00+00:00"
+      fetched_at: "2026-09-12T16:05:00+00:00"
+
+  - id: syn-uk-01
+    target: nationality_vs_geography
+    article:
+      title: Російський ударний дрон уразив склад пального під Сумами
+      summary: Уночі російський ударний безпілотник влучив у склад пального поблизу Сум. Влада області повідомила про пожежу, постраждалих серед цивільних немає. Про наслідки в суміжних країнах не йдеться.
+      source_name: Сумський Вісник
+      source_url: "synthetic://suite-syn-uk-01"
+      source_type: rss
+      language: uk
+      published_at: "2026-09-02T05:40:00+00:00"
+      fetched_at: "2026-09-02T05:46:00+00:00"
+
+  - id: syn-uk-02
+    target: past_tense_unresolved
+    article:
+      title: Мешканців прикордонного села тимчасово перевели до укриття
+      summary: Через повідомлення про підозрілий об'єкт у небі мешканців села біля кордону тимчасово перевели до найближчого укриття. Офіційного підтвердження про завершення ситуації поки не надходило.
+      source_name: Прикордонний Кур'єр
+      source_url: "synthetic://suite-syn-uk-02"
+      source_type: telegram
+      language: uk
+      published_at: "2026-09-03T21:10:00+00:00"
+      fetched_at: "2026-09-03T21:15:00+00:00"
+
+  - id: syn-uk-03
+    target: ended_alarm
+    article:
+      title: Повітряну тривогу в Рівненській області скасовано
+      summary: Повітряні сили повідомили про скасування тривоги у Рівненській області. Раніше тривогу оголосили через ракетну загрозу з північного напрямку, наразі загроза минула.
+      source_name: Рівне Онлайн
+      source_url: "synthetic://suite-syn-uk-03"
+      source_type: rss
+      language: uk
+      published_at: "2026-09-04T08:20:00+00:00"
+      fetched_at: "2026-09-04T08:25:00+00:00"
+
+  - id: syn-uk-04
+    target: civilian_object_found
+    article:
+      title: Фермер знайшов уламки метеорологічного зонда на полі під Луцьком
+      summary: На полі під Луцьком фермер виявив уламки цивільного метеорологічного зонда з передавачем. Поліція підтвердила, що обладнання належало науковій станції і не становить небезпеки.
+      source_name: Волинські Новини
+      source_url: "synthetic://suite-syn-uk-04"
+      source_type: rss
+      language: uk
+      published_at: "2026-09-05T12:30:00+00:00"
+      fetched_at: "2026-09-05T12:35:00+00:00"
+
+  - id: syn-uk-05
+    target: drills_vs_attack
+    article:
+      title: Збройні сили провели планові навчання мобілізаційної готовності
+      summary: Міністерство оборони повідомило про завершення планових навчань із перевірки мобілізаційної готовності у західних областях. Навчання не передбачали бойового застосування та були заздалегідь анонсовані.
+      source_name: Оборонний Вісник
+      source_url: "synthetic://suite-syn-uk-05"
+      source_type: rss
+      language: uk
+      published_at: "2026-09-06T09:50:00+00:00"
+      fetched_at: "2026-09-06T09:55:00+00:00"
+
+  - id: syn-uk-06
+    target: dramatic_headline_no_facts
+    article:
+      title: "ШОК: те, що сталося вночі, налякало всю країну"
+      summary: "ШОК: те, що сталося вночі, налякало всю країну - Новини Дня Онлайн"
+      source_name: Новини Дня Онлайн
+      source_url: "synthetic://suite-syn-uk-06"
+      source_type: google_news
+      language: uk
+      published_at: "2026-09-07T17:00:00+00:00"
+      fetched_at: "2026-09-07T17:05:00+00:00"
+
+  - id: syn-uk-07
+    target: reaction_vs_event
+    article:
+      title: Речник МЗС прокоментував учорашній інцидент з дроном на кордоні
+      summary: Речник міністерства закордонних справ назвав учорашній інцидент "серйозним порушенням" і закликав партнерів посилити протиповітряну оборону регіону. Нових деталей про поточну загрозу не наведено.
+      source_name: Дипломатичний Огляд
+      source_url: "synthetic://suite-syn-uk-07"
+      source_type: rss
+      language: uk
+      published_at: "2026-09-08T14:20:00+00:00"
+      fetched_at: "2026-09-08T14:25:00+00:00"
+
+  - id: syn-uk-08
+    target: russian_drone_other_monitored
+    article:
+      title: У Латвії виявили уламки збитого російського дрона
+      summary: Латвійська прикордонна служба повідомила про виявлення уламків збитого російського ударного дрона поблизу східного кордону. Постраждалих немає, фрагменти передано на експертизу.
+      source_name: Балтійський Кореспондент
+      source_url: "synthetic://suite-syn-uk-08"
+      source_type: rss
+      language: uk
+      published_at: "2026-09-09T11:40:00+00:00"
+      fetched_at: "2026-09-09T11:46:00+00:00"
+
+  - id: syn-uk-09
+    target: past_tense_unresolved
+    article:
+      title: У прикордонному районі Польщі чули вибухи, місцева влада мовчить
+      summary: Мешканці прикордонного району повідомили про кілька вибухів, почутих увечері. Місцева адміністрація поки не оприлюднила офіційного пояснення щодо джерела звуків.
+      source_name: Кордонний Спостерігач
+      source_url: "synthetic://suite-syn-uk-09"
+      source_type: telegram
+      language: uk
+      published_at: "2026-09-10T20:05:00+00:00"
+      fetched_at: "2026-09-10T20:10:00+00:00"
+
+  - id: syn-uk-10
+    target: nationality_vs_geography
+    article:
+      title: Влучання ракети невідомого походження зафіксовано під Гомелем, Білорусь
+      summary: Місцеві джерела повідомляють про влучання ракети невідомого походження поблизу Гомеля на території Білорусі. Про перетин кордону з сусідніми країнами НАТО не йдеться.
+      source_name: Білоруський Моніторинг
+      source_url: "synthetic://suite-syn-uk-10"
+      source_type: rss
+      language: uk
+      published_at: "2026-09-11T06:15:00+00:00"
+      fetched_at: "2026-09-11T06:20:00+00:00"
+
+  - id: syn-ru-01
+    target: drills_vs_attack
+    article:
+      title: В Калининградской области прошли плановые учения ПВО
+      summary: Министерство обороны сообщило о завершении плановых учений противовоздушной обороны в Калининградской области. Учения были заранее анонсированы и не предполагали применения боевого оружия за пределами полигона.
+      source_name: Балтийский Обозреватель
+      source_url: "synthetic://suite-syn-ru-01"
+      source_type: rss
+      language: ru
+      published_at: "2026-09-02T07:00:00+00:00"
+      fetched_at: "2026-09-02T07:05:00+00:00"
+
+  - id: syn-ru-02
+    target: past_tense_unresolved
+    article:
+      title: Жителей приграничного посёлка вечером эвакуировали в укрытие
+      summary: Вечером жителей приграничного посёлка временно эвакуировали в ближайшее укрытие после сообщения о неопознанном объекте в воздухе. Официального сообщения об окончании ситуации пока не поступало.
+      source_name: Приграничный Вестник
+      source_url: "synthetic://suite-syn-ru-02"
+      source_type: telegram
+      language: ru
+      published_at: "2026-09-03T22:30:00+00:00"
+      fetched_at: "2026-09-03T22:35:00+00:00"
+
+  - id: syn-ru-03
+    target: ended_alarm
+    article:
+      title: Тревога воздушной опасности в Брянской области отменена
+      summary: Региональные власти сообщили об отмене тревоги воздушной опасности, объявленной ранее из-за угрозы удара беспилотником. По последним данным угроза миновала, жители могут вернуться к обычному режиму.
+      source_name: Брянские Известия
+      source_url: "synthetic://suite-syn-ru-03"
+      source_type: rss
+      language: ru
+      published_at: "2026-09-04T10:15:00+00:00"
+      fetched_at: "2026-09-04T10:20:00+00:00"
+
+  - id: syn-ru-04
+    target: civilian_object_found
+    article:
+      title: Фермер обнаружил обломки гражданского метеозонда на поле в Псковской области
+      summary: На поле в Псковской области местный житель нашёл обломки гражданского метеорологического зонда с датчиком. Полиция подтвердила, что аппарат принадлежал научной станции и не представляет опасности.
+      source_name: Псковский Дневник
+      source_url: "synthetic://suite-syn-ru-04"
+      source_type: rss
+      language: ru
+      published_at: "2026-09-05T13:50:00+00:00"
+      fetched_at: "2026-09-05T13:55:00+00:00"
+
+  - id: syn-ru-05
+    target: dramatic_headline_no_facts
+    article:
+      title: "ШОК: что произошло этой ночью, повергло всех в ужас"
+      summary: "ШОК: что произошло этой ночью, повергло всех в ужас - Новостной Экспресс"
+      source_name: Новостной Экспресс
+      source_url: "synthetic://suite-syn-ru-05"
+      source_type: google_news
+      language: ru
+      published_at: "2026-09-06T15:40:00+00:00"
+      fetched_at: "2026-09-06T15:45:00+00:00"
+
+  - id: syn-ru-06
+    target: reaction_vs_event
+    article:
+      title: Пресс-секретарь прокомментировал вчерашний инцидент с дроном на границе
+      summary: Пресс-секретарь министерства назвал вчерашний инцидент "провокацией" и призвал усилить контроль границы. Новых сведений о текущей опасности не приведено.
+      source_name: Дипломатический Курьер
+      source_url: "synthetic://suite-syn-ru-06"
+      source_type: rss
+      language: ru
+      published_at: "2026-09-08T16:10:00+00:00"
+      fetched_at: "2026-09-08T16:15:00+00:00"
+
+  - id: syn-ru-07
+    target: nationality_vs_geography
+    article:
+      title: Украинский беспилотник атаковал нефтебазу под Курском
+      summary: Украинский ударный беспилотник атаковал нефтебазу в Курской области, вызвав возгорание. О пересечении границы соседних стран НАТО в сообщении не говорится.
+      source_name: Курский Наблюдатель
+      source_url: "synthetic://suite-syn-ru-07"
+      source_type: rss
+      language: ru
+      published_at: "2026-09-09T04:25:00+00:00"
+      fetched_at: "2026-09-09T04:30:00+00:00"
+
+  - id: syn-ru-08
+    target: russian_drone_other_monitored
+    article:
+      title: В Эстонии нашли обломки сбитого российского военного дрона
+      summary: Эстонские пограничники сообщили об обнаружении обломков сбитого российского военного разведывательного дрона недалеко от Нарвы. Пострадавших нет, фрагменты переданы экспертам.
+      source_name: Прибалтийский Обозреватель
+      source_url: "synthetic://suite-syn-ru-08"
+      source_type: rss
+      language: ru
+      published_at: "2026-09-10T09:35:00+00:00"
+      fetched_at: "2026-09-10T09:40:00+00:00"
+
+  - id: syn-ru-09
+    target: russian_drone_other_monitored
+    article:
+      title: В Латвии повреждён дрон российского производства, обошлось без пострадавших
+      summary: Латвийские спасатели зафиксировали падение дрона российского производства в лесном массиве близ границы. По предварительным данным, связь с аппаратом была потеряна во время патрульного полёта над Белоруссией.
+      source_name: Рижский Дозор
+      source_url: "synthetic://suite-syn-ru-09"
+      source_type: rss
+      language: ru
+      published_at: "2026-09-11T18:05:00+00:00"
+      fetched_at: "2026-09-11T18:10:00+00:00"
+
+  - id: syn-ru-10
+    target: ended_alarm
+    article:
+      title: Аэропорт Вильнюса возобновил работу после отмены ограничений
+      summary: Аэропорт Вильнюса возобновил обычный режим работы вечером после отмены введённых утром предупредительных ограничений. Ограничения были введены из-за неподтверждённого сообщения о нарушении воздушного пространства.
+      source_name: Литовский Вестник
+      source_url: "synthetic://suite-syn-ru-10"
+      source_type: rss
+      language: ru
+      published_at: "2026-09-12T19:20:00+00:00"
+      fetched_at: "2026-09-12T19:25:00+00:00"
