@@ -209,6 +209,17 @@ Issues surfaced while auditing docs against source during the 2026-05-30 docs ov
 4. **`--test-alert push` help text names the wrong env var.** The CLI help/failure message references `EXPO_PUSH_TOKEN`, but the credential `push_client.py` actually reads is `EXPO_ACCESS_TOKEN` (`EXPO_PUSH_TOKEN` is only a `${VAR}` placeholder substituted into `alerts.push.tokens`). One-line clarification in the help string.
 5. **`state_machine.py` — confirmation code stored on bare instance attributes.** `self._confirmation_code` / `self._confirmation_sms_sid` are not per-event scoped and never reset between events. Safe today because dispatch is serialized by the cycle lock, but if event dispatch is ever parallelized, a reply to one event's code could spuriously acknowledge another. Scope them per-event before any concurrency change.
 
+## 7. Findings from the 2026-09-23 model-eval work (not yet fixed)
+
+Surfaced while building the eval suite (`docs/how-to/model-eval.md`). Code was not changed for these.
+
+1. **URGENT — monthly model budget will stop classification in October.** Classification volume rose to ~450/day (2026-09-21..23). At that rate `gpt-5.6-luna` costs ~$10.8/month at list prices and ~$12.3 by the ledger's own estimate, above `classification.budget.monthly_usd: 10` and the OpenAI project's $10 hard cap. Once reached, `UsageLedger.reserve` (`sentinel/classification/openai_provider.py:64`) raises `BudgetExceeded` and articles stay pending — a missed-alert risk. Raise both caps before 2026-10-20.
+2. **Ledger overstates OpenAI cost.** `cache_write_multiplier: 1.25` charges uncached input 1.25×; OpenAI does not bill cache writes, so the ledger shows ~$0.0009/article where the bill is ~$0.0008. Harmless for safety, but it brings the cap breach earlier.
+3. **Enrichment is never persisted.** `enricher.py` replaces `article.summary` and writes `raw_metadata["enrichment"]` in memory only; the DB keeps the pre-enrichment text. Nobody can audit or replay what the model actually saw.
+4. **Live prompt gets no headline-only signal.** The "body could not be fetched" caution exists only in the dead legacy prompt (`classifier.py` `_build_user_prompt`); `policy.messages()` passes title/summary with no hint that the text is just a headline.
+5. **Enriched body truncated to 500 characters** (`_fetch_body`), which can cut the clause that states geography.
+6. **Reproducible `gpt-5.6-luna` rule violations on the synthetic hold-out:** reads past-tense narration of an unresolved precaution as `resolved`; treats an explicitly ended alarm as an active `official_warning`; ignores the worked example that a civilian object found in a monitored country populates `affected_countries`.
+
 ---
 
 ## Commentary: Priority & sequencing (Claude's assessment, 2026-05-24)

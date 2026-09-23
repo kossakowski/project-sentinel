@@ -17,6 +17,7 @@ When adding a new doc, decide which of these four needs it serves and place it i
 
 - [how-to/api-setup.md](how-to/api-setup.md) — set up Anthropic, Twilio, and Telegram accounts and credentials.
 - [how-to/testing.md](how-to/testing.md) — dry runs, test fixtures, the eval harness, and manual alert testing.
+- [how-to/model-eval.md](how-to/model-eval.md) — build the labelled eval suite, run candidate models, and get the quality/price verdict.
 - [how-to/mobile-push-setup.md](how-to/mobile-push-setup.md) — provision an EAS `projectId`, build the mobile app, and verify a push end-to-end (token → backend → Expo → phone).
 - [how-to/mobile-inbox-verification.md](how-to/mobile-inbox-verification.md) — on-device checklist (MA-1…MA-7) for the in-app message inbox: tap-to-Detail, tray-sweep, foreground receive, in-app source links, the app-icon badge, and delete/clear persistence.
 - [how-to/server-runbook.md](how-to/server-runbook.md) — production server access, file layout, service management, deployment, and troubleshooting. Read this first for anything server-related.
