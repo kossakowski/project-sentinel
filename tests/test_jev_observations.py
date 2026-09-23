@@ -11,6 +11,7 @@ from sentinel.eval.compare_models import load_dataset, make_article, make_config
 from sentinel.eval.jev_comparison import load_settings
 from sentinel.eval.jev_observations import load_observations, summarize_observations
 from sentinel.eval.jev_pipeline_questions import SCOPED_VERSION, build_pipeline_request
+from sentinel.eval.typesafe_client import check_size, pack_request
 from tests.test_jev_pipeline import oracle
 
 
@@ -95,3 +96,32 @@ def test_each_independent_question_has_explicit_scope_without_changing_v2(observ
     policy["monitored_countries"] = ["PL"]
     scoped = build_pipeline_request(article, [], policy, settings)
     assert set(scoped["state"]["monitoring_scope"]) == {"PL"}
+
+
+def test_oversize_packing_preserves_sources_candidates_and_complete_rules():
+    rule = "Use current article only; memory identifies continuity. " * 55
+    payload = {
+        "model": "jev-1.13.0",
+        "state": {"article": {"title": "Verbatim"}, "remembered_incidents": [{"id": "prior"}]},
+        "questions": {
+            f"q{i}": {
+                "type": "choice",
+                "instructions": {"question": f"Question {i}", "source_discipline": rule},
+                "criteria": {"yes": "Yes", "no": "No"},
+            }
+            for i in range(4)
+        },
+    }
+    before = deepcopy(payload)
+    settings = {"request_token_limit": 12000, "state_question_token_limit": 16000}
+    with pytest.raises(ValueError):
+        check_size(payload, settings)
+    packed, encoding = pack_request(payload, settings)
+    check_size(packed, settings)
+    assert encoding == "shared-source-discipline-v1" and payload == before
+    assert packed["state"]["shared_source_discipline"] == rule
+    assert {k: packed["state"][k] for k in before["state"]} == before["state"]
+    for name in payload["questions"]:
+        assert packed["questions"][name]["criteria"] == before["questions"][name]["criteria"]
+    unchanged, encoding = pack_request(payload, {"request_token_limit": 64000, "state_question_token_limit": 32000})
+    assert unchanged == before and encoding == "inline"

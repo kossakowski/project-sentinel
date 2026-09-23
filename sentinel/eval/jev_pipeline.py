@@ -41,7 +41,7 @@ from sentinel.eval.jev_comparison import load_settings
 from sentinel.eval.jev_observations import load_observations, summarize_observations
 from sentinel.eval.jev_pipeline_questions import SCOPED_VERSION, VERSION, build_pipeline_request, decode_pipeline
 from sentinel.eval.separate_metrics import aggregate_dimensions, score_dimensions
-from sentinel.eval.typesafe_client import TypeSafeEvalClient, check_size
+from sentinel.eval.typesafe_client import TypeSafeEvalClient, check_size, encoded, pack_request
 from sentinel.models import ClassificationResult, Event
 
 SUMMARY_PROMPT = (
@@ -120,6 +120,12 @@ class PipelineModels:
         payload = build_pipeline_request(article, candidates, self.policy, self.settings)
         log = {**self.context, "api": "typesafe", "request": payload}
         try:
+            try:
+                payload, encoding = pack_request(payload, self.settings)
+            except ValueError:
+                log["not_submitted"] = True
+                raise
+            log.update(request=payload, request_encoding=encoding)
             saved = self.cached.get(("typesafe", provider, article.id, None))
             if saved is not None:
                 if saved["request"] != payload or saved.get("error"):
@@ -178,7 +184,10 @@ class PipelineModels:
             summary_processing=processing,
         )
         diagnostics.update(
-            summary_processing=processing, raw_response=response["raw_response"], reused_api_response=self.reused_case
+            summary_processing=processing,
+            raw_response=response["raw_response"],
+            reused_api_response=self.reused_case,
+            request_encoding=encoding,
         )
         return result, diagnostics
 
@@ -390,14 +399,26 @@ async def run(args):
                 raise ValueError(f"Resume would change {key}")
         if args.live and args.budget_usd > old_report["budget_usd"]:
             raise ValueError("Resume cannot increase the original spending cap")
+        unsubmitted = 0
         for line in (source / "calls.jsonl").read_text().splitlines():
             call = json.loads(line)
+            if call["api"] == "typesafe" and "raw_response" not in call and "cost_usd" not in call:
+                # Earlier logging saved an attempted payload before the local
+                # size check. No ledger reservation proves no HTTP call was sent.
+                digest = hashlib.sha256(encoded(call["request"])).hexdigest()
+                with closing(sqlite3.connect(f"file:{source / 'usage.db'}?mode=ro", uri=True)) as db:
+                    charged = db.execute("SELECT COUNT(*) FROM model_usage WHERE request_hash=?", (digest,)).fetchone()[
+                        0
+                    ]
+                if charged == 0 and (call.get("not_submitted") or not call.get("error")):
+                    unsubmitted += 1
+                    continue
             key = (call["api"], call["pipeline"], call["case_id"], call.get("options", {}).get("purpose"))
             if key in cached:
                 raise ValueError("Duplicate cached API call")
             cached[key] = call
         args.carry_ledger = str(source / "usage.db")
-        manifest.update(resume_from=str(source), cached_api_calls=len(cached))
+        manifest.update(resume_from=str(source), cached_api_calls=len(cached), unsubmitted_requests_rebuilt=unsubmitted)
     output = Path(args.output) if args.output else None
     if output:
         output.mkdir(parents=True, exist_ok=False)
@@ -441,11 +462,15 @@ async def run(args):
                 "carry_ledger": args.carry_ledger,
                 "pipeline_costs": {
                     provider: {
-                        "api_calls": sum(c["pipeline"] == provider for c in api_calls),
+                        "api_calls": sum(c["pipeline"] == provider and not c.get("not_submitted") for c in api_calls),
                         "settled_estimated_usd": sum(
                             c.get("cost_usd", 0) for c in api_calls if c["pipeline"] == provider
                         ),
-                        "unknown_cost_calls": sum("cost_usd" not in c for c in api_calls if c["pipeline"] == provider),
+                        "unknown_cost_calls": sum(
+                            "cost_usd" not in c and not c.get("not_submitted")
+                            for c in api_calls
+                            if c["pipeline"] == provider
+                        ),
                     }
                     for provider in ("jev", "luna")
                 },

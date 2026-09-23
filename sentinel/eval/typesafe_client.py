@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import os
+from copy import deepcopy
 
 import httpx
 
@@ -23,6 +24,29 @@ def check_size(payload, settings):
         raise ValueError("Jev state plus longest question exceeds conservative input bound")
     if len(encoded(payload)) + 4096 > settings["request_token_limit"]:
         raise ValueError("Jev request exceeds conservative input bound")
+
+
+def pack_request(payload, settings):
+    """Pool identical source rules only when the original byte bound is exceeded.
+
+    All article text, candidate incidents, choices and rule text remain present.
+    Previously fitting requests stay byte-for-byte identical for cache recovery.
+    """
+    try:
+        check_size(payload, settings)
+        return payload, "inline"
+    except ValueError:
+        packed = deepcopy(payload)
+        disciplines = {q["instructions"]["source_discipline"] for q in packed["questions"].values()}
+        if len(disciplines) != 1 or "shared_source_discipline" in packed["state"]:
+            raise ValueError("Oversized Jev request cannot safely pool its source rules") from None
+        packed["state"]["shared_source_discipline"] = disciplines.pop()
+        for question in packed["questions"].values():
+            question["instructions"]["source_discipline"] = (
+                "Follow the complete source rules in `shared_source_discipline`."
+            )
+        check_size(packed, settings)
+        return packed, "shared-source-discipline-v1"
 
 
 class TypeSafeEvalClient:
