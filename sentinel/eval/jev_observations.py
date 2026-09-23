@@ -71,6 +71,7 @@ def summarize_observations(rows, cases):
             "planned": len(cases),
             "observed": len(group),
             "errors": sum(bool(r.get("error")) for r in group),
+            "rank_errors": sum(r.get("error_kind") == "jev_choice_rank" for r in group),
             "simulated_notifications": dict(Counter(r.get("notification", "error") for r in group)),
             "simulated_channels": dict(Counter(c for r in group for c in r.get("channels", []))),
             "urgency_counts": dict(Counter(str(r["data"]["urgency_score"]) for r in group if not r.get("error"))),
@@ -97,6 +98,11 @@ def summarize_observations(rows, cases):
         if fields:
             report["differences"].append({"case_id": case_id, "fields": fields, "jev": a, "luna": b})
     report["paired_cases"] = paired
+    report["unpaired_or_invalid_case_ids"] = [
+        case_id
+        for case_id, pair in pairs.items()
+        if set(pair) != {"jev", "luna"} or any(r.get("error") for r in pair.values())
+    ]
     report["difference_counts"] = dict(Counter(field for d in report["differences"] for field in d["fields"]))
     report["interpretation"] = (
         "Agreement is not correctness. Without reviewed labels, missed/false/duplicate alerts and accuracy are not measured."

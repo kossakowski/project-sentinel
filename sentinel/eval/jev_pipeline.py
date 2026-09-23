@@ -40,6 +40,7 @@ from sentinel.eval.compare_models import (
 from sentinel.eval.jev_comparison import load_settings
 from sentinel.eval.jev_observations import load_observations, summarize_observations
 from sentinel.eval.jev_pipeline_questions import SCOPED_VERSION, VERSION, build_pipeline_request, decode_pipeline
+from sentinel.eval.jev_questions import JevChoiceRankError
 from sentinel.eval.separate_metrics import aggregate_dimensions, score_dimensions
 from sentinel.eval.typesafe_client import TypeSafeEvalClient, check_size, encoded, pack_request
 from sentinel.models import ClassificationResult, Event
@@ -141,9 +142,13 @@ class PipelineModels:
             raise
         finally:
             append_row(self.journal, log)
-        data, diagnostics = decode_pipeline(
-            payload, response["raw_response"], self.settings, self.policy["monitored_countries"]
-        )
+        try:
+            data, diagnostics = decode_pipeline(
+                payload, response["raw_response"], self.settings, self.policy["monitored_countries"]
+            )
+        except JevChoiceRankError as exc:
+            exc.reused_api_response = self.reused_case
+            raise
         processing = {"action": "unchanged"}
         writing_calls = []
         try:
@@ -196,7 +201,7 @@ class PipelineModels:
         await self.luna.aclose()
 
 
-async def replay_pipeline(cases, config, classify, checkpoint, *, score_labels=True):
+async def replay_pipeline(cases, config, classify, checkpoint, *, score_labels=True, continue_rank_errors=False):
     rows = []
     for sequence in sorted({c["sequence_id"] for c in cases}):
         databases = {provider: ReplayDatabase(":memory:") for provider in ("jev", "luna")}
@@ -269,6 +274,9 @@ async def replay_pipeline(cases, config, classify, checkpoint, *, score_labels=T
                         )
                     except (ClassificationError, ValueError, TypeError, KeyError) as exc:
                         row["error"] = str(exc)
+                        if isinstance(exc, JevChoiceRankError):
+                            row["error_kind"] = "jev_choice_rank"
+                            row["diagnostics"] = {"reused_api_response": getattr(exc, "reused_api_response", False)}
                     row["latency_seconds"] = (
                         None if row.get("diagnostics", {}).get("reused_api_response") else time.perf_counter() - start
                     )
@@ -283,7 +291,9 @@ async def replay_pipeline(cases, config, classify, checkpoint, *, score_labels=T
                         prior[provider][case["id"]] = row["event_id"]
                     rows.append(row)
                     checkpoint(row)
-                    if row.get("error") or row.get("summary_fallback"):
+                    if row.get("summary_fallback") or (
+                        row.get("error") and not (continue_rank_errors and row.get("error_kind") == "jev_choice_rank")
+                    ):
                         return rows
         finally:
             for db in databases.values():
@@ -320,6 +330,8 @@ def summarize(rows, cases):
 
 
 async def run(args):
+    if args.continue_rank_errors and not args.unlabelled:
+        raise ValueError("Continuing rank errors is only supported for unlabelled diagnostic runs")
     dataset = load_observations(args.dataset) if args.unlabelled else load_dataset(args.dataset)
     if dataset.get("policy_version") != 2:
         raise ValueError("Pipeline test requires version-2 labels")
@@ -348,6 +360,7 @@ async def run(args):
         "settings": settings,
         "live": args.live,
         "unlabelled": args.unlabelled,
+        "continue_rank_errors": args.continue_rank_errors,
         "classification_config": config.classification.model_dump(),
         "alert_levels": {name: level.model_dump() for name, level in config.alerts.urgency_levels.items()},
         "planned_classifications": 2 * len(cases),
@@ -448,13 +461,21 @@ async def run(args):
                 append_row(results, row)
                 print(f"{row['provider']} {row['case_id']}: {row.get('error') or row.get('notification')}", flush=True)
 
-            await replay_pipeline(cases, config, models.classify, checkpoint, score_labels=not args.unlabelled)
+            await replay_pipeline(
+                cases,
+                config,
+                models.classify,
+                checkpoint,
+                score_labels=not args.unlabelled,
+                continue_rank_errors=args.continue_rank_errors,
+            )
         finally:
             total = models.jev.ledger.total()
             api_calls = [json.loads(line) for line in (output / "calls.jsonl").read_text().splitlines()]
             report = {
                 **(summarize_observations(rows, cases) if args.unlabelled else summarize(rows, cases)),
                 "complete": len(rows) == 2 * len(cases) and not any(r.get("error") for r in rows),
+                "attempted_all": len(rows) == 2 * len(cases),
                 "prior_estimated_usd": initial_cost,
                 "new_estimated_usd": total - initial_cost,
                 "combined_estimated_usd": total,
@@ -494,6 +515,11 @@ def parser():
     p.add_argument("--live", action="store_true")
     p.add_argument(
         "--unlabelled", action="store_true", help="Observe real articles without manufacturing expected answers"
+    )
+    p.add_argument(
+        "--continue-rank-errors",
+        action="store_true",
+        help="Record invalid Jev rankings and continue unlabelled diagnostics; no replacement prediction",
     )
     p.add_argument("--allow-provisional", action="store_true")
     p.add_argument("--budget-usd", type=float)

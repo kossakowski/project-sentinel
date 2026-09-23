@@ -9,6 +9,10 @@ from sentinel.classification.policy import messages, system_prompt
 VERSION = "jev-comparison-v1"
 
 
+class JevChoiceRankError(ValueError):
+    """The selected valid option contradicts its returned probability ranking."""
+
+
 def build_request(article, candidates, policy, settings):
     """Use the same source context as Luna, without annotations or model history."""
     state = json.loads(messages(article, candidates, policy)[1]["content"])
@@ -133,8 +137,10 @@ def validate_answers(payload, response):
         if sum(probabilities.values()) <= 0 or not math.isclose(sum(probabilities.values()), 1, abs_tol=tolerance):
             raise ValueError("Jev probabilities do not sum to one")
         chosen = answer.get("choice")
-        if chosen not in probabilities or probabilities[chosen] + 1e-6 < max(probabilities.values()):
+        if chosen not in probabilities:
             raise ValueError("Invalid Jev winning choice")
+        if probabilities[chosen] + 1e-6 < max(probabilities.values()):
+            raise JevChoiceRankError("Invalid Jev winning choice")
     return answers
 
 

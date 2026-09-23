@@ -249,9 +249,13 @@ async def test_resume_reuses_exact_jev_and_writer_calls_without_network(tmp_path
         result, diagnostics = await models.classify("jev", article, [])
         assert result.summary_pl == summary and diagnostics["reused_api_response"]
         assert result.urgency_score == 10
+        cached[("typesafe", "jev", article.id, None)]["raw_response"]["answers"]["urgency"]["choice"] = "1"
+        with pytest.raises(jev_pipeline.JevChoiceRankError) as exc:
+            await models.classify("jev", article, [])
+        assert exc.value.reused_api_response
         altered = deepcopy(article)
         altered.summary += " Changed source."
         with pytest.raises(ClassificationError, match="exact request changed"):
             await models.classify("jev", altered, [])
     logs = [json.loads(line) for line in (tmp_path / "calls.jsonl").read_text().splitlines()]
-    assert len(logs) == 3 and logs[0]["cached"] and logs[1]["cached"]
+    assert len(logs) == 4 and logs[0]["cached"] and logs[1]["cached"]

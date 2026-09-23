@@ -56,3 +56,31 @@ channels, summary checks and grading. `report.json` separates request failures,
 retrieval failures, memory-gate rejections, duplicate alerts, missed alerts, quote
 issues, language groups and provider costs. The manifest freezes configuration,
 prompt and implementation hashes. All reports remain `release_eligible: false`.
+
+## Observe real articles without labels
+
+Use `--unlabelled` with a JSON dataset whose `mode` is `unlabelled`, case
+`label_status` is `unlabelled`, and split is `observation`. Expected-answer fields
+are rejected. Article records and provenance are required. The report compares
+decisions, identities normalized to their originating article, and simulated
+notifications. It does not emit accuracy or false/missed-alert scores.
+
+The September 23 sample and exact command are documented in the
+[real-article test plan](../ideas/jev-real-article-test-20260923.md). Use
+`tests/fixtures/jev_observation.yaml` for version 3, which explicitly names the
+monitored countries in the state seen by every independent question.
+
+Large requests pool identical source-handling rules into shared state only when
+needed to fit the conservative input bound. No source text, candidates or criteria
+are dropped; exact fitting requests remain unchanged. The request encoding is
+recorded with each call. This can affect cost and behaviour and must be disclosed
+when comparing runs. Recovery may rebuild an unsent request only when its absence
+from the spending ledger proves that no call was submitted.
+
+For an unlabelled diagnostic run, `--continue-rank-errors` records a Jev selected
+choice that contradicts its returned probability ranking as an invalid response,
+then proceeds to the other articles. It supplies no replacement classification
+and does not count the article as safe. Other failures and summary fallback still
+stop the run. `attempted_all: true` distinguishes finishing all attempts from a
+clean `complete: true` result; strict validation failures keep `complete` false.
+Use reviewed labels, not provider agreement or call counts, to judge correctness.

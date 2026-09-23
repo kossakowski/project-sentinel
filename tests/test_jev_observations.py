@@ -5,12 +5,14 @@ from copy import deepcopy
 
 import pytest
 
+from sentinel.classification.openai_provider import ClassificationError
 from sentinel.eval import jev_pipeline
 from sentinel.eval.clarified_policy import load_policy
 from sentinel.eval.compare_models import load_dataset, make_article, make_config
 from sentinel.eval.jev_comparison import load_settings
 from sentinel.eval.jev_observations import load_observations, summarize_observations
 from sentinel.eval.jev_pipeline_questions import SCOPED_VERSION, build_pipeline_request
+from sentinel.eval.jev_questions import JevChoiceRankError
 from sentinel.eval.typesafe_client import check_size, pack_request
 from tests.test_jev_pipeline import oracle
 
@@ -125,3 +127,36 @@ def test_oversize_packing_preserves_sources_candidates_and_complete_rules():
         assert packed["questions"][name]["criteria"] == before["questions"][name]["criteria"]
     unchanged, encoding = pack_request(payload, {"request_token_limit": 64000, "state_question_token_limit": 32000})
     assert unchanged == before and encoding == "inline"
+
+
+@pytest.mark.asyncio
+async def test_diagnostic_rank_errors_are_recorded_without_safe_defaults(observations):
+    originals, cases = observations
+    config = make_config("config/config.example.yaml")
+    good = oracle(originals)
+
+    async def classify(provider, article, candidates):
+        if provider == "jev":
+            error = JevChoiceRankError("Invalid Jev winning choice")
+            error.reused_api_response = True
+            raise error
+        return await good(provider, article, candidates)
+
+    rows = await jev_pipeline.replay_pipeline(
+        cases, config, classify, lambda r: None, score_labels=False, continue_rank_errors=True
+    )
+    assert len(rows) == 6
+    failed = [r for r in rows if r["provider"] == "jev"]
+    assert all("data" not in r and "notification" not in r and r["evaluation"] is None for r in failed)
+    assert all(r["latency_seconds"] is None for r in failed)
+    report = summarize_observations(rows, cases)
+    assert report["models"]["jev"]["rank_errors"] == 3
+    assert report["paired_cases"] == 0 and len(report["unpaired_or_invalid_case_ids"]) == 3
+
+    async def transport_failure(*args):
+        raise ClassificationError("Provider unavailable")
+
+    rows = await jev_pipeline.replay_pipeline(
+        cases, config, transport_failure, lambda r: None, score_labels=False, continue_rank_errors=True
+    )
+    assert len(rows) == 1
