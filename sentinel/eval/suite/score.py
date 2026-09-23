@@ -14,6 +14,25 @@ from pathlib import Path
 from sentinel.eval.suite.stats import mcnemar_exact, paired_bootstrap, verdict, wilson
 
 ACTION_ORDER = {"log": 0, "alert": 1, "call": 2}
+# Answers the model itself got wrong. Anything else without an urgency is a provider or
+# harness failure (overload, timeout, budget stop): reported as availability, not quality.
+MODEL_FAULTS = {
+    "invalid_output",
+    "invalid_completion_json",
+    "invalid_content",
+    "invalid_message",
+    "invalid_choices",
+    "incomplete",
+    "refusal",
+}
+
+
+def model_fault(row: dict) -> bool:
+    return row.get("urgency") is None and row.get("error_kind") in MODEL_FAULTS
+
+
+def unavailable(row: dict) -> bool:
+    return row.get("urgency") is None and row.get("error_kind") not in MODEL_FAULTS
 
 
 def action(urgency: int) -> str:
@@ -95,7 +114,9 @@ def retest_agreement(labels: list[dict]) -> dict:
 def majority(rows: list[dict]) -> dict:
     """Aggregate one model's repeats of one item."""
     valid = [r for r in rows if r.get("urgency") is not None]
-    invalid = [r for r in rows if r.get("urgency") is None and r.get("error_kind") != "budget_exhausted"]
+    invalid = [r for r in rows if model_fault(r)]
+    if not valid and not invalid:
+        return {"invalid": False, "unavailable": True, "repeats": len(rows), "valid": 0}
     if len(valid) <= len(invalid):
         return {"invalid": True, "repeats": len(rows), "valid": len(valid)}
     urgency = int(statistics.median_low(r["urgency"] for r in valid))
@@ -202,9 +223,10 @@ def model_report(model: str, calls: list[dict], truth: dict, items: dict) -> dic
     per_item = defaultdict(list)
     for row in rows:
         per_item[row["item_id"]].append(row)
-    preds = {i: majority(r) for i, r in per_item.items() if i in truth}
+    all_preds = {i: majority(r) for i, r in per_item.items() if i in truth}
+    preds = {i: p for i, p in all_preds.items() if not p.get("unavailable")}
     outcomes = {i: item_outcomes(p, truth[i]) for i, p in preds.items()}
-    paid = [r for r in rows if r.get("error_kind") != "budget_exhausted"]
+    paid = [r for r in rows if not unavailable(r)]
     usage = [r.get("usage") or {} for r in paid]
     valid_preds = {i: p for i, p in preds.items() if not p["invalid"]}
 
@@ -242,10 +264,13 @@ def model_report(model: str, calls: list[dict], truth: dict, items: dict) -> dic
         "qwk": quadratic_weighted_kappa(
             [truth[i]["urgency"] for i in valid_preds], [p["urgency"] for p in valid_preds.values()]
         ),
-        "invalid_call_rate": rate([r.get("urgency") is None for r in paid]),
+        "invalid_call_rate": rate([model_fault(r) for r in paid]),
+        "unavailable_calls": sum(unavailable(r) for r in rows),
+        "unavailable_items": len(all_preds) - len(preds),
+        "retried_calls": sum((r.get("attempts") or 1) > 1 for r in rows),
         "invalid_item_rate": rate([p["invalid"] for p in preds.values()]),
         "invalid_on_critical_calls": sum(
-            1 for r in paid if r.get("urgency") is None and truth.get(r["item_id"], {}).get("critical")
+            1 for r in paid if model_fault(r) and truth.get(r["item_id"], {}).get("critical")
         ),
         "flip_rate": rate([p["flip"] for p in valid_preds.values()]),
         "flip_call_boundary_rate": rate([p["flip_call_boundary"] for p in valid_preds.values()]),

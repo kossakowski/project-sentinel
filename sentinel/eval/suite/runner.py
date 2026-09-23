@@ -41,12 +41,42 @@ from sentinel.eval.openrouter_client import BudgetLedger, OpenRouterEvalClient, 
 
 RUNS = Path("data/eval/suite/runs")
 SCHEMA_SHA256 = hashlib.sha256(json.dumps(CLASSIFICATION_SCHEMA, sort_keys=True).encode()).hexdigest()
+# Provider-side failures (not the model's answer): retried, then recorded as unavailable.
+TRANSIENT = {"timeout", "transport_error"}
+RETRY_DELAYS = (3, 10, 30)
 
 
-def parse_model_spec(spec: str) -> tuple[str, list[str] | None]:
-    """``vendor/model`` or ``vendor/model@provider`` (pins the host, no fallback)."""
+def _transient(completion: dict) -> bool:
+    status = completion.get("http_status")
+    kind = completion.get("error_kind")
+    return kind in TRANSIENT or (kind == "http_error" and status is not None and (status == 429 or status >= 500))
+
+
+async def complete_with_retry(client, model: str, messages: list[dict]) -> dict:
+    """One model answer; provider overloads and network failures are retried with pauses."""
+    attempts = 0
+    while True:
+        attempts += 1
+        completion = (
+            await client.complete(model_id=model, messages=messages, json_schema=CLASSIFICATION_SCHEMA)
+        ).to_dict()
+        if not _transient(completion) or attempts > len(RETRY_DELAYS):
+            completion["attempts"] = attempts
+            return completion
+        await asyncio.sleep(RETRY_DELAYS[attempts - 1])
+
+
+def parse_model_spec(spec: str) -> tuple[str, list[str] | None, bool]:
+    """``vendor/model[@provider][+reasoning]``.
+
+    ``@provider`` pins the host with no fallback. ``+reasoning`` allows minimal ("low")
+    reasoning, only for models that cannot run with reasoning off; results from such a
+    model are not measured under production conditions and are labelled as such.
+    """
+    reasoning = spec.endswith("+reasoning")
+    spec = spec.removesuffix("+reasoning")
     model, _, provider = spec.partition("@")
-    return model, ([provider] if provider else None)
+    return model, ([provider] if provider else None), reasoning
 
 
 def select_items(items: list[dict], pool: str) -> list[dict]:
@@ -81,6 +111,8 @@ def base_row(model: str, repeat: int, item: dict, messages: list[dict], completi
         "request_sha256": hashlib.sha256(json.dumps(messages, ensure_ascii=False, sort_keys=True).encode()).hexdigest(),
         **{k: completion.get(k) for k in ("usage", "cost_usd", "latency_seconds", "provider", "request_id")},
         "error_kind": completion.get("error_kind"),
+        "http_status": completion.get("http_status"),
+        "attempts": completion.get("attempts", 1),
         "error": completion.get("error"),
         "raw_content": completion.get("raw_content"),
         "budget_stopped": completion.get("budget_stopped", False),
@@ -106,7 +138,7 @@ def outcome_fields(result, config, data: dict) -> dict:
 async def classify_single(client, model: str, repeat: int, item: dict, config, policy: dict) -> dict:
     article = make_article({"id": item["id"], "article": item["article"]})
     messages = production_messages(article, [], policy)
-    completion = (await client.complete(model_id=model, messages=messages, json_schema=CLASSIFICATION_SCHEMA)).to_dict()
+    completion = await complete_with_retry(client, model, messages)
     row = base_row(model, repeat, item, messages, completion)
     if completion.get("error"):
         return row
@@ -132,9 +164,7 @@ async def replay_chain(client, model: str, repeat: int, chain: list[dict], confi
             db.insert_article(article)
             candidates = memory.candidates(article)
             messages = production_messages(article, candidates, policy)
-            completion = (
-                await client.complete(model_id=model, messages=messages, json_schema=CLASSIFICATION_SCHEMA)
-            ).to_dict()
+            completion = await complete_with_retry(client, model, messages)
             row = base_row(model, repeat, item, messages, completion)
             row["candidate_ids"] = [c["id"] for c in candidates]
             rows.append(row)
@@ -195,6 +225,9 @@ def load_done(path: Path, chains: list[list[dict]]) -> tuple[list[dict], set]:
 async def run(args) -> int:
     data = json.loads(Path(args.items).read_text(encoding="utf-8"))
     items = select_items(data["items"], args.pool)
+    if args.limit:
+        # Smoke test: the first N single items only (no chains), for plumbing checks.
+        items = [i for i in items if not i["chain_id"]][: args.limit]
     singles, chains = units(items)
     config = make_config(args.config)
     policy = config.classification.policy
@@ -234,7 +267,7 @@ async def run(args) -> int:
     _, done = load_done(calls_path, chains)
     load_dotenv()
     api_key = os.environ.get("OPENROUTER_API_KEY", "")
-    model_ids = frozenset(m for m, _ in specs)
+    model_ids = frozenset(m for m, _, _ in specs)
     catalogue = await fetch_model_catalogue(model_ids=model_ids)
     missing = model_ids - set(catalogue)
     if missing:
@@ -253,8 +286,11 @@ async def run(args) -> int:
             handle.flush()
 
     try:
-        for model, provider in specs:
+        for model, provider, reasoning in specs:
             client = OpenRouterEvalClient(
+                reasoning={"effort": "low"} if reasoning else None,
+                max_tokens=4096 if reasoning else 1024,
+                max_reasoning_tokens=3072 if reasoning else 0,
                 api_key=api_key,
                 catalogue=catalogue,
                 ledger=ledger,
@@ -303,6 +339,7 @@ def main() -> None:
     parser.add_argument("--budget-usd", type=float)
     parser.add_argument("--concurrency", type=int, default=6)
     parser.add_argument("--timeout-seconds", type=float, default=45.0)
+    parser.add_argument("--limit", type=int, help="Smoke test: only the first N single items")
     parser.add_argument("--live", action="store_true")
     raise SystemExit(asyncio.run(run(parser.parse_args())))
 

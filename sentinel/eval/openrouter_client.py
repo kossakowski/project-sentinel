@@ -354,6 +354,7 @@ class OpenRouterEvalClient:
         http_client: httpx.AsyncClient | None = None,
         base_url: str = OPENROUTER_BASE_URL,
         approved_models: frozenset[str] = APPROVED_MODEL_IDS,
+        reasoning: Mapping[str, Any] | None = None,
     ) -> None:
         if not api_key:
             raise ValueError("An OpenRouter API key is required for live eval calls")
@@ -367,6 +368,9 @@ class OpenRouterEvalClient:
             raise ValueError("provider_only entries must be non-empty strings")
         self._api_key = api_key
         self.approved_models = frozenset(approved_models)
+        # None keeps reasoning disabled (production setting); a mapping such as
+        # {"effort": "low"} is only for models whose reasoning cannot be turned off.
+        self.reasoning = dict(reasoning) if reasoning is not None else None
         self.catalogue = dict(catalogue)
         self.ledger = ledger or BudgetLedger(budget_usd)  # type: ignore[arg-type]
         self.max_tokens = max_tokens
@@ -402,7 +406,7 @@ class OpenRouterEvalClient:
             "messages": [dict(message) for message in messages],
             "max_tokens": self.max_tokens,
             "stream": False,
-            "reasoning": {"enabled": False},
+            "reasoning": self.reasoning if self.reasoning is not None else {"enabled": False},
             "response_format": {
                 "type": "json_schema",
                 "json_schema": {
@@ -458,7 +462,7 @@ class OpenRouterEvalClient:
             return self._failure(
                 model_id, started, Decimal("0"), "model_not_in_catalogue", "Model is absent from catalogue"
             )
-        if model.reasoning_mandatory:
+        if model.reasoning_mandatory and self.reasoning is None:
             return self._failure(
                 model_id,
                 started,
