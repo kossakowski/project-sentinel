@@ -176,10 +176,11 @@ def test_spent_so_far_counts_unknown_cost_timeouts_at_their_reservation():
     rows = [
         {"cost_usd": 0.01, "retry_cost_usd": 0.004},
         {"cost_usd": None, "error_kind": "timeout", "reserved_usd": 0.02},
-        {"cost_usd": None, "error_kind": "http_error", "http_status": 400, "reserved_usd": 0.5},
+        {"cost_usd": None, "error_kind": "http_error", "http_status": 429, "reserved_usd": 0.5},
         {"cost_usd": None, "error_kind": "budget_exhausted", "reserved_usd": 9.0},
     ]
-    assert runner.spent_so_far(rows) == pytest.approx(0.534)
+    # a response without cost data was not billed; only unanswered requests keep the reservation
+    assert runner.spent_so_far(rows) == pytest.approx(0.034)
 
 
 def test_retry_cost_of_failed_attempts_is_kept(monkeypatch):
@@ -193,9 +194,24 @@ def test_retry_cost_of_failed_attempts_is_kept(monkeypatch):
 def test_scoring_separates_model_faults_from_outages():
     fault = {"urgency": None, "error_kind": "invalid_output"}
     outage = {"urgency": None, "error_kind": "http_error", "http_status": 503}
-    rejected = {"urgency": None, "error_kind": "http_error", "http_status": 400}
-    assert model_fault(rejected) and not unavailable(rejected)
+    for gateway in (
+        {"urgency": None, "error_kind": "http_error", "http_status": 404},
+        {"urgency": None, "error_kind": "invalid_response_json"},
+        {"urgency": None, "error_kind": "model_mismatch"},
+    ):
+        assert unavailable(gateway) and not model_fault(gateway)
+    for own in ("invalid_output", "invalid_completion_json", "refusal", "incomplete"):
+        assert model_fault({"urgency": None, "error_kind": own})
     assert model_fault(fault) and not unavailable(fault)
     assert unavailable(outage) and not model_fault(outage)
     assert majority([outage, outage, outage]).get("unavailable")
     assert majority([fault, fault, {"urgency": 9, "countries": []}])["invalid"]
+
+
+def test_gateway_glitches_are_retried_but_a_rejected_key_is_not(monkeypatch):
+    monkeypatch.setattr(runner, "RETRY_DELAYS", (0, 0, 0))
+    glitch = {"data": None, "error": "x", "error_kind": "invalid_response_json", "usage": {}}
+    result = asyncio.run(runner.complete_with_retry(FakeClient(glitch, ok(answer())), "m", []))
+    assert result["attempts"] == 2 and result["data"]
+    no_credit = asyncio.run(runner.complete_with_retry(FakeClient(failure("http_error", 402)), "m", []))
+    assert no_credit["attempts"] == 1

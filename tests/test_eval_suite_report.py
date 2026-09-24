@@ -116,7 +116,7 @@ def test_build_html_contains_every_section(tmp_path):
 def test_decision_rule_coverage_false_call_margin_and_pool(tmp_path):
     score, prices = build_run(tmp_path)
     score["models"]["cheap_good"]["missing_answers"] = 3
-    assert not decide("cheap_good", "base", score, prices)["checks"]["Odpowiedział na każdy artykuł"]
+    assert not decide("cheap_good", "base", score, prices)["checks"]["Odpowiedział na każdy artykuł (on i Luna)"]
     score["models"]["cheap_good"]["missing_answers"] = 0
     score["paired_vs_baseline"]["cheap_good"]["false_call"] = {
         "difference": (0.02, 0.0, 0.05),
@@ -137,7 +137,7 @@ def test_items_never_attempted_fail_coverage(tmp_path):
     rescored = score_run(run, tmp_path / "labels.jsonl", tmp_path / "queue.json", tmp_path / "items.json", "base")
     report = rescored["models"]["cheap_good"]
     assert report["missing_answers"] == 3 and report["unavailable_items"] == 1
-    assert not decide("cheap_good", "base", rescored, prices)["checks"]["Odpowiedział na każdy artykuł"]
+    assert not decide("cheap_good", "base", rescored, prices)["checks"]["Odpowiedział na każdy artykuł (on i Luna)"]
 
 
 def test_reasoning_specs_are_flagged_in_the_report(tmp_path):
@@ -168,3 +168,12 @@ def test_report_lists_missed_criticals_and_refuses_locked_verdict_with_unlabelle
     page = build_html(score, prices, {})
     assert "Luna złapała, a kandydat przegapił" in page and "i3" in page
     assert "Brak werdyktu: 4 artykułów" in page and "Nie uruchomiono: never/ran" in page
+
+
+def test_baseline_gaps_block_every_verdict(tmp_path):
+    score, prices = build_run(tmp_path)
+    score["models"]["base"]["missing_answers"] = 2
+    assert not decide("cheap_good", "base", score, prices)["checks"]["Odpowiedział na każdy artykuł (on i Luna)"]
+    score["manifest"]["pool"] = "locked"
+    page = build_html(score, prices, {})
+    assert "Luna nie odpowiedziała na wszystkie artykuły" in page and "może zastąpić" not in page

@@ -54,8 +54,13 @@ def build_queue(items: list[dict], seed: int, retest_count: int = RETEST_COUNT) 
     # Hide repeats in the last 40%, only between labelling units (never inside a chain).
     tail_start = int(len(slots) * 0.6)
     boundaries = [p for p in range(tail_start, len(slots) + 1) if p == len(slots) or unit_of[p - 1] != unit_of[p]]
-    positions = sorted(rng.sample(boundaries, min(len(repeats), len(boundaries))), reverse=True)
-    for position, item_id in zip(positions, repeats, strict=False):
+    chosen = []
+    for item_id in repeats:
+        # Never directly after its own original, and at most one repeat per boundary.
+        options = [p for p in boundaries if p not in chosen and slots[p - 1]["item_id"] != item_id]
+        if options:
+            chosen.append(rng.choice(options))
+    for position, item_id in sorted(zip(chosen, repeats, strict=False), reverse=True):
         slots.insert(position, {"slot": "", "item_id": item_id, "retest_of": item_id})
     for number, slot in enumerate(slots, 1):
         slot["slot"] = f"s{number:03d}"

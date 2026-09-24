@@ -70,7 +70,8 @@ def decide(model: str, baseline: str, score: dict, prices: dict) -> dict:
     tier, tier_low, _, tier_verdict = diff("tier_ok")
     invalid = (report["invalid_call_rate"] or (0.0,))[0]
     checks = {
-        "Odpowiedział na każdy artykuł": report.get("missing_answers", 1) == 0,
+        "Odpowiedział na każdy artykuł (on i Luna)": report.get("missing_answers", 1) == 0
+        and score["models"][baseline].get("missing_answers", 1) == 0,
         "Nie przegapia więcej sytuacji „uciekaj”": recall is not None
         and recall >= -RECALL_MARGIN
         and recall_low >= -PESSIMISTIC_MARGIN,
@@ -248,6 +249,13 @@ def build_html(score: dict, prices: dict, labels: dict) -> str:
             f"Brak werdyktu: {score['unlabelled_items_in_pool']} artykułów z puli nie ma jeszcze Twojej oceny. "
             "Podgląd: " + verdict
         )
+    final = (
+        score["manifest"].get("pool") == "locked"
+        and not score.get("unlabelled_items_in_pool", 0)
+        and score["models"][baseline].get("missing_answers", 1) == 0
+    )
+    if score["models"][baseline].get("missing_answers", 1):
+        verdict = "Brak werdyktu: Luna nie odpowiedziała na wszystkie artykuły. Podgląd: " + verdict
     if score["manifest"].get("pool") != "locked":
         verdict = (
             "To pula robocza – wynik służy do sprawdzenia testu, nie do decyzji. "
@@ -269,7 +277,7 @@ def build_html(score: dict, prices: dict, labels: dict) -> str:
         out.append(f"<tr><td>{html.escape(labels.get(m, m))}</td>")
         out += [f"<td class={'yes' if ok else 'no'}>{'tak' if ok else 'nie'}</td>" for ok in d["checks"].values()]
         out.append(
-            f"<td class={'yes' if d['replace'] else 'no'}>{'może zastąpić' if d['replace'] else 'nie'}</td></tr>"
+            f"<td class={'yes' if d['replace'] else 'no'}>{('może zastąpić' if final else 'spełnia warunki (podgląd)') if d['replace'] else 'nie'}</td></tr>"
         )
     out.append("</table></div>")
     out.append(

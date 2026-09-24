@@ -14,18 +14,24 @@ from pathlib import Path
 from sentinel.eval.suite.stats import mcnemar_exact, paired_bootstrap, verdict, wilson
 
 ACTION_ORDER = {"log": 0, "alert": 1, "call": 2}
-# Provider-side or harness failures that say nothing about the model: overloads, timeouts,
-# server errors, the run's own budget stop, and a rejected key/credit. Every other request
-# that produced no answer (bad JSON, refusal, 4xx, wrong model returned) counts against it.
-OUTAGE_KINDS = {"timeout", "transport_error", "provider_error", "budget_exhausted"}
-OUTAGE_HTTP = {401, 402, 403, 408, 429}
+# Failures that are not the model's own answer: overloads, timeouts, gateway or host
+# errors (any HTTP error, a non-JSON gateway body, a different model returned), and the
+# run's own budget stop. They are retried; a model that still cannot answer fails the
+# coverage check instead of being hidden. The model's own faults are bad or refused
+# answers (invalid JSON/schema, refusal, cut off by length or content filter).
+OUTAGE_KINDS = {
+    "timeout",
+    "transport_error",
+    "provider_error",
+    "budget_exhausted",
+    "http_error",
+    "invalid_response_json",
+    "model_mismatch",
+}
 
 
 def is_outage(row: dict) -> bool:
-    kind, status = row.get("error_kind"), row.get("http_status")
-    return kind in OUTAGE_KINDS or (
-        kind == "http_error" and status is not None and (status in OUTAGE_HTTP or status >= 500)
-    )
+    return row.get("error_kind") in OUTAGE_KINDS
 
 
 def model_fault(row: dict) -> bool:
@@ -256,7 +262,8 @@ def model_report(model: str, calls: list[dict], truth: dict, items: dict, expect
     against it (items never attempted count as missing, not as silently absent).
     """
     wanted = set(expected)
-    rows = [c for c in calls if c["model"] == model and c["item_id"] in wanted]
+    model_rows = [c for c in calls if c["model"] == model]
+    rows = [c for c in model_rows if c["item_id"] in wanted]
     per_item = defaultdict(list)
     for row in rows:
         per_item[row["item_id"]].append(row)
@@ -308,6 +315,7 @@ def model_report(model: str, calls: list[dict], truth: dict, items: dict, expect
             [truth[i]["urgency"] for i in valid_preds], [p["urgency"] for p in valid_preds.values()]
         ),
         "invalid_call_rate": rate([model_fault(r) for r in paid]),
+        "model_faults_by_kind": dict(Counter(r.get("error_kind") for r in paid if model_fault(r))),
         "unavailable_calls": sum(unavailable(r) for r in rows),
         "unavailable_items": len(wanted) - len(preds),
         "planned_answers": len(wanted) * repeats,
@@ -329,7 +337,9 @@ def model_report(model: str, calls: list[dict], truth: dict, items: dict, expect
         "mean_cached_tokens": statistics.mean([u.get("cached_tokens") or 0 for u in usage]) if usage else None,
         "mean_completion_tokens": statistics.mean([u.get("completion_tokens") or 0 for u in usage]) if usage else None,
         "mean_reasoning_tokens": statistics.mean([u.get("reasoning_tokens") or 0 for u in usage]) if usage else None,
-        "sequences": sequence_metrics(rows, truth, items),
+        # All of the model's chain rows (labelled or not): an outage anywhere in a replay
+        # invalidates it, and merges into events from unlabelled items still count.
+        "sequences": sequence_metrics(model_rows, truth, items),
         "slices": slices,
         "_outcomes": outcomes,
     }

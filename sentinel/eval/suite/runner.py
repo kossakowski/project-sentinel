@@ -50,9 +50,12 @@ RETRY_DELAYS = (3, 10, 30)
 
 
 def _transient(completion: dict) -> bool:
-    status = completion.get("http_status")
-    kind = completion.get("error_kind")
-    return kind in TRANSIENT or (kind == "http_error" and status is not None and (status == 429 or status >= 500))
+    """Worth retrying now: any outage except a rejected key/credit and the budget stop."""
+    return (
+        is_outage(completion)
+        and completion.get("error_kind") != "budget_exhausted"
+        and completion.get("http_status") not in FATAL_HTTP
+    )
 
 
 # Failures raised before any request is sent: they cost nothing.
@@ -66,12 +69,13 @@ PRE_SEND = {
 
 
 def request_cost(completion: dict) -> float:
-    """Billed cost, or the reservation the ledger kept when the provider reported none."""
+    """Billed cost; for a request with no response (timeout, broken connection) the
+    reservation, since it may have been billed. A response without cost data counts 0."""
     if completion.get("cost_usd") is not None:
         return completion["cost_usd"]
-    if completion.get("error_kind") in PRE_SEND:
-        return 0.0
-    return completion.get("reserved_usd") or 0.0
+    if completion.get("error_kind") in {"timeout", "transport_error"}:
+        return completion.get("reserved_usd") or 0.0
+    return 0.0
 
 
 async def complete_with_retry(client, model: str, messages: list[dict]) -> dict:
@@ -277,7 +281,10 @@ def load_done(path: Path, chains: list[list[dict]]) -> tuple[list[dict], set, fl
             row["superseded"] = True
             changed = True
     if changed:
-        path.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
+        # Replace atomically: a crash mid-write must never lose paid rows or their cost.
+        temporary = path.with_suffix(".jsonl.tmp")
+        temporary.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
+        os.replace(temporary, path)
     kept = [r for r in rows if not r.get("superseded")]
     return kept, {(r["model"], r["repeat"], r["item_id"]) for r in kept}, spent
 
@@ -322,9 +329,10 @@ async def run(args) -> int:
     if manifest_path.exists():
         previous = json.loads(manifest_path.read_text(encoding="utf-8"))
         for key in ("items_sha256", "prompt_sha256", "schema_sha256", "pool", "repeats", "timeout_seconds"):
-            if previous.get(key) != manifest[key]:
+            if key in previous and previous[key] != manifest[key]:
                 raise SystemExit(f"Resume refused: {key} changed since this run started")
         manifest["created_at"] = previous["created_at"]
+        manifest["models"] = list(dict.fromkeys([*previous.get("models", []), *manifest["models"]]))
         previous_spent = previous.get("spent_usd") or 0.0
         manifest["sessions"] = previous.get("sessions", [])
     manifest.setdefault("sessions", [])

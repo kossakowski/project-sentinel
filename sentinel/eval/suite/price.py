@@ -78,16 +78,26 @@ def repair_cost(report: dict, prices: dict) -> float:
     return not_polish * (REPAIR_INPUT_TOKENS * prices["input"] + REPAIR_OUTPUT_TOKENS * prices["output"]) / 1e6
 
 
-def per_article(report: dict, prompt_scale: float, prices: dict) -> dict:
-    """Projected production cost of one article for one model."""
+def per_article(report: dict, prompt_scale: float, cached_tokens: float, prices: dict) -> dict:
+    """Projected production cost of one article for one model.
+
+    ``cached_tokens`` is the production cache hit per request, already converted to this
+    model's tokenizer (the eval runs requests back to back, so its own cache hits are
+    higher than sparse production traffic would get).
+    """
     prompt = report.get("mean_prompt_tokens") or 0.0
-    cached = min(report.get("mean_cached_tokens") or 0.0, prompt)
+    eval_cached = min(report.get("mean_cached_tokens") or 0.0, prompt)
     output = report.get("mean_completion_tokens") or 0.0
-    eval_listed = token_cost({"input": prompt, "cached": cached, "output": output}, prices)
+    eval_listed = token_cost({"input": prompt, "cached": eval_cached, "output": output}, prices)
     eval_billed = report["cost_usd"] / max(1, report.get("known_cost_calls", report["calls"]))
-    billed_ratio = eval_billed / eval_listed if eval_listed else 1.0
+    if not eval_listed or not eval_billed:
+        raise ValueError("no measured tokens or cost for this model; cannot project its price")
+    billed_ratio = eval_billed / eval_listed
     production_prompt = prompt * prompt_scale
-    classification = token_cost({"input": production_prompt, "cached": cached, "output": output}, prices) * billed_ratio
+    production_cached = min(cached_tokens, production_prompt) if eval_cached else 0.0
+    classification = (
+        token_cost({"input": production_prompt, "cached": production_cached, "output": output}, prices) * billed_ratio
+    )
     invalid = (report["invalid_call_rate"] or (0.0,))[0]
     repair = repair_cost(report, prices)
     retry = invalid * classification
@@ -95,6 +105,7 @@ def per_article(report: dict, prompt_scale: float, prices: dict) -> dict:
         "eval_cost_per_call": eval_billed,
         "billed_to_list_ratio": billed_ratio,
         "production_prompt_tokens": production_prompt,
+        "production_cached_tokens": production_cached,
         "classification": classification,
         "retry_after_invalid": retry,
         "summary_repair": repair,
@@ -114,13 +125,18 @@ def price_table(reports: dict, baseline: str, snapshot: dict, prices: dict, mont
     not_polish = (base["summary_not_polish_rate"] or (0.0,))[0]
     production_prompt = (snapshot["baseline_usage"].get("input") or 0.0) - not_polish * REPAIR_INPUT_TOKENS
     eval_prompt = base.get("mean_prompt_tokens") or 0.0
-    scale = production_prompt / eval_prompt if eval_prompt else 1.0
+    if not eval_prompt or production_prompt <= 0:
+        raise ValueError("baseline has no measured prompt tokens; cannot scale to production")
+    scale = production_prompt / eval_prompt
+    production_cached = snapshot["baseline_usage"].get("cached") or 0.0
     volumes = volume_scenarios(snapshot["daily"])
     table = {}
     for model, report in reports.items():
         if model not in prices or not report["calls"]:
             continue
-        article = per_article(report, scale, prices[model])
+        # Same cached share of the prompt as production, in this model's own tokens.
+        tokenizer_ratio = (report.get("mean_prompt_tokens") or 0.0) / eval_prompt
+        article = per_article(report, scale, production_cached * tokenizer_ratio, prices[model])
         monthly = {
             name: article["total"] * volumes[name] * DAYS_PER_MONTH
             for name in ("average_day", "busy_day_p90", "busiest_day")
