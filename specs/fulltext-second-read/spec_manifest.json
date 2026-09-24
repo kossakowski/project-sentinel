@@ -1,0 +1,909 @@
+{
+ "spec_file": "SPEC.md",
+ "mode": "interactive",
+ "skill": null,
+ "verified_reference": null,
+ "phases": [
+  {
+   "id": 1,
+   "title": "Eval: full-text second read and variant composition",
+   "depends_on": [],
+   "owned_files": [
+    "sentinel/classification/policy.py",
+    "sentinel/classification/second_read.py",
+    "sentinel/eval/suite/runner.py",
+    "sentinel/eval/suite/variants.py",
+    "sentinel/eval/suite/score.py",
+    "sentinel/eval/suite/price.py",
+    "sentinel/eval/suite/report.py",
+    "docs/how-to/model-eval.md",
+    "tests/test_second_read_triggers.py",
+    "tests/test_eval_suite_runner.py",
+    "tests/test_eval_suite_variants.py",
+    "tests/test_eval_suite_score.py",
+    "tests/test_eval_suite_price.py",
+    "tests/test_eval_suite_report.py"
+   ],
+   "parallelizable_with": [],
+   "requirement_count": 45
+  }
+ ],
+ "requirements": [
+  {
+   "id": "1.1",
+   "severity": "MUST",
+   "statement": "`policy.second_read_messages(article, full_text, candidates, policy)` MUST return exactly `messages(dataclasses.replace(article, summary=full_text), candidates, policy)`; the input `article` object MUST NOT be mutated.",
+   "test_ids": [
+    "test_second_read_messages_puts_full_text_in_summary_slot"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.2",
+   "severity": "MUST",
+   "statement": "`policy.system_prompt`, `policy.messages` and `policy.prompt_hash` MUST produce byte-identical output to before this change; for the policy in `config/config.yaml`, `prompt_hash(policy)` MUST equal `aa4d4ca8853bc1cc0852241bec01faeec065cbe163c1448c7828ba56a33f5115`.",
+   "test_ids": [
+    "test_prompt_hash_unchanged",
+    "test_rows_unchanged_without_flag"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.3",
+   "severity": "MUST",
+   "statement": "`second_read.c_trigger_hits(urgency, facts, triggers, levels)` MUST return, in the order given in `triggers`, the names that hit under these definitions, and `[]` whenever `urgency >= levels.call`: - `band_5_8`: `levels.alert <= urgency < levels.call`; - `band_7_8`: `levels.high <= urgency < levels.call`; - `facts_unclear`: `facts.get(\"status\") == \"unclear\"` or `facts.get(\"protection\") == \"unclear\"`.",
+   "test_ids": [
+    "test_c_trigger_bands_follow_levels",
+    "test_facts_unclear_trigger"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.3a",
+   "severity": "MUST",
+   "statement": "IF `triggers` contains a name not in `TRIGGERS` THEN `c_trigger_hits` MUST raise `ValueError` whose message names the unknown trigger and lists the valid ones; this check comes first and applies for every urgency, including `urgency >= levels.call`.",
+   "test_ids": [
+    "test_unknown_trigger_rejected"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.3b",
+   "severity": "MUST",
+   "statement": "`second_read.trigger_levels(config)` MUST derive, over the values of the dict `config.alerts.urgency_levels`, `call` as the lowest `min_score` with `action == \"phone_call\"` (9 if none), `alert` as the lowest `min_score` with `action == \"sms\"`, and `high` as the highest `min_score` with `action == \"sms\"`; IF no value has `action == \"sms\"` THEN `alert` and `high` MUST both equal `call` (no band can then hit). For `make_config(\"config/config.yaml\")` (loader imported from `sentinel.eval.compare_models`) it MUST return `TriggerLevels(alert=5, high=7, call=9)`.",
+   "test_ids": [
+    "test_trigger_levels_from_config"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.4",
+   "severity": "REMOVED",
+   "statement": "[REMOVED — `b_triggered` had no consumer; the eval uses `score.action()` (1.24).]",
+   "test_ids": [],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.5",
+   "severity": "MUST",
+   "statement": "WHERE the runner is started with `--second-read`, for every (model spec, repeat, item) whose first read produced a valid answer (`urgency` set) AND whose item has `full_text_status == \"ok\"` and a non-empty `full_text`, the runner MUST send one additional request through the same client, model and `complete_with_retry`, with messages `second_read_messages(article, item[\"full_text\"], candidates, policy)` where `candidates` is the exact list used for that item's first read (`[]` for single items).",
+   "test_ids": [
+    "test_second_read_sent_with_full_text_and_same_candidates"
+   ],
+   "provenance": "user-decision",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.5a",
+   "severity": "MUST",
+   "statement": "The row MUST then carry `row[\"second\"]`, a dict with keys: `request_sha256, usage, cost_usd, reserved_usd, latency_seconds, error_kind, http_status, attempts, retry_cost_usd, error, raw_content, budget_stopped` (chain items also `candidate_ids`) and, when the answer is valid, `urgency, countries, is_military_event, event_type, summary_pl, summary_polish, memory, facts` (same meanings and validation as the first read, using `validate_output` and `outcome_fields`).",
+   "test_ids": [
+    "test_second_read_sent_with_full_text_and_same_candidates"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.6",
+   "severity": "MUST",
+   "statement": "IF the item has no usable full text THEN `row[\"second\"]` MUST be `{\"skipped\": \"no_full_text\"}` and no second request is sent. IF the first read has no valid answer THEN `row[\"second\"]` MUST be `{\"skipped\": \"first_read_failed\"}` and no second request is sent; this takes precedence over `no_full_text`. IF the first completion carries `budget_stopped` or the run is already stopped THEN no second request MUST be sent and `row[\"second\"]` MUST be `{\"skipped\": \"run_stopped\"}`.",
+   "test_ids": [
+    "test_second_read_skipped_without_full_text_or_first_answer"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.7",
+   "severity": "MUST",
+   "statement": "IF the second answer fails validation THEN `row[\"second\"][\"error_kind\"]` MUST be `\"invalid_output\"`, `row[\"second\"]` MUST have no `urgency` key, and the first-read fields of the row MUST be unchanged.",
+   "test_ids": [
+    "test_invalid_second_answer_keeps_first"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.8",
+   "severity": "MUST",
+   "statement": "For chain items the second read MUST use the same `candidates` as that item's first read, and `row[\"second\"][\"candidate_ids\"]` MUST equal `row[\"candidate_ids\"]`; incident-memory validation, grouping and alert replay MUST use only the first read.",
+   "test_ids": [
+    "test_second_read_sent_with_full_text_and_same_candidates"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.9",
+   "severity": "MUST",
+   "statement": "The run's spending accounting MUST include second reads: `spent_so_far(rows)` MUST add `request_cost(row[\"second\"]) + row[\"second\"].get(\"retry_cost_usd\", 0)` for every row whose `second` has a request, and all second requests MUST go through the run's shared `BudgetLedger`.",
+   "test_ids": [
+    "test_spent_so_far_counts_second_reads"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.9a",
+   "severity": "MUST",
+   "statement": "The runner's `write()` MUST stop the run (same `stopped` flag and `stop_reason` values as today) WHEN `row[\"second\"].get(\"budget_stopped\")` is true or `row[\"second\"].get(\"http_status\")` is in `FATAL_HTTP`, exactly as it does for the first read's fields.",
+   "test_ids": [
+    "test_second_read_budget_stop_stops_the_run"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.10",
+   "severity": "MUST",
+   "statement": "[assumed: resume re-pays the first read] IF a row's second read ended in an outage (`score.is_outage(row[\"second\"])` is true) or is `{\"skipped\": \"run_stopped\"}` THEN `load_done` MUST treat that row as retryable exactly like a first-read outage (superseded and redone on resume; for a chain, the whole chain replay is redone). This deliberately pays for and re-samples the first read again, so both reads of a row always come from the same session; `docs/how-to/model-eval.md` MUST state this.",
+   "test_ids": [
+    "test_second_read_outage_is_redone_on_resume",
+    "test_model_eval_doc_has_variants_section"
+   ],
+   "provenance": "assumed",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.11",
+   "severity": "MUST",
+   "statement": "The manifest MUST record `\"second_read\": <bool>`; on resume, a manifest without the key MUST be treated as `false`, and IF the stored value differs from the current flag THEN the runner MUST exit with `SystemExit(\"Resume refused: second_read changed since this run started\")`.",
+   "test_ids": [
+    "test_resume_refused_when_second_read_flag_changes"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.12",
+   "severity": "MUST NOT",
+   "statement": "WHERE `--second-read` is absent, rows MUST NOT contain a `second` key and every row key set MUST equal the key set produced before this change (all pre-existing runner tests pass unmodified).",
+   "test_ids": [
+    "test_rows_unchanged_without_flag"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.13",
+   "severity": "MUST",
+   "statement": "WHERE `--second-read` is given, the planning printout MUST add the line `Planned second reads: up to <N> per model` where `N = repeats × (items with full_text_status \"ok\" and non-empty full_text)`.",
+   "test_ids": [
+    "test_planning_prints_second_read_count"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.14",
+   "severity": "MUST",
+   "statement": "`python -m sentinel.eval.suite.variants RUN_DIR [--out DIR] [--config PATH] [--rule NAME=TRIGGER[+TRIGGER...]]...` MUST read `RUN_DIR/calls.jsonl` (ignoring rows with `superseded: true`) and `RUN_DIR/manifest.json` and write `DIR/calls.jsonl` and `DIR/manifest.json`, `DIR` defaulting to `<RUN_DIR>-variants` (sibling folder). `--config` defaults to `config/config.yaml` and is read with `sentinel.eval.compare_models.make_config` only to compute `trigger_levels`. Without `--rule` the rules MUST be `C-5-8=band_5_8`, `C-7-8=band_7_8`, `C-unclear=facts_unclear`, `C-5-8-unclear=band_5_8+facts_unclear`.",
+   "test_ids": [
+    "test_variants_leaves_source_untouched_and_writes_manifest"
+   ],
+   "provenance": "user-decision",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.15",
+   "severity": "MUST",
+   "statement": "IF the source manifest does not have `\"second_read\": true` THEN `variants` MUST exit with `SystemExit(\"Run was not made with --second-read: nothing to compose\")` and write nothing.",
+   "test_ids": [
+    "test_variants_requires_second_read_run"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.16",
+   "severity": "MUST",
+   "statement": "For every source row, `variants` MUST emit an A row: an exact copy with `model` replaced by `\"<model>#A\"` (all other fields, including `second`, kept).",
+   "test_ids": [
+    "test_variants_a_rows_are_copies"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.17",
+   "severity": "MUST",
+   "statement": "For every source row whose first read has a valid `urgency`, and every rule, `variants` MUST emit a C row with `model = \"<model>#<NAME>\"`, computing `hits = c_trigger_hits(first urgency, first facts, rule triggers, levels)`. IF `hits` is non-empty AND `row[\"second\"]` has an `urgency` THEN the outcome fields (`urgency, countries, is_military_event, event_type, summary_pl, summary_polish, memory, facts`) MUST be taken from `row[\"second\"]`; otherwise from the first read. The C row MUST NOT contain `second` and MUST contain `variant = {\"rule\": NAME, \"triggers\": [...], \"hits\": hits, \"used_second\": <bool>, \"second_sent\": <bool>, \"second_cost_usd\": <float>}` where `second_sent` is true when `row[\"second\"]` has no `skipped` key and `second_cost_usd` is `request_cost(second) + second.retry_cost_usd` (0 when not sent).",
+   "test_ids": [
+    "test_variants_c_uses_second_only_when_triggered",
+    "test_variants_c_cost_adds_second_only_when_triggered"
+   ],
+   "provenance": "user-decision",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.18",
+   "severity": "MUST",
+   "statement": "IF a C row's `hits` is non-empty AND a second request was sent (no `skipped` key) THEN: `cost_usd` MUST be `None` when the first read's `cost_usd` is `None`, else `request_cost(first) + request_cost(second)`; `retry_cost_usd` MUST be the sum of both; `latency_seconds` MUST be `None` when both are `None`, else the sum with a `None` side counted as 0; and each of `usage.prompt_tokens`, `usage.cached_tokens`, `usage.completion_tokens`, `usage.total_tokens` and `usage.reasoning_tokens` MUST be the sum of both, where a `None` usage dict counts as `{}` and a `None` or missing token count counts as 0. Otherwise the first read's values MUST be kept unchanged. **Rationale:** the second request is paid whenever the trigger fires and full text exists, even if its answer is then unusable.",
+   "test_ids": [
+    "test_variants_c_cost_adds_second_only_when_triggered"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.19",
+   "severity": "MUST",
+   "statement": "C rows for chain items MUST have `chain_id` set to `None` and MUST NOT contain `event_id`, `notification`, `channels` or `accepted_memory`, so sequence metrics are computed only for A rows. **Rationale:** memory state is not replayed per variant; mixing would report wrong notification behaviour.",
+   "test_ids": [
+    "test_variants_chain_rows_drop_sequence_fields"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.20",
+   "severity": "MUST",
+   "statement": "IF the first read has no valid answer THEN every C row for it MUST carry the first read's error fields unchanged (`error_kind`, `error`, `http_status`, no `urgency`) and `variant = {\"rule\": NAME, \"triggers\": [...], \"hits\": [], \"used_second\": false, \"second_sent\": false, \"second_cost_usd\": 0.0}` and MUST NOT contain `second`, so C's invalid/unavailable accounting equals A's.",
+   "test_ids": [
+    "test_variants_failed_first_read_propagates"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.21",
+   "severity": "MUST NOT",
+   "statement": "`variants` MUST NOT modify any file in `RUN_DIR`. `DIR/manifest.json` MUST be the source manifest with these keys added — `\"variants_of\": <RUN_DIR name>`, `\"rules\": {NAME: [triggers]}`, `\"trigger_levels\": {\"alert\": int, \"high\": int, \"call\": int}` — and the key `\"models\"` replaced by the list of emitted variant model specs. Existing files in `DIR` MUST be replaced atomically (write to a temp file, then `os.replace`).",
+   "test_ids": [
+    "test_variants_leaves_source_untouched_and_writes_manifest"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.22",
+   "severity": "MUST",
+   "statement": "[assumed: rule-name pattern] IF a `--rule` names an unknown trigger, has a name not matching `^C-[A-Za-z0-9-]+$`, or repeats a rule name, or IF a source row's `model` contains `#`, or IF the resolved `DIR` equals the resolved `RUN_DIR` or `DIR` already holds a `manifest.json` without a `variants_of` key (a source run), THEN `variants` MUST exit with a `SystemExit` naming the problem and write nothing.",
+   "test_ids": [
+    "test_variants_rejects_bad_rule"
+   ],
+   "provenance": "assumed",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.23",
+   "severity": "MUST",
+   "statement": "[assumed: `#A` tie-break] `score.score_run` baseline resolution: IF `baseline` matches no model exactly THEN it MUST compare bare ids — the model and the `baseline` argument each with a `#...` suffix, then `+reasoning`, then `@...` stripped; IF several match, the one ending in `#A` MUST be chosen; IF still not exactly one, the existing behaviour (baseline not found → no comparisons) applies.",
+   "test_ids": [
+    "test_score_baseline_resolves_to_variant_a"
+   ],
+   "provenance": "assumed",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.24",
+   "severity": "MUST",
+   "statement": "[assumed: call threshold 9 from `score.action()`; counts are per row] `score.score_run` MUST add `\"b_corrections\": {model: stats}` for every model that has at least one row with a `second` dict. Over that model's **labelled rows** (rows whose item is in `expected`) with first-read `urgency >= 9`: `stats` MUST contain `first_call_rows` (count), `no_full_text`, `second_failed` (request sent, no valid `urgency`), `corrections` (second `urgency < 9`), and, for corrections only and mutually exclusive in this order: `misleading` (`truth.critical` true), `justified` (not critical and `truth.possible_call` false), `ambiguous` (the rest); plus `misleading_items` (sorted unique item ids).",
+   "test_ids": [
+    "test_score_b_corrections_counts"
+   ],
+   "provenance": "assumed",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.25",
+   "severity": "MUST",
+   "statement": "For runs without any `second` data, `score.json` MUST contain `\"b_corrections\": {}`, `\"variant_stats\": {}`, `\"second_read_cost\": {}` and `\"paired_vs_own_a\": {}`, and all other keys unchanged. `report` MUST treat any of these keys missing from an older `score.json` as `{}`.",
+   "test_ids": [
+    "test_score_without_second_has_empty_new_keys"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.26",
+   "severity": "MUST",
+   "statement": "`report.model_prices` MUST strip a `#...` suffix first, then `+reasoning`, then `@...`, so `\"openai/gpt-5.6-luna#C-5-8\"`, `\"openai/gpt-5.6-luna@openai#C-5-8\"` and `\"z-ai/glm-5.3-flash@Together+reasoning#A\"` price as `openai/gpt-5.6-luna`, `openai/gpt-5.6-luna` and `z-ai/glm-5.3-flash`.",
+   "test_ids": [
+    "test_model_prices_strips_variant_suffix"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.27",
+   "severity": "MUST",
+   "statement": "`report.main` MUST take a new `--config` argument (default `config/config.yaml`), and `--monthly-cap` MUST default to `None`. WHEN `--monthly-cap` is not given, it MUST read `classification.budget.monthly_usd` from that file with `yaml.safe_load`, and IF the file or key is missing THEN exit with `SystemExit(\"Monthly cap not found in <path>; pass --monthly-cap\")`. WHEN `--monthly-cap` is given, the config file MUST NOT be read. `report` MUST NOT read the config for any other purpose.",
+   "test_ids": [
+    "test_report_cap_defaults_to_config"
+   ],
+   "provenance": "user-decision",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.28",
+   "severity": "MUST",
+   "statement": "WHEN `score[\"b_corrections\"]` is non-empty, `report.html` MUST contain a section headed `Wariant B — korekty po telefonie` listing, per model, every count from 1.24 (labelled `wiersze, każde powtórzenie osobno`), the `misleading_items`, the cost projection from 1.33, and the sentence `Wariant B nigdy nie zmienia ani nie opóźnia samego telefonu.`",
+   "test_ids": [
+    "test_report_shows_b_section"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.29",
+   "severity": "MUST",
+   "statement": "`report.build_html` MUST show `n/d` in the chain cells of a model whose `sequences` dict is empty (instead of `0/0`).",
+   "test_ids": [
+    "test_report_renders_empty_sequences"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.30",
+   "severity": "MUST",
+   "statement": "For a variants run, the report's decision table MUST contain one `decide()` entry per `#C-...` model, each against the `#A` model of the same source spec (1.37, 1.40), using the unchanged margins in `report.py` (`RECALL_MARGIN`, `FALSE_CALL_MARGIN`, `TIER_MARGIN`, `PESSIMISTIC_MARGIN`, `MAX_INVALID_RATE`).",
+   "test_ids": [
+    "test_variant_decisions_use_own_a_from_real_scoring"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.31",
+   "severity": "MUST",
+   "statement": "`docs/how-to/model-eval.md` MUST gain a section `## 5. Full-text variants (A/B/C)` with: the runner command with `--second-read`, the `variants` command, refreshing the production snapshot (`price.snapshot_production`) so it contains the score mix, scoring the derived folder, the variant glossary, that C variants face the same pre-registered rule against their own `#A` with the cap from config and costs from the production score mix, that B is reported as correction counts plus its projected cost, the resume behaviour of 1.10, the chain limitation (1.19), the production caveat (1.34), and the headline-only exclusion with its data (1 of 35); every existing mention of a \"$10\" cap in that file MUST be replaced by \"the monthly cap from `config/config.yaml` (`classification.budget.monthly_usd`)\".",
+   "test_ids": [
+    "test_model_eval_doc_has_variants_section"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.32",
+   "severity": "MUST",
+   "statement": "[assumed: label format] `report.build_html` display labels MUST keep the variant: for a spec with a `#NAME` suffix the label MUST be: base label, then ` · NAME`, then `REASONING_NOTE` WHEN the spec without its `#...` suffix ends with `+reasoning` (e.g. `gpt-5.6-luna · C-5-8`, `glm-5.3-flash · C-5-8` + `REASONING_NOTE`). The base label is the `--labels` entry for the spec without the suffix if present, else today's derived label without `REASONING_NOTE`. A `--labels` entry for the full variant spec replaces the whole label.",
+   "test_ids": [
+    "test_report_labels_keep_variant"
+   ],
+   "provenance": "assumed",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.33",
+   "severity": "MUST",
+   "statement": "The B section's cost projection MUST be computed by `variant_prices` (1.41) per model in `b_corrections`, using `score[\"second_read_cost\"][model.removesuffix(\"#A\")]` (1.38), as `mean_second_cost × p_call × p_full_text_call × volume × 30.4`, where `p_call` is the production share of first reads with urgency ≥ 9 from the snapshot's `urgency_mix` (1.36) and `p_full_text_call = first_call_sent / first_call_rows`; shown for the `average_day` and `busy_day_p90` volumes of `price.volume_scenarios`, labelled `górne oszacowanie (każdy wynik 9–10, nie tylko telefony; koszt drugiego czytania z ewaluacji)`, next to the monthly cap. IF the snapshot has no `urgency_mix` (missing or empty list) THEN the cost cells MUST show `n/d — odśwież snapshot produkcji`; IF `first_call_rows` is 0 THEN they MUST show `n/d`; IF `mean_second_cost` is `None` (no second read was sent) THEN the projected cost MUST be `0` and the cell MUST add `brak drugich czytań w przebiegu`.",
+   "test_ids": [
+    "test_report_shows_b_section"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.34",
+   "severity": "MUST",
+   "statement": "[assumed: counts are per row] `score_run` MUST add `\"variant_stats\": {model: {\"rows\", \"triggered\", \"used_second\", \"all_triggered\", \"all_triggered_sent\"}}` for every model whose rows carry `variant`: `rows`, `triggered` (non-empty `hits`) and `used_second` counted over its **labelled rows** (item in `expected`); `all_triggered` and `all_triggered_sent` (triggered rows with `variant.second_sent`) counted over **all** its rows whose item is in the run's pool. WHEN `variant_stats` is non-empty, `report.html` MUST show, per C variant, the text `wyzwolone {triggered/rows:.0%} · drugie czytanie użyte {used_second/rows:.0%}` (e.g. `wyzwolone 50% · drugie czytanie użyte 25%`) labelled `w puli ewaluacyjnej (warstwowanej)`, or `wyzwolone n/d · drugie czytanie użyte n/d` WHEN `rows` is 0 (no labels yet), and the sentence `Na produkcji drugie czytania mają limit czasu na cykl i na artykuł, bez ponowień, więc przy wielu artykułach naraz część z nich się nie odbędzie. Ewaluacja zakłada, że odbywa się każde.`",
+   "test_ids": [
+    "test_variant_stats_and_caveat"
+   ],
+   "provenance": "assumed",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.35",
+   "severity": "MUST",
+   "statement": "For every `#C-...` model, `variant_prices` (1.41) MUST replace its `price_table` entry by: `total = A_total + extra`, where `A_total` is the per-article `total` of the same source spec's `#A` model and `extra = mean_second_cost × p_rule × p_full_text_rule`, with `mean_second_cost` from `score[\"second_read_cost\"][spec]` (treated as 0 when `None`), `p_full_text_rule = all_triggered_sent / all_triggered` from `variant_stats` (0 when `all_triggered` is 0), and `p_rule` the production share of first reads for which `c_trigger_hits(urgency, facts_proxy, rule triggers, levels)` is non-empty, computed from `urgency_mix` with `facts_proxy = {\"status\": \"unclear\"}` when the mix row's `unclear` is true, else `{}`, the rule's triggers from `score[\"manifest\"][\"rules\"]` and `levels = TriggerLevels(**score[\"manifest\"][\"trigger_levels\"])`; then `monthly`, `per_1000_articles`, `within_cap_busy_month` and `vs_baseline` recomputed from the new `total` exactly as `price_table` does, and every other per-article field of the entry (`classification`, `eval_cost_per_call`, `billed_to_list_ratio`, `production_prompt_tokens`, `production_cached_tokens`, `retry_after_invalid`, `summary_repair`) set to `None`. IF the snapshot has no `urgency_mix` (missing or empty list), or `score[\"manifest\"]` lacks `rules`/`trigger_levels`, or `A_total` is unavailable, THEN the C entry MUST have `total = None`, `monthly` values `None`, `per_1000_articles = None`, `vs_baseline = None` and `within_cap_busy_month = False`.",
+   "test_ids": [
+    "test_c_variant_cost_uses_production_mix",
+    "test_decide_sees_production_mix_cost"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.36",
+   "severity": "MUST",
+   "statement": "`price.snapshot_production` MUST also query and store `\"urgency_mix\"`: a list of `{\"urgency\": int, \"unclear\": bool, \"n\": int}` from `SELECT urgency_score AS urgency, COALESCE(json_extract(facts,'$.status')='unclear' OR json_extract(facts,'$.protection')='unclear', 0) AS unclear, count(*) AS n FROM classifications WHERE model_used = 'gpt-5.6-luna' AND classified_at >= '2026-09-20T21:30' GROUP BY 1, 2`, with `unclear` converted to a bool (`None` → `False`) and rows with the same `(urgency, unclear)` merged by summing `n`; existing keys MUST be unchanged. IF the mix query fails (non-zero exit or invalid JSON) THEN the snapshot MUST still be written with `daily` and `baseline_usage` and without `urgency_mix`, and a line `urgency_mix unavailable: <reason>` MUST be printed.",
+   "test_ids": [
+    "test_snapshot_records_urgency_mix"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.37",
+   "severity": "MUST",
+   "statement": "`report.build_html` MUST decide each `<spec>#C-...` model against `<spec>#A` (same source spec) when that model exists, using `score[\"paired_vs_own_a\"][model]` for the paired quality checks and `<spec>#A`'s report for the baseline-side coverage and cost checks; all other non-baseline models are decided against the run's baseline with `score[\"paired_vs_baseline\"]` as today. The missed-critical review list of a `<spec>#C-...` model MUST likewise come from `score[\"paired_vs_own_a\"][model]`. The run baseline's own `#A` model MUST NOT get a decision row.",
+   "test_ids": [
+    "test_variant_decisions_use_own_a_from_real_scoring"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.38",
+   "severity": "MUST",
+   "statement": "`score_run` MUST add `\"second_read_cost\": {spec: {\"mean_second_cost\", \"sent\", \"first_call_rows\", \"first_call_sent\"}}` for every model whose rows carry a `second` dict (a `#A` model of a variants run, or a model of a raw `--second-read` run), keyed by the model with a trailing `#A` removed, computed over **all** of that model's rows whose item is in the run's pool and whose first read has a valid `urgency`: `sent` = rows whose `second` has no `skipped` key, `mean_second_cost` = mean of `request_cost(second) + second.retry_cost_usd` over those rows (None when `sent` is 0), `first_call_rows` = rows with first-read `urgency >= 9`, `first_call_sent` = those among them with a sent second request. `request_cost` MUST move from `runner.py` to `score.py` (runner imports it from there; `runner.request_cost` stays importable) so that `score.py` does not import `runner.py`, which already imports `score.py`.",
+   "test_ids": [
+    "test_second_read_cost_basis",
+    "test_request_cost_lives_in_score"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.39",
+   "severity": "MUST",
+   "statement": "`report.build_html` MUST render a price-table entry whose `total` is `None` without raising: such entries sort after all others, and every cost cell of the entry (per article, monthly, `vs_baseline`, cap) MUST show `n/d — odśwież snapshot produkcji`.",
+   "test_ids": [
+    "test_price_table_renders_missing_cost"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.40",
+   "severity": "MUST",
+   "statement": "`score_run` MUST add `\"paired_vs_own_a\": {model: paired(reports[\"<spec>#A\"], reports[model], items)}` for every `<spec>#C-...` model whose `<spec>#A` model is in the run, computed before `_outcomes` are removed.",
+   "test_ids": [
+    "test_variant_decisions_use_own_a_from_real_scoring"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.41",
+   "severity": "MUST",
+   "statement": "`report.variant_prices(score, prices, snapshot)` MUST return a new prices dict: a copy of `prices` with every `#C-...` entry replaced per 1.35 and a new key `\"b_costs\": {model: {\"average_day\", \"busy_day_p90\", \"note\"}}` per 1.33. `report.main` MUST call it right after `price_table` and before `build_html`, write its result to `price.json`, and pass it to `build_html`; `build_html` and `decide()` MUST use only that result, so the cap and cheaper-or-proven-better checks for C variants see the production-mix cost.",
+   "test_ids": [
+    "test_report_shows_b_section",
+    "test_decide_sees_production_mix_cost"
+   ],
+   "provenance": "research",
+   "verify_at_integration": false
+  }
+ ],
+ "tests": [
+  {
+   "name": "test_second_read_messages_puts_full_text_in_summary_slot",
+   "type": "unit",
+   "requirement_ids": [
+    "1.1"
+   ],
+   "phase": 1,
+   "assertion": "article with summary \"Krótko\", full_text \"Pełny tekst artykułu\" → user JSON `article.summary == \"Pełny tekst artykułu\"`, title unchanged, system message equals `messages(article, [], policy)[0]`; original `article.summary` still \"Krótko\".",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_prompt_hash_unchanged",
+   "type": "unit",
+   "requirement_ids": [
+    "1.2"
+   ],
+   "phase": 1,
+   "assertion": "policy from `config/config.yaml` (via `yaml.safe_load`) → `prompt_hash(policy)` equals the 64-hex value in 1.2.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_c_trigger_bands_follow_levels",
+   "type": "unit",
+   "requirement_ids": [
+    "1.3"
+   ],
+   "phase": 1,
+   "assertion": "levels (5,7,9): urgency 4 → `[]` for `band_5_8`; 5 → `[\"band_5_8\"]`; 7 with `[\"band_5_8\",\"band_7_8\"]` → both in that order; 9 → `[]` even with facts status \"unclear\"; property: for every urgency 1–10 and every trigger subset, the result is `[]` whenever urgency ≥ 9.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_facts_unclear_trigger",
+   "type": "unit",
+   "requirement_ids": [
+    "1.3"
+   ],
+   "phase": 1,
+   "assertion": "urgency 2, facts `{\"status\":\"unclear\",\"protection\":\"none\"}` → `[\"facts_unclear\"]`; facts `{\"status\":\"active\",\"protection\":\"unclear\"}` → hit; `{\"status\":\"active\",\"protection\":\"none\"}` → `[]`; `{}` → `[]`.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_unknown_trigger_rejected",
+   "type": "unit",
+   "requirement_ids": [
+    "1.3a"
+   ],
+   "phase": 1,
+   "assertion": "`[\"headline_only\"]` → `ValueError` whose message contains `headline_only` and `band_5_8`; the same with urgency 9 → `ValueError` too.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_trigger_levels_from_config",
+   "type": "unit",
+   "requirement_ids": [
+    "1.3b"
+   ],
+   "phase": 1,
+   "assertion": "`make_config(\"config/config.yaml\")` → `TriggerLevels(5, 7, 9)`; the same config with the phone_call level's `min_score` set to 8 → `call == 8`; with every sms level removed → `alert == high == call`.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_second_read_sent_with_full_text_and_same_candidates",
+   "type": "integration",
+   "requirement_ids": [
+    "1.5",
+    "1.5a",
+    "1.8"
+   ],
+   "phase": 1,
+   "assertion": "FakeClient queue (first valid urgency 9, second valid urgency 4); single item with full_text → 2 requests; second request's user JSON `article.summary == item[\"full_text\"]`; `row[\"second\"][\"urgency\"] == 4`, `row[\"urgency\"] == 9`; `row[\"second\"]` has every 1.5a key. Chain of 2 items → each second request's `remembered_incidents` equals its first request's; `row[\"second\"][\"candidate_ids\"] == row[\"candidate_ids\"]`; with first urgency 9 and second 4 on the first chain item, that row's `notification == \"initial\"` and its `channels` include `phone_call` (the replay used the first read).",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_second_read_skipped_without_full_text_or_first_answer",
+   "type": "unit",
+   "requirement_ids": [
+    "1.6"
+   ],
+   "phase": 1,
+   "assertion": "item with `full_text_status \"http_403\"` → 1 request, `second == {\"skipped\": \"no_full_text\"}`; first read invalid → 1 request, `second == {\"skipped\": \"first_read_failed\"}`; first read invalid on an item without full text → `first_read_failed`; first completion with `budget_stopped: True` → 1 request, `second == {\"skipped\": \"run_stopped\"}`.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_invalid_second_answer_keeps_first",
+   "type": "unit",
+   "requirement_ids": [
+    "1.7"
+   ],
+   "phase": 1,
+   "assertion": "second payload with urgency 11 → `second[\"error_kind\"] == \"invalid_output\"`, `\"urgency\" not in second`, `row[\"urgency\"]` equals first.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_spent_so_far_counts_second_reads",
+   "type": "unit",
+   "requirement_ids": [
+    "1.9"
+   ],
+   "phase": 1,
+   "assertion": "rows with first cost 0.001 and second cost 0.002 + retry 0.0005 → `spent_so_far == 0.0035`.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_second_read_budget_stop_stops_the_run",
+   "type": "integration",
+   "requirement_ids": [
+    "1.9a"
+   ],
+   "phase": 1,
+   "assertion": "with `runner.RUNS` patched to `tmp_path`, `load_dotenv`, `fetch_model_catalogue` and `OpenRouterEvalClient` patched (no network, no real key): `--concurrency 1`, 3 single items with full text, FakeClient whose first item's second completion carries `budget_stopped: True` → exactly 2 requests sent in total, and the manifest session `stop_reason == \"budget\"`.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_second_read_outage_is_redone_on_resume",
+   "type": "unit",
+   "requirement_ids": [
+    "1.10"
+   ],
+   "phase": 1,
+   "assertion": "calls.jsonl with one single row whose `second.error_kind == \"timeout\"` and one with `second == {\"skipped\": \"run_stopped\"}` → `load_done` marks both superseded and excludes their keys from `done`; a chain whose second item has a second-read outage → every row of that chain replay superseded.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_resume_refused_when_second_read_flag_changes",
+   "type": "integration",
+   "requirement_ids": [
+    "1.11"
+   ],
+   "phase": 1,
+   "assertion": "with the same patches as test 11: manifest written without `second_read` key, resume with `--second-read --live` → `SystemExit` with message `Resume refused: second_read changed since this run started`; manifest with `\"second_read\": true`, resume without the flag → the same exit.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_rows_unchanged_without_flag",
+   "type": "unit",
+   "requirement_ids": [
+    "1.2",
+    "1.12"
+   ],
+   "phase": 1,
+   "assertion": "`classify_single` without second read → row key set equals the explicit pre-change key list from Technical Context (single item), no `second` key; `messages(article, [], policy)[1]` user JSON has exactly the keys `evaluation_time`, `article`, `remembered_incidents` and `article` has exactly `title, summary, source_name, source_type, language, published_at`.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_planning_prints_second_read_count",
+   "type": "unit",
+   "requirement_ids": [
+    "1.13"
+   ],
+   "phase": 1,
+   "assertion": "dry (non-live) run over a 3-item fixture with 2 full texts, `--repeats 2 --second-read` → stdout contains `Planned second reads: up to 4 per model`.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_variants_requires_second_read_run",
+   "type": "unit",
+   "requirement_ids": [
+    "1.15"
+   ],
+   "phase": 1,
+   "assertion": "manifest without `second_read` → `SystemExit` with the 1.15 message; output dir not created.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_variants_a_rows_are_copies",
+   "type": "unit",
+   "requirement_ids": [
+    "1.16"
+   ],
+   "phase": 1,
+   "assertion": "source row → A row equal except `model` ends `#A`; `second` kept.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_variants_c_uses_second_only_when_triggered",
+   "type": "unit",
+   "requirement_ids": [
+    "1.17"
+   ],
+   "phase": 1,
+   "assertion": "rule `C-5-8=band_5_8`: first 6 + second 9 → C urgency 9, `used_second True`, `second_sent True`; first 3 + second 9 → C urgency 3, `used_second False`; first 6 + `second` invalid → urgency 6, `used_second False`, `second_sent True`; no `second` key in C rows.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_variants_c_cost_adds_second_only_when_triggered",
+   "type": "unit",
+   "requirement_ids": [
+    "1.17",
+    "1.18"
+   ],
+   "phase": 1,
+   "assertion": "first cost 0.001 / prompt 100 / latency 1.0, second cost 0.002 / prompt 300 / latency 2.0; triggered → cost 0.003, prompt_tokens 400, latency 3.0, `variant.second_cost_usd == 0.002`; not triggered → 0.001 / 100; triggered but `second == {\"skipped\": \"no_full_text\"}` → 0.001, `second_sent False`; triggered with second `usage: None`, `latency_seconds: None`, `error_kind \"timeout\"`, `reserved_usd 0.004` → no exception, prompt_tokens 100, latency 1.0, cost 0.005; triggered with first `cost_usd None` → C `cost_usd is None`.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_variants_chain_rows_drop_sequence_fields",
+   "type": "unit",
+   "requirement_ids": [
+    "1.19"
+   ],
+   "phase": 1,
+   "assertion": "chain source row → C row `chain_id is None`, no `event_id/notification/channels/accepted_memory`; A row keeps them.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_variants_failed_first_read_propagates",
+   "type": "unit",
+   "requirement_ids": [
+    "1.20"
+   ],
+   "phase": 1,
+   "assertion": "first `error_kind \"invalid_output\"` → every C row has that `error_kind`, no `urgency`, no `second` key, `variant.hits == []`, `used_second False`, `second_sent False`.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_variants_leaves_source_untouched_and_writes_manifest",
+   "type": "integration",
+   "requirement_ids": [
+    "1.14",
+    "1.21"
+   ],
+   "phase": 1,
+   "assertion": "tmp run dir → source files' bytes identical after; out manifest has `variants_of`, `rules` with the 4 default rules, `trigger_levels == {\"alert\":5,\"high\":7,\"call\":9}`, `models` lists exactly 5 specs per source spec.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_variants_rejects_bad_rule",
+   "type": "unit",
+   "requirement_ids": [
+    "1.22"
+   ],
+   "phase": 1,
+   "assertion": "`--rule C-x=headline_only`, `--rule bad=band_5_8`, two `--rule C-a=band_5_8`, a source row model `x/y#z`, `--out` equal to `RUN_DIR`, and `--out` pointing at another source run's folder → `SystemExit` each; nothing written.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_score_baseline_resolves_to_variant_a",
+   "type": "unit",
+   "requirement_ids": [
+    "1.23"
+   ],
+   "phase": 1,
+   "assertion": "models `luna@openai#A`, `luna@openai#C-5-8`, baseline `luna` → resolved baseline is `luna@openai#A`; comparisons exist for `#C-5-8`; baseline `luna@openai` → the same resolution.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_score_b_corrections_counts",
+   "type": "unit",
+   "requirement_ids": [
+    "1.24"
+   ],
+   "phase": 1,
+   "assertion": "labels: item X critical, item Y `possible_call` false, item V critical with `possible_call` false, item Z unlabelled; A rows first 10 → second 4 for X, Y, V and Z, first 9 → second 9 for W (labelled) → `corrections == 3`, `misleading == 2`, `justified == 1`, `ambiguous == 0`, `misleading_items == [\"V\", \"X\"]`, Z not counted.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_score_without_second_has_empty_new_keys",
+   "type": "unit",
+   "requirement_ids": [
+    "1.25"
+   ],
+   "phase": 1,
+   "assertion": "ordinary run → `b_corrections`, `variant_stats`, `second_read_cost`, `paired_vs_own_a` all `{}`; a `score.json` dict with those four keys deleted → `build_html` renders without raising.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_model_prices_strips_variant_suffix",
+   "type": "unit",
+   "requirement_ids": [
+    "1.26"
+   ],
+   "phase": 1,
+   "assertion": "patched catalogue with `openai/gpt-5.6-luna` and `z-ai/glm-5.3-flash` → all three specs from 1.26 get prices.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_report_cap_defaults_to_config",
+   "type": "unit",
+   "requirement_ids": [
+    "1.27"
+   ],
+   "phase": 1,
+   "assertion": "tmp YAML with `classification.budget.monthly_usd: 30` → price table `monthly_cap_usd == 30`; missing key → `SystemExit` with the 1.27 message; `--monthly-cap 12` with a non-existent `--config` path → cap 12, no exit.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_report_shows_b_section",
+   "type": "unit",
+   "requirement_ids": [
+    "1.28",
+    "1.33",
+    "1.41"
+   ],
+   "phase": 1,
+   "assertion": "score with `b_corrections` (one misleading item `item-misleading-X1`) and `second_read_cost` for one spec (`mean_second_cost 0.001`, `first_call_rows 10`, `first_call_sent 5`), snapshot with `urgency_mix` giving `p_call = 0.02` and average volume 500/day, passed through `variant_prices` then `build_html` → html contains `Wariant B — korekty po telefonie`, `item-misleading-X1`, `wiersze, każde powtórzenie osobno`, `górne oszacowanie`, `$0.15` (0.001 × 0.02 × 0.5 × 500 × 30.4 = 0.152), and `Wariant B nigdy nie zmienia ani nie opóźnia samego telefonu.`; the same score with a snapshot without `urgency_mix` → html contains `n/d — odśwież snapshot produkcji`; with `mean_second_cost None` → the cell shows `$0.00` and `brak drugich czytań w przebiegu`; for a raw (non-variants) run where the model key has no `#A` → the B cost is still computed.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_report_renders_empty_sequences",
+   "type": "unit",
+   "requirement_ids": [
+    "1.29"
+   ],
+   "phase": 1,
+   "assertion": "a model with `sequences == {}` → html chain cells show `n/d`, not `0/0`.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_variant_decisions_use_own_a_from_real_scoring",
+   "type": "integration",
+   "requirement_ids": [
+    "1.30",
+    "1.37",
+    "1.40"
+   ],
+   "phase": 1,
+   "assertion": "tmp run dir with rows for `luna#A`, `luna#C-5-8`, `haiku#A`, `haiku#C-5-8` over 4 labelled items, where `haiku#C-5-8` rows are identical to `haiku#A` rows and differ from `luna#A` on 2 critical items; run the real `score_run` (baseline `luna`) → `paired_vs_own_a[\"haiku#C-5-8\"][\"critical_hit\"][\"difference\"][0] == 0`; `build_html` with `report.decide` wrapped by `unittest.mock.patch(..., wraps=decide)` → the recorded `(model, baseline)` call pairs are exactly `(luna#C-5-8, luna#A)`, `(haiku#C-5-8, haiku#A)`, `(haiku#A, luna#A)`; the recall check of `haiku#C-5-8` passes; no decision row for `luna#A`.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_model_eval_doc_has_variants_section",
+   "type": "unit",
+   "requirement_ids": [
+    "1.10",
+    "1.31"
+   ],
+   "phase": 1,
+   "assertion": "(in `tests/test_eval_suite_report.py`) read `docs/how-to/model-eval.md` → contains `## 5. Full-text variants (A/B/C)`, `--second-read`, `sentinel.eval.suite.variants`, `snapshot_production`, `1 of 35` and the word `re-sample` (1.10 resume note), and no longer contains `$10`.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_report_labels_keep_variant",
+   "type": "unit",
+   "requirement_ids": [
+    "1.32"
+   ],
+   "phase": 1,
+   "assertion": "specs `openai/gpt-5.6-luna@openai#A`, `openai/gpt-5.6-luna@openai#C-5-8`, `z-ai/glm-5.3-flash@Together+reasoning#C-5-8` → html contains `gpt-5.6-luna · A`, `gpt-5.6-luna · C-5-8` and `glm-5.3-flash · C-5-8` + `REASONING_NOTE`; with `--labels {\"openai/gpt-5.6-luna@openai\": \"Luna\"}` → `Luna · C-5-8`.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_variant_stats_and_caveat",
+   "type": "unit",
+   "requirement_ids": [
+    "1.34"
+   ],
+   "phase": 1,
+   "assertion": "variant rows: 4 labelled items (2 with hits, 1 used_second, both triggered rows sent) plus 1 unlabelled pool item with hits and no sent second → `variant_stats[model] == {\"rows\": 4, \"triggered\": 2, \"used_second\": 1, \"all_triggered\": 3, \"all_triggered_sent\": 2}`; html contains `wyzwolone 50% · drugie czytanie użyte 25%`, `w puli ewaluacyjnej (warstwowanej)` and the 1.34 sentence; the same model with no labelled rows → html contains `wyzwolone n/d · drugie czytanie użyte n/d` and no exception.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_c_variant_cost_uses_production_mix",
+   "type": "unit",
+   "requirement_ids": [
+    "1.35"
+   ],
+   "phase": 1,
+   "assertion": "`#A` total 0.001 per article; manifest `rules {\"C-5-8\": [\"band_5_8\"], \"C-unclear\": [\"facts_unclear\"]}`, `trigger_levels {\"alert\":5,\"high\":7,\"call\":9}`; `urgency_mix` `[{\"urgency\":6,\"unclear\":false,\"n\":12},{\"urgency\":2,\"unclear\":false,\"n\":88}]` (p_rule 0.12 for C-5-8, 0 for C-unclear); `mean_second_cost 0.002`; `variant_stats` giving `p_full_text_rule 0.5` → C-5-8 `total == pytest.approx(0.00112, rel=1e-9)`, `monthly.average_day == pytest.approx(0.00112 × average × 30.4, rel=1e-9)`; C-unclear `total == pytest.approx(0.001, rel=1e-9)`; C-5-8 `classification is None`; snapshot without `urgency_mix`, or with `urgency_mix: []` → C `total is None`, `within_cap_busy_month is False`.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_snapshot_records_urgency_mix",
+   "type": "unit",
+   "requirement_ids": [
+    "1.36"
+   ],
+   "phase": 1,
+   "assertion": "(in `tests/test_eval_suite_price.py`) patch `subprocess.run` to return JSON per SQL (daily rows, baseline usage, mix rows with `unclear` 0/1) → written snapshot has `daily`, `baseline_usage` unchanged and `urgency_mix` with bool `unclear`; the mix SQL contains `COALESCE(` and `json_extract(facts,'$.status')='unclear'`; mix rows `(3, null, 1)` and `(3, 0, 2)` → one entry `{\"urgency\": 3, \"unclear\": false, \"n\": 3}`; a failing mix query (`CalledProcessError`) → snapshot written with `daily` and `baseline_usage`, no `urgency_mix`, and stdout contains `urgency_mix unavailable:`.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_second_read_cost_basis",
+   "type": "unit",
+   "requirement_ids": [
+    "1.38"
+   ],
+   "phase": 1,
+   "assertion": "`luna#A` rows in the pool: 3 with sent second reads costing 0.001, 0.002, 0.003 (one of them first urgency 10), 1 skipped `no_full_text` with first urgency 9, 1 row outside the pool → `second_read_cost[\"luna\"] == {\"mean_second_cost\": 0.002, \"sent\": 3, \"first_call_rows\": 2, \"first_call_sent\": 1}`.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_price_table_renders_missing_cost",
+   "type": "unit",
+   "requirement_ids": [
+    "1.39"
+   ],
+   "phase": 1,
+   "assertion": "prices with one C entry whose `total` is `None` → `build_html` does not raise; that entry's row is last and shows `n/d — odśwież snapshot produkcji`.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_decide_sees_production_mix_cost",
+   "type": "unit",
+   "requirement_ids": [
+    "1.41",
+    "1.35"
+   ],
+   "phase": 1,
+   "assertion": "(in `tests/test_eval_suite_report.py`) `price_table` entry for `luna#C-5-8` with a stratified-pool `total` whose busy month exceeds the cap, and an `urgency_mix` whose production-mix `total` fits the cap → after `variant_prices`, `decide(\"luna#C-5-8\", \"luna#A\", score, new_prices)[\"checks\"]` has the cap check `True`; with the original `prices` it is `False`; `variant_prices` returns a copy (input `prices` unchanged) with a `b_costs` key.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_request_cost_lives_in_score",
+   "type": "unit",
+   "requirement_ids": [
+    "1.38"
+   ],
+   "phase": 1,
+   "assertion": "`from sentinel.eval.suite.score import request_cost` and `from sentinel.eval.suite.runner import request_cost` both work and are the same function; importing `sentinel.eval.suite.score` alone does not import `sentinel.eval.suite.runner` (checked in a fresh interpreter via `subprocess` with `sys.modules`).",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  }
+ ],
+ "gate_criteria": {
+  "1": [
+   ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v",
+   ".venv/bin/pytest tests/ -q",
+   ".venv/bin/ruff check sentinel/classification/policy.py sentinel/classification/second_read.py sentinel/eval/suite/ tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py",
+   ".venv/bin/ruff format --check sentinel/classification/policy.py sentinel/classification/second_read.py sentinel/eval/suite/ tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py"
+  ]
+ }
+}

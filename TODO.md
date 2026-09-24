@@ -219,6 +219,7 @@ Surfaced while building the eval suite (`docs/how-to/model-eval.md`). Code was n
 4. **Live prompt gets no headline-only signal.** The "body could not be fetched" caution exists only in the dead legacy prompt (`classifier.py` `_build_user_prompt`); `policy.messages()` passes title/summary with no hint that the text is just a headline.
 5. **Enriched body truncated to 500 characters** (`_fetch_body`), which can cut the clause that states geography.
 6. **Reproducible `gpt-5.6-luna` rule violations on the synthetic hold-out:** reads past-tense narration of an unresolved precaution as `resolved`; treats an explicitly ended alarm as an active `official_warning`; ignores the worked example that a civilian object found in a monitored country populates `affected_countries`.
+7. **Google News decoder can stall the whole cycle.** `ArticleEnricher._fetch_body` calls `_resolve_url` → `googlenewsdecoder.new_decoderv1` synchronously on the event loop; that library calls `requests.get`/`requests.post` with no timeout (0.1.7, lines 49, 71, 126). A hung Google request would freeze the cycle, including phone calls. Fix: run it on a small dedicated thread pool under a deadline (see `specs/fulltext-second-read/PRODUCTION_NOTES.md`, pitfall 1). Found 2026-09-24 during spec verification.
 
 ---
 
