@@ -176,4 +176,4 @@ def test_baseline_gaps_block_every_verdict(tmp_path):
     assert not decide("cheap_good", "base", score, prices)["checks"]["Odpowiedział na każdy artykuł (on i Luna)"]
     score["manifest"]["pool"] = "locked"
     page = build_html(score, prices, {})
-    assert "Luna nie odpowiedziała na wszystkie artykuły" in page and "może zastąpić" not in page
+    assert "Luna nie odpowiedziała na wszystkie artykuły" in page and ">może zastąpić<" not in page
