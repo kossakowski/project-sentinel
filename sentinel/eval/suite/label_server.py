@@ -68,7 +68,7 @@ def build_queue(items: list[dict], seed: int, retest_count: int = RETEST_COUNT) 
 
 
 def public_view(item: dict, slot: dict, chain_earlier: list[dict], translation: dict | None = None) -> dict:
-    """The only item data the page ever receives (plus a Polish translation, if any)."""
+    """The only item data the page ever receives (plus a Polish translation and the full text)."""
     article = item["article"]
     return {
         "slot": slot["slot"],
@@ -81,6 +81,8 @@ def public_view(item: dict, slot: dict, chain_earlier: list[dict], translation: 
         "in_chain": bool(item["chain_id"]) and slot["retest_of"] is None,
         "chain_earlier": chain_earlier,
         "translation": translation,
+        # Full page text for the operator's judgment (the model sees only the summary).
+        "full_text": item.get("full_text") if item.get("full_text_status") == "ok" else None,
     }
 
 

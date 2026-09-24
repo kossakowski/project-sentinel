@@ -115,6 +115,7 @@ def test_public_view_never_leaks_scores_origin_or_target():
         "in_chain",
         "chain_earlier",
         "translation",
+        "full_text",
     }
     translated = public_view(item("p1"), {"slot": "s001", "retest_of": None}, [], {"title_pl": "T", "summary_pl": "S"})
     assert translated["translation"] == {"title_pl": "T", "summary_pl": "S"}
@@ -182,3 +183,10 @@ def test_same_as_must_point_to_an_earlier_article_of_the_same_series(tmp_path):
             store.save({**base, "slot": slot_of["b"], "same_as": bad})
     with pytest.raises(ValueError):
         store.save({**base, "slot": slot_of["a"], "same_as": slot_of["b"]})
+
+
+def test_full_text_is_shown_only_when_fetched():
+    fetched = dict(item("p1"), full_text="Cały tekst artykułu.", full_text_status="ok")
+    assert public_view(fetched, {"slot": "s001", "retest_of": None}, [])["full_text"] == "Cały tekst artykułu."
+    blocked = dict(item("p2"), full_text=None, full_text_status="http_403")
+    assert public_view(blocked, {"slot": "s002", "retest_of": None}, [])["full_text"] is None
