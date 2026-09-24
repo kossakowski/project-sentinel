@@ -3,6 +3,8 @@
 import asyncio
 import json
 
+import pytest
+
 from sentinel.eval.compare_models import make_config
 from sentinel.eval.suite import runner
 from sentinel.eval.suite.score import majority, model_fault, unavailable
@@ -137,7 +139,10 @@ def test_load_done_drops_half_finished_chains_and_outages(tmp_path):
     path.write_text("".join(json.dumps(r) + "\n" for r in rows))
     kept, done, spent = runner.load_done(path, chains)
     assert done == {("m", 0, "s"), ("m", 1, "z")}  # the model's own bad answer is final
-    assert spent == 0.03 and len(path.read_text().splitlines()) == 2
+    lines = [json.loads(line) for line in path.read_text().splitlines()]
+    assert spent == 0.03 and len(lines) == 5  # nothing deleted: superseded rows keep their cost
+    assert sum(bool(r.get("superseded")) for r in lines) == 3
+    assert runner.load_done(path, chains)[2] == 0.03  # a second resume still sees the spend
 
 
 def test_budget_stop_mid_chain_redoes_the_whole_chain_without_duplicates(tmp_path):
@@ -150,7 +155,8 @@ def test_budget_stop_mid_chain_redoes_the_whole_chain_without_duplicates(tmp_pat
     ]
     path.write_text("".join(json.dumps(r) + "\n" for r in rows))
     kept, done, _ = runner.load_done(path, chains)
-    assert kept == [] and done == set() and path.read_text() == ""
+    assert kept == [] and done == set()
+    assert all(json.loads(line)["superseded"] for line in path.read_text().splitlines())
 
 
 def test_two_setups_of_one_model_stay_separate(tmp_path):
@@ -168,16 +174,27 @@ def test_two_setups_of_one_model_stay_separate(tmp_path):
 
 def test_spent_so_far_counts_unknown_cost_timeouts_at_their_reservation():
     rows = [
-        {"cost_usd": 0.01},
+        {"cost_usd": 0.01, "retry_cost_usd": 0.004},
         {"cost_usd": None, "error_kind": "timeout", "reserved_usd": 0.02},
-        {"cost_usd": None, "error_kind": "http_error", "reserved_usd": 0.5},
+        {"cost_usd": None, "error_kind": "http_error", "http_status": 400, "reserved_usd": 0.5},
+        {"cost_usd": None, "error_kind": "budget_exhausted", "reserved_usd": 9.0},
     ]
-    assert runner.spent_so_far(rows) == 0.03
+    assert runner.spent_so_far(rows) == pytest.approx(0.534)
+
+
+def test_retry_cost_of_failed_attempts_is_kept(monkeypatch):
+    monkeypatch.setattr(runner, "RETRY_DELAYS", (0, 0, 0))
+    paid_500 = dict(failure("http_error", 500), cost_usd=0.002)
+    client = FakeClient(paid_500, dict(failure("timeout"), reserved_usd=0.01), ok(answer()))
+    result = asyncio.run(runner.complete_with_retry(client, "m", []))
+    assert result["retry_cost_usd"] == pytest.approx(0.012)
 
 
 def test_scoring_separates_model_faults_from_outages():
     fault = {"urgency": None, "error_kind": "invalid_output"}
-    outage = {"urgency": None, "error_kind": "http_error"}
+    outage = {"urgency": None, "error_kind": "http_error", "http_status": 503}
+    rejected = {"urgency": None, "error_kind": "http_error", "http_status": 400}
+    assert model_fault(rejected) and not unavailable(rejected)
     assert model_fault(fault) and not unavailable(fault)
     assert unavailable(outage) and not model_fault(outage)
     assert majority([outage, outage, outage]).get("unavailable")

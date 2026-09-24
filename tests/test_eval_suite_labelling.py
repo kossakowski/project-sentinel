@@ -155,3 +155,30 @@ def test_page_labels_hide_item_ids(tmp_path):
     path = tmp_path / "labels.jsonl"
     path.write_text(json.dumps({"slot": "s001", "item_id": "syn-ru-01", "retest_of": None, "tier": "NOTE"}) + "\n")
     assert page_labels(path) == {"s001": {"slot": "s001", "tier": "NOTE"}}
+
+
+def test_repeats_never_land_inside_a_chain():
+    items = [item(f"p{n}") for n in range(60)] + [
+        item(f"k{c}{n}", "holdout", f"seq{c}", n) for c in range(8) for n in range(4)
+    ]
+    for seed in range(20):
+        queue = build_queue(items, seed=seed, retest_count=10)
+        ids = [s["item_id"] for s in queue]
+        for c in range(8):
+            positions = [ids.index(f"k{c}{n}") for n in range(4)]
+            assert positions == list(range(positions[0], positions[0] + 4))
+
+
+def test_same_as_must_point_to_an_earlier_article_of_the_same_series(tmp_path):
+    items = [item("a", "holdout", "ch", 0), item("b", "holdout", "ch", 1), item("x")]
+    items_path = tmp_path / "items.json"
+    items_path.write_text(json.dumps({"items": items, "items_sha256": "abc"}))
+    store = LabelStore(items_path, tmp_path / "queue.json", tmp_path / "labels.jsonl", seed=1, translations_path=None)
+    slot_of = {s["item_id"]: s["slot"] for s in store.slots if not s["retest_of"]}
+    base = {"tier": "FLEE", "urgency": 9, "notify": False}
+    store.save({**base, "slot": slot_of["b"], "same_as": slot_of["a"]})
+    for bad in (slot_of["x"], slot_of["b"]):
+        with pytest.raises(ValueError):
+            store.save({**base, "slot": slot_of["b"], "same_as": bad})
+    with pytest.raises(ValueError):
+        store.save({**base, "slot": slot_of["a"], "same_as": slot_of["b"]})

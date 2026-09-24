@@ -14,25 +14,26 @@ from pathlib import Path
 from sentinel.eval.suite.stats import mcnemar_exact, paired_bootstrap, verdict, wilson
 
 ACTION_ORDER = {"log": 0, "alert": 1, "call": 2}
-# Answers the model itself got wrong. Anything else without an urgency is a provider or
-# harness failure (overload, timeout, budget stop): reported as availability, not quality.
-MODEL_FAULTS = {
-    "invalid_output",
-    "invalid_completion_json",
-    "invalid_content",
-    "invalid_message",
-    "invalid_choices",
-    "incomplete",
-    "refusal",
-}
+# Provider-side or harness failures that say nothing about the model: overloads, timeouts,
+# server errors, the run's own budget stop, and a rejected key/credit. Every other request
+# that produced no answer (bad JSON, refusal, 4xx, wrong model returned) counts against it.
+OUTAGE_KINDS = {"timeout", "transport_error", "provider_error", "budget_exhausted"}
+OUTAGE_HTTP = {401, 402, 403, 429}
+
+
+def is_outage(row: dict) -> bool:
+    kind, status = row.get("error_kind"), row.get("http_status")
+    return kind in OUTAGE_KINDS or (
+        kind == "http_error" and status is not None and (status in OUTAGE_HTTP or status >= 500)
+    )
 
 
 def model_fault(row: dict) -> bool:
-    return row.get("urgency") is None and row.get("error_kind") in MODEL_FAULTS
+    return row.get("urgency") is None and not is_outage(row)
 
 
 def unavailable(row: dict) -> bool:
-    return row.get("urgency") is None and row.get("error_kind") not in MODEL_FAULTS
+    return row.get("urgency") is None and is_outage(row)
 
 
 def action(urgency: int) -> str:
@@ -45,9 +46,11 @@ def action(urgency: int) -> str:
 
 
 def load_jsonl(path: Path) -> list[dict]:
+    """Rows of a JSONL file, without rows a resumed run superseded (redone later)."""
     if not path.exists():
         return []
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return [r for r in rows if not r.get("superseded")]
 
 
 def truth_from_labels(labels: list[dict], queue: list[dict], adjudicated: list[dict] | None = None) -> dict:
@@ -241,8 +244,14 @@ def percentile(values: list[float], q: float) -> float | None:
     return values[min(len(values) - 1, int(round(q * (len(values) - 1))))]
 
 
-def model_report(model: str, calls: list[dict], truth: dict, items: dict) -> dict:
-    rows = [c for c in calls if c["model"] == model]
+def model_report(model: str, calls: list[dict], truth: dict, items: dict, expected: list[str], repeats: int) -> dict:
+    """Metrics for one model spec over the labelled items of the run's pool.
+
+    ``expected`` is every labelled item the run should have answered; coverage is judged
+    against it (items never attempted count as missing, not as silently absent).
+    """
+    wanted = set(expected)
+    rows = [c for c in calls if c["model"] == model and c["item_id"] in wanted]
     per_item = defaultdict(list)
     for row in rows:
         per_item[row["item_id"]].append(row)
@@ -250,7 +259,8 @@ def model_report(model: str, calls: list[dict], truth: dict, items: dict) -> dic
     preds = {i: p for i, p in all_preds.items() if not p.get("unavailable")}
     outcomes = {i: item_outcomes(p, truth[i]) for i, p in preds.items()}
     paid = [r for r in rows if not unavailable(r)]
-    usage = [r.get("usage") or {} for r in paid]
+    answered = {(r["item_id"], r["repeat"]) for r in paid}
+    usage = [r["usage"] for r in paid if (r.get("usage") or {}).get("prompt_tokens") is not None]
     valid_preds = {i: p for i, p in preds.items() if not p["invalid"]}
 
     def slice_rate(key, predicate):
@@ -289,7 +299,9 @@ def model_report(model: str, calls: list[dict], truth: dict, items: dict) -> dic
         ),
         "invalid_call_rate": rate([model_fault(r) for r in paid]),
         "unavailable_calls": sum(unavailable(r) for r in rows),
-        "unavailable_items": len(all_preds) - len(preds),
+        "unavailable_items": len(wanted) - len(preds),
+        "planned_answers": len(wanted) * repeats,
+        "missing_answers": len(wanted) * repeats - len(answered),
         "retried_calls": sum((r.get("attempts") or 1) > 1 for r in rows),
         "invalid_item_rate": rate([p["invalid"] for p in preds.values()]),
         "invalid_on_critical_calls": sum(
@@ -363,7 +375,12 @@ def score_run(run_dir: Path, labels_path: Path, queue_path: Path, items_path: Pa
         matches = [m for m in models if m.removesuffix("+reasoning").partition("@")[0] == baseline]
         if len(matches) == 1:
             baseline = matches[0]
-    reports = {m: model_report(m, calls, truth, items) for m in models}
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    pool = manifest.get("pool", "all")
+    repeats = manifest.get("repeats", 1)
+    expected = sorted(i for i in truth if i in items and (pool == "all" or items[i].get("pool") == pool))
+    run_pool = [i for i, it in items.items() if pool == "all" or it.get("pool") == pool]
+    reports = {m: model_report(m, calls, truth, items, expected, repeats) for m in models}
     comparisons = {
         m: paired(reports[baseline], reports[m], items) for m in models if m != baseline and baseline in reports
     }
@@ -371,9 +388,10 @@ def score_run(run_dir: Path, labels_path: Path, queue_path: Path, items_path: Pa
         report.pop("_outcomes")
     return {
         "run": run_dir.name,
-        "manifest": json.loads((run_dir / "manifest.json").read_text(encoding="utf-8")),
-        "labelled_items": len(truth),
-        "critical_items": sum(t["critical"] for t in truth.values()),
+        "manifest": manifest,
+        "labelled_items": len(expected),
+        "critical_items": sum(truth[i]["critical"] for i in expected),
+        "unlabelled_items_in_pool": len(run_pool) - len(expected),
         "retest": retest_agreement(labels),
         "baseline": baseline,
         "models": reports,

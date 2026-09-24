@@ -11,8 +11,8 @@ items:
       source_url: "synthetic://suite-syn-pl-01"
       source_type: rss
       language: pl
-      published_at: "2026-09-03T04:10:00+00:00"
-      fetched_at: "2026-09-03T04:16:00+00:00"
+      published_at: "2026-09-03T04:06:52+00:00"
+      fetched_at: "2026-09-03T04:16:32+00:00"
 
   - id: syn-pl-02
     target: ended_alarm
@@ -23,8 +23,8 @@ items:
       source_url: "synthetic://suite-syn-pl-02"
       source_type: rss
       language: pl
-      published_at: "2026-09-03T09:40:00+00:00"
-      fetched_at: "2026-09-03T09:45:00+00:00"
+      published_at: "2026-09-03T09:38:35+00:00"
+      fetched_at: "2026-09-03T09:40:29+00:00"
 
   - id: syn-pl-03
     target: ended_alarm
@@ -35,8 +35,8 @@ items:
       source_url: "synthetic://suite-syn-pl-03"
       source_type: rss
       language: pl
-      published_at: "2026-09-04T20:05:00+00:00"
-      fetched_at: "2026-09-04T20:09:00+00:00"
+      published_at: "2026-09-04T20:07:17+00:00"
+      fetched_at: "2026-09-04T20:14:05+00:00"
 
   - id: syn-pl-04
     target: civilian_object_found
@@ -47,8 +47,8 @@ items:
       source_url: "synthetic://suite-syn-pl-04"
       source_type: rss
       language: pl
-      published_at: "2026-09-05T11:20:00+00:00"
-      fetched_at: "2026-09-05T11:26:00+00:00"
+      published_at: "2026-09-05T11:23:48+00:00"
+      fetched_at: "2026-09-05T11:33:47+00:00"
 
   - id: syn-pl-05
     target: drills_vs_attack
@@ -59,20 +59,20 @@ items:
       source_url: "synthetic://suite-syn-pl-05"
       source_type: rss
       language: pl
-      published_at: "2026-09-06T08:00:00+00:00"
-      fetched_at: "2026-09-06T08:07:00+00:00"
+      published_at: "2026-09-06T08:01:22+00:00"
+      fetched_at: "2026-09-06T08:09:56+00:00"
 
   - id: syn-pl-06
     target: dramatic_headline_no_facts
     article:
       title: "SZOK: Polska na krawędzi wojny?! To, co się dzieje, mrozi krew w żyłach"
       summary: "SZOK: Polska na krawędzi wojny?! To, co się dzieje, mrozi krew w żyłach - Fakt Alarmowy"
-      source_name: Fakt Alarmowy
+      source_name: "GoogleNews:Rosja atak"
       source_url: "synthetic://suite-syn-pl-06"
       source_type: google_news
       language: pl
-      published_at: "2026-09-07T14:30:00+00:00"
-      fetched_at: "2026-09-07T14:35:00+00:00"
+      published_at: "2026-09-07T14:29:46+00:00"
+      fetched_at: "2026-09-07T14:31:02+00:00"
 
   - id: syn-pl-07
     target: nationality_vs_geography
@@ -83,8 +83,8 @@ items:
       source_url: "synthetic://suite-syn-pl-07"
       source_type: rss
       language: pl
-      published_at: "2026-09-08T07:15:00+00:00"
-      fetched_at: "2026-09-08T07:20:00+00:00"
+      published_at: "2026-09-08T07:14:17+00:00"
+      fetched_at: "2026-09-08T07:15:22+00:00"
 
   - id: syn-pl-08
     target: reaction_vs_event
@@ -95,8 +95,8 @@ items:
       source_url: "synthetic://suite-syn-pl-08"
       source_type: rss
       language: pl
-      published_at: "2026-09-09T10:00:00+00:00"
-      fetched_at: "2026-09-09T10:05:00+00:00"
+      published_at: "2026-09-09T10:01:50+00:00"
+      fetched_at: "2026-09-09T10:10:47+00:00"
 
   - id: syn-pl-09
     target: past_tense_unresolved
@@ -107,8 +107,8 @@ items:
       source_url: "synthetic://suite-syn-pl-09"
       source_type: telegram
       language: pl
-      published_at: "2026-09-10T06:30:00+00:00"
-      fetched_at: "2026-09-10T06:35:00+00:00"
+      published_at: "2026-09-10T06:31:04+00:00"
+      fetched_at: "2026-09-10T06:36:33+00:00"
 
   - id: syn-pl-10
     target: civilian_object_found
@@ -119,20 +119,20 @@ items:
       source_url: "synthetic://suite-syn-pl-10"
       source_type: rss
       language: pl
-      published_at: "2026-09-11T13:45:00+00:00"
-      fetched_at: "2026-09-11T13:50:00+00:00"
+      published_at: "2026-09-11T13:44:32+00:00"
+      fetched_at: "2026-09-11T13:53:26+00:00"
 
   - id: syn-en-01
     target: dramatic_headline_no_facts
     article:
       title: "'It could happen any day': fears grow along NATO's eastern edge"
       summary: "'It could happen any day': fears grow along NATO's eastern edge - Baltic Herald Wire"
-      source_name: Baltic Herald Wire
+      source_name: "GoogleNews:Russia attack NATO"
       source_url: "synthetic://suite-syn-en-01"
       source_type: google_news
       language: en
-      published_at: "2026-09-02T09:00:00+00:00"
-      fetched_at: "2026-09-02T09:06:00+00:00"
+      published_at: "2026-09-02T09:03:56+00:00"
+      fetched_at: "2026-09-02T09:12:23+00:00"
 
   - id: syn-en-02
     target: russian_drone_other_monitored
@@ -143,8 +143,8 @@ items:
       source_url: "synthetic://suite-syn-en-02"
       source_type: rss
       language: en
-      published_at: "2026-09-04T02:20:00+00:00"
-      fetched_at: "2026-09-04T02:27:00+00:00"
+      published_at: "2026-09-04T02:23:17+00:00"
+      fetched_at: "2026-09-04T02:25:09+00:00"
 
   - id: syn-en-03
     target: russian_drone_other_monitored
@@ -155,8 +155,8 @@ items:
       source_url: "synthetic://suite-syn-en-03"
       source_type: rss
       language: en
-      published_at: "2026-09-05T15:10:00+00:00"
-      fetched_at: "2026-09-05T15:17:00+00:00"
+      published_at: "2026-09-05T15:14:10+00:00"
+      fetched_at: "2026-09-05T15:23:35+00:00"
 
   - id: syn-en-04
     target: drills_vs_attack
@@ -167,8 +167,8 @@ items:
       source_url: "synthetic://suite-syn-en-04"
       source_type: rss
       language: en
-      published_at: "2026-09-06T11:00:00+00:00"
-      fetched_at: "2026-09-06T11:05:00+00:00"
+      published_at: "2026-09-06T11:02:07+00:00"
+      fetched_at: "2026-09-06T11:11:24+00:00"
 
   - id: syn-en-05
     target: ended_alarm
@@ -179,8 +179,8 @@ items:
       source_url: "synthetic://suite-syn-en-05"
       source_type: rss
       language: en
-      published_at: "2026-09-07T18:45:00+00:00"
-      fetched_at: "2026-09-07T18:50:00+00:00"
+      published_at: "2026-09-07T18:43:29+00:00"
+      fetched_at: "2026-09-07T18:53:05+00:00"
 
   - id: syn-en-06
     target: nationality_vs_geography
@@ -191,8 +191,8 @@ items:
       source_url: "synthetic://suite-syn-en-06"
       source_type: rss
       language: en
-      published_at: "2026-09-08T13:00:00+00:00"
-      fetched_at: "2026-09-08T13:06:00+00:00"
+      published_at: "2026-09-08T13:02:32+00:00"
+      fetched_at: "2026-09-08T13:07:26+00:00"
 
   - id: syn-en-07
     target: past_tense_unresolved
@@ -203,8 +203,8 @@ items:
       source_url: "synthetic://suite-syn-en-07"
       source_type: telegram
       language: en
-      published_at: "2026-09-09T19:15:00+00:00"
-      fetched_at: "2026-09-09T19:20:00+00:00"
+      published_at: "2026-09-09T19:12:47+00:00"
+      fetched_at: "2026-09-09T19:14:18+00:00"
 
   - id: syn-en-08
     target: reaction_vs_event
@@ -215,8 +215,8 @@ items:
       source_url: "synthetic://suite-syn-en-08"
       source_type: rss
       language: en
-      published_at: "2026-09-10T08:30:00+00:00"
-      fetched_at: "2026-09-10T08:36:00+00:00"
+      published_at: "2026-09-10T08:29:50+00:00"
+      fetched_at: "2026-09-10T08:35:16+00:00"
 
   - id: syn-en-09
     target: civilian_object_found
@@ -227,20 +227,20 @@ items:
       source_url: "synthetic://suite-syn-en-09"
       source_type: rss
       language: en
-      published_at: "2026-09-11T10:05:00+00:00"
-      fetched_at: "2026-09-11T10:10:00+00:00"
+      published_at: "2026-09-11T10:02:08+00:00"
+      fetched_at: "2026-09-11T10:10:16+00:00"
 
   - id: syn-en-10
     target: dramatic_headline_no_facts
     article:
       title: "Baltic states on edge as tensions reportedly spiral out of control"
       summary: "Baltic states on edge as tensions reportedly spiral out of control - Northern Watch Daily"
-      source_name: Northern Watch Daily
+      source_name: "GoogleNews:Russia attack NATO"
       source_url: "synthetic://suite-syn-en-10"
       source_type: google_news
       language: en
-      published_at: "2026-09-12T16:00:00+00:00"
-      fetched_at: "2026-09-12T16:05:00+00:00"
+      published_at: "2026-09-12T15:56:00+00:00"
+      fetched_at: "2026-09-12T16:01:26+00:00"
 
   - id: syn-uk-01
     target: nationality_vs_geography
@@ -251,8 +251,8 @@ items:
       source_url: "synthetic://suite-syn-uk-01"
       source_type: rss
       language: uk
-      published_at: "2026-09-02T05:40:00+00:00"
-      fetched_at: "2026-09-02T05:46:00+00:00"
+      published_at: "2026-09-02T05:39:24+00:00"
+      fetched_at: "2026-09-02T05:49:04+00:00"
 
   - id: syn-uk-02
     target: past_tense_unresolved
@@ -263,8 +263,8 @@ items:
       source_url: "synthetic://suite-syn-uk-02"
       source_type: telegram
       language: uk
-      published_at: "2026-09-03T21:10:00+00:00"
-      fetched_at: "2026-09-03T21:15:00+00:00"
+      published_at: "2026-09-03T21:11:58+00:00"
+      fetched_at: "2026-09-03T21:20:11+00:00"
 
   - id: syn-uk-03
     target: ended_alarm
@@ -275,8 +275,8 @@ items:
       source_url: "synthetic://suite-syn-uk-03"
       source_type: rss
       language: uk
-      published_at: "2026-09-04T08:20:00+00:00"
-      fetched_at: "2026-09-04T08:25:00+00:00"
+      published_at: "2026-09-04T08:23:51+00:00"
+      fetched_at: "2026-09-04T08:28:14+00:00"
 
   - id: syn-uk-04
     target: civilian_object_found
@@ -287,8 +287,8 @@ items:
       source_url: "synthetic://suite-syn-uk-04"
       source_type: rss
       language: uk
-      published_at: "2026-09-05T12:30:00+00:00"
-      fetched_at: "2026-09-05T12:35:00+00:00"
+      published_at: "2026-09-05T12:26:41+00:00"
+      fetched_at: "2026-09-05T12:36:38+00:00"
 
   - id: syn-uk-05
     target: drills_vs_attack
@@ -299,20 +299,20 @@ items:
       source_url: "synthetic://suite-syn-uk-05"
       source_type: rss
       language: uk
-      published_at: "2026-09-06T09:50:00+00:00"
-      fetched_at: "2026-09-06T09:55:00+00:00"
+      published_at: "2026-09-06T09:50:24+00:00"
+      fetched_at: "2026-09-06T09:51:30+00:00"
 
   - id: syn-uk-06
     target: dramatic_headline_no_facts
     article:
       title: "ШОК: те, що сталося вночі, налякало всю країну"
       summary: "ШОК: те, що сталося вночі, налякало всю країну - Новини Дня Онлайн"
-      source_name: Новини Дня Онлайн
+      source_name: "GoogleNews:дрони Польща"
       source_url: "synthetic://suite-syn-uk-06"
       source_type: google_news
       language: uk
-      published_at: "2026-09-07T17:00:00+00:00"
-      fetched_at: "2026-09-07T17:05:00+00:00"
+      published_at: "2026-09-07T16:59:31+00:00"
+      fetched_at: "2026-09-07T17:06:19+00:00"
 
   - id: syn-uk-07
     target: reaction_vs_event
@@ -323,8 +323,8 @@ items:
       source_url: "synthetic://suite-syn-uk-07"
       source_type: rss
       language: uk
-      published_at: "2026-09-08T14:20:00+00:00"
-      fetched_at: "2026-09-08T14:25:00+00:00"
+      published_at: "2026-09-08T14:22:23+00:00"
+      fetched_at: "2026-09-08T14:31:23+00:00"
 
   - id: syn-uk-08
     target: russian_drone_other_monitored
@@ -335,8 +335,8 @@ items:
       source_url: "synthetic://suite-syn-uk-08"
       source_type: rss
       language: uk
-      published_at: "2026-09-09T11:40:00+00:00"
-      fetched_at: "2026-09-09T11:46:00+00:00"
+      published_at: "2026-09-09T11:38:18+00:00"
+      fetched_at: "2026-09-09T11:39:24+00:00"
 
   - id: syn-uk-09
     target: past_tense_unresolved
@@ -347,8 +347,8 @@ items:
       source_url: "synthetic://suite-syn-uk-09"
       source_type: telegram
       language: uk
-      published_at: "2026-09-10T20:05:00+00:00"
-      fetched_at: "2026-09-10T20:10:00+00:00"
+      published_at: "2026-09-10T20:05:38+00:00"
+      fetched_at: "2026-09-10T20:10:37+00:00"
 
   - id: syn-uk-10
     target: nationality_vs_geography
@@ -359,8 +359,8 @@ items:
       source_url: "synthetic://suite-syn-uk-10"
       source_type: rss
       language: uk
-      published_at: "2026-09-11T06:15:00+00:00"
-      fetched_at: "2026-09-11T06:20:00+00:00"
+      published_at: "2026-09-11T06:12:32+00:00"
+      fetched_at: "2026-09-11T06:15:35+00:00"
 
   - id: syn-ru-01
     target: drills_vs_attack
@@ -371,8 +371,8 @@ items:
       source_url: "synthetic://suite-syn-ru-01"
       source_type: rss
       language: ru
-      published_at: "2026-09-02T07:00:00+00:00"
-      fetched_at: "2026-09-02T07:05:00+00:00"
+      published_at: "2026-09-02T07:04:40+00:00"
+      fetched_at: "2026-09-02T07:05:59+00:00"
 
   - id: syn-ru-02
     target: past_tense_unresolved
@@ -383,8 +383,8 @@ items:
       source_url: "synthetic://suite-syn-ru-02"
       source_type: telegram
       language: ru
-      published_at: "2026-09-03T22:30:00+00:00"
-      fetched_at: "2026-09-03T22:35:00+00:00"
+      published_at: "2026-09-03T22:31:50+00:00"
+      fetched_at: "2026-09-03T22:34:33+00:00"
 
   - id: syn-ru-03
     target: ended_alarm
@@ -395,8 +395,8 @@ items:
       source_url: "synthetic://suite-syn-ru-03"
       source_type: rss
       language: ru
-      published_at: "2026-09-04T10:15:00+00:00"
-      fetched_at: "2026-09-04T10:20:00+00:00"
+      published_at: "2026-09-04T10:11:32+00:00"
+      fetched_at: "2026-09-04T10:13:45+00:00"
 
   - id: syn-ru-04
     target: civilian_object_found
@@ -407,20 +407,20 @@ items:
       source_url: "synthetic://suite-syn-ru-04"
       source_type: rss
       language: ru
-      published_at: "2026-09-05T13:50:00+00:00"
-      fetched_at: "2026-09-05T13:55:00+00:00"
+      published_at: "2026-09-05T13:50:35+00:00"
+      fetched_at: "2026-09-05T13:54:41+00:00"
 
   - id: syn-ru-05
     target: dramatic_headline_no_facts
     article:
       title: "ШОК: что произошло этой ночью, повергло всех в ужас"
       summary: "ШОК: что произошло этой ночью, повергло всех в ужас - Новостной Экспресс"
-      source_name: Новостной Экспресс
+      source_name: "GoogleNews:Russia attack NATO"
       source_url: "synthetic://suite-syn-ru-05"
       source_type: google_news
       language: ru
-      published_at: "2026-09-06T15:40:00+00:00"
-      fetched_at: "2026-09-06T15:45:00+00:00"
+      published_at: "2026-09-06T15:37:48+00:00"
+      fetched_at: "2026-09-06T15:47:25+00:00"
 
   - id: syn-ru-06
     target: reaction_vs_event
@@ -431,8 +431,8 @@ items:
       source_url: "synthetic://suite-syn-ru-06"
       source_type: rss
       language: ru
-      published_at: "2026-09-08T16:10:00+00:00"
-      fetched_at: "2026-09-08T16:15:00+00:00"
+      published_at: "2026-09-08T16:06:32+00:00"
+      fetched_at: "2026-09-08T16:11:32+00:00"
 
   - id: syn-ru-07
     target: nationality_vs_geography
@@ -443,8 +443,8 @@ items:
       source_url: "synthetic://suite-syn-ru-07"
       source_type: rss
       language: ru
-      published_at: "2026-09-09T04:25:00+00:00"
-      fetched_at: "2026-09-09T04:30:00+00:00"
+      published_at: "2026-09-09T04:26:48+00:00"
+      fetched_at: "2026-09-09T04:35:12+00:00"
 
   - id: syn-ru-08
     target: russian_drone_other_monitored
@@ -455,8 +455,8 @@ items:
       source_url: "synthetic://suite-syn-ru-08"
       source_type: rss
       language: ru
-      published_at: "2026-09-10T09:35:00+00:00"
-      fetched_at: "2026-09-10T09:40:00+00:00"
+      published_at: "2026-09-10T09:32:28+00:00"
+      fetched_at: "2026-09-10T09:39:55+00:00"
 
   - id: syn-ru-09
     target: russian_drone_other_monitored
@@ -467,8 +467,8 @@ items:
       source_url: "synthetic://suite-syn-ru-09"
       source_type: rss
       language: ru
-      published_at: "2026-09-11T18:05:00+00:00"
-      fetched_at: "2026-09-11T18:10:00+00:00"
+      published_at: "2026-09-11T18:07:23+00:00"
+      fetched_at: "2026-09-11T18:15:33+00:00"
 
   - id: syn-ru-10
     target: ended_alarm
@@ -479,5 +479,5 @@ items:
       source_url: "synthetic://suite-syn-ru-10"
       source_type: rss
       language: ru
-      published_at: "2026-09-12T19:20:00+00:00"
-      fetched_at: "2026-09-12T19:25:00+00:00"
+      published_at: "2026-09-12T19:23:03+00:00"
+      fetched_at: "2026-09-12T19:30:23+00:00"

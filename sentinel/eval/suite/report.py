@@ -64,7 +64,7 @@ def decide(model: str, baseline: str, score: dict, prices: dict) -> dict:
     tier_diff, tier_verdict = diff("tier_ok")
     invalid = (report["invalid_call_rate"] or (0.0,))[0]
     checks = {
-        "Odpowiedział na każdy artykuł": report.get("unavailable_items", 0) == 0,
+        "Odpowiedział na każdy artykuł": report.get("missing_answers", 1) == 0,
         "Nie przegapia więcej sytuacji „uciekaj”": recall_diff is not None
         and recall_diff >= -RECALL_MARGIN
         and not recall_verdict.startswith("gorszy"),
@@ -191,7 +191,16 @@ svg.chart { width:100%; max-width:900px; height:auto; } .grid { stroke:var(--lin
 """
 
 
+REASONING_NOTE = " (z myśleniem – inne warunki niż produkcja)"
+
+
 def build_html(score: dict, prices: dict, labels: dict) -> str:
+    """``labels`` maps spec -> display name; +reasoning specs are always flagged."""
+    labels = {
+        m: labels.get(m, m.split("/")[-1].partition("@")[0].removesuffix("+reasoning"))
+        + (REASONING_NOTE if m.endswith("+reasoning") else "")
+        for m in score["models"]
+    }
     baseline = score["baseline"]
     models = list(score["models"])
     decisions = {m: decide(m, baseline, score, prices) for m in models if m != baseline}
@@ -201,7 +210,7 @@ def build_html(score: dict, prices: dict, labels: dict) -> str:
         rows.append(
             {
                 "model": m,
-                "label": labels.get(m, m.split("/")[-1]),
+                "label": labels[m],
                 "cost": (cost.get("monthly") or {}).get("busy_day_p90"),
                 "quality": report["tier_accuracy"],
                 "recall": (report["critical_recall"] or (None,))[0],

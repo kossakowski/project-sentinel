@@ -41,19 +41,21 @@ def build_queue(items: list[dict], seed: int, retest_count: int = RETEST_COUNT) 
         units.setdefault(item["chain_id"] or item["id"], []).append(item)
     order = sorted(units)
     rng.shuffle(order)
-    slots = []
+    slots, unit_of = [], []
     for key in order:
         for item in sorted(units[key], key=lambda i: (i["chain_pos"] or 0, i["article"]["fetched_at"])):
-            slots.append({"slot": f"s{len(slots) + 1:03d}", "item_id": item["id"], "retest_of": None})
+            slots.append({"slot": "", "item_id": item["id"], "retest_of": None})
+            unit_of.append(key)
     early = {s["item_id"] for s in slots[: int(len(slots) * 0.6)]}
     candidates = sorted(
         i["id"] for i in items if i["origin"] == "production" and not i["chain_id"] and i["id"] in early
     )
     repeats = rng.sample(candidates, min(retest_count, len(candidates)))
-    # Hide repeats among the last 40% of the queue, never next to their original.
+    # Hide repeats in the last 40%, only between labelling units (never inside a chain).
     tail_start = int(len(slots) * 0.6)
-    for item_id in repeats:
-        position = rng.randint(tail_start, len(slots))
+    boundaries = [p for p in range(tail_start, len(slots) + 1) if p == len(slots) or unit_of[p - 1] != unit_of[p]]
+    positions = sorted(rng.sample(boundaries, min(len(repeats), len(boundaries))), reverse=True)
+    for position, item_id in zip(positions, repeats, strict=False):
         slots.insert(position, {"slot": "", "item_id": item_id, "retest_of": item_id})
     for number, slot in enumerate(slots, 1):
         slot["slot"] = f"s{number:03d}"
@@ -183,6 +185,17 @@ class LabelStore:
 
     def save(self, label: dict) -> dict:
         clean = validate_label(label, self.by_slot)
+        item = self.items[clean["item_id"]]
+        if clean["same_as"] is not None:
+            target = self.by_slot.get(clean["same_as"])
+            other = self.items.get(target["item_id"]) if target else None
+            if (
+                other is None
+                or not item["chain_id"]
+                or other["chain_id"] != item["chain_id"]
+                or (other["chain_pos"] or 0) >= (item["chain_pos"] or 0)
+            ):
+                raise ValueError("same_as must name an earlier article of the same series")
         with self.labels_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(clean, ensure_ascii=False) + "\n")
             handle.flush()
@@ -244,7 +257,7 @@ def main() -> None:
     args = parser.parse_args()
     store = LabelStore(Path(args.items), Path(args.queue), Path(args.labels), args.seed, Path(args.translations))
     socketserver.TCPServer.allow_reuse_address = True
-    with socketserver.TCPServer(("0.0.0.0", args.port), make_handler(store)) as server:
+    with socketserver.TCPServer(("127.0.0.1", args.port), make_handler(store)) as server:
         done = len(latest_labels(store.labels_path))
         print(f"Labelling page: http://localhost:{args.port}/  ({done}/{len(store.slots)} answered)", flush=True)
         server.serve_forever()

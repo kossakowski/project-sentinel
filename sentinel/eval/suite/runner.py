@@ -38,7 +38,7 @@ from sentinel.eval.compare_models import (
     parse_prediction,
 )
 from sentinel.eval.openrouter_client import BudgetLedger, OpenRouterEvalClient, fetch_model_catalogue
-from sentinel.eval.suite.score import MODEL_FAULTS
+from sentinel.eval.suite.score import is_outage
 
 RUNS = Path("data/eval/suite/runs")
 SCHEMA_SHA256 = hashlib.sha256(json.dumps(CLASSIFICATION_SCHEMA, sort_keys=True).encode()).hexdigest()
@@ -55,9 +55,31 @@ def _transient(completion: dict) -> bool:
     return kind in TRANSIENT or (kind == "http_error" and status is not None and (status == 429 or status >= 500))
 
 
+# Failures raised before any request is sent: they cost nothing.
+PRE_SEND = {
+    "budget_exhausted",
+    "model_not_approved",
+    "model_not_in_catalogue",
+    "reasoning_required",
+    "max_tokens_unsupported",
+}
+
+
+def request_cost(completion: dict) -> float:
+    """Billed cost, or the reservation the ledger kept when the provider reported none."""
+    if completion.get("cost_usd") is not None:
+        return completion["cost_usd"]
+    if completion.get("error_kind") in PRE_SEND:
+        return 0.0
+    return completion.get("reserved_usd") or 0.0
+
+
 async def complete_with_retry(client, model: str, messages: list[dict]) -> dict:
-    """One model answer; provider overloads and network failures are retried with pauses."""
-    attempts = 0
+    """One model answer; provider overloads and network failures are retried with pauses.
+
+    The cost of failed attempts is kept in ``retry_cost_usd`` so the budget sees it.
+    """
+    attempts, retry_cost = 0, 0.0
     while True:
         attempts += 1
         completion = (
@@ -65,7 +87,9 @@ async def complete_with_retry(client, model: str, messages: list[dict]) -> dict:
         ).to_dict()
         if not _transient(completion) or attempts > len(RETRY_DELAYS):
             completion["attempts"] = attempts
+            completion["retry_cost_usd"] = retry_cost
             return completion
+        retry_cost += request_cost(completion)
         await asyncio.sleep(RETRY_DELAYS[attempts - 1])
 
 
@@ -123,6 +147,7 @@ def base_row(spec: str, repeat: int, item: dict, messages: list[dict], completio
         "error_kind": completion.get("error_kind"),
         "http_status": completion.get("http_status"),
         "attempts": completion.get("attempts", 1),
+        "retry_cost_usd": completion.get("retry_cost_usd", 0.0),
         "error": completion.get("error"),
         "raw_content": completion.get("raw_content"),
         "budget_stopped": completion.get("budget_stopped", False),
@@ -212,34 +237,30 @@ async def replay_chain(client, spec: str, repeat: int, chain: list[dict], config
 
 
 def _retryable(row: dict) -> bool:
-    """No answer from the model (outage, budget stop): redo it on resume."""
-    return row.get("urgency") is None and row.get("error_kind") not in MODEL_FAULTS
+    """No answer because of an outage or a budget stop: redo it on resume."""
+    return row.get("urgency") is None and is_outage(row)
 
 
 def spent_so_far(rows: list[dict]) -> float:
-    """Money already committed by earlier sessions, including requests of unknown cost."""
-    total = 0.0
-    for row in rows:
-        if row.get("cost_usd") is not None:
-            total += row["cost_usd"]
-        elif row.get("error_kind") in TRANSIENT:
-            total += row.get("reserved_usd") or 0.0
-    return total
+    """Money committed by earlier sessions: every row ever written, superseded ones included."""
+    return sum(request_cost(row) + (row.get("retry_cost_usd") or 0.0) for row in rows)
 
 
 def load_done(path: Path, chains: list[list[dict]]) -> tuple[list[dict], set, float]:
-    """Keep finished answers; drop outages and any chain replay that is incomplete or had one.
+    """Keep finished answers; supersede outages and any chain replay that is incomplete or had one.
 
-    Returns the kept rows, the (spec, repeat, item) keys already answered, and the
-    money already spent by earlier sessions (so the budget cap spans resumes).
+    Superseded rows stay in the file (marked), so their cost is never forgotten.
+    Returns the live rows, the (spec, repeat, item) keys already answered, and the money
+    already spent by earlier sessions (so the budget cap spans resumes).
     """
     if not path.exists():
         return [], set(), 0.0
     rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     spent = spent_so_far(rows)
+    live = [r for r in rows if not r.get("superseded")]
     chain_size = {c[0]["chain_id"]: len(c) for c in chains}
     groups: dict[tuple, list[dict]] = {}
-    for row in rows:
+    for row in live:
         if row["chain_id"]:
             groups.setdefault((row["model"], row["repeat"], row["chain_id"]), []).append(row)
     broken = {
@@ -247,14 +268,17 @@ def load_done(path: Path, chains: list[list[dict]]) -> tuple[list[dict], set, fl
         for key, group in groups.items()
         if len(group) != chain_size.get(key[2]) or any(_retryable(r) for r in group)
     }
-    kept = [
-        r
-        for r in rows
-        if (r["chain_id"] and (r["model"], r["repeat"], r["chain_id"]) not in broken)
-        or (not r["chain_id"] and not _retryable(r))
-    ]
-    if len(kept) != len(rows):
-        path.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in kept), encoding="utf-8")
+    changed = False
+    for row in live:
+        drop = (row["chain_id"] and (row["model"], row["repeat"], row["chain_id"]) in broken) or (
+            not row["chain_id"] and _retryable(row)
+        )
+        if drop:
+            row["superseded"] = True
+            changed = True
+    if changed:
+        path.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
+    kept = [r for r in rows if not r.get("superseded")]
     return kept, {(r["model"], r["repeat"], r["item_id"]) for r in kept}, spent
 
 
@@ -283,6 +307,7 @@ async def run(args) -> int:
         "prompt_sha256": prompt_hash(policy),
         "schema_sha256": SCHEMA_SHA256,
         "budget_usd": args.budget_usd,
+        "timeout_seconds": args.timeout_seconds,
         "git_commit": subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip(),
     }
     print(json.dumps({k: manifest[k] for k in ("items", "singles", "chains", "repeats", "models")}), flush=True)
@@ -295,8 +320,8 @@ async def run(args) -> int:
     manifest_path = out / "manifest.json"
     if manifest_path.exists():
         previous = json.loads(manifest_path.read_text(encoding="utf-8"))
-        for key in ("items_sha256", "prompt_sha256", "schema_sha256", "pool"):
-            if previous[key] != manifest[key]:
+        for key in ("items_sha256", "prompt_sha256", "schema_sha256", "pool", "repeats", "timeout_seconds"):
+            if previous.get(key) != manifest[key]:
                 raise SystemExit(f"Resume refused: {key} changed since this run started")
         manifest["created_at"] = previous["created_at"]
         manifest["sessions"] = previous.get("sessions", [])

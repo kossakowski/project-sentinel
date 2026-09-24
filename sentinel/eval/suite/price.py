@@ -1,11 +1,13 @@
 """What each candidate would cost as a substitute for the production model.
 
 Method (measured, not list prices):
-1. Start from each model's average *charged* cost per eval request (OpenRouter's billed
-   amount, so tokenizer differences, cache discounts and reasoning are already included).
-2. Production requests are longer (remembered incidents are attached). The baseline's
-   production/eval cost ratio, measured on the same items, scales every model to
-   production-sized requests.
+1. Take each model's own measured token counts per eval request (prompt, cached prompt,
+   completion incl. reasoning), so tokenizer differences and caching are included, and
+   its billed/list cost ratio on the eval (usually ~1) to catch extra provider charges.
+2. Production requests carry remembered incidents, so only the prompt grows: every
+   model's prompt is scaled by the baseline's production/eval prompt ratio. Extra prompt
+   tokens are priced as uncached (the cached system prompt does not grow); completion
+   tokens are kept as measured.
 3. Add the expected cost of re-asking after an invalid answer and of the Polish-summary
    repair call for summaries not written in Polish.
 4. Multiply by real production volume: average day, busy day (90th percentile) and the
@@ -76,16 +78,23 @@ def repair_cost(report: dict, prices: dict) -> float:
     return not_polish * (REPAIR_INPUT_TOKENS * prices["input"] + REPAIR_OUTPUT_TOKENS * prices["output"]) / 1e6
 
 
-def per_article(report: dict, scale: float, prices: dict) -> dict:
+def per_article(report: dict, prompt_scale: float, prices: dict) -> dict:
     """Projected production cost of one article for one model."""
-    calls = max(1, report.get("known_cost_calls", report["calls"]))
-    eval_cost = report["cost_usd"] / calls
-    classification = eval_cost * scale
+    prompt = report.get("mean_prompt_tokens") or 0.0
+    cached = min(report.get("mean_cached_tokens") or 0.0, prompt)
+    output = report.get("mean_completion_tokens") or 0.0
+    eval_listed = token_cost({"input": prompt, "cached": cached, "output": output}, prices)
+    eval_billed = report["cost_usd"] / max(1, report.get("known_cost_calls", report["calls"]))
+    billed_ratio = eval_billed / eval_listed if eval_listed else 1.0
+    production_prompt = prompt * prompt_scale
+    classification = token_cost({"input": production_prompt, "cached": cached, "output": output}, prices) * billed_ratio
     invalid = (report["invalid_call_rate"] or (0.0,))[0]
     repair = repair_cost(report, prices)
     retry = invalid * classification
     return {
-        "eval_cost_per_call": eval_cost,
+        "eval_cost_per_call": eval_billed,
+        "billed_to_list_ratio": billed_ratio,
+        "production_prompt_tokens": production_prompt,
         "classification": classification,
         "retry_after_invalid": retry,
         "summary_repair": repair,
@@ -100,12 +109,12 @@ def price_table(reports: dict, baseline: str, snapshot: dict, prices: dict, mont
     """
     base = reports[baseline]
     base_prod_cost = token_cost(snapshot["baseline_usage"], prices[baseline])
-    # Production token counts already include the baseline's own summary repairs; take
-    # them out so the scale covers the classification request only (repairs are added
-    # back per model from its own measured non-Polish rate).
-    base_prod_classification = max(0.0, base_prod_cost - repair_cost(base, prices[baseline]))
-    base_eval_cost = base["cost_usd"] / max(1, base.get("known_cost_calls", base["calls"]))
-    scale = base_prod_classification / base_eval_cost if base_eval_cost else 1.0
+    # Production input tokens also include the baseline's own summary repairs; remove
+    # them so the ratio covers the classification prompt only.
+    not_polish = (base["summary_not_polish_rate"] or (0.0,))[0]
+    production_prompt = (snapshot["baseline_usage"].get("input") or 0.0) - not_polish * REPAIR_INPUT_TOKENS
+    eval_prompt = base.get("mean_prompt_tokens") or 0.0
+    scale = production_prompt / eval_prompt if eval_prompt else 1.0
     volumes = volume_scenarios(snapshot["daily"])
     table = {}
     for model, report in reports.items():
@@ -127,7 +136,7 @@ def price_table(reports: dict, baseline: str, snapshot: dict, prices: dict, mont
         row["vs_baseline"] = row["total"] / base_total if base_total else None
     return {
         "method": __doc__,
-        "scale_to_production": scale,
+        "prompt_scale_to_production": scale,
         "baseline_production_cost_per_article": base_prod_cost,
         "volumes": volumes,
         "monthly_cap_usd": monthly_cap,

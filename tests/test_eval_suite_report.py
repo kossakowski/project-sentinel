@@ -24,6 +24,7 @@ def build_run(tmp_path):
             {
                 "id": f"i{n}",
                 "origin": "production",
+                "pool": "dev",
                 "cluster_id": f"c{n // 3}",
                 "chain_id": None,
                 "chain_pos": None,
@@ -114,9 +115,9 @@ def test_build_html_contains_every_section(tmp_path):
 
 def test_decision_rule_coverage_false_call_margin_and_pool(tmp_path):
     score, prices = build_run(tmp_path)
-    score["models"]["cheap_good"]["unavailable_items"] = 3
+    score["models"]["cheap_good"]["missing_answers"] = 3
     assert not decide("cheap_good", "base", score, prices)["checks"]["Odpowiedział na każdy artykuł"]
-    score["models"]["cheap_good"]["unavailable_items"] = 0
+    score["models"]["cheap_good"]["missing_answers"] = 0
     score["paired_vs_baseline"]["cheap_good"]["false_call"] = {
         "difference": (0.02, 0.0, 0.05),
         "verdict": "bez udowodnionej różnicy",
@@ -125,3 +126,23 @@ def test_decision_rule_coverage_false_call_margin_and_pool(tmp_path):
     assert not checks["Telefonów bez powodu najwyżej 1% pkt więcej"]
     page = build_html(score, prices, {})
     assert "To pula robocza" in page
+
+
+def test_items_never_attempted_fail_coverage(tmp_path):
+    score, prices = build_run(tmp_path)
+    run = tmp_path / "run"
+    rows = [json.loads(line) for line in (run / "calls.jsonl").read_text().splitlines()]
+    kept = [r for r in rows if not (r["model"] == "cheap_good" and r["item_id"] == "i0")]  # never asked
+    (run / "calls.jsonl").write_text("".join(json.dumps(r) + "\n" for r in kept))
+    rescored = score_run(run, tmp_path / "labels.jsonl", tmp_path / "queue.json", tmp_path / "items.json", "base")
+    report = rescored["models"]["cheap_good"]
+    assert report["missing_answers"] == 3 and report["unavailable_items"] == 1
+    assert not decide("cheap_good", "base", rescored, prices)["checks"]["Odpowiedział na każdy artykuł"]
+
+
+def test_reasoning_specs_are_flagged_in_the_report(tmp_path):
+    score, prices = build_run(tmp_path)
+    score["models"]["z/glm@Together+reasoning"] = score["models"].pop("cheap_good")
+    score["paired_vs_baseline"]["z/glm@Together+reasoning"] = score["paired_vs_baseline"].pop("cheap_good")
+    prices["models"]["z/glm@Together+reasoning"] = prices["models"].pop("cheap_good")
+    assert "inne warunki niż produkcja" in build_html(score, prices, {})
