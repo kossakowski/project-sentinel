@@ -188,6 +188,14 @@ def test_missing_key_actionable(direct_config, monkeypatch):
         Classifier(direct_config)
 
 
+def test_production_budget_cap_is_accepted_and_typos_are_rejected():
+    configured = yaml.safe_load(Path("config/config.yaml").read_text(encoding="utf-8"))
+    monthly = configured["classification"]["budget"]["monthly_usd"]
+    assert ModelBudgetConfig(monthly_usd=monthly).monthly_usd == 30
+    with pytest.raises(ValueError):
+        ModelBudgetConfig(monthly_usd=300)
+
+
 def test_budget_survives_restart_and_shared_callers(tmp_path):
     cfg = ModelBudgetConfig(ledger_path=str(tmp_path / "usage.db"), monthly_usd=0.01)
     a, b = UsageLedger(cfg), UsageLedger(cfg)
