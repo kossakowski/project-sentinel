@@ -61,6 +61,25 @@ the substitute-cost table (average, busy and peak month against the $10 cap), a
 quality-vs-price chart, chain behaviour and per-language/input slices. Refresh production
 volume with `sentinel.eval.suite.price.snapshot_production` when it is stale.
 
+## The pre-registered decision rule (strict variant, chosen 2026-09-24)
+
+A candidate may replace the baseline only on the locked pool, with every item labelled,
+and only if all of these hold (quality checks are paired, on items both models answered):
+
+- it answered every item × repeat (outages retried; missing answers fail);
+- critical recall: on average at most 2 points worse, and at the pessimistic end of the
+  95% interval at most 5 points worse;
+- false phone calls: on average at most 1 point more, pessimistic end at most 5 points;
+- alert-tier accuracy: on average at most 2 points worse, pessimistic end at most 5;
+- the model's own invalid answers ≤ 0.5% of requests;
+- projected busy-month cost within the $10 monthly cap;
+- cheaper, or proven better on critical recall or tier accuracy.
+
+The report also lists, by item, every critical item the baseline caught and the candidate
+missed, and shows results per production-score stratum. Limitation: the sample was
+stratified by earlier production scores (mostly Haiku), so critical items that production
+scored low are thin in the test.
+
 ## Rules that keep the result honest
 
 - Tune prompts or rules only on the development pool; run the locked pool once, at the end.

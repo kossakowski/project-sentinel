@@ -17,9 +17,13 @@ from sentinel.eval.openrouter_client import fetch_model_catalogue
 from sentinel.eval.suite.price import price_table
 
 MAX_INVALID_RATE = 0.005
-TIER_MARGIN = 0.02
+# Pre-registered on 2026-09-24 (operator chose the strict variant): the paired
+# difference must stay within these limits both on average and at the pessimistic end of
+# its 95% interval. Doubt keeps the current model.
 RECALL_MARGIN = 0.02
+TIER_MARGIN = 0.02
 FALSE_CALL_MARGIN = 0.01
+PESSIMISTIC_MARGIN = 0.05
 
 
 def pct(value, digits=0) -> str:
@@ -46,8 +50,9 @@ def decide(model: str, baseline: str, score: dict, prices: dict) -> dict:
     """Pre-registered rule: every check must pass for a candidate to replace the baseline.
 
     Quality checks use the paired difference on items both models answered, so a model
-    that skipped hard items cannot look better; the coverage check fails any model that
-    left items unanswered after retries.
+    that skipped hard items cannot look better; each must hold on average and at the
+    pessimistic end of the 95% interval. The coverage check fails any model that left
+    items unanswered after retries.
     """
     report = score["models"][model]
     paired = score["paired_vs_baseline"].get(model, {})
@@ -55,25 +60,26 @@ def decide(model: str, baseline: str, score: dict, prices: dict) -> dict:
     base_cost = prices["models"].get(baseline, {})
 
     def diff(key):
+        """(average, pessimistic low, pessimistic high, verdict) of candidate minus baseline."""
         entry = paired.get(key) or {}
         interval = entry.get("difference")
-        return (interval[0] if interval else None), entry.get("verdict", "")
+        return (*(interval or (None, None, None)), entry.get("verdict", ""))
 
-    recall_diff, recall_verdict = diff("critical_hit")
-    false_diff, false_verdict = diff("false_call")
-    tier_diff, tier_verdict = diff("tier_ok")
+    recall, recall_low, _, recall_verdict = diff("critical_hit")
+    false_call, _, false_high, _ = diff("false_call")
+    tier, tier_low, _, tier_verdict = diff("tier_ok")
     invalid = (report["invalid_call_rate"] or (0.0,))[0]
     checks = {
         "Odpowiedział na każdy artykuł": report.get("missing_answers", 1) == 0,
-        "Nie przegapia więcej sytuacji „uciekaj”": recall_diff is not None
-        and recall_diff >= -RECALL_MARGIN
-        and not recall_verdict.startswith("gorszy"),
-        f"Telefonów bez powodu najwyżej {pct(FALSE_CALL_MARGIN)} pkt więcej": (
-            false_diff is None or false_diff <= FALSE_CALL_MARGIN
-        )
-        and not false_verdict.startswith("gorszy"),
+        "Nie przegapia więcej sytuacji „uciekaj”": recall is not None
+        and recall >= -RECALL_MARGIN
+        and recall_low >= -PESSIMISTIC_MARGIN,
+        f"Telefonów bez powodu najwyżej {pct(FALSE_CALL_MARGIN)} pkt więcej": false_call is None
+        or (false_call <= FALSE_CALL_MARGIN and false_high <= PESSIMISTIC_MARGIN),
         f"Zepsute odpowiedzi ≤ {pct(MAX_INVALID_RATE, 1)}": invalid <= MAX_INVALID_RATE,
-        f"Trafność reakcji najwyżej {pct(TIER_MARGIN)} pkt gorsza": tier_diff is not None and tier_diff >= -TIER_MARGIN,
+        f"Trafność reakcji najwyżej {pct(TIER_MARGIN)} pkt gorsza": tier is not None
+        and tier >= -TIER_MARGIN
+        and tier_low >= -PESSIMISTIC_MARGIN,
         "Mieści się w limicie w tłocznym miesiącu": bool(cost.get("within_cap_busy_month")),
         "Tańszy albo udowodnienie lepszy": bool(
             (cost.get("total") and base_cost.get("total") and cost["total"] < base_cost["total"])
@@ -234,6 +240,14 @@ def build_html(score: dict, prices: dict, labels: dict) -> str:
         if not winners
         else "Warunki spełnia: " + ", ".join(html.escape(labels.get(m, m)) for m in winners) + "."
     )
+    not_run = [m for m in score["manifest"].get("models", []) if m not in score["models"]]
+    if not_run:
+        verdict += " Nie uruchomiono: " + ", ".join(html.escape(m) for m in not_run) + "."
+    if score["manifest"].get("pool") == "locked" and score.get("unlabelled_items_in_pool", 0):
+        verdict = (
+            f"Brak werdyktu: {score['unlabelled_items_in_pool']} artykułów z puli nie ma jeszcze Twojej oceny. "
+            "Podgląd: " + verdict
+        )
     if score["manifest"].get("pool") != "locked":
         verdict = (
             "To pula robocza – wynik służy do sprawdzenia testu, nie do decyzji. "
@@ -272,6 +286,19 @@ def build_html(score: dict, prices: dict, labels: dict) -> str:
             f"<td>{seconds(r['latency_p95'])}</td></tr>"
         )
     out.append("</table></div>")
+    review = [
+        (m, (score["paired_vs_baseline"].get(m, {}).get("critical_hit") or {}).get("baseline_only_items", []))
+        for m in models
+        if m != baseline
+    ]
+    if any(ids for _, ids in review):
+        out.append(
+            "<h2>Sytuacje „uciekaj”, które Luna złapała, a kandydat przegapił</h2><div class=card><ul class=tight>"
+        )
+        for m, ids in review:
+            if ids:
+                out.append(f"<li><b>{html.escape(labels[m])}</b>: {html.escape(', '.join(ids))}</li>")
+        out.append("</ul></div>")
     out.append("<h2>Jakość względem ceny</h2><div class=card>" + chart_svg(rows, baseline, front) + "</div>")
     out.append(
         "<h2>Ile kosztowałby zamiast Luny</h2><div class='card scroll'><table><tr><th>Model</th><th>Za 1000 artykułów</th>"
@@ -308,6 +335,10 @@ def build_html(score: dict, prices: dict, labels: dict) -> str:
     out.append("<h2>Trafna reakcja według rodzaju tekstu</h2><div class='card scroll'><table><tr><th>Model</th>")
     slice_names = list(score["models"][models[0]]["slices"]) if models else []
     names = {
+        "prod:9-10": "produkcja 9–10",
+        "prod:7-8": "produkcja 7–8",
+        "prod:5-6": "produkcja 5–6",
+        "prod:1-4": "produkcja 1–4",
         "lang:pl": "polski",
         "lang:en": "angielski",
         "lang:uk": "ukraiński",
@@ -328,7 +359,10 @@ def build_html(score: dict, prices: dict, labels: dict) -> str:
         "<li>W nawiasie jest zakres, w którym z 95% pewnością leży prawdziwy wynik. Nakładające się zakresy oznaczają brak dowodu różnicy.</li>"
         "<li>„Zadzwonił” liczy się tylko przy ocenie 9–10. Zepsuta odpowiedź na sytuację „uciekaj” liczy się jako przegapiona.</li>"
         "<li>Każdy artykuł dostał 3 próby. Liczy się większość; „zmienia zdanie” pokazuje, jak często próby się różnią.</li>"
-        "<li>Porównanie z Luną idzie na tych samych artykułach; artykuły o jednym zdarzeniu liczą się razem, nie osobno.</li></ul>"
+        "<li>Porównanie z Luną idzie na tych samych artykułach; artykuły o jednym zdarzeniu liczą się razem, nie osobno.</li>"
+        "<li>Ograniczenie: artykuły dobrano według ocen, które wystawił wcześniej model produkcyjny (głównie Haiku). "
+        "Wszystkie jego 9–10 są w teście, ale z artykułów ocenionych przez niego nisko tylko ok. 25. Sytuacja „uciekaj”, "
+        "którą produkcja oceniła nisko, jest więc w teście rzadka – kolumny „produkcja 1–4 / 5–6” pokazują ją osobno.</li></ul>"
     )
     out.append("</main></body></html>")
     return "".join(out)

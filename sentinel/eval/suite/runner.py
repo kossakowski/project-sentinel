@@ -318,16 +318,20 @@ async def run(args) -> int:
         raise SystemExit("Live runs need --budget-usd between 0 and 60")
     out.mkdir(parents=True, exist_ok=True)
     manifest_path = out / "manifest.json"
+    previous_spent = 0.0
     if manifest_path.exists():
         previous = json.loads(manifest_path.read_text(encoding="utf-8"))
         for key in ("items_sha256", "prompt_sha256", "schema_sha256", "pool", "repeats", "timeout_seconds"):
             if previous.get(key) != manifest[key]:
                 raise SystemExit(f"Resume refused: {key} changed since this run started")
         manifest["created_at"] = previous["created_at"]
+        previous_spent = previous.get("spent_usd") or 0.0
         manifest["sessions"] = previous.get("sessions", [])
     manifest.setdefault("sessions", [])
     calls_path = out / "calls.jsonl"
     _, done, spent = load_done(calls_path, chains)
+    # A killed process may have spent money that never reached the file.
+    spent = max(spent, float(previous_spent))
     remaining = args.budget_usd - spent
     if remaining <= 0:
         raise SystemExit(f"Budget used up: ${spent:.4f} of ${args.budget_usd} already spent in this run")

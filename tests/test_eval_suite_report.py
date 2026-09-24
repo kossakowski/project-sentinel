@@ -146,3 +146,25 @@ def test_reasoning_specs_are_flagged_in_the_report(tmp_path):
     score["paired_vs_baseline"]["z/glm@Together+reasoning"] = score["paired_vs_baseline"].pop("cheap_good")
     prices["models"]["z/glm@Together+reasoning"] = prices["models"].pop("cheap_good")
     assert "inne warunki niż produkcja" in build_html(score, prices, {})
+
+
+def test_strict_rule_uses_the_pessimistic_end_of_the_interval(tmp_path):
+    score, prices = build_run(tmp_path)
+    paired = score["paired_vs_baseline"]["cheap_good"]
+    paired["critical_hit"] = {"difference": (0.0, -0.10, 0.05), "verdict": "bez udowodnionej różnicy"}
+    assert not decide("cheap_good", "base", score, prices)["checks"]["Nie przegapia więcej sytuacji „uciekaj”"]
+    paired["critical_hit"] = {"difference": (0.0, -0.03, 0.03), "verdict": "bez udowodnionej różnicy"}
+    assert decide("cheap_good", "base", score, prices)["checks"]["Nie przegapia więcej sytuacji „uciekaj”"]
+    paired["false_call"] = {"difference": (0.0, -0.02, 0.08), "verdict": "bez udowodnionej różnicy"}
+    assert not decide("cheap_good", "base", score, prices)["checks"]["Telefonów bez powodu najwyżej 1% pkt więcej"]
+
+
+def test_report_lists_missed_criticals_and_refuses_locked_verdict_with_unlabelled_items(tmp_path):
+    score, prices = build_run(tmp_path)
+    assert "baseline_only_items" in score["paired_vs_baseline"]["cheap_broken"]["critical_hit"]
+    score["paired_vs_baseline"]["cheap_broken"]["critical_hit"]["baseline_only_items"] = ["i3"]
+    score["manifest"].update(pool="locked", models=["base", "cheap_good", "cheap_broken", "never/ran"])
+    score["unlabelled_items_in_pool"] = 4
+    page = build_html(score, prices, {})
+    assert "Luna złapała, a kandydat przegapił" in page and "i3" in page
+    assert "Brak werdyktu: 4 artykułów" in page and "Nie uruchomiono: never/ran" in page

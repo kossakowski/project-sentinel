@@ -18,7 +18,7 @@ ACTION_ORDER = {"log": 0, "alert": 1, "call": 2}
 # server errors, the run's own budget stop, and a rejected key/credit. Every other request
 # that produced no answer (bad JSON, refusal, 4xx, wrong model returned) counts against it.
 OUTAGE_KINDS = {"timeout", "transport_error", "provider_error", "budget_exhausted"}
-OUTAGE_HTTP = {401, 402, 403, 429}
+OUTAGE_HTTP = {401, 402, 403, 408, 429}
 
 
 def is_outage(row: dict) -> bool:
@@ -34,6 +34,11 @@ def model_fault(row: dict) -> bool:
 
 def unavailable(row: dict) -> bool:
     return row.get("urgency") is None and is_outage(row)
+
+
+def stratum_of(urgency: int) -> str:
+    """Production-score sampling stratum (the eval sample is stratified by it)."""
+    return "9-10" if urgency >= 9 else "7-8" if urgency >= 7 else "5-6" if urgency >= 5 else "1-4"
 
 
 def action(urgency: int) -> str:
@@ -269,6 +274,10 @@ def model_report(model: str, calls: list[dict], truth: dict, items: dict, expect
     slices = {}
     for name, predicate in {
         **{
+            f"prod:{band}": (lambda it, band=band: it.get("prod") and stratum_of(it["prod"]["urgency"]) == band)
+            for band in ("9-10", "7-8", "5-6", "1-4")
+        },
+        **{
             f"lang:{lang}": (lambda it, lang=lang: it["article"]["language"] == lang)
             for lang in ("pl", "en", "uk", "ru")
         },
@@ -280,6 +289,7 @@ def model_report(model: str, calls: list[dict], truth: dict, items: dict, expect
         slices[name] = {
             "tier_ok": slice_rate("tier_ok", predicate),
             "critical_hit": slice_rate("critical_hit", predicate),
+            "false_call": slice_rate("false_call", predicate),
         }
     return {
         "model": model,
@@ -336,6 +346,7 @@ def paired(baseline: dict, candidate: dict, items: dict) -> dict:
     ):
         shared = [
             {
+                "id": i,
                 "cluster_id": items[i]["cluster_id"],
                 "a": baseline["_outcomes"][i][key],
                 "b": candidate["_outcomes"][i][key],
@@ -355,6 +366,12 @@ def paired(baseline: dict, candidate: dict, items: dict) -> dict:
         only_baseline = sum(bool(r["a"]) and not r["b"] for r in shared)
         result[key] = {
             "n": len(shared),
+            "only_candidate": only_candidate,
+            "only_baseline": only_baseline,
+            # Items the baseline got right and the candidate did not (for manual review).
+            "baseline_only_items": sorted(r["id"] for r in shared if bool(r["a"]) and not r["b"])
+            if higher_better
+            else sorted(r["id"] for r in shared if bool(r["b"]) and not r["a"]),
             "difference": interval,
             "mcnemar_p": mcnemar_exact(only_candidate, only_baseline),
             "verdict": verdict(interval, higher_is_better=higher_better),
