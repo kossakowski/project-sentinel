@@ -482,7 +482,7 @@ classification:
     fallback_pl: "Polskie podsumowanie jest chwilowo niedostępne. Sprawdź źródła dołączone do powiadomienia."
   budget:
     ledger_path: data/model-usage.db
-    monthly_usd: 10
+    monthly_usd: 30
     input_per_million: 0.20
     cached_input_per_million: 0.02
     output_per_million: 1.20
