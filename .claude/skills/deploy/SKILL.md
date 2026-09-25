@@ -177,29 +177,99 @@ On success, report the backup location and its contents.
 
 ### Step 6: Deploy Code
 
-**6a. Pull code from GitHub** (server fetches the exact tagged commit directly from the remote):
+**6a. Config drift check** (runs before anything on the server changes):
+
+Compare, key by key, the live config with the repo config of the previous deploy (the commit the
+server is on now) and of the new tag. A key where live differs from the new repo config is
+**expected** when it was changed in the repo since the last deploy (live == previous repo config,
+previous != new); anything else is **unexpected**: a server-only edit that the config sync (6c)
+would silently overwrite. On 2026-09-25 exactly such an edit (`ledger_path`) stopped the service
+for ~10 minutes.
 
 ```bash
-ssh -p 2222 deploy@178.104.76.254 "cd /home/deploy/sentinel && git fetch --tags origin && git checkout $DEPLOY_TAG"
+ssh -p 2222 deploy@178.104.76.254 'bash -s' -- "$DEPLOY_TAG" <<'DRIFT_CHECK'
+set -uo pipefail
+umask 077
+cd /home/deploy/sentinel
+git fetch --tags origin || { echo "FETCH_FAILED"; exit 2; }
+LIVE=$(mktemp); PREV=$(mktemp); NEW=$(mktemp)
+trap 'rm -f "$LIVE" "$PREV" "$NEW"' EXIT
+sudo cat /etc/sentinel/config.yaml > "$LIVE"
+git show "$(git rev-parse HEAD):config/config.yaml" > "$PREV"
+git show "$1:config/config.yaml" > "$NEW"
+.venv/bin/python - "$LIVE" "$PREV" "$NEW" <<'PY'
+import re
+import sys
+
+import yaml
+
+live, prev, new = (yaml.safe_load(open(path, encoding="utf-8")) for path in sys.argv[1:4])
+SECRET = re.compile(r"token|key|secret|password|sid|auth", re.I)
+MISSING = "<missing>"
+
+
+def leaves(node, path=()):
+    if isinstance(node, dict):
+        for key, value in node.items():
+            yield from leaves(value, (*path, str(key)))
+    else:
+        yield path
+
+
+def get(node, path):
+    for key in path:
+        if not isinstance(node, dict) or key not in node:
+            return MISSING
+        node = node[key]
+    return node
+
+
+expected, unexpected = [], []
+for path in sorted(set(leaves(live)) | set(leaves(new))):
+    lv, pv, nv = get(live, path), get(prev, path), get(new, path)
+    if lv == nv:
+        continue
+    name = ".".join(path)
+    show = (lambda v: "***") if SECRET.search(name) else repr
+    line = f"  {name}: live={show(lv)} -> repo={show(nv)}"
+    (expected if lv == pv and pv != nv else unexpected).append(line)
+print("EXPECTED (changed in the repo since the last deploy):")
+print("\n".join(expected) or "  none")
+print("UNEXPECTED (edited on the server only, would be LOST):")
+print("\n".join(unexpected) or "  none")
+sys.exit(3 if unexpected else 0)
+PY
+DRIFT_CHECK
+```
+
+Values of keys whose name looks like a token, key, secret, password, SID or auth are shown as `***`.
+
+- Exit 0 → report the EXPECTED list and continue to 6b.
+- `FETCH_FAILED` → **STOP:** "Failed to fetch from GitHub on the server. Check the deploy key and network access."
+- Exit 3 (any UNEXPECTED key) → **STOP:** "The live config has server-only edits that this deploy would overwrite. Nothing on the server has changed yet. Copy these values into `config/config.yaml`, commit, and run /deploy again." Show both lists. Do NOT continue and do NOT copy the config.
+- Any other failure (e.g. the script or `sudo cat` fails) → **STOP** and show the output; the server is unchanged.
+
+**6b. Check out the tag** (server switches to the exact tagged commit fetched in 6a):
+
+```bash
+ssh -p 2222 deploy@178.104.76.254 "cd /home/deploy/sentinel && git checkout $DEPLOY_TAG"
 ```
 
 This puts the server on the exact tagged commit (detached HEAD — expected for production). Tracked files are updated to match the tag; untracked server files (`.venv/`, `data/`, `logs/`, etc.) are preserved because they're in `.gitignore`.
 
-If `git fetch` fails → **STOP:** "Failed to fetch from GitHub on the server. Check the deploy key and network access."
-
 If `git checkout` fails (e.g., uncommitted changes on the server) → **STOP:** "Server working tree has local modifications. Investigate before deploying." Show the error output. Do NOT run `git checkout --force` — local server edits may be intentional emergency patches.
 
-**6b. Sync config to live path:**
+**6c. Sync config to live path:**
 
 ```bash
 ssh -p 2222 deploy@178.104.76.254 'sudo cp /home/deploy/sentinel/config/config.yaml /etc/sentinel/config.yaml && sudo chown root:sentinel /etc/sentinel/config.yaml && sudo chmod 640 /etc/sentinel/config.yaml'
 ```
 
-This copies the repo config (which git just updated) to the live path the service reads. The backup in Step 5 already preserved the previous live config, so this is safe to overwrite. Permissions are restored to `root:sentinel 640` to match the expected ownership.
+This copies the repo config (which git just updated) to the live path the service reads. The drift check in 6a has confirmed that it only changes what the repo intends, and the backup in Step 5 preserved the previous live config. Permissions are restored to `root:sentinel 640` to match the expected ownership.
 
 If the copy fails → **STOP.** Report the error. The service is still running with the old config; no damage done.
 
-**6c. Rebuild Python dependencies:**
+**6d. Rebuild Python dependencies:**
 
 ```bash
 ssh -p 2222 deploy@178.104.76.254 'cd /home/deploy/sentinel && .venv/bin/pip install -r requirements.txt'
@@ -207,7 +277,7 @@ ssh -p 2222 deploy@178.104.76.254 'cd /home/deploy/sentinel && .venv/bin/pip ins
 
 If pip install fails → **STOP.** Report the error and remind the user that a backup exists.
 
-**6d. Restart the service:**
+**6e. Restart the service:**
 
 ```bash
 ssh -p 2222 deploy@178.104.76.254 'sudo systemctl restart sentinel'
@@ -215,7 +285,7 @@ ssh -p 2222 deploy@178.104.76.254 'sudo systemctl restart sentinel'
 
 If restart fails → **STOP.** Report the error.
 
-**6e. Prune old deploy snapshots (keep last 10):**
+**6f. Prune old deploy snapshots (keep last 10):**
 
 ```bash
 ssh -p 2222 deploy@178.104.76.254 'ls -1dt /home/deploy/backups/deploy-* | tail -n +11 | xargs rm -rf && echo "Kept $(ls -1d /home/deploy/backups/deploy-* | wc -l) snapshots, $(du -sh /home/deploy/backups/ | cut -f1) total"'
@@ -267,6 +337,7 @@ After all steps succeed, output this summary:
 - Pushed to remote: master + {tag}
 - Backup location: /home/deploy/backups/deploy-{timestamp}/
 - Backup contents: code.tar.gz, config.yaml, sentinel.db, sentinel_session.session
+- Config drift check: no server-only edits; expected changes: {list or "none"}
 - Git checkout: {DEPLOY_TAG} on server
 - Config synced: config/config.yaml → /etc/sentinel/config.yaml
 - pip install: {success/no changes}
