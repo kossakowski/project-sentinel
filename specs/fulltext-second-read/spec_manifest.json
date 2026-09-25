@@ -25,7 +25,7 @@
     "tests/test_eval_suite_report.py"
    ],
    "parallelizable_with": [],
-   "requirement_count": 45
+   "requirement_count": 46
   }
  ],
  "requirements": [
@@ -314,7 +314,7 @@
   {
    "id": "1.25",
    "severity": "MUST",
-   "statement": "For runs without any `second` data, `score.json` MUST contain `\"b_corrections\": {}`, `\"variant_stats\": {}`, `\"second_read_cost\": {}` and `\"paired_vs_own_a\": {}`, and all other keys unchanged. `report` MUST treat any of these keys missing from an older `score.json` as `{}`.",
+   "statement": "For runs without any `second` data, `score.json` MUST contain `\"b_corrections\": {}`, `\"variant_stats\": {}`, `\"second_read_cost\": {}`, `\"paired_vs_own_a\": {}` and `\"variant_error_split\": {}`, and all other keys unchanged. `report` MUST treat any of these keys missing from an older `score.json` as `{}`.",
    "test_ids": [
     "test_score_without_second_has_empty_new_keys"
    ],
@@ -482,6 +482,17 @@
     "test_decide_sees_production_mix_cost"
    ],
    "provenance": "research",
+   "verify_at_integration": false
+  },
+  {
+   "id": "1.42",
+   "severity": "MUST",
+   "statement": "`score_run` MUST add `\"variant_error_split\": {model: {\"fixed\", \"broken\", \"both_wrong\", \"both_right\", \"not_read\", \"excluded\", \"fixed_items\", \"broken_items\", \"both_wrong_items\"}}` for every `<spec>#C-...` model whose `<spec>#A` model is in the run, computed before `_outcomes` are removed, over the items present in both models' `_outcomes` (labelled, per-item majority). Each such item falls into exactly one class, checked in this order: `not_read` when at most half of the C model's rows for that item (in the run's pool) have `variant.used_second` true — the full text was not actually used, so C equals A there; `excluded` when either model's outcome has `abs_error is None` (an invalid answer — `item_outcomes` sets it to `None` exactly then); otherwise, with `a = A.tier_ok` and `c = C.tier_ok`: `fixed` when `not a and c`, `broken` when `a and not c`, `both_wrong` when `not a and not c`, `both_right` when both. The three `*_items` lists hold the sorted item ids of the matching counts. WHEN `variant_error_split` is non-empty, `report.html` MUST contain a section headed `Warianty C — skąd biorą się błędy` with, per C model, the counts labelled `pełny tekst pomógł`, `pełny tekst zaszkodził` and `oba źle — sprawdź regułę w prompcie`, the `both_wrong_items` ids, and the sentence `„Oba źle” to kandydaci do uzgodnienia reguł: model miał pełny tekst, a i tak ocenił inaczej niż Ty.` **Rationale:** operator decision 2026-09-25 — separate errors from missing information (fixed by full text) from errors a full text does not fix, which point at the prompt's rules and feed the rule-alignment step.",
+   "test_ids": [
+    "test_variant_error_split",
+    "test_report_shows_error_split"
+   ],
+   "provenance": "user-decision",
    "verify_at_integration": false
   }
  ],
@@ -748,7 +759,7 @@
     "1.25"
    ],
    "phase": 1,
-   "assertion": "ordinary run → `b_corrections`, `variant_stats`, `second_read_cost`, `paired_vs_own_a` all `{}`; a `score.json` dict with those four keys deleted → `build_html` renders without raising.",
+   "assertion": "ordinary run → `b_corrections`, `variant_stats`, `second_read_cost`, `paired_vs_own_a`, `variant_error_split` all `{}`; a `score.json` dict with those five keys deleted → `build_html` renders without raising.",
    "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
   },
   {
@@ -895,6 +906,26 @@
    ],
    "phase": 1,
    "assertion": "`from sentinel.eval.suite.score import request_cost` and `from sentinel.eval.suite.runner import request_cost` both work and are the same function; importing `sentinel.eval.suite.score` alone does not import `sentinel.eval.suite.runner` (checked in a fresh interpreter via `subprocess` with `sys.modules`).",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_variant_error_split",
+   "type": "unit",
+   "requirement_ids": [
+    "1.42"
+   ],
+   "phase": 1,
+   "assertion": "(in `tests/test_eval_suite_score.py`) tmp run with manifest `repeats 1`, `luna#A` and `luna#C-5-8` over 6 labelled items, every C row with `variant.used_second true` except item-U: item-P (A wrong tier, C right), item-Q (A right, C wrong), item-R (both wrong), item-S (both right), item-T (C answer invalid), item-U (both wrong, `used_second false`) → real `score_run` gives `variant_error_split[\"luna#C-5-8\"] == {\"fixed\": 1, \"broken\": 1, \"both_wrong\": 1, \"both_right\": 1, \"not_read\": 1, \"excluded\": 1, \"fixed_items\": [\"item-P\"], \"broken_items\": [\"item-Q\"], \"both_wrong_items\": [\"item-R\"]}`; no entry for `luna#A`.",
+   "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
+  },
+  {
+   "name": "test_report_shows_error_split",
+   "type": "unit",
+   "requirement_ids": [
+    "1.42"
+   ],
+   "phase": 1,
+   "assertion": "(in `tests/test_eval_suite_report.py`) score with that split → html contains `Warianty C — skąd biorą się błędy`, `pełny tekst pomógł`, `pełny tekst zaszkodził`, `oba źle — sprawdź regułę w prompcie`, the id `item-R` inside that section, and the 1.42 sentence; a score without the key → no such section and no exception.",
    "gate_command": ".venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v"
   }
  ],

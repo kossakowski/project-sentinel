@@ -178,15 +178,15 @@ B ≤ $0.30 (≤ 2.0% of first reads score ≥ 9); C `band_5_8` ≈ $1.85 (12.1%
 - `sentinel/eval/suite/variants.py` — (create) Offline composition of variant rows (1.14–1.22).
 - `sentinel/eval/suite/score.py` — (modify existing) Change: baseline resolution for `#variant`
   specs (1.23), B-correction statistics (1.24), variant statistics (1.34), second-read cost basis
-  (1.38), pairings against each spec's own `#A` (1.40). Preserve: all existing metrics and outputs
+  (1.38), pairings against each spec's own `#A` (1.40), error split (1.42). Preserve: all existing metrics and outputs
   for runs without `second`/`variant` data.
 - `sentinel/eval/suite/price.py` — (modify existing) Change: the production snapshot also records
   the score mix (1.36). Preserve: existing snapshot keys and `price_table` behaviour.
 - `sentinel/eval/suite/report.py` — (modify existing) Change: price lookup strips `#variant`
   (1.26), monthly cap from config (1.27), B section (1.28, 1.33), empty-sequence rendering (1.29),
   variant labels (1.32), variant statistics and caveat (1.34), production-mix variant cost (1.35),
-  per-spec variant decisions (1.37), `n/d` price rendering (1.39). Preserve: existing sections and
-  `decide()` margins.
+  per-spec variant decisions (1.37), `n/d` price rendering (1.39), error-split section (1.42).
+  Preserve: existing sections and `decide()` margins.
 - `docs/how-to/model-eval.md` — (modify existing) Change: add a variants section (1.31).
 - `tests/test_second_read_triggers.py` — (create) Tests for 1.1–1.3.
 - `tests/test_eval_suite_runner.py` — (modify existing) Add tests for 1.5–1.13; existing tests unchanged.
@@ -362,7 +362,8 @@ corrections only and mutually exclusive in this order: `misleading` (`truth.crit
 `misleading_items` (sorted unique item ids).
 
 **1.25** — For runs without any `second` data, `score.json` MUST contain `"b_corrections": {}`,
-`"variant_stats": {}`, `"second_read_cost": {}` and `"paired_vs_own_a": {}`, and all other keys
+`"variant_stats": {}`, `"second_read_cost": {}`, `"paired_vs_own_a": {}` and
+`"variant_error_split": {}`, and all other keys
 unchanged. `report` MUST treat any of these keys missing from an older `score.json` as `{}`.
 
 **1.26** — `report.model_prices` MUST strip a `#...` suffix first, then `+reasoning`, then `@...`,
@@ -487,6 +488,24 @@ of `prices` with every `#C-...` entry replaced per 1.35 and a new key `"b_costs"
 `build_html`; `build_html` and `decide()` MUST use only that result, so the cap and
 cheaper-or-proven-better checks for C variants see the production-mix cost.
 
+**1.42** — `score_run` MUST add `"variant_error_split": {model: {"fixed", "broken", "both_wrong",
+"both_right", "not_read", "excluded", "fixed_items", "broken_items", "both_wrong_items"}}` for every
+`<spec>#C-...` model whose `<spec>#A` model is in the run, computed before `_outcomes` are removed,
+over the items present in both models' `_outcomes` (labelled, per-item majority). Each such item
+falls into exactly one class, checked in this order: `not_read` when at most half of the C
+model's rows for that item (in the run's pool) have `variant.used_second` true — the full text was
+not actually used, so C equals A there; `excluded` when either model's outcome has
+`abs_error is None` (an invalid answer — `item_outcomes` sets it to `None` exactly then); otherwise, with `a = A.tier_ok` and `c = C.tier_ok`: `fixed` when
+`not a and c`, `broken` when `a and not c`, `both_wrong` when `not a and not c`, `both_right` when
+both. The three `*_items` lists hold the sorted item ids of the matching counts. WHEN
+`variant_error_split` is non-empty, `report.html` MUST contain a section headed
+`Warianty C — skąd biorą się błędy` with, per C model, the counts labelled `pełny tekst pomógł`,
+`pełny tekst zaszkodził` and `oba źle — sprawdź regułę w prompcie`, the `both_wrong_items` ids,
+and the sentence `„Oba źle” to kandydaci do uzgodnienia reguł: model miał pełny tekst, a i tak
+ocenił inaczej niż Ty.` **Rationale:** operator decision 2026-09-25 — separate errors from missing
+information (fixed by full text) from errors a full text does not fix, which point at the prompt's
+rules and feed the rule-alignment step.
+
 ### Acceptance Tests
 1. `test_second_read_messages_puts_full_text_in_summary_slot` — (unit) [1.1] article with
    summary "Krótko", full_text "Pełny tekst artykułu" → user JSON `article.summary == "Pełny tekst artykułu"`, title unchanged, system message equals `messages(article, [], policy)[0]`; original `article.summary` still "Krótko".
@@ -564,8 +583,9 @@ cheaper-or-proven-better checks for C variants see the production-mix cost.
     first 10 → second 4 for X, Y, V and Z, first 9 → second 9 for W (labelled) → `corrections == 3`,
     `misleading == 2`, `justified == 1`, `ambiguous == 0`, `misleading_items == ["V", "X"]`, Z not counted.
 26. `test_score_without_second_has_empty_new_keys` — (unit) [1.25] ordinary run →
-    `b_corrections`, `variant_stats`, `second_read_cost`, `paired_vs_own_a` all `{}`; a
-    `score.json` dict with those four keys deleted → `build_html` renders without raising.
+    `b_corrections`, `variant_stats`, `second_read_cost`, `paired_vs_own_a`,
+    `variant_error_split` all `{}`; a `score.json` dict with those five keys deleted →
+    `build_html` renders without raising.
 27. `test_model_prices_strips_variant_suffix` — (unit) [1.26] patched catalogue with
     `openai/gpt-5.6-luna` and `z-ai/glm-5.3-flash` → all three specs from 1.26 get prices.
 28. `test_report_cap_defaults_to_config` — (unit) [1.27] tmp YAML with
@@ -636,6 +656,18 @@ cheaper-or-proven-better checks for C variants see the production-mix cost.
     and `from sentinel.eval.suite.runner import request_cost` both work and are the same function;
     importing `sentinel.eval.suite.score` alone does not import `sentinel.eval.suite.runner`
     (checked in a fresh interpreter via `subprocess` with `sys.modules`).
+41. `test_variant_error_split` — (unit) [1.42] (in `tests/test_eval_suite_score.py`) tmp run with
+    manifest `repeats 1`, `luna#A` and `luna#C-5-8` over 6 labelled items, every C row with
+    `variant.used_second true` except item-U: item-P (A wrong tier, C right), item-Q (A right,
+    C wrong), item-R (both wrong), item-S (both right), item-T (C answer invalid), item-U (both
+    wrong, `used_second false`) → real `score_run` gives `variant_error_split["luna#C-5-8"] ==
+    {"fixed": 1, "broken": 1, "both_wrong": 1, "both_right": 1, "not_read": 1, "excluded": 1,
+    "fixed_items": ["item-P"], "broken_items": ["item-Q"], "both_wrong_items": ["item-R"]}`; no
+    entry for `luna#A`.
+42. `test_report_shows_error_split` — (unit) [1.42] (in `tests/test_eval_suite_report.py`) score with
+    that split → html contains `Warianty C — skąd biorą się błędy`, `pełny tekst pomógł`,
+    `pełny tekst zaszkodził`, `oba źle — sprawdź regułę w prompcie`, the id `item-R` inside that section,
+    and the 1.42 sentence; a score without the key → no such section and no exception.
 
 ### Gate Criteria
 - `.venv/bin/pytest tests/test_second_read_triggers.py tests/test_eval_suite_runner.py tests/test_eval_suite_variants.py tests/test_eval_suite_score.py tests/test_eval_suite_price.py tests/test_eval_suite_report.py -v` — All acceptance tests pass
