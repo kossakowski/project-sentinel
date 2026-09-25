@@ -196,6 +196,15 @@ def test_production_budget_cap_is_accepted_and_typos_are_rejected():
         ModelBudgetConfig(monthly_usd=300)
 
 
+def test_production_ledger_lives_next_to_the_production_database():
+    # /deploy copies config/config.yaml to the server; a relative ledger path cannot be opened
+    # there and stopped the service on 2026-09-25.
+    configured = yaml.safe_load(Path("config/config.yaml").read_text(encoding="utf-8"))
+    ledger = Path(configured["classification"]["budget"]["ledger_path"])
+    database = Path(configured["database"]["path"])
+    assert ledger.is_absolute() and ledger.parent == database.parent
+
+
 def test_budget_survives_restart_and_shared_callers(tmp_path):
     cfg = ModelBudgetConfig(ledger_path=str(tmp_path / "usage.db"), monthly_usd=0.01)
     a, b = UsageLedger(cfg), UsageLedger(cfg)
