@@ -30,3 +30,6 @@ mobile/dev-qr.png
 .code-refiner-state-inbox-phase1/
 .code-refiner-state-inbox-phase2/
 .code-refiner-state-inbox-phase3/
+
+# Playwright MCP browser logs (may contain session tokens)
+.playwright-mcp/
