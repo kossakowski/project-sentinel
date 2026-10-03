@@ -72,7 +72,15 @@ Known state, not an item: SMS is off on purpose for urgency 5–8 (push-only sin
 - **What:** Branches `redesign-phase0-geography`, `redesign-phase1-alerting` and `redesign-phase2-policy` (2026-07-12) are unmerged. Master has since diverged (Luna classifier, incident memory, push-only 5–8). Their owner follow-ups ("6.0 Alerting reliability & resilience" and "Phase 1 redesign owner follow-ups") exist only in the branch copies of TODO.md.
 - **Evidence:** `git show redesign-phase2-policy:TODO.md`; DECISIONS.md (Phase 1 notes: "Owner follow-ups … logged to TODO.md").
 - **Decided (owner, 2026-10-03):** the three branches are closed. They are not rebased or merged, and they stay on GitHub as a record. Two parts remain backlog candidates: the Phase-1 bounded retry sweep with durable failure records (see "Unacknowledged calls are retried only when a new article joins the event") and the Phase-0 Romania coverage.
-- **Still open:** the rubric gap from Phase 0. There is no urgency band for an attack on a non-monitored NATO state.
+- **Rubric gap from Phase 0:** decided on 2026-10-03, see "Owner rules confirmed 2026-10-03 (call vs text boundary)".
+
+### Owner rules confirmed 2026-10-03 (call vs text boundary)
+
+- **What:** The owner's earlier grades disagreed on where a phone call starts. His May 2026 labels put a Baltic shelter order at 9 (call), his July 2026 labels put a Baltic strike with shelter orders at 8 (text), and the live policy v2 (2026-09-20) puts both at 9–10 (call).
+- **Decided (owner, 2026-10-03):**
+  - A confirmed Russian strike on a Baltic state (LT, LV, EE), or an official shelter order there, is a phone call (9–10). This is the live rule, so production needs no change. The July grades of 8 for these cases are superseded.
+  - A Russian strike on a NATO state outside Poland and the Baltics (for example Romania or Germany) is a text (7–8).
+- **To do:** the live policy has no band for the second rule. Add it to `classification.policy` and the prompt in `sentinel/classification/policy.py`. This changes the frozen prompt, so tune it on the development pool of the eval suite and gate it on the owner's labels (`docs/how-to/model-eval.md`). Do not deploy it without that test.
 
 ### OpenAI project hard spend cap vs the 30 USD app allowance
 
