@@ -15,11 +15,14 @@ living docs and the source.
 
 ## What's in here, and where the living equivalent now lives
 
+> **[AMENDMENT 2026-10-03]** Corrections to the table below. The nuclear-keyword gap from `HANDOFF_audit-findings-2026-05-23.md` is not resolved: most of Issue #1's proposed nuclear keywords are not in `config/config.yaml`. It is tracked in [`../../TODO.md`](../../TODO.md) §2 as "Nuclear keyword gaps from the 2026-05-23 audit"; the dated banner at the top of that file gives the status. Do not execute any file under `prompts/`; several carry a dated banner saying why. The audit-skill draft in `prompts/` is superseded by the `/sentinel-audit` skill. The `MOBILE_APP_START_HERE.md` row was added on 2026-10-03, when the file moved here from the repo root.
+
 | Archived item | What it was | Current truth now lives in |
 |---|---|---|
 | [`SPEC_ALERT_GROUPING.md`](SPEC_ALERT_GROUPING.md) | The completed 3-phase alert-grouping / event-grouping effort (corroborator window widening, dashboard event grouping, audit-skill event grouping). | [`../explanation/architecture.md`](../explanation/architecture.md), [`../explanation/pipeline.md`](../explanation/pipeline.md), and the dashboard spec [`../../SPEC.md`](../../SPEC.md). |
 | [`SPEC_ASYNC_REFACTOR.md`](SPEC_ASYNC_REFACTOR.md) | The completed async refactor of blocking calls (async Anthropic client, `asyncio.to_thread` for Twilio, single cycle lock). | [`../explanation/architecture.md`](../explanation/architecture.md). |
 | [`HANDOFF_audit-findings-2026-05-23.md`](HANDOFF_audit-findings-2026-05-23.md) | A historical audit handoff from the 2026-05-23 `/sentinel-audit` run (nuclear-keyword gap and quality findings). | Tracked/resolved in [`../../TODO.md`](../../TODO.md); audit process in the `/sentinel-audit` skill. |
+| [`MOBILE_APP_START_HERE.md`](MOBILE_APP_START_HERE.md) | The June 2026 handoff for the separate mobile worktree (branch `mobile-push-app`, created 2026-06-01). Moved here from the repo root on 2026-10-03. The branch and worktree no longer exist; the work is merged and live. | [`../explanation/mobile-app.md`](../explanation/mobile-app.md) and [`../how-to/mobile-push-setup.md`](../how-to/mobile-push-setup.md). |
 | [`prompts/`](prompts/) | The original phase-1 implementation prompts — spec-forge / code-refiner scaffolding used to bootstrap the build (per-agent build prompts, audit-remediation, corroboration-removal, the audit skill draft). | Superseded by the shipped code under `sentinel/` and the living docs; no living equivalent — kept for provenance only. |
 
 ## A note on source-code citations

@@ -1,5 +1,7 @@
 # Luna production deployment — 2026-09-20
 
+> **[AMENDMENT 2026-10-03]** This is a dated record of the 2026-09-20 release (tag `deploy-20260920-232235`, commit `7048a91`). Production has moved on: it now runs tag `deploy-20260925-143105` (commit `6429124`), deployed after `deploy-20260925-141910` (commit `314f1c2`). Use the [server runbook](../how-to/server-runbook.md) for the current state.
+
 The operator explicitly approved deployment after the local migration and Polish
 summary fix were verified. The local Claude Code
 [`/deploy` workflow](../../.claude/skills/deploy/SKILL.md) and server runbook were
@@ -29,6 +31,8 @@ excluding Git metadata and any repository `.env`), `config.yaml`, `sentinel.db`,
 up with SQLite's backup API and passed integrity checks. Original credentials
 were neither copied into the backup nor changed. Normal backup retention kept
 the ten newest deployment snapshots.
+
+> **[AMENDMENT 2026-10-03]** Since `deploy-20260925-143105` (commit `6429124`) the live application allowance (`classification.budget.monthly_usd` in `config/config.yaml`) is 30 USD a month; commit `31acd3a` (2026-09-24) raised it because measured use is about 11–17 USD a month. The code default (`sentinel/config.py`) and `config/config.example.yaml` remain 10 USD. The 10 USD OpenAI project hard cap below is the 2026-09-20 setting, and nothing in the repo shows it was raised. If it is still 10 USD, OpenAI rejects requests with `project_spend_limit_exceeded` once 10 USD is spent, and classification pauses (`sentinel/classification/openai_provider.py`) even though the app allowance is 30 USD. The open check is tracked in `TODO.md` ("OpenAI project hard spend cap vs the 30 USD app allowance"). The hand-merge of classifier fields described below was a one-off: `/deploy` (step 6c) now copies `config/config.yaml` wholesale to `/etc/sentinel/config.yaml`, so the repo config and the server config are the same file.
 
 ## Migration-specific configuration
 
@@ -81,6 +85,8 @@ including 21:19 UTC. Its configuration was preserved; this is not a new Luna fai
 
 Server-side details are retained beside the backup in `migration-state.json`,
 `database-counts.json`, `health-before.json`, `verification.json` and `pip-install.log`.
+
+> **[AMENDMENT 2026-10-03]** The steps below describe rollback from the 2026-09-20 release only. Today "the previous code commit/tag" is `deploy-20260925-141910` (commit `314f1c2`), which also runs Luna, so it would not return to the Anthropic code (`2cad033`). On 2026-09-25 the `/deploy` config sync replaced the server-only absolute `ledger_path` with the relative `data/model-usage.db`, and the service stopped for about 10 minutes until it was restored from backup; commit `6429124` moved the ledger path into `config/config.yaml`, and `/deploy` step 6a now stops a deploy when the server config has edits the repo does not have. Because `/deploy` copies `config/config.yaml` wholesale (step 6c), a config restored by hand on the server makes the next `/deploy` stop at step 6a; a lasting rollback config lives in the repo. Current code also supports a config-only rollback (`classification.provider: anthropic` with the legacy Haiku model), described under "Budget, failure and rollback" in [API setup](../how-to/api-setup.md). The backup directory `/home/deploy/backups/deploy-20260920-232235/` may no longer exist, because `/deploy` keeps only the 10 newest snapshots.
 
 ## Rollback plan — only on explicit instruction
 

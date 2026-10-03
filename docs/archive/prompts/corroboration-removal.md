@@ -1,3 +1,5 @@
+> **[AMENDMENT 2026-10-03]** HISTORIC: this directive was already carried out. The live `config/config.yaml` has `corroboration_required: 1` under `classification` and under the critical tier, so one source triggers a phone call today. Do not re-run it; its "~line" anchors are also stale. Whether to require 2 sources again is an open owner question in TODO.md. See [docs/archive/README.md](../README.md).
+
 # Corroboration Removal — Agent Directive
 
 You are making a config-only change to Project Sentinel: reducing the corroboration threshold for phone call alerts from 2 independent sources to 1. This means a single source reporting a critical threat is enough to trigger a phone call. Follow each step in order.

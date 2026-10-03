@@ -1,6 +1,23 @@
 # Project Sentinel — Architecture Reference
 
-> Dense structured reference for LLM agents. No prose. Every claim anchored to a file/class/function.
+Last verified: 2026-10-03 (deployed commit 6429124)
+
+> Dense structured reference for LLM agents. Every claim is anchored to a file, class or function. Anchors use function names, not line numbers, because line numbers drift.
+> Where values come from: `config/config.yaml` holds the live values (production `/etc/sentinel/config.yaml` is byte-identical to it). `sentinel/config.py` holds the code defaults. `config/config.example.yaml` is only a template. Full key list: [config-reference.md](../reference/config-reference.md). Narrative walkthrough: [pipeline.md](pipeline.md).
+
+## Contents
+
+- [1. Module Map](#1-module-map)
+- [2. Data Models](#2-data-models)
+- [3. Pipeline Stages](#3-pipeline-stages)
+- [4. Dual-Lane Scheduler](#4-dual-lane-scheduler)
+- [5. Alert Routing Logic](#5-alert-routing-logic)
+- [6. Key Config Keys](#6-key-config-keys)
+- [6.5 Incident Grouping and Corroboration](#65-incident-grouping-and-corroboration)
+- [7. Database Schema](#7-database-schema)
+- [8. Entry Points and CLI Flags](#8-entry-points-and-cli-flags)
+- [9. Known Quirks](#9-known-quirks)
+- [10. Dashboard Subsystem](#10-dashboard-subsystem)
 
 ---
 
@@ -8,307 +25,382 @@
 
 | File | Main Class / Function | Responsibility |
 |---|---|---|
-| `sentinel.py` | `main()` | CLI entry point, arg parsing, asyncio event loop |
-| `run.sh` | — | Activates `.venv`, forwards all args to `sentinel.py` |
-| `sentinel/config.py` | `SentinelConfig`, `load_config()` | Pydantic config schema; YAML load + `${ENV_VAR}` substitution |
-| `sentinel/models.py` | `Article`, `ClassificationResult`, `Event`, `AlertRecord` | All dataclasses; SQLite serialization via `to_dict()`/`from_row()` |
-| `sentinel/scheduler.py` | `SentinelPipeline`, `SentinelScheduler` | Pipeline orchestrator + APScheduler dual-lane wrapper |
-| `sentinel/database.py` | `Database` | SQLite WAL-mode access layer; table creation, CRUD, cleanup |
-| `sentinel/diagnostic.py` | `DiagnosticData`, `DiagnosticArticle` | Data containers for HTML diagnostic report |
+| `sentinel.py` | `main()` | CLI entry point, arg parsing; each mode runs under `asyncio.run(...)` |
+| `run.sh` | — | Runs `sentinel.py` with `.venv/bin/python`, forwarding all args. If the venv is missing, it first creates it and runs `pip install -r requirements.txt`. It does not activate the venv. |
+| `sentinel/config.py` | `SentinelConfig`, `load_config()` | Pydantic schema and code defaults; YAML load + `${ENV_VAR}` substitution. `ClassificationConfig` validation: with `provider: openai` the model must start with `gpt-` and `classification.policy` must be a complete version-2 policy. |
+| `sentinel/models.py` | `Article`, `ClassificationResult`, `Event`, `AlertRecord`, `_normalize_title()` | All dataclasses; SQLite serialization via `to_dict()`/`from_row()` |
+| `sentinel/scheduler.py` | `SentinelPipeline`, `SentinelScheduler` | Pipeline orchestrator (`run_cycle`) + APScheduler dual-lane wrapper; writes `health.json` |
+| `sentinel/database.py` | `Database` | SQLite WAL access layer: table creation, additive migrations (`_migrate_schema`), classification queue, nestable `transaction()` (SAVEPOINT), CRUD, cleanup |
+| `sentinel/diagnostic.py` | `DiagnosticData`, `DiagnosticArticle`, `generate_html()` | Data containers and renderer for the HTML diagnostic report |
 | `sentinel/logging_setup.py` | `setup_logging()` | Rotating file + stderr handler config |
-| `sentinel/utils/` | `datetime.py`, `html.py` | Was the single module `sentinel/utils.py`; now a package — `datetime.py` (UTC-store / Warsaw-render helpers, e.g. `format_warsaw`), `html.py` (`strip_html`) |
+| `sentinel/utils/` | `datetime.py`, `html.py` | Package (formerly the single module `sentinel/utils.py`): `datetime.py` holds UTC-store / Warsaw-render helpers such as `format_warsaw`; `html.py` holds `strip_html` |
 | `sentinel/fetchers/base.py` | `BaseFetcher` | Abstract base: `name: str`, `fetch() -> list[Article]` |
-| `sentinel/fetchers/rss.py` | `RSSFetcher` | `feedparser` + `httpx`; conditional GET via in-memory `_etag_cache` / `_last_modified_cache` keyed by URL (sends `If-None-Match` / `If-Modified-Since`; 304 → `[]`). `rss.py:99-111`. `fetch(max_priority=N)` |
-| `sentinel/fetchers/gdelt.py` | `GDELTFetcher` | GDELT DOC 2.0 API; theme + `sourcecountry` filter, `TIMESPAN={lookback_minutes}min`, `maxrecords=250`. **DISABLED in production** (`sources.gdelt.enabled: false`); the fetcher is only instantiated when enabled. (No CAMEO event-code or Goldstein filter — those never existed.) |
-| `sentinel/fetchers/google_news.py` | `GoogleNewsFetcher` | Google News RSS per configured query |
-| `sentinel/fetchers/telegram.py` | `TelegramFetcher` | Telethon MTProto client; buffers messages; **requires `start()`/`stop()` lifecycle** |
-| `sentinel/processing/normalizer.py` | `Normalizer` | Strips/coerces fields to `Article` schema |
-| `sentinel/processing/deduplicator.py` | `Deduplicator` | URL-hash exact match + rapidfuzz fuzzy title match against DB |
+| `sentinel/fetchers/rss.py` | `RSSFetcher` | `feedparser` + `httpx`; conditional GET via in-memory `_etag_cache` / `_last_modified_cache` keyed by URL (sends `If-None-Match` / `If-Modified-Since`; 304 → `[]`). `fetch(max_priority=N)` |
+| `sentinel/fetchers/gdelt.py` | `GDELTFetcher` | GDELT DOC 2.0 API; theme + `sourcecountry` filter, `TIMESPAN={lookback_minutes}min`, `maxrecords=250`. Instantiated only when `sources.gdelt.enabled` is true (see `config/config.yaml` for the live state). No CAMEO event-code or Goldstein filter exists. |
+| `sentinel/fetchers/google_news.py` | `GoogleNewsFetcher` | Google News RSS per configured query; stores the `news.google.com` redirect link as `source_url` |
+| `sentinel/fetchers/telegram.py` | `TelegramFetcher` | Telethon MTProto client; buffers messages; requires the `start()`/`stop()` lifecycle |
+| `sentinel/processing/__init__.py` | `process_articles()` | Standalone normalize → dedup → keyword-filter helper. No module calls it; `run_cycle` runs the stages itself. |
+| `sentinel/processing/normalizer.py` | `Normalizer` | Strips/coerces fields to the `Article` schema |
+| `sentinel/processing/deduplicator.py` | `Deduplicator` | URL-hash exact match. Fuzzy rapidfuzz title match runs only when `classification.incident_memory.enabled` is false. |
 | `sentinel/processing/keyword_filter.py` | `KeywordFilter` | Multilingual keyword match; `diagnose()` for diagnostic mode |
-| `sentinel/processing/enricher.py` | `ArticleEnricher` | Two-gate content enrichment for articles with thin summaries: free heuristic gate (summary ≈ title) + cheap LLM vagueness gate, then fetches the article body via `httpx`; `enrich_batch` is `async` |
-| `sentinel/classification/classifier.py` | `Classifier` | Sends articles to Claude Haiku 4.5 via `anthropic.AsyncAnthropic`; `classify` / `classify_batch` / `_call_api` / `_send_request` / `aclose` are `async`; returns `ClassificationResult` list. `classify_batch` is sequential (one awaited `classify` per article). |
-| `sentinel/classification/corroborator.py` | `Corroborator` | Groups classifications into `Event` objects; checks source count |
-| `sentinel/alerts/dispatcher.py` | `AlertDispatcher` | Sorts events by urgency; routes to `AlertStateMachine` or dry-run log |
-| `sentinel/alerts/state_machine.py` | `AlertStateMachine` | Urgency → action decision; async call/SMS execution; cooldown; call polling |
-| `sentinel/alerts/twilio_client.py` | `TwilioClient` | Twilio REST API wrapper: `make_alert_call(phone, message_pl, event_id)` (`twilio_client.py:43`), `send_sms(phone, message, event_id)`, `get_call_status(twilio_sid)` |
-| `sentinel/alerts/push_client.py` | `ExpoPushClient` | Expo push channel: `send_push(title, body, event_id, data)` POSTs to `https://exp.host/--/api/v2/push/send` (optional `EXPO_ACCESS_TOKEN` bearer). Routed per-tier by each SMS-level's `channel` (`sms` / `push` / `both`) and fired additively on the 9–10 call. OFF by default (live `config.yaml` omits the `alerts.push` block; `enabled` defaults to `false`); returns a generic `AlertRecord` with `alert_type="push"`. See [`mobile-app.md`](mobile-app.md) for the companion app that registers the device push token. |
+| `sentinel/processing/enricher.py` | `ArticleEnricher` | Two-gate content enrichment for articles with thin summaries: a free heuristic gate (summary ≈ title) and a cheap LLM vagueness gate, then the article body is fetched via `httpx`. The LLM gate uses `OpenAIProvider` (purpose `enrichment_quality`, counted in the budget ledger) when `provider: openai`, and the Anthropic client otherwise. `enrich_batch` is `async`. |
+| `sentinel/classification/classifier.py` | `Classifier` | Calls the configured provider; there is no automatic fallback between providers. `provider: openai` (live): one `OpenAIProvider.request` with `policy.messages()` and `CLASSIFICATION_SCHEMA`, then `summary_language.ensure_polish`. `provider: anthropic` (code default; legacy / rollback only): `anthropic.AsyncAnthropic` with `SYSTEM_PROMPT` + `USER_PROMPT_TEMPLATE`. `classify` (one article; used live), `classify_batch` (sequential loop; legacy non-memory path only), `aclose`. |
+| `sentinel/classification/openai_provider.py` | `OpenAIProvider`, `UsageLedger`, `StructuredReply`, `ClassificationError`, `BudgetExceeded`, `validate_json()` | OpenAI Responses API via `openai.AsyncOpenAI` (`max_retries=0`, `asyncio.timeout`, `store=False`, strict JSON-schema output). Before each request `UsageLedger.reserve` books a worst-case cost and refuses it if the month would exceed `classification.budget.monthly_usd`; `settle` then records the actual cost. Every failure (auth, quota, rate limit, timeout, refusal, invalid JSON, budget) raises `ClassificationError`. |
+| `sentinel/classification/policy.py` | `system_prompt(policy)`, `messages()`, `prompt_hash()`, `FACT_SCHEMA` | Builds the versioned prompt (version 2, "clarified" policy) from `classification.policy`. The user message is JSON with `evaluation_time`, `article` and `remembered_incidents`. |
+| `sentinel/classification/schema.py` | `RESPONSE_SCHEMA`, `CLASSIFICATION_SCHEMA` | Strict JSON schema of the model reply, including `incident_memory` and `facts` |
+| `sentinel/classification/summary_language.py` | `ensure_polish()`, `is_polish()`, `GUARD_VERSION` | Polish-summary guard. A local `lingua` detector plus a Cyrillic check decide whether `summary_pl` is Polish. If not, one translation request (purpose `summary_translation`) runs; if that fails, `classification.summary_language.fallback_pl` is used. The guard never changes urgency or the incident decision. |
+| `sentinel/classification/incident_memory.py` | `IncidentMemory` (`candidates`, `validate`), `MEMORY_INSTRUCTIONS` | Incident memory. `candidates()` returns up to `max_candidates` recent events (the newest event always, the rest ranked by `fuzz.WRatio`) as model context. `validate()` checks the model's incident decision. It makes no model calls. |
+| `sentinel/classification/corroborator.py` | `Corroborator` | Groups classifications into `Event`s (memory match live, fuzzy match legacy), checks source independence, sets a provisional `alert_status`, and increments `notification_revision` on escalation |
+| `sentinel/alerts/dispatcher.py` | `AlertDispatcher` | Drops repeated event ids, re-reads each event's persisted row, sorts by urgency, then awaits `process_event` per event or logs in dry run |
+| `sentinel/alerts/state_machine.py` | `AlertStateMachine` | Urgency → action decision; per-channel, per-revision delivery dedup; async call/SMS/push execution; call polling |
+| `sentinel/alerts/twilio_client.py` | `TwilioClient` | Twilio REST wrapper: `make_alert_call(phone, message_pl, event_id)` (TwiML `<Say>` only), `send_sms(phone, message, event_id)` (record status `sent`), `get_call_status(twilio_sid)`. Twilio errors are logged and the method returns `None`. |
+| `sentinel/alerts/push_client.py` | `ExpoPushClient` | `send_push(title, body, event_id, data)` POSTs to `https://exp.host/--/api/v2/push/send` (optional `EXPO_ACCESS_TOKEN` bearer); returns an `AlertRecord` with `alert_type="push"`, status `sent`. Code default off (`PushConfig.enabled=False`); live `config/config.yaml` sets `enabled: true` with one token `${EXPO_PUSH_TOKEN}` (value in `/etc/sentinel/sentinel.env`). See [`mobile-app.md`](mobile-app.md). |
+| `sentinel/eval/` | `harness.py`, `compare_models.py`, `openrouter_client.py`, `cached_runtime.py`, `direct_luna.py`, `separate_metrics.py`, `export_candidates.py`, `rescore_dimensions.py`, `reference_history.py`, `clarified_policy.py`, `incident_memory.py` | Offline, opt-in evaluation tooling. The monitoring runtime does not import it; `sentinel.py` imports `harness.py` only for `--eval`. |
 
 ---
 
-## 2. Data Models (`sentinel/models.py`)
+## 2. Data Models
+
+Source: `sentinel/models.py`.
 
 ### `Article`
-Produced by: all fetchers. Consumed by: `Normalizer`, `Deduplicator`, `KeywordFilter`, `Classifier`.
+Produced by: all fetchers. Consumed by: `Normalizer`, `Deduplicator`, `KeywordFilter`, `ArticleEnricher`, `IncidentMemory`, `Classifier`.
 
 | Field | Type | Notes |
 |---|---|---|
 | `id` | `str` | UUID4, auto-generated |
-| `source_name` | `str` | Human label (e.g. `"PAP"`) |
-| `source_url` | `str` | Canonical URL of the article |
+| `source_name` | `str` | Human label (e.g. `"PAP"`; Google News: `GoogleNews:<query>`) |
+| `source_url` | `str` | URL as fetched (Google News keeps its redirect link) |
 | `source_type` | `str` | `rss` \| `gdelt` \| `google_news` \| `telegram` |
 | `title` | `str` | Raw headline |
-| `summary` | `str` | Body excerpt or empty |
+| `summary` | `str` | Body excerpt; the enricher may replace it with the fetched body |
 | `language` | `str` | ISO 639-1: `pl`, `en`, `uk`, `ru` |
 | `published_at` | `datetime` | Source publication time |
-| `fetched_at` | `datetime` | Time of fetch |
-| `raw_metadata` | `dict` | Source-specific extras (JSON in DB) |
+| `fetched_at` | `datetime` | Time of fetch; the OpenAI prompt sends it as `evaluation_time` |
+| `raw_metadata` | `dict` | Source-specific extras (JSON in DB); the enricher adds `enrichment` |
 | `url_hash` | `str` | SHA-256 of `source_url`; computed in `__post_init__` |
-| `title_normalized` | `str` | NFKD + strip diacritics + lowercase + collapse whitespace; used for fuzzy dedup |
+| `title_normalized` | `str` | `_normalize_title`: NFKD, strip combining marks, delete every character outside `[a-zA-Z0-9\s]`, collapse whitespace, lowercase. Non-Latin letters are removed, so an all-Cyrillic (UA/RU) title becomes empty or digits only. Used by legacy fuzzy dedup and by the corroborator's syndication check (`_is_independent_source`). |
 
 ### `ClassificationResult`
-Produced by: `Classifier.classify_batch()`. Consumed by: `Corroborator.process_classifications()`.
+Produced by: `Classifier.classify()` (live, one article at a time; `classify_batch` only on the legacy non-memory path). Validated by: `IncidentMemory.validate()`. Consumed by: `Corroborator.process_classifications()`.
 
 | Field | Type | Notes |
 |---|---|---|
 | `article_id` | `str` | FK → `Article.id` |
-| `is_military_event` | `bool` | Core yes/no from Haiku |
-| `event_type` | `str` | `invasion` \| `airstrike` \| `missile_strike` \| `border_crossing` \| `airspace_violation` \| `naval_blockade` \| `cyber_attack` \| `troop_movement` \| `artillery_shelling` \| `drone_attack` \| `other` |
+| `is_military_event` | `bool` | Core yes/no from the model |
+| `event_type` | `str` | Free string in the live schema (`schema.py`: `{"type": "string"}`). The legacy Anthropic prompt lists `invasion` \| `airstrike` \| `missile_strike` \| `border_crossing` \| `airspace_violation` \| `naval_blockade` \| `cyber_attack` \| `troop_movement` \| `artillery_shelling` \| `drone_attack` \| `other` \| `none`; legacy fuzzy grouping uses this vocabulary in `EVENT_COMPATIBILITY`. |
 | `urgency_score` | `int` | 1–10 |
-| `affected_countries` | `list[str]` | ISO codes |
+| `affected_countries` | `list[str]` | Country codes |
 | `aggressor` | `str` | Free text from model |
-| `is_new_event` | `bool` | Model's judgement: new vs. ongoing coverage |
-| `confidence` | `float` | 0.0–1.0 |
-| `summary_pl` | `str` | Polish-language summary from model |
+| `is_new_event` | `bool` | True for new/uncertain incidents, false otherwise |
+| `confidence` | `float` | 0.0–1.0 (classification confidence, separate from incident confidence) |
+| `summary_pl` | `str` | Polish summary after the Polish-summary guard: original, translated, or `fallback_pl` |
 | `classified_at` | `datetime` | Timestamp |
-| `model_used` | `str` | Haiku model ID |
-| `input_tokens` | `int` | API usage |
+| `model_used` | `str` | `classification.model` (live `gpt-5.6-luna`) |
+| `input_tokens` | `int` | API usage (classification + any translation request) |
 | `output_tokens` | `int` | API usage |
+| `incident_memory` | `dict` | Validated incident decision: `decision` (`new` \| `duplicate` \| `update` \| `escalation` \| `uncertain`), `matched_event_id`, `confidence`, `reason`, `candidate_ids`. A rejected decision becomes `uncertain` and keeps `model_decision` / `model_confidence`. A replayed article gets `article_replay: true`. `{}` on the legacy non-memory path. |
+| `facts` | `dict` | OpenAI path only: `attack_countries`, `protection`, `status`, `evidence` (`policy.FACT_SCHEMA`). Stored for audit; grouping and routing do not read it. |
+| `summary_processing` | `dict` | Output of `ensure_polish`: `version`, `original_summary`, `action` (`unchanged` \| `translated` \| `fallback`), repair request ids or error |
+| `provider_used` | `str` | `openai` \| `anthropic`; default `legacy` for old rows |
+| `prompt_version` | `str` | `clarified-v2:<prompt hash>:<GUARD_VERSION>` (OpenAI) or `legacy:<hash>`; default `legacy-unversioned` |
+| `request_hash` | `str` | SHA-256 of the OpenAI request payload |
+| `response_id` | `str` | OpenAI response id |
+| `cached_input_tokens` | `int` | Cached input tokens (default 0) |
+| `estimated_cost_usd` | `float` | Ledger cost of the classification + translation requests (default 0.0) |
+| `id` | `str` | UUID4 primary key |
 
 ### `Event`
-Produced by: `Corroborator.process_classifications()`. Consumed by: `AlertDispatcher.dispatch()`, `AlertStateMachine.process_event()`.
+Produced by: `Corroborator.process_classifications()`. Consumed by: `AlertDispatcher.dispatch()`, `AlertStateMachine.process_event()`, `IncidentMemory.candidates()`.
 
 | Field | Type | Notes |
 |---|---|---|
 | `id` | `str` | UUID4 |
-| `event_type` | `str` | Same enum as `ClassificationResult.event_type` |
-| `urgency_score` | `int` | Max urgency across corroborating articles |
-| `affected_countries` | `list[str]` | Union across corroborating articles |
-| `aggressor` | `str` | From highest-urgency article |
-| `summary_pl` | `str` | Polish summary |
-| `first_seen_at` | `datetime` | Earliest article in group |
-| `last_updated_at` | `datetime` | Latest article in group |
+| `event_type` | `str` | From the first article; not changed on update |
+| `urgency_score` | `int` | Live (memory mode): the first article's score, raised only on an `escalation` decision. Legacy: max across grouped articles. |
+| `affected_countries` | `list[str]` | First article's list; on each update the union of concrete codes (uppercased, blank / `unknown` dropped, sorted) |
+| `aggressor` | `str` | From the first article; not changed on update |
+| `summary_pl` | `str` | First article's Polish summary; replaced only on an `escalation` decision (memory mode) |
+| `first_seen_at` | `datetime` | `classified_at` of the first classification |
+| `last_updated_at` | `datetime` | Processing time (`datetime.now(UTC)`) of the last create or update, not an article time |
 | `source_count` | `int` | Count of independent sources |
 | `article_ids` | `list[str]` | All contributing article IDs |
-| `alert_status` | `str` | Values written by code: `pending`, `call_placed`, `retry_pending`, `sms_sent`, `acknowledged`, `dry_run` (historical records may also contain `whatsapp_sent` from the removed WhatsApp channel). `Corroborator._determine_alert_status` sets a provisional value (`phone_call`/`sms`/`pending`) but `AlertStateMachine` overwrites it with the values above. |
-| `acknowledged_at` | `datetime\|None` | Set when operator replies to SMS with correct 6-digit confirmation code |
+| `alert_status` | `str` | See the note below the table. |
+| `acknowledged_at` | `datetime\|None` | Set when the operator replies to the confirmation SMS with the correct 6-digit code |
+| `notification_revision` | `int` | Default 1. Incremented only when incident memory accepts an `escalation`. All delivery dedup keys on it (§5). |
+
+`alert_status` values. `Corroborator._determine_alert_status` writes a provisional `phone_call` or `sms` (or `dry_run` in dry-run mode). `pending` is the column default; the corroborator never assigns it to a stored event, because events start at urgency ≥ 5. `AlertStateMachine` overwrites the value only on the call and SMS paths: `call_placed`, `retry_pending`, `acknowledged`, `sms_sent`. Push-only tiers and failed SMS sends never reach those writes, so the provisional `sms` stays stored. A call round whose calls all fail still ends with `retry_pending`. A query for `sms_sent` therefore misses push-only alerts. Historical rows may also contain `whatsapp_sent` from the removed WhatsApp channel. `expired` is read by `get_active_events` and `_update_event` but no code writes it.
 
 ### `AlertRecord`
-Produced by: `AlertStateMachine`. Consumed by: `AlertStateMachine.check_pending_calls()`.
+Produced by: `AlertStateMachine._record_alert()`. Consumed by: `AlertStateMachine.process_event()` (`_channel_delivered`, `_has_new_delivered_revision`, pending-call guard) and `check_pending_calls()`.
 
 | Field | Type | Notes |
 |---|---|---|
-| `event_id` | `str` | FK → `Event.id` |
-| `alert_type` | `str` | `phone_call` \| `sms` \| `push` (historical records may also contain `whatsapp` — that channel was removed; the literal survives only in old DB rows) |
-| `twilio_sid` | `str` | Twilio call/message SID |
-| `status` | `str` | Twilio API values: `initiated`, `ringing`, `in-progress`, `completed`, `busy`, `no-answer`, `failed`, `canceled`; plus internal `acknowledged`. `Database.get_pending_call_records()` (`database.py:221`) filters `status IN ('initiated', 'ringing')`. |
+| `event_id` | `str` | FK → `Event.id` (`system` for system-health SMS, which are not stored) |
+| `alert_type` | `str` | `phone_call` \| `sms` \| `push` (historical rows may contain `whatsapp`; `sms_update` is accepted as SMS for compatibility) |
+| `twilio_sid` | `str` | Twilio call/message SID (push: Expo ticket id) |
+| `status` | `str` | Calls: Twilio values `initiated`, `ringing`, `in-progress`, `completed`, `busy`, `no-answer`, `failed`, `canceled`. SMS and push: `sent`. `sent`, `delivered` and `acknowledged` count as successful delivery when read (`_SUCCESSFUL_DELIVERY_STATUSES`), but no runtime code writes `delivered` or `acknowledged` to an alert record; acknowledgment is stored on the event (`alert_status`, `acknowledged_at`). |
 | `attempt_number` | `int` | Retry counter |
-| `sent_at` | `datetime` | When Twilio API was called |
+| `sent_at` | `datetime` | When the provider API was called |
 | `message_body` | `str` | Full text of message/TTS script |
 | `duration_seconds` | `int\|None` | Call duration (populated on poll) |
+| `event_revision` | `int` | `Event.notification_revision` at send time, set by `_record_alert`; default 1 for old rows |
+
+`Database.get_pending_call_records()` returns rows with `alert_type = 'phone_call'` and `status IN ('initiated', 'ringing')`.
 
 ---
 
-## 3. Pipeline Stages (`sentinel/scheduler.py:SentinelPipeline.run_cycle`)
+## 3. Pipeline Stages
+
+Source: `sentinel/scheduler.py:SentinelPipeline.run_cycle`. The whole cycle runs inside `self._cycle_lock`.
+
+The stage numbers below are local to this document and follow the code blocks of `run_cycle`. [pipeline.md](pipeline.md) cuts the same cycle into nine differently numbered stages, so name the stage (for example "event grouping") rather than its number in cross-document references.
 
 ```
-Stage 1 — _fetch_all(fast_only: bool) → list[Article]
-          [scheduler.py:SentinelPipeline._fetch_all]
+Stage 1 — await _fetch_all(fast_only) → list[Article]
           Calls fetcher.fetch() on each enabled BaseFetcher.
           fast_only=True: skips GDELT; RSSFetcher called with max_priority=1.
+          A fetch exception is logged and counted per fetcher (§4).
 
 Stage 2 — Normalizer.normalize_batch(list[Article]) → list[Article]
-          [processing/normalizer.py]
           Coerces fields, fills missing timestamps.
 
-Stage 3 — Deduplicator.deduplicate_batch(list[Article]) → list[Article]
-          [processing/deduplicator.py]
-          1. Exact match: url_hash in articles table.
-          2. Fuzzy match: rapidfuzz against title_normalized in recent DB articles
-             (same-source threshold: 85; cross-source threshold: 95;
-             lookback: config.processing.dedup.lookback_minutes).
-          Stores new articles to DB. diagnostic=True records reasons.
+Stage 3 — one DB transaction (Database.transaction):
+          a) Deduplicator.deduplicate_batch → unique articles, inserted into `articles`.
+             URL-hash match (DB + within the batch). Fuzzy title match
+             (same-source 85 / cross-source 95, processing.dedup.*) runs only
+             when classification.incident_memory.enabled is false. Live
+             (enabled) keeps same-headline articles from other URLs; incident
+             memory handles them after classification.
+          b) KeywordFilter.filter_batch → relevant articles. Multilingual keyword
+             match (PL/EN/UA/RU). Skipped for keyword_bypass sources.
+          c) Database.enqueue_classification(article) for each relevant article.
 
-Stage 4 — KeywordFilter.filter_batch(list[Article]) → list[Article]
-          [processing/keyword_filter.py]
-          Multilingual keyword match (PL/EN/UA/RU).
-          SKIPPED for articles from keyword_bypass sources (Telegram channels
-          or RSS sources with keyword_bypass: true in config).
+Stage 4 — Database.pending_classifications(classification.retry_batch_size)
+          Reads queued articles whose next_attempt_at has passed, oldest
+          fetched_at first. This includes articles left pending by earlier
+          cycles, not only this cycle's articles.
 
-Stage 4.5 — await ArticleEnricher.enrich_batch(list[Article]) → list[Article]
-          [processing/enricher.py]
-          async; awaited by run_cycle inside the cycle lock (scheduler.py:239),
-          only when relevant articles remain after Stage 4.
-          For articles whose summary adds nothing over the title, fetches the
-          article body. Two gates: a free heuristic (summary ≈ title) and a cheap
-          LLM vagueness check; flagged articles get their body fetched via httpx.
-          Improves classifier input quality; does not drop articles.
+Stage 5 — Classify and group.
+          Live path (classification.incident_memory.enabled: true), one article
+          at a time, so each stored result is memory for the next article:
+            await enricher.enrich_batch([article])
+            candidates = IncidentMemory.candidates(article)
+            result = await Classifier.classify(article, incident_context=candidates)
+              any exception in these three steps → Database.classification_failed(
+              article_id, retry_delay_seconds, <exception class name>); the article
+              stays in classification_queue and is retried after the delay.
+            IncidentMemory.validate(result, candidates, article)
+            one transaction: Corroborator.process_classifications([result]) +
+              Database.classification_complete(article_id)
+              exception → rollback, classification_failed(..., "grouping_failed").
+          Legacy path (incident_memory.enabled: false):
+            enrich_batch(all) → classify_batch(all) (sequential; per-article
+            errors logged and skipped; a batch-level exception → []), then one
+            transaction: process_classifications(all) + classification_complete
+            per result. Articles without a result → classification_failed(...,
+            "classification_failed").
+          Then: events deduplicated by id (last snapshot wins); events whose
+          alert_status is "pending" are dropped.
 
-Stage 5 — await Classifier.classify_batch(list[Article]) → list[ClassificationResult]
-          [classification/classifier.py]
-          async; awaited by run_cycle inside the cycle lock (scheduler.py:245).
-          Calls Claude Haiku 4.5 (claude-haiku-4-5-20251001) via anthropic.AsyncAnthropic.
-          Sequential: awaits one classify() per article (no asyncio.gather/Semaphore);
-          the loop-unblocking comes from await, not parallelism. Per-article
-          json.JSONDecodeError / anthropic.APIError are logged and the article skipped.
-          Stores ClassificationResult to DB.
-          On exception: logs error, returns []. Pipeline continues.
+Stage 6 — await AlertDispatcher.dispatch(events)     [diagnostic=False only]
+          Drops repeated ids, re-reads each persisted row, sorts by urgency
+          desc, awaits AlertStateMachine.process_event() one event at a time
+          (no asyncio.gather; per-event confirmation state lives on the shared
+          state machine). With testing.dry_run it only logs each intended action.
 
-Stage 6 — Corroborator.process_classifications(list[ClassificationResult]) → list[Event]
-          [classification/corroborator.py]
-          Groups military classifications by event_type + affected_countries within
-          the corroboration window (default 6h, config-driven). Summary and
-          syndication similarity thresholds are also config-driven.
-          Checks source independence (title similarity + domain).
-          Sets Event.alert_status = 'pending' if source_count < corroboration_required.
+Stage 7 — await AlertStateMachine.check_pending_calls()   [diagnostic=False only]
+          Polls Twilio for phone_call records still initiated/ringing.
+          Blocking Twilio HTTP calls run via asyncio.to_thread; DB access stays
+          on the event-loop thread.
 
-Stage 7 — await AlertDispatcher.dispatch(list[Event])     [diagnostic=False only]
-          [alerts/dispatcher.py]
-          async; awaited by run_cycle inside the cycle lock (scheduler.py:262).
-          Receives events returned by Corroborator (new or updated).
-          Sorts by urgency_score desc. Awaits AlertStateMachine.process_event()
-          sequentially, one event at a time (no asyncio.gather over events —
-          per-event confirmation state lives on the shared state machine). The
-          dry-run path stays synchronous.
-
-Stage 8 — await AlertStateMachine.check_pending_calls()   [diagnostic=False only]
-          [alerts/state_machine.py]
-          async. Polls Twilio for call status of initiated/ringing records.
-          The blocking Twilio HTTP calls are offloaded via asyncio.to_thread;
-          DB reads/writes stay on the event-loop thread.
-          On completion: checks duration vs. acknowledgment threshold.
-
-Stage 9 — Database.cleanup_old_records(article_days, event_days)
-          [database.py]
-          Deletes articles older than retention window.
+Stage 8 — Database.cleanup_old_records(article_days, event_days)
+          Explicit DELETEs (§7). Articles still in classification_queue are kept.
 ```
 
 ---
 
-## 4. Dual-Lane Scheduler (`sentinel/scheduler.py:SentinelScheduler`)
+## 4. Dual-Lane Scheduler
+
+Source: `sentinel/scheduler.py:SentinelScheduler`.
 
 | Lane | Interval | Jitter | Sources | APScheduler job ID |
 |---|---|---|---|---|
-| Fast | `config.scheduler.fast_interval_minutes` (default: 3 min) | `min(jitter_seconds, 10)` | Telegram + Google News + RSS priority ≤ 1 | `sentinel_fast_lane` |
-| Slow (full) | `config.scheduler.interval_minutes` (default: 15 min) | `jitter_seconds` (default: 30 s) | All enabled fetchers (superset of fast lane: all RSS + GDELT **only if `sources.gdelt.enabled` — currently off in production**) | `sentinel_slow_lane` |
+| Fast | `scheduler.fast_interval_minutes` (code default 3 min) | `min(jitter_seconds, 10)` | Telegram + Google News + RSS priority ≤ 1 | `sentinel_fast_lane` |
+| Slow (full) | `scheduler.interval_minutes` (code default 15 min) | `jitter_seconds` (code default 30 s) | All enabled fetchers (superset of the fast lane; GDELT only if `sources.gdelt.enabled`) | `sentinel_slow_lane` |
 
 Both jobs: `max_instances=1`, `coalesce=True` (skips missed fires, never stacks).
 
-Health written to `data/health.json` after each cycle via `SentinelScheduler._update_health()`.
-Daily summary logged at UTC date rollover via `_maybe_log_daily_summary()`.
-Fetcher failure: SMS sent after 10 consecutive failures for a single fetcher.
-Pipeline failure: SMS sent after 3 consecutive cycle failures.
+- Health: `_update_health()` writes `health.json` next to the database (`<dirname(database.path)>/health.json`; production `/var/lib/sentinel/health.json`; `data/health.json` only with the code-default DB path). It includes `classification_status` from `Database.classification_health()` and reports unhealthy when any queued article has a failed attempt.
+- Daily summary logged at UTC date rollover via `_maybe_log_daily_summary()`.
+- Fetcher failure: one system-health SMS at exactly the 10th consecutive failure of a fetcher (`_check_fetcher_health`).
+- Pipeline failure: one system-health SMS at exactly the 3rd consecutive cycle failure (`_check_pipeline_health`).
+- System-health SMS go only through Twilio (`SentinelPipeline._send_system_sms`); there is no push fallback (see §9).
 
 ---
 
-## 5. Alert Routing Logic (`sentinel/alerts/state_machine.py:AlertStateMachine._determine_action`)
+## 5. Alert Routing Logic
 
-**Two independent alert-level decisions exist** (they can disagree — see §9):
-1. `Corroborator._determine_alert_status` gates whether an event is "alertable" using hardcoded urgency cuts (`phone_call` if urgency ≥ 9 AND `source_count ≥ corroboration_required`; `sms` if ≥ 7; `sms` if ≥ 5; else `pending`; `dry_run` short-circuits to `"dry_run"`). It writes a provisional `Event.alert_status`.
-2. `AlertStateMachine._determine_action` makes the **final channel choice** from `config.alerts.urgency_levels` + each level's `corroboration_required`, ignoring the stored value.
+Source: `sentinel/alerts/state_machine.py:AlertStateMachine`.
 
-Decision matrix driven by `config.alerts.urgency_levels` (sorted by `min_score` desc):
+Two decisions exist. Only the second one decides delivery.
+1. `Corroborator._determine_alert_status` writes a provisional `Event.alert_status`: `phone_call` if urgency ≥ 9 and `source_count ≥ classification.corroboration_required`; `sms` if urgency ≥ 5; `dry_run` in dry-run mode. This label cannot block a call: an under-corroborated urgency-9 event still gets `sms` and is dispatched.
+2. `AlertStateMachine._determine_action` makes the final channel choice from `alerts.urgency_levels` (sorted by `min_score` desc). The phone-call gate is `alerts.urgency_levels.critical.corroboration_required`.
 
-| urgency_score | source_count vs. corroboration_required | action returned by `_determine_action` | Event.alert_status set by corroborator |
+Live, both corroboration keys are 1, so one source triggers a phone call today.
+
+| urgency_score | source_count vs. `critical.corroboration_required` | action from `_determine_action` | provisional `Event.alert_status` |
 |---|---|---|---|
-| ≥ 9 (CRITICAL) | ≥ corroboration_required | `phone_call` (never `push`/`both`) | `phone_call` |
-| ≥ 9 (CRITICAL) | < corroboration_required | `sms` (fallback) | `sms` |
-| ≥ 7 (HIGH) | any | `high.channel` → `sms` / `push` / `both` | `sms` |
-| ≥ 5 (MEDIUM) | any | `medium.channel` → `sms` / `push` / `both` | `sms` |
-| ≥ 1 (LOW) | any | `log_only` | `pending` |
+| ≥ 9 (critical) | ≥ | `phone_call` (plus additive push) | `phone_call` |
+| ≥ 9 (critical) | < | `sms` | `sms` |
+| ≥ 7 (high) | any | `high.channel` → `sms` / `push` / `both` | `sms` |
+| ≥ 5 (medium) | any | `medium.channel` → `sms` / `push` / `both` | `sms` |
+| ≥ 1 (low) | any | `log_only` | no event (urgency < 5 creates none) |
 
-For the SMS-action tiers (5–8), `_determine_action` returns the matched level's per-tier `channel` field (`sms` / `push` / `both`, default `both`); it ignores `channel` on the `critical` (`phone_call`) and `low` (`log_only`) levels.
+For the SMS-action tiers (5–8), `_determine_action` returns the level's `channel` (code default `both`). Live `config/config.yaml` sets `channel: push` for `high` and `medium`: SMS is switched off on purpose, so tiers 5–8 are push-only. `channel` is ignored on `critical` and `low`.
 
-**Channel routing & additive push dispatch.** `process_event` resolves the action and dispatches: `push`/`both` send an Expo push (`_maybe_send_push` → `ExpoPushClient.send_push`); `sms`/`both` send a Twilio SMS (`push` replaces the SMS for a `push` tier — that is what cuts the tier's Twilio cost). The urgency 9–10 `phone_call` action places the call + confirmation/stop SMS **and additionally fires an Expo push** (additive — it does **not** replace the call; a normal push does **not** bypass silent mode / Do Not Disturb until Apple **Critical Alerts** (a separate entitlement, pending) is active, so the call stays the primary wake-up). Acknowledged-event updates send the update SMS **and** an additive push (the `is_update` dedup-bypass, so each escalation pushes). The push fires **before** the Twilio dispatch — after the cooldown / acknowledged / pending-call / dedup gates — so it reaches the phone immediately, and is a no-op when `alerts.push.enabled` is false or no tokens are configured (the shipped default, where a `both`/`push` tier still sends SMS only). The push is recorded as a separate `AlertRecord` with `alert_type="push"`; the initial push is deduped on the presence of a prior `push` record, and the SMS re-alert suppression (`_user_already_notified`) gates only the SMS half, not the push. Because `push` is NOT in `_USER_NOTIFIED_ALERT_TYPES` (`sms`, `whatsapp`, `phone_call`), a sent push does not suppress a later SMS. See [`mobile-app.md`](mobile-app.md) for the companion app.
+`process_event(event)` steps:
+1. Re-read the persisted event row and its `AlertRecord`s.
+2. Acknowledged event (an `acknowledged` record or `acknowledged_at` set): return, unless `_has_new_delivered_revision()` is true, which means some earlier revision was delivered and `notification_revision` has since advanced (an incident-memory escalation). Then send the update SMS (`_send_update_sms`) and an update push for that revision, each only if its channel has not yet delivered it. No cooldown applies.
+3. Pending-call guard: return if any `phone_call` record has status `initiated` or `ringing`.
+4. `action = _determine_action(event)`; `send_push = action in (push, both, phone_call)`; `send_sms = action in (sms, both)`.
+5. Per-channel dedup: `_channel_delivered(alerts, channel, revision)` is true only when a record of that channel has a successful status (`sent`, `delivered`, `acknowledged`) and `event_revision == event.notification_revision`. A failed attempt stays retryable; a new revision can notify again.
+6. Push is sent first (`_maybe_send_push` → `ExpoPushClient.send_push` via `asyncio.to_thread`), so it reaches the phone before the Twilio work. It is a no-op when `alerts.push.enabled` is false or `tokens` is empty. A push-only tier with push disabled therefore delivers nothing.
+7. `phone_call` → `_execute_phone_call`: confirmation SMS with a 6-digit code, then up to `alerts.acknowledgment.max_call_retries` calls in one round (live 1), polling for the SMS reply between calls. A correct reply → `acknowledged`. Round exhausted → `retry_pending`. A previous call younger than `acknowledgment.retry_interval_minutes` skips the round.
+8. Otherwise `send_sms` → `_execute_sms` → `sms_sent` on success.
 
-Post-alert state transitions (managed by `AlertStateMachine`, not corroborator):
-- `acknowledged`: operator replies to the pre-call SMS with the correct 6-digit confirmation code. `acknowledged_at` is set on the Event. Further source additions trigger `_send_update_sms()`.
-- `retry_pending`: call failed all `max_call_retries` attempts in one cycle without SMS confirmation. Next cycle attempts again.
-- Cooldown: `acknowledgment.cooldown_hours` (default: 6) after `acknowledged_at`. No further calls or initial SMSes during cooldown.
-- Pending call guard: if any `AlertRecord` has `status in ("initiated", "ringing")`, the event is skipped this cycle.
+The 9–10 push is additive: it does not replace the call. A normal push does not bypass silent mode or Do Not Disturb until Apple Critical Alerts (a separate entitlement) is active, so the call stays the primary wake-up. Each push is stored as its own `AlertRecord` with `alert_type="push"`. See [`mobile-app.md`](mobile-app.md).
+
+Known state (owner decision): the Twilio account is deliberately left unfunded, so since 2026-09-21 every Twilio call and SMS fails with HTTP 401 ("account not active"). `TwilioClient` logs the error and returns `None`. Today a 9–10 event therefore delivers the additive push, its call attempts fail, and the event ends the round as `retry_pending`. Phone calls stay configured and work again when the owner recharges the account. Runbook: [server-runbook.md → Troubleshooting](../how-to/server-runbook.md#troubleshooting).
 
 ---
 
 ## 6. Key Config Keys
 
-| YAML path | Type | Default | Effect |
-|---|---|---|---|
-| `classification.corroboration_required` | `int` | `2` | Min independent sources before a phone call fires (the corroborator's `phone_call` gate). **Pydantic default `2`, but live `config/config.yaml` sets `1`.** |
-| `classification.corroboration_window_minutes` | `int` | `360` | **Sliding** window (6 h) for grouping articles into the same Event, measured from the event's `last_updated_at` (last activity), **not** `first_seen_at` — a multi-hour incident that keeps getting fresh articles stays ONE event. Default & live `360`. |
-| `classification.corroboration_max_age_minutes` | `int` | `2880` | Absolute lifetime cap (48 h) measured from `first_seen_at`; retires perpetually-updated events so they can't chain-merge distinct incidents. `0` disables. Default & live `2880`. |
-| `classification.summary_similarity_metric` | `str` | `token_set_ratio` | Which `rapidfuzz.fuzz` function matches a summary to an existing event; validated against `{ratio, partial_ratio, token_sort_ratio, token_set_ratio, WRatio, QRatio}`. `token_set_ratio` is length-robust. Config-selectable (no code deploy needed). |
-| `classification.summary_similarity_threshold` | `int` | `50` | Score (0-100) from `summary_similarity_metric` required to merge a summary into an existing event (lower = more aggressive merging). Default & live `50`. |
-| `classification.syndication_similarity_threshold` | `int` | `90` | Title similarity (`fuzz.ratio` over normalized titles) at/above which a new article is treated as a syndicated copy of an existing source and does NOT count as independent (checked across all source types). |
-| `classification.model` | `str` | `claude-haiku-4-5-20251001` | Anthropic model for classification |
-| `scheduler.fast_interval_minutes` | `int` | `3` | Fast-lane cadence |
-| `scheduler.interval_minutes` | `int` | `15` | Slow-lane cadence |
-| `scheduler.jitter_seconds` | `int` | `30` | Random delay added to slow-lane trigger; fast-lane capped at 10 s |
-| `processing.dedup.same_source_title_threshold` | `int` | `85` | rapidfuzz score for same-source dedup |
-| `processing.dedup.cross_source_title_threshold` | `int` | `95` | rapidfuzz score for cross-source dedup |
-| `processing.dedup.lookback_minutes` | `int` | `60` | How far back DB title comparison looks |
-| `alerts.urgency_levels.<name>.corroboration_required` | `int` | `1` | Per-level override for corroboration gate on phone calls |
-| `alerts.urgency_levels.{high,medium}.channel` | `str` | `both` | Per-tier delivery channel for the SMS tiers (5–8): `sms`, `push`, or `both`. Ignored on `critical`/`low`. |
-| `alerts.acknowledgment.call_duration_threshold_seconds` | `int` | `15` | **Dead** — field still defined but read nowhere; the `if False:` block that referenced it was removed. Superseded by SMS-code confirmation. |
-| `alerts.acknowledgment.cooldown_hours` | `int` | `6` | No re-alerts within this window after acknowledgment |
-| `database.article_retention_days` | `int` | `30` | Articles older than this deleted each cycle |
-| `database.event_retention_days` | `int` | `90` | Events older than this deleted each cycle |
-| `sources.rss[*].priority` | `int` | `2` | Priority 1 = included in fast lane; 2+ = slow lane only |
-| `sources.rss[*].keyword_bypass` | `bool` | `false` | If true, article skips Stage 4 (keyword filter) |
-| `sources.telegram.channels[*].keyword_bypass` | `bool` | `false` | Same bypass for Telegram channels |
-| `sources.gdelt.enabled` | `bool` | `false` | GDELT fetcher instantiated only when true; **disabled in production** (IP-throttled) |
-| `sources.gdelt.lookback_minutes` | `int` | `60` | GDELT `TIMESPAN` window (the API rejects < ~30 min). Live config carries a stale `update_interval_minutes: 15` that is a no-op typo for this field |
-| `alerts.push.enabled` | `bool` | `false` | Enables the Expo push channel (per-tier `channel` for 5–8 + additive on 9–10) |
-| `alerts.push.tokens` | `list[str]` | `[]` | Expo push tokens to deliver to (live `config.yaml` omits the whole block → push off) |
-| `testing.dry_run` | `bool` | `false` | Dispatcher logs intended actions; no Twilio calls made |
+Code default = `sentinel/config.py`. Live = `config/config.yaml` as of 2026-10-03; re-check that file before relying on a live value. Full list: [config-reference.md](../reference/config-reference.md).
+
+| YAML path | Type | Code default | Live | Effect |
+|---|---|---|---|---|
+| `classification.provider` | `str` | `anthropic` | `openai` | Selects the classifier backend. `anthropic` is the legacy / rollback path. |
+| `classification.model` | `str` | `claude-haiku-4-5-20251001` | `gpt-5.6-luna` | Model ID for the selected provider |
+| `classification.policy` | `dict` | `{}` | version-2 policy | Source of the OpenAI system prompt (`policy.system_prompt`); required when provider is `openai` |
+| `classification.incident_memory.enabled` | `bool` | `false` | `true` | Switches to per-article classification with incident memory, memory-based grouping, and URL-only dedup |
+| `classification.incident_memory.min_confidence` / `critical_min_confidence` / `lookback_hours` | `float`/`int` | `0.85` / `0.9` / `168` | same | Memory-match gates (§6.5) |
+| `classification.budget.monthly_usd` | `float` | `10` (max 50) | `30` | Monthly cap enforced by `UsageLedger.reserve`; reaching it pauses classification |
+| `classification.budget.ledger_path` | `str` | `data/model-usage.db` | `/var/lib/sentinel/model-usage.db` | SQLite ledger file (table `model_usage`) |
+| `classification.budget.*_per_million`, `cache_write_multiplier` | `float` | see `ModelBudgetConfig` | see config | Prices used for reservations and settled cost |
+| `classification.retry_delay_seconds` | `int` | `300` | `300` | Delay before a failed article is retried from `classification_queue` |
+| `classification.retry_batch_size` | `int` | `100` | `100` | Max queued articles classified per cycle |
+| `classification.corroboration_required` | `int` | `2` | `1` | Only sets the provisional `Event.alert_status` label; does not gate the call |
+| `classification.corroboration_window_minutes` | `int` | `360` | `360` | Legacy path only. Sliding window measured from the event's `last_updated_at`. |
+| `classification.corroboration_max_age_minutes` | `int` | `2880` | `2880` | Legacy path only. Absolute cap from `first_seen_at`; `0` disables. |
+| `classification.summary_similarity_metric` | `str` | `token_set_ratio` | `token_set_ratio` | Legacy path only. `rapidfuzz.fuzz` function; validated against `{ratio, partial_ratio, token_sort_ratio, token_set_ratio, WRatio, QRatio}`. |
+| `classification.summary_similarity_threshold` | `int` | `50` | `50` | Legacy path only. Score (0–100) needed to merge into an event. |
+| `classification.syndication_similarity_threshold` | `int` | `90` | `90` | Title similarity (`fuzz.ratio` over `title_normalized`) at/above which an article does not count as independent (both paths) |
+| `scheduler.fast_interval_minutes` / `interval_minutes` / `jitter_seconds` | `int` | `3` / `15` / `30` | same | Lane cadence and jitter (fast lane capped at 10 s) |
+| `processing.dedup.same_source_title_threshold` / `cross_source_title_threshold` / `lookback_minutes` | `int` | `85` / `95` / `60` | same | Legacy fuzzy title dedup only |
+| `alerts.urgency_levels.critical.corroboration_required` | `int` | `1` | `1` | The actual phone-call gate: one source triggers a call today |
+| `alerts.urgency_levels.{high,medium}.channel` | `str` | `both` | `push` | Delivery channel for tiers 5–8 (`sms`, `push`, `both`). Live: SMS off by owner decision, tiers 5–8 push-only. |
+| `alerts.urgency_levels.*.retry_attempts`, `.fallback`, `.retry_interval_minutes` | — | `0` / `None` / `5` | critical: `3` / `sms` / `5` | Parsed but read by no code |
+| `alerts.acknowledgment.max_call_retries` | `int` | `3` | `1` | Calls per round in `_execute_phone_call` |
+| `alerts.acknowledgment.retry_interval_minutes` | `int` | `5` | `5` | Minimum gap before a new call round for the same event |
+| `alerts.acknowledgment.cooldown_hours` | `int` | `6` | `6` | Parsed but read by no code; no cooldown is enforced |
+| `alerts.acknowledgment.call_duration_threshold_seconds` | `int` | `15` | `15` | Parsed but read by no code; superseded by SMS-code confirmation |
+| `alerts.push.enabled` | `bool` | `false` | `true` | Enables the Expo push channel (tiers 5–8 per `channel`, additive on 9–10) |
+| `alerts.push.tokens` | `list[str]` | `[]` | `["${EXPO_PUSH_TOKEN}"]` | Expo push tokens; the value comes from `/etc/sentinel/sentinel.env` |
+| `database.article_retention_days` / `event_retention_days` | `int` | `30` / `90` | same | Retention for `cleanup_old_records` |
+| `sources.rss[*].priority` | `int` | `2` | per source | Priority 1 = fast lane; 2+ = slow lane only |
+| `sources.rss[*].keyword_bypass`, `sources.telegram.channels[*].keyword_bypass` | `bool` | `false` | per source | Article skips the keyword filter |
+| `sources.gdelt.enabled` | `bool` | `true` | `false` | GDELT fetcher instantiated only when true; omitting the key turns GDELT on |
+| `sources.gdelt.lookback_minutes` | `int` | `60` | see config | GDELT `TIMESPAN` window (the API rejects < ~30 min) |
+| `testing.dry_run` | `bool` | `false` | `false` | Dispatcher logs intended actions instead of sending event alerts |
 
 ---
 
-## 6.5 Corroboration & Event Grouping (`sentinel/classification/corroborator.py`)
+## 6.5 Incident Grouping and Corroboration
 
-Stage 6 groups military classifications (urgency ≥ 5) into `Event`s and decides independence. A new classification merges into an existing event only when **all** of these hold (`_find_matching_event`):
+Source: `sentinel/classification/corroborator.py:Corroborator.process_classifications`.
 
-1. **Event-type compatibility** (`EVENT_COMPATIBILITY`) — e.g. `drone_attack` ↔ `airstrike`; `cyber_attack` only matches `cyber_attack`.
-2. **Country compatibility** (`_countries_compatible`):
-   - At/above the phone-call urgency threshold (9), a concrete-country intersection is **required** — a Poland-critical article whose country the classifier failed to extract (empty / `"unknown"`) spawns its OWN event/call; the no-signal relaxation is NOT applied at critical urgency.
-   - Below the threshold, empty / `"unknown"` labels carry no location signal and don't block a merge, but two concrete-but-different country sets (e.g. PL vs RO) stay separate.
-   - Countries are normalized (uppercased; blank / `"unknown"` dropped) when events merge.
-3. **Critical-urgency safety guard** — a phone-call-eligible article is **never** absorbed into an event that already has `acknowledged_at` set (already alerted / in cooldown). It forces a NEW event and a NEW call, so a fresh critical escalation can't be silenced by an earlier event's cooldown.
-4. **Sliding time window** — `corroboration_window_minutes` (live 360) measured from the event's `last_updated_at`, plus an absolute `corroboration_max_age_minutes` (live 2880) cap from `first_seen_at`.
-5. **Summary similarity** — `summary_similarity_metric(result.summary_pl, event.summary_pl) ≥ summary_similarity_threshold` (live `token_set_ratio` @ 50).
+Order of checks per classification:
+1. Replay (memory mode): if the article id is already in some event's `article_ids`, the result is stored as `duplicate` with `article_replay: true` and that event is returned unchanged. The revision does not advance.
+2. Event gate: only `is_military_event` with `urgency_score ≥ 5` (`_MIN_EVENT_URGENCY`) can create or join an event. Other results are only stored.
+3. Match: `_find_memory_match` when `incident_memory.enabled` (live), else `_find_matching_event` (legacy). No match → `_create_event`.
+4. Join: `_is_independent_source` decides whether `source_count` grows, then `_update_event`.
 
-**Source independence** (`_is_independent_source`): a new article counts toward `source_count` only if it's a different domain AND its normalized title is `< syndication_similarity_threshold` (90, `fuzz.ratio`) similar to every existing source title — caught across all source types to reject wire/syndication reuse.
+### Live path: `_find_memory_match`
+
+The classifier receives the candidates from `IncidentMemory.candidates()` and returns an incident decision. `IncidentMemory.validate()` accepts a `duplicate` / `update` / `escalation` decision only when `matched_event_id` is one of the supplied candidate ids and the confidence is at least `min_confidence` (`critical_min_confidence` when urgency ≥ the phone-call threshold). Explicit conflicting dates or weekdays in the source text turn the decision into `new`. Any invalid decision becomes `uncertain`.
+
+`_find_memory_match` then merges into the matched event only when all of these hold:
+- the decision is `duplicate`, `update` or `escalation` and `matched_event_id` is in `candidate_ids`;
+- confidence passes the same threshold;
+- countries are compatible (`_countries_compatible`, below);
+- the event's `last_updated_at` is at most `incident_memory.lookback_hours` before `classified_at`.
+
+A failed country or age guard turns the decision into `uncertain` and creates a new event. A critical article (urgency ≥ phone-call threshold) that matches a non-critical event is forced to `escalation`, so a low-severity memory cannot silence the first critical report. `new` and `uncertain` decisions always create a new event.
+
+Effect of a merge in memory mode (`_update_event`): only `escalation` raises `urgency_score`, replaces `summary_pl` and increments `notification_revision`. `duplicate` and `update` add the article (and possibly a source) but change neither urgency nor summary. Lifecycle statuses `acknowledged`, `retry_pending`, `call_placed` and `expired` are kept; other statuses are recomputed.
+
+### Legacy path: `_find_matching_event` (incident memory disabled)
+
+A classification merges into an active event only when all of these hold:
+1. Event-type compatibility (`EVENT_COMPATIBILITY`), e.g. `drone_attack` ↔ `airstrike`; `cyber_attack` matches only `cyber_attack`.
+2. Country compatibility (`_countries_compatible`).
+3. Critical-urgency guard: a phone-call-eligible article is never absorbed into an event that has `acknowledged_at` set.
+4. Sliding window: `corroboration_window_minutes` from the event's `last_updated_at`, plus the `corroboration_max_age_minutes` cap from `first_seen_at`.
+5. Summary similarity: `summary_similarity_metric(result.summary_pl, event.summary_pl) ≥ summary_similarity_threshold`.
+
+On a legacy merge, `urgency_score` becomes the max and `alert_status` is always recomputed.
+
+### Shared rules
+
+Country compatibility (`_countries_compatible`), both paths:
+- At or above the phone-call threshold (lowest `min_score` with `action: phone_call`, fallback 9), a concrete-country intersection is required. A critical article without a concrete country spawns its own event.
+- Below the threshold, empty or `unknown` labels do not block a merge, but two concrete-but-different sets (e.g. PL vs RO) stay separate.
+- Countries are normalized (uppercased; blank / `unknown` dropped) when events merge.
+
+Source independence (`_is_independent_source`): a new article counts toward `source_count` only if its domain differs from every existing article's domain and its `title_normalized` is below `syndication_similarity_threshold` (`fuzz.ratio`) against each of them. Google News articles all have the domain `news.google.com` (redirect links), so two Google News articles never count as independent of each other.
 
 ---
 
-## 7. Database Schema (`sentinel/database.py:Database._create_tables`)
+## 7. Database Schema
+
+Source: `sentinel/database.py:Database._create_tables` and `_migrate_schema`.
 
 | Table | Key Fields | Indexes | Retention |
 |---|---|---|---|
-| `articles` | `id` PK, `url_hash`, `title_normalized`, `source_type`, `fetched_at` | `url_hash`, `fetched_at`, `title_normalized` | `database.article_retention_days` (default: 30 d) |
-| `classifications` | `id` PK, `article_id` FK, `is_military_event`, `urgency_score`, `classified_at` | `article_id`, `urgency_score` | Cascades with article cleanup |
-| `events` | `id` PK, `alert_status`, `first_seen_at`, `source_count`, `article_ids` (JSON) | `alert_status`, `first_seen_at` | `database.event_retention_days` (default: 90 d) |
-| `alert_records` | `id` PK, `event_id` FK, `alert_type`, `twilio_sid`, `status`, `attempt_number` | `event_id` | Cascades with event cleanup |
+| `articles` | `id` PK, `url_hash`, `title_normalized`, `source_type`, `fetched_at` | `url_hash`, `fetched_at`, `title_normalized` | `database.article_retention_days`; articles still queued are kept |
+| `classifications` | `id` PK, `article_id` FK, `is_military_event`, `urgency_score`, `classified_at`, `incident_memory` | `article_id`, `urgency_score` | Deleted together with their old articles |
+| `classification_queue` | `article_id` PK/FK → `articles.id`, `attempts`, `next_attempt_at`, `last_error` | (PK) | Row deleted by `classification_complete`; failures bump `attempts` and push `next_attempt_at` |
+| `events` | `id` PK, `alert_status`, `first_seen_at`, `last_updated_at`, `source_count`, `article_ids` (JSON), `notification_revision` | `alert_status`, `first_seen_at`, `last_updated_at` | `database.event_retention_days` (by `first_seen_at`) |
+| `alert_records` | `id` PK, `event_id` FK, `alert_type`, `twilio_sid`, `status`, `attempt_number`, `event_revision` | `event_id` | Deleted together with their old events |
 
-SQLite WAL mode enabled. `check_same_thread=False` (single-process, async-safe via GIL).
+- Additive migration columns (`_migrate_schema`, for databases created before incident memory): `classifications.facts`, `summary_processing`, `provider_used`, `prompt_version`, `request_hash`, `response_id`, `cached_input_tokens`, `estimated_cost_usd`, `incident_memory`; `events.notification_revision`; `alert_records.event_revision`. `classification_queue` is also created there.
+- Retention is done by explicit `DELETE` statements in `cleanup_old_records`, not by foreign-key cascades.
+- SQLite WAL mode; `check_same_thread=False` (single process; DB access stays on the event-loop thread).
+- Separate ledger database: `UsageLedger` keeps table `model_usage` (`id`, `month`, `model`, `purpose`, `request_hash`, `reserved_usd`, `charged_usd`, `status` `reserved`/`settled`, token counts, `response_id`, `created_at`) in the file named by `classification.budget.ledger_path` (production `/var/lib/sentinel/model-usage.db`). A reservation that never settles keeps its full reserved amount.
 
 ---
 
-## 8. Entry Points and CLI Flags (`sentinel.py`)
+## 8. Entry Points and CLI Flags
+
+Source: `sentinel.py`. Full reference: [cli.md](../reference/cli.md).
 
 | Flag | Effect |
 |---|---|
-| _(no flags)_ | Start continuous dual-lane scheduler |
+| _(no flags)_ | Start the continuous dual-lane scheduler |
 | `--once` | Run one full-lane cycle, then exit |
-| `--dry-run` | Set `testing.dry_run=True`; no Twilio calls/SMS |
+| `--dry-run` | Sets `testing.dry_run=True`. No event alerts are sent (no call, SMS or push). Classification still calls the paid model, `check_pending_calls` still runs, and system-health SMS are not suppressed. |
 | `--config PATH` | Load config from `PATH` (default: `config/config.yaml`) |
 | `--log-level LEVEL` | Override config log level (`DEBUG`/`INFO`/`WARNING`/`ERROR`) |
-| `--health` | Print `data/health.json` and exit |
-| `--diagnostic` | One cycle + generate `data/diagnostic.html`; skips alert dispatch |
-| `--test-headline "TEXT"` | Feed single headline through classifier only; print result |
-| `--test-file FILE` | Feed YAML file of headlines through classifier; print results |
-| `--eval [PATH]` | Run classification eval against a YAML eval set (default: `testing.eval_set_file`); hits the live API; saves a JSON report to `data/eval/`; exits 0 only if all cases pass |
-| `--test-alert [phone_call\|sms\|push]` | Fire a real alert with a synthetic event; bypasses fetch/classify/corroborate (argparse `choices=["phone_call", "sms", "push"]`, default `phone_call`). `phone_call`/`sms` go via Twilio; `push` goes via Expo (requires `alerts.push.enabled` + a token) |
+| `--health` | Print `<dirname(database.path)>/health.json` and exit |
+| `--diagnostic` | One cycle with dry run forced, then `<dirname(database.path)>/diagnostic.html`. Skips dispatch, but still makes paid classifier calls and writes to the configured database. |
+| `--test-headline "TEXT"` | Feed one headline through the classifier (paid call); print the result |
+| `--test-file FILE` | Feed a YAML file of headlines through the classifier; print results |
+| `--eval [PATH]` | Run the classification eval (default: `testing.eval_set_file`); hits the live API; saves a JSON report to `data/eval/`; exits 0 only if all cases pass |
+| `--test-alert [phone_call\|sms\|push]` | Fire a real alert for a synthetic urgency-10 event. Inserts a synthetic article and event into `database.path`, then calls `_execute_phone_call`, `_execute_sms` or `_maybe_send_push` directly (default `phone_call`). `push` requires `alerts.push.enabled` and a token. |
 
-The classifier **and** the alert/Twilio path are async, so the synchronous CLI/eval entry points bridge to them via `asyncio.run(...)`: `--test-headline` (`_run_test_headline`) runs one `classify`; `--test-file` (`_run_test_file`) runs **one** `asyncio.run` wrapping an inner loop over all headlines (not one event loop per headline); `--eval` (`_run_eval`) runs `asyncio.run(run_eval(...))`. `--test-alert` (`_run_test_alert`) drives the now-async `_execute_phone_call` / `_execute_sms` under `asyncio.run(...)` as well (see §9).
+The classifier and the alert path are async, so the synchronous CLI entry points bridge with `asyncio.run(...)`: `--test-headline` runs one `classify`; `--test-file` runs one `asyncio.run` around a loop over all headlines; `--eval` runs `asyncio.run(run_eval(...))`; `--test-alert` runs the chosen alert coroutine.
 
 Config loading: `sentinel/config.py:load_config()`. Env vars substituted via `${VAR}` syntax. `.env` loaded via python-dotenv if available.
 
@@ -316,26 +408,33 @@ Config loading: `sentinel/config.py:load_config()`. Env vars substituted via `${
 
 ## 9. Known Quirks
 
-- **Two urgency decision paths can disagree.** `Corroborator._determine_alert_status` uses `config.classification.corroboration_required` and writes `event.alert_status`; `AlertStateMachine._determine_action` re-decides from `config.alerts.urgency_levels` and ignores the stored value.
-- **No DTMF in call TwiML.** Confirmation is via SMS 6-digit code reply, not `<Gather>`. `twilio_client.py:41`.
-- **Call-duration acknowledgment removed; config field orphaned.** The old duration-based `if False:` block in `_handle_call_result` was deleted; `alerts.acknowledgment.call_duration_threshold_seconds` is still defined in config but now read nowhere.
-- **Confirmation code stored as instance attribute, not reset between events.** `state_machine.py:368`, `state_machine.py:391` — stale-code risk if events overlap.
-- **GDELT articles have empty `summary` always** (`gdelt.py:178`); Stage 4 keyword filter effectively scans GDELT title only.
-- **Google News redirect URLs stored as-is**, not resolved to canonical. Same article surfaced by two queries dedupes only via fuzzy title match.
-- **`TelegramFetcher` channel matching falls back to first channel if id mismatches** (`telegram.py:100-108`).
-- **`BaseFetcher.is_enabled()` raises `NotImplementedError` but is NOT `@abstractmethod`.** Silent failure mode if a subclass forgets to override. All four current subclasses do override it; the silent-failure risk only applies to future fetcher additions.
-- **Classifier daily token cost logged with hardcoded prices** `$0.80/M input, $4.00/M output` at UTC date rollover (`classifier.py:246-248`); not configurable.
-- **The pipeline is fully async (classifier + alert path).** `Classifier` uses `anthropic.AsyncAnthropic`; `classify` / `classify_batch` / `aclose` are coroutines. `run_cycle` awaits `classify_batch` inside the cycle lock, and `SentinelPipeline.shutdown` awaits `classifier.aclose()` (in a `try/except` that logs failures) before `db.close()`. `classify_batch` is **deliberately sequential** — one awaited `classify` per article, no `asyncio.gather`/`Semaphore`/`TaskGroup` — because the event-loop unblocking comes from `await` alone; this preserves the Anthropic rate-limit profile and per-article error isolation. The alert path is now async too: `AlertDispatcher.dispatch` and `AlertStateMachine`'s alert-execution methods (`process_event`, `_execute_phone_call`, `_execute_sms`, the SMS/confirmation helpers, `check_pending_calls`, `_handle_call_result`) are `async def`; `time.sleep` poll/pause loops became `await asyncio.sleep`. The synchronous `TwilioClient` SDK is **not** rewritten — instead every Twilio HTTP touch point is offloaded at the call site with `await asyncio.to_thread(...)` (`make_alert_call`, `send_sms`, `get_call_status`, plus the two direct `messages.list` / `messages(sid).fetch` SDK calls wrapped in lambdas). **DB access stays on the event-loop thread** and is never placed inside an `asyncio.to_thread` callable (the shared `sqlite3` connection has no application-level lock). Dispatch is **sequential** (each event's `process_event` awaited before the next) and an in-flight alert holds the Phase 1 cycle lock for its whole duration — deliberate, to keep per-event confirmation state (`self._confirmation_code` / `self._confirmation_sms_sid`) on the shared instance from being clobbered and to avoid reintroducing alert-path races. `_run_test_alert` drives `_execute_phone_call` / `_execute_sms` under `asyncio.run(...)`. Six pure helpers (`_determine_action`, `_is_in_cooldown`, `_user_already_notified`, `_is_acknowledged`, `_last_alert_time`, `_update_alert_record`) stay synchronous.
-- **Production `corroboration_required=1`** (single source triggers call). Code default is `2`. Check live `config/config.yaml` before assuming corroboration behavior.
-- **`TelegramFetcher` lifecycle not in `BaseFetcher` contract.** `SentinelPipeline.startup()`/`shutdown()` use `hasattr(fetcher, "start")` duck-typing. Telegram `start()` failure is logged and skipped; other fetchers unaffected.
-- **`keyword_bypass` sources skip Stage 4 entirely.** All their articles consume Haiku API quota.
-- **Fast-lane jitter capped at `min(jitter_seconds, 10)`** regardless of config (`scheduler.py:464`). Slow-lane uses full `jitter_seconds`.
-- **Fetcher health SMS fires exactly once at `failures == 10`** per fetcher (`scheduler.py:420`). Does not repeat.
-- **Pipeline failure SMS fires exactly once at `consecutive_failures == 3`** (`scheduler.py:515`), not `>=`.
+- Two urgency decisions exist. `Corroborator._determine_alert_status` writes a provisional label from `classification.corroboration_required`; `AlertStateMachine._determine_action` decides delivery from `alerts.urgency_levels` and ignores the stored label. Only `critical.corroboration_required` gates the call (live 1).
+- Provisional `alert_status` persists for push-only tiers. Push delivery never updates `alert_status`, so a 5–8 event delivered only by push keeps `sms`. Use `alert_records` (`alert_type='push'`) to see what was delivered.
+- `retry_pending` events are re-called only when a new article joins them. `run_cycle` dispatches only events returned by the corroborator in that cycle; no code reloads `retry_pending` or `call_placed` events from the DB. Without a new article, an unacknowledged critical event gets exactly one call round (live `max_call_retries: 1`), despite the "Never stops until acknowledged" docstring of `_execute_phone_call`. See TODO.md (retry of unacknowledged critical events).
+- Known state (owner decision): the Twilio account is unfunded, so all calls and SMS currently fail with HTTP 401 and return `None` (§5). Phone calls stay configured and return when the account is recharged. System-health SMS (§4) are Twilio-only with no push fallback, so they are not delivered today. See [server-runbook.md → Troubleshooting](../how-to/server-runbook.md#troubleshooting).
+- No DTMF in call TwiML. `TwilioClient.make_alert_call` sends `<Say>` only; confirmation is an SMS reply with the 6-digit code.
+- Dead config fields: `acknowledgment.call_duration_threshold_seconds`, `acknowledgment.cooldown_hours`, `alerts.language`, and per-level `retry_attempts` / `fallback` / `retry_interval_minutes` are parsed but read nowhere. See TODO.md (dead alert config keys).
+- Confirmation code stored as an instance attribute, not reset between events. `_send_confirmation_sms` sets `self._confirmation_code` and `self._confirmation_sms_sid`; stale-code risk if events overlap.
+- GDELT articles always have an empty `summary` (`GDELTFetcher` sets `summary=""`), so the keyword filter scans the GDELT title only.
+- Google News redirect URLs are stored as-is, not resolved. Live (memory mode) has no fuzzy title dedup, so the same story under a different redirect URL reaches the classifier and incident memory must recognise it. All Google News articles share one domain, so they never corroborate each other (§6.5).
+- `title_normalized` drops all non-Latin letters. All-Cyrillic titles normalize to an empty string, so two such titles score 100 in `fuzz.ratio` and count as syndicated (not independent). See TODO.md (Cyrillic title normalization).
+- `TelegramFetcher` channel matching falls back to the first channel if the id does not match (`TelegramFetcher` message handler).
+- `BaseFetcher.is_enabled()` raises `NotImplementedError` but is not `@abstractmethod`. All four current subclasses override it; the risk applies only to future fetchers.
+- Cost tracking. Live (OpenAI): every request reserves a worst-case cost in `UsageLedger` (BEGIN IMMEDIATE) and settles the actual cost from configurable `classification.budget` prices; the per-row cost is stored in `classifications.estimated_cost_usd`. Reaching `budget.monthly_usd` raises `BudgetExceeded`: articles stay in `classification_queue`, are retried after `retry_delay_seconds`, and health turns unhealthy. The daily log line then reports token counts only. Legacy (Anthropic) only: `Classifier._log_daily_summary` logs an estimate with hardcoded per-million prices.
+- Enrichment and translation also cost money. On the OpenAI path the enricher's vagueness check (`enrichment_quality`) and the Polish-summary repair (`summary_translation`) are separate ledger-tracked requests.
+- The pipeline is async end to end. Live: `run_cycle` awaits `enricher.enrich_batch([article])` and `classifier.classify` once per article (incident memory), and groups each result in its own transaction. `OpenAIProvider` uses `openai.AsyncOpenAI` with `max_retries=0` and an `asyncio.timeout`; there is no automatic retry or provider fallback, and a failed article waits in the queue. Legacy: `classify_batch` awaits one `classify` per article over `anthropic.AsyncAnthropic` (one retry after 5 s in `_call_api`). `SentinelPipeline.shutdown` awaits `classifier.aclose()` (errors logged) and `enricher.aclose()` before `db.close()`.
+- Alert path concurrency. `AlertDispatcher.dispatch` and the alert methods of `AlertStateMachine` (`process_event`, `_execute_phone_call`, `_execute_sms`, the SMS/confirmation helpers, `_maybe_send_push`, `check_pending_calls`, `_handle_call_result`) are `async def`. Blocking provider calls run through `await asyncio.to_thread(...)`: `make_alert_call`, `send_sms`, `get_call_status`, `ExpoPushClient.send_push`, and the two direct `messages.list` / `messages(sid).fetch` SDK calls. Exception: `SentinelPipeline._send_system_sms` calls `twilio_client.send_sms` synchronously on the event loop. DB access stays on the event-loop thread and never runs inside `asyncio.to_thread` (the shared `sqlite3` connection has no lock). Dispatch is sequential and holds the cycle lock, so per-event confirmation state on the shared instance is not clobbered. Synchronous helpers: `_determine_action`, `_channel_delivered`, `_has_new_delivered_revision`, `_is_acknowledged`, `_record_alert`, `_update_alert_record`. `_run_test_alert` drives `_execute_phone_call`, `_execute_sms` or `_maybe_send_push` under `asyncio.run(...)`.
+- `TelegramFetcher` lifecycle is not in the `BaseFetcher` contract. `SentinelPipeline.startup()`/`shutdown()` use `hasattr(fetcher, "start")` duck-typing. A Telegram `start()` failure is logged and skipped; other fetchers are unaffected.
+- `keyword_bypass` sources skip the keyword filter entirely. All their articles are classified by the live model and count against `classification.budget.monthly_usd`.
+- Fast-lane jitter is capped at `min(jitter_seconds, 10)` regardless of config (`SentinelScheduler.start`). The slow lane uses the full `jitter_seconds`.
+- The fetcher-health SMS fires exactly once, at `failures == 10` per fetcher (`_check_fetcher_health`). It does not repeat.
+- The pipeline-failure SMS fires exactly once, at `consecutive_failures == 3` (`_check_pipeline_health`), not `>=`.
 
 ---
 
-## 10. Dashboard Subsystem (`dashboard/`)
+## 10. Dashboard Subsystem
+
+Source: `dashboard/`. Only the rows for `classifier_input.py`, `types.ts` and `EventTimeline.tsx` were re-verified on 2026-10-03; the rest of this section was not re-checked in that pass.
 
 Separate from the monitoring runtime described above. Read-only Flask backend + React/Vite/TypeScript frontend over the production SQLite DB; runs locally only, never deployed. Full reference: [`SPEC.md`](../../SPEC.md).
 
@@ -348,7 +447,7 @@ Separate from the monitoring runtime described above. Read-only Flask backend + 
 | `dashboard/db.py` | `DashboardDB` read-only access layer (`?mode=ro` URI). Two modes: local file (persistent SCP'd copy) and tunnel (SCP-fresh-fetch at startup). ATTACHes `sentinel_fts.db` as `fts` (local mode only) and `annotations.db` as `annotations` (both modes) when each file exists. SPEC_ALERT_GROUPING.md Phase 2: module-level constant `EVENT_ID_RETENTION_DAYS = 30` (with per-instance `event_id_retention_days` override), correlated-subquery `_EVENT_ID_SQL` injecting `event_id` into every article list/detail row, and `get_event_with_articles(event_id)` returning the spec's `{event, articles[], alert_records[]}` shape |
 | `dashboard/sync.py` | `sync_db()` — SCPs production DB to `dashboard/data/sentinel.db`, builds FTS5 index in attached `sentinel_fts.db` |
 | `dashboard/annotations.py` | Phase 4 — `AnnotationDB` write-capable layer over `dashboard/data/annotations.db`. Auto-creates the file + `annotations` table on first access; layered validation (`validate_label` / `validate_expected_urgency` rejects bool subclass); upsert via `INSERT ... ON CONFLICT(article_id) DO UPDATE` preserving `created_at`; `list()` opens a second short-lived SQLite connection that ATTACHes the sentinel DB read-only to enrich each row with `article_title` + `article_urgency_score`. Module-level `ALLOWED_LABELS = ("correct", "incorrect", "uncertain")` reused by the API layer |
-| `dashboard/classifier_input.py` | Reconstructs the exact prompt the production classifier sent to Claude Haiku (kept in lockstep via drift-guard test) |
+| `dashboard/classifier_input.py` | Reconstructs the legacy Anthropic/Haiku user-prompt block (`USER_PROMPT_TEMPLATE` / `_build_user_prompt`; drift-guard test). It does not match the live OpenAI payload (`policy.messages()`: policy system prompt + JSON user message with `evaluation_time` and `remembered_incidents`), so for `provider_used='openai'` rows the dashboard shows an input the live model never saw. See TODO.md (dashboard classifier input for OpenAI rows). |
 | `dashboard/api/_common.py` | `get_db()` opens a per-request `DashboardDB` from `app.config`; propagates `SENTINEL_DB_PATH`, `USE_TUNNEL`, `SENTINEL_FTS_DB_PATH`, `ANNOTATIONS_DB_PATH`, and (SPEC_ALERT_GROUPING.md Phase 2) `EVENT_ID_RETENTION_DAYS` |
 | `dashboard/api/articles.py` | `GET /api/articles` (list/filter/sort/search/paginate; Phase 4 adds `has_annotation` + `annotation_label` filters; SPEC_ALERT_GROUPING.md Phase 2 adds an `event_id` field on every row), `GET /api/articles/<id>` (detail + classifier input + events + alert_records) |
 | `dashboard/api/stats.py` | `GET /api/stats` — totals, per-day series, urgency/source/language/event-type distributions, pipeline funnel, plus Phase 4 `annotation_stats` |
@@ -389,7 +488,7 @@ Stack: React 18.3 + react-router-dom 6 + Vite 5.4 + TypeScript 5.5 (strict) + re
 | `vite.config.ts` | Dev server on `:5173`; `/api/*` proxied to `http://localhost:5001` (Flask). Production build → `dist/`, served by Flask at `/` |
 | `src/main.tsx` | React entry; mounts `BrowserRouter` with v7 future flags from `utils/routerFutureFlags.ts` |
 | `src/App.tsx` | Root routes — `/` → `pages/OverviewPage` (Phase 3); `/articles` → `pages/ArticlesPage`; `/articles/:id` → `pages/ArticleDetailPage` (Phase 3); `/events/:id` → `pages/EventDetailPage` (SPEC_ALERT_GROUPING.md Phase 2). Persistent nav with `NavLink` to Overview + Articles |
-| `src/types.ts` | TypeScript interfaces field-for-field mirror of Python API (`Article`, `Classification`, `EventRecord`, `AlertRecord`, `StatsResponse`, `SyncResult`, `SyncStatus`, `ArticleDetail`, `ArticleQueryParams`). `StatsResponse` carries both `articles_per_day` and `classified_per_day` (Phase 3) plus `annotation_stats` (Phase 4). Phase 4 adds `AnnotationLabel`, narrow `ArticleAnnotation` (per-article shape), full `Annotation` (incl. `id`/`created_at`/`updated_at`), `AnnotationListResponse`, `AnnotationPayload`, `AnnotationStats`. `ArticleQueryParams` gains `has_annotation` + `annotation_label`; `Article` gains `annotation: ArticleAnnotation \| null`. Enum-like unions widened with `\| string` to tolerate stale DB rows / backend drift; `event_type` is `string \| null`. SPEC_ALERT_GROUPING.md Phase 2 adds optional `event_id?: string \| null` to `Article` (req 2.6a — optional `?` for fixture back-compat; API always emits the field) and an `EventDetail` interface extending `EventRecord` with `articles: Article[]` (req 2.6b) |
+| `src/types.ts` | TypeScript interfaces field-for-field mirror of Python API (`Article`, `Classification`, `EventRecord`, `AlertRecord`, `StatsResponse`, `SyncResult`, `SyncStatus`, `ArticleDetail`, `ArticleQueryParams`). `StatsResponse` carries both `articles_per_day` and `classified_per_day` (Phase 3) plus `annotation_stats` (Phase 4). Phase 4 adds `AnnotationLabel`, narrow `ArticleAnnotation` (per-article shape), full `Annotation` (incl. `id`/`created_at`/`updated_at`), `AnnotationListResponse`, `AnnotationPayload`, `AnnotationStats`. `ArticleQueryParams` gains `has_annotation` + `annotation_label`; `Article` gains `annotation: ArticleAnnotation \| null`. Some enum-like unions are widened with `\| string` to tolerate stale DB rows / backend drift; `event_type` is `string \| null`. `AlertRecord.alert_type` is not widened: it is `"sms" \| "phone_call" \| "whatsapp"` with no `push` variant, although push is the main live alert type. SPEC_ALERT_GROUPING.md Phase 2 adds optional `event_id?: string \| null` to `Article` (req 2.6a — optional `?` for fixture back-compat; API always emits the field) and an `EventDetail` interface extending `EventRecord` with `articles: Article[]` (req 2.6b) |
 | `src/api/client.ts` | Typed fetch client (`fetchArticles`, `fetchArticleDetail`, `fetchStats`, `triggerSync`, `fetchSyncStatus`, plus Phase 4 `fetchAnnotation`/`fetchAnnotations`/`saveAnnotation`/`deleteAnnotation`, plus SPEC_ALERT_GROUPING.md Phase 2 `fetchEvent(eventId)` resolving to `EventDetail`); `ApiError` carries `status`/`body`/`url`; `buildSearchParams` emits repeated params for array values |
 | `src/hooks/useArticles.ts` | Data-fetching hook; `AbortController` + `requestIdRef` race guard; `refreshKey`-driven refetch; errors → toast |
 | `src/hooks/useStats.ts` | Phase 3 — data-fetching hook for `GET /api/stats`. Same pattern as `useArticles` (`AbortController` + `requestIdRef` + `notify()` toast); one round-trip drives the whole overview |
@@ -416,7 +515,7 @@ Stack: React 18.3 + react-router-dom 6 + Vite 5.4 + TypeScript 5.5 (strict) + re
 | `src/components/UrgencyHistogram.tsx` | Phase 3 — recharts `BarChart` of `urgency_distribution` (1-10). Bar fill colours come from `badges.urgencyColor` (1-4 gray / 5-6 yellow / 7-8 orange / 9-10 red) |
 | `src/components/SourceBreakdown.tsx` | Phase 3 — recharts horizontal `BarChart` of top-15 sources by article count (sorted desc) + small language distribution chip row from `stats.language_distribution` |
 | `src/components/ClassifierView.tsx` | Phase 3 — side-by-side input/output panes for a classified article + Raw JSON toggle. Renders a gray-background notice (`data-testid="classifier-view-unclassified"`) when the article was filtered out before classification |
-| `src/components/EventTimeline.tsx` | Phase 3 — vertical timeline of events linked to an article + their alert records (emoji icons for phone/SMS/WhatsApp). Verbatim empty-state: "No events — article did not trigger event creation." |
+| `src/components/EventTimeline.tsx` | Phase 3 — vertical timeline of events linked to an article + their alert records (emoji icons for phone/SMS/WhatsApp; `push` has no icon or label, so push records render with the generic "•" fallback and the raw string `push`). Verbatim empty-state: "No events — article did not trigger event creation." |
 | `src/components/AnnotationPanel.tsx` | Phase 4 — article-detail-page form. Three label buttons (Correct / Incorrect / Uncertain), urgency `number` input 1-10 with client-side validation, notes textarea. Submit POSTs via `useAnnotation.save`, shows an inline success indicator without navigating, and re-hydrates the form from server state. `noValidate` on the form so React (not the browser) owns the validation UX. Delete button only renders when an annotation exists and confirms via injectable `confirmDelete` (defaults to `window.confirm`) |
 | `src/components/AnnotationBadge.tsx` | Phase 4 — coloured dot for the article table's annotation column. Green = correct, red = incorrect, yellow = uncertain. Renders an em dash placeholder when `annotation === null` so cells never collapse to whitespace. Uses inline `backgroundColor` (from `annotationBadge(label).color`) so the dot stays correct even if the project CSS is customised |
 | `src/components/columns.ts` | Column metadata (key, label, default visibility, localStorage key, `isColumnKeyList` validator). Phase 4 adds `"annotation"` to `ColumnKey`, `ALL_COLUMNS` (label `"Note"`), and `DEFAULT_VISIBLE_COLUMNS` (rightmost) |

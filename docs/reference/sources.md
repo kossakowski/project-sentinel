@@ -1,5 +1,9 @@
 # Media Sources Reference
 
+Last verified: 2026-10-03 (deployed commit 6429124)
+
+Contents: [RSS](#rss-sources) · [Telegram](#telegram-channels) · [Google News](#google-news) · [GDELT](#gdelt--disabled-in-production) · [Known Issues](#known-issues) · [See also](#see-also)
+
 > **Source of truth: `config/config.yaml`** (the live, running config). `config/config.example.yaml` is only a documented template. Update this doc when `config/config.yaml` changes.
 
 Derived from `config/config.yaml`. Do not add sources not present in config — this doc tracks config state, not aspirations.
@@ -17,7 +21,7 @@ Fast lane (every 3 min): priority 1 only. Slow lane (every 15 min): all prioriti
 | RMF24 | `https://www.rmf24.pl/feed` | pl | 1 | true | — | |
 | Defence24 | `https://defence24.pl/_rss` | pl | 1 | true | **true** | Poland's leading defense portal. |
 | Polsat News | `https://www.polsatnews.pl/rss/wszystkie.xml` | pl | 2 | true | — | |
-| Rzeczpospolita | `https://www.rp.pl/rss_main` | pl | 2 | true | — | |
+| Rzeczpospolita | `https://www.rp.pl/rss_main` | pl | 2 | true | — | Returns 403 Forbidden from the VPS on every slow-lane cycle (seen at the 2026-09-20 deploy and in the 2026-10-03 audit). Kept enabled in config. See Known Issues. |
 | Gazeta Wyborcza | `https://rss.gazeta.pl/pub/rss/najnowsze_wyborcza.xml` | pl | 2 | true | — | |
 | ERR Estonia | `https://news.err.ee/rss` | en | 2 | true | — | Estonian public broadcaster. |
 | LRT Lithuania | `https://www.lrt.lt/en/news-in-english?rss` | en | 2 | true | — | Lithuanian public broadcaster. |
@@ -26,6 +30,9 @@ Fast lane (every 3 min): priority 1 only. Slow lane (every 15 min): all prioriti
 | Al Jazeera | `https://www.aljazeera.com/xml/rss/all.xml` | en | 3 | true | — | |
 | Defence24 EN | `https://defence24.com/_rss` | en | 2 | true | **true** | English edition of Defence24. |
 | TASS | `https://tass.com/rss/v2.xml` | en | 3 | true | — | Russian state agency. Monitored for adversary narrative signals, not factual reporting. |
+| Ukrainska Pravda EN | `https://www.pravda.com.ua/eng/rss/view_news/` | en | 1 | true | — | English edition of Ukrainska Pravda. |
+| Kyiv Independent | `https://kyivindependent.com/feed/rss/` | en | 1 | true | — | |
+| France 24 Europe | `https://www.france24.com/en/europe/rss` | en | 3 | true | — | |
 | Ukrainska Pravda UA | `https://www.pravda.com.ua/rss/view_news/` | uk | 1 | true | — | Ukrainian-language edition; publishes before EN edition. |
 | Onet Wiadomości | `https://wiadomosci.onet.pl/.feed` | pl | 2 | true | — | |
 | Interfax-Ukraine EN | `https://en.interfax.com.ua/news/last.rss` | en | 2 | true | — | |
@@ -34,7 +41,9 @@ Fast lane (every 3 min): priority 1 only. Slow lane (every 15 min): all prioriti
 
 ## Telegram Channels
 
-Polled on fast lane (every 3 min). Config key: `sources.telegram.channels`. All four channels have `keyword_bypass: true`.
+Config key: `sources.telegram.channels`. A persistent listener (telethon) buffers new channel messages in real time, and every pipeline cycle drains the buffer: the fast lane (every 3 min) and the slow lane (every 15 min). All four channels have `keyword_bypass: true`. The `priority` field exists in config, but no code reads it; only RSS priority selects fast-lane sources.
+
+Known defect: every Telegram message is currently stored under the first configured channel (Ukrainian Air Force, language `uk`), whichever channel it came from. See Known Issues.
 
 | Name | channel_id | Lang | Priority | keyword_bypass |
 |---|---|---|---|---|
@@ -47,7 +56,7 @@ Polled on fast lane (every 3 min). Config key: `sources.telegram.channels`. All 
 
 ## Google News
 
-Polled on fast lane (every 3 min). Config key: `sources.google_news.queries`. All 16 queries use `when:1h` recency filter.
+Fetched in every fast-lane cycle (every 3 min) and again in every slow-lane cycle (every 15 min). Config key: `sources.google_news.queries`. All 16 queries use the `when:1h` recency filter (added by `sentinel/fetchers/google_news.py`).
 
 | Query | Lang | Lane |
 |---|---|---|
@@ -95,6 +104,8 @@ When enabled, the fetcher (`sentinel/fetchers/gdelt.py`) issues a single GDELT D
 | PAP | Blocked by Incapsula/Imperva WAF since ~2026. All non-browser HTTP requests rejected. | `site:pap.pl` Google News query — indexes PAP articles without hitting the WAF. |
 | TVN24 | Cloudflare blocks Hetzner datacenter IPs (403 Forbidden). Not User-Agent related — tested with browser UA, still blocked. Disabled 2026-05-27 to stop spamming their servers. | Polish news well-covered by 5 other sources. Re-enable if we add proxy support or move to a residential IP. |
 | GDELT | IP-level 429 throttling (~20% success) from the Hetzner datacenter IP. | Disabled (`sources.gdelt.enabled: false`). Re-enable behind a residential IP / proxy. |
+| Rzeczpospolita | `https://www.rp.pl/rss_main` returns 403 Forbidden from the VPS on every slow-lane cycle. The 2026-10-03 audit found no successful fetch in 7 days. Each failure logs an error line. | None. The source stays enabled in config and contributes nothing. The [server runbook](../how-to/server-runbook.md) lists the same issue. |
+| Telegram (all channels) | Code defect: `sentinel/fetchers/telegram.py` compares the numeric `chat_id` with the `@username` channel ids, the match never succeeds, and it falls back to the first configured channel. Every message gets `source_name` "Ukrainian Air Force", language `uk`, and a URL built from `@kpszsu` with the other channel's message id. URL-hash dedup can drop a real message when ids from different channels collide, and all Telegram channels count as one source for corroboration. | None until the code is fixed. Tracked in `TODO.md` ("Telegram fetcher mislabels every channel as Ukrainian Air Force"). |
 
 ---
 

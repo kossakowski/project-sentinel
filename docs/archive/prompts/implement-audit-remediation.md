@@ -1,3 +1,5 @@
+> **[AMENDMENT 2026-10-03]** HISTORIC: completed directive (applied 2026-03-24 in commit 7651e3f). Do not execute it. The classifier prompt and keyword lists have changed since then, and the live classifier is OpenAI `gpt-5.6-luna`, not Haiku. Its `./run.sh --test-headline` steps make paid live model calls. See [docs/archive/README.md](../README.md).
+
 # Sentinel Audit Remediation — Agent Directive
 
 You are implementing fixes to Project Sentinel based on a production audit. You will modify exactly 2 files and 1 YAML config. Follow each step in order. Do not skip steps. Do not add anything beyond what is specified.

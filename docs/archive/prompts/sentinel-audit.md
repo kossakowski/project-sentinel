@@ -1,3 +1,5 @@
+> **[AMENDMENT 2026-10-03]** HISTORIC: superseded draft. The living audit is the `/sentinel-audit` skill (`.claude/skills/sentinel-audit/SKILL.md`). Do not run this draft: it writes the same `data/audit-reports/.last-audit-timestamp` file, so the living skill would then skip that window of articles. Its pipeline facts are stale: today one source triggers a phone call (`corroboration_required: 1`), tiers 5-8 are push-only with no WhatsApp tier, and the live classifier is OpenAI `gpt-5.6-luna`.
+
 # Sentinel Daily Audit — Skill Prompt
 
 <governing_principle>

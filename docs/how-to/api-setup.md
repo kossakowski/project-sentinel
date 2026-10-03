@@ -1,10 +1,25 @@
 # API Setup Guide
 
-This guide covers setting up all external service accounts needed by Project Sentinel.
+Last verified: 2026-10-03 (deployed commit 6429124)
+
+This guide covers the external service accounts Project Sentinel uses. OpenAI is the live classifier. Anthropic is only a legacy rollback path. OpenRouter is only for offline model comparison.
+
+Contents:
+1. [Direct OpenAI API (Luna)](#1-direct-openai-api-luna)
+2. [Twilio (Phone Calls & SMS)](#2-twilio-phone-calls--sms)
+3. [Expo Push (Mobile Push Channel)](#3-expo-push-mobile-push-channel)
+4. [Telegram API (Channel Monitoring)](#4-telegram-api-channel-monitoring)
+5. [GDELT API](#5-gdelt-api)
+6. [Google News RSS](#6-google-news-rss)
+7. [OpenRouter (Optional, Evals Only)](#7-openrouter-optional-evals-only)
+8. [Complete `.env` Template](#complete-env-template)
+
+The production service reads its secrets from env files under `/etc/sentinel/`; see the [server runbook](server-runbook.md). Local runs read the git-ignored `.env` in the repo folder.
 
 ## 1. Direct OpenAI API (Luna)
 
-The local configuration selects `classification.provider: openai` and
+Production (`config/config.yaml`, deployed since 2026-09-20) and the template
+(`config/config.example.yaml`) both select `classification.provider: openai` and
 `gpt-5.6-luna`. This requires paid OpenAI API access, separately from a ChatGPT or
 Codex subscription. The key is used by classification, the existing article-quality gate and, only
 when needed, one bounded Polish-summary translation. OpenAI mode does not require an Anthropic key.
@@ -34,14 +49,20 @@ First run the entirely offline check:
 .venv/bin/python -m sentinel.eval.direct_luna
 ```
 
-After funding and **explicit approval of a $0.25 test allowance**, run this command
+After funding and explicit approval of a $0.25 test allowance, run this command
 with a new output filename (existing reports are never overwritten):
 
 ```bash
-.venv/bin/python -m sentinel.eval.direct_luna --live --max-cost-usd 0.25 --output data/eval/luna-direct-validation.jsonl
+.venv/bin/python -m sentinel.eval.direct_luna --config data/config.local.yaml --live --max-cost-usd 0.25 --output data/eval/luna-direct-validation.jsonl
 ```
 
-This makes twenty classifier requests, plus at most one Polish-summary repair per
+Pass a local config (see [Getting Started, step 4](../tutorials/getting-started.md#4-create-a-local-config)).
+The default `--config config/config.yaml` is the production config. Its budget ledger
+path is `/var/lib/sentinel/...`, which does not exist on a workstation, so the live
+check fails before the first request. If the config itself loads, the failed run still leaves an empty `--output` file
+behind, so delete it or pick a new `--output` name before retrying. The offline check is not affected.
+
+The live check makes twenty classifier requests, plus at most one Polish-summary repair per
 non-Polish result: ten identical known-miss inputs and
 ten fresh synthetic cases, with fake phone/SMS/push transports and in-memory event
 storage. It tests the real classifier, memory guards, grouping and notification
@@ -54,7 +75,10 @@ determinism or erase the historical miss.
 
 ### Budget, failure and rollback
 
-The operator selected **$10/month** on 2026-09-20.
+The monthly allowance is `classification.budget.monthly_usd`. Production
+(`config/config.yaml`) sets 30 USD; it was raised from 10 on 2026-09-24 because Luna
+costs about 11-17 USD a month. The code default (`sentinel/config.py`) and the template
+keep 10; the validator accepts at most 50.
 
 `classification.budget` controls a persistent SQLite ledger shared by classifier
 and quality-gate requests. Keep its writable path stable across restarts and use
@@ -68,7 +92,7 @@ large contexts that would use another pricing tier.
 
 At the monthly allowance, new paid work stops. The article remains queued, logs
 explain the error, and `health.json` reports degraded classification. This is a
-**detection gap**, not a successful safe classification. Provider outages, credit
+detection gap, not a successful safe classification. Provider outages, credit
 exhaustion and malformed answers also leave work pending for retry. Do not delete
 queued work or the usage ledger to make health appear green.
 
@@ -82,9 +106,13 @@ token estimate and does not use this OpenAI ledger.
 Rollback explicitly selects `provider: anthropic`, the previous Haiku model and
 its prior token limit, with `ANTHROPIC_API_KEY` available. The old prompt remains
 available. Restore the prior incident-memory setting only as a reviewed rollback
-choice. Preserve the database and alert history. See the
-[migration plan](../ideas/luna-direct-api-migration-plan.md) for rollout gates.
-Production deployment, secret installation and restart need separate approval.
+choice. Preserve the database and alert history. A rollback is a production change
+and needs the owner's explicit approval. `/deploy` copies `config/config.yaml` to the
+server, so commit the rollback config to the repo; do not edit the server copy by hand.
+The [Luna deployment record](../reference/luna-deployment-20260920.md) holds the
+verified deployment and rollback procedure. Its "previous tag" rollback step predates
+the 2026-09-25 deploys: the previous tag now also runs Luna. To return to Anthropic,
+use the config-only rollback described here.
 
 References: [Luna model and pricing](https://developers.openai.com/api/docs/models/gpt-5.6-luna),
 [structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs).
@@ -93,7 +121,9 @@ References: [Luna model and pricing](https://developers.openai.com/api/docs/mode
 
 ## 2. Twilio (Phone Calls & SMS)
 
-Twilio powers the two primary alert channels: the urgency-9+ **phone call** and the SMS used for acknowledgments, updates, and the downgrade channel.
+Twilio carries the urgency 9-10 phone call, its confirmation SMS, its SMS fallback, the update SMS for an acknowledged critical event, and the system-health SMS. In production, tiers 5-8 are push-only (`channel: push`), so they send no Twilio SMS. The template still routes them to `both` (SMS and push).
+
+> Known state: the production Twilio account is deliberately left unfunded by the owner. Since 2026-09-21 every Twilio call and SMS returns HTTP 401 (`account ... with status 4 is not active`). This is expected, not an outage or a credential problem. Calls stay configured and return when the owner recharges the account. See the [server runbook troubleshooting](server-runbook.md#troubleshooting).
 
 ### Steps
 
@@ -125,7 +155,13 @@ No additional Polly setup needed -- Twilio includes it.
 
 ### Verify It Works
 
+This sends a real, billed SMS. While the account is unfunded it fails with HTTP 401.
+The simplest way is `./run.sh --config data/config.local.yaml --test-alert sms`.
+To test with the Twilio library directly, first export the `.env` variables (the
+snippet reads them from the environment):
+
 ```bash
+set -a; . ./.env; set +a
 python -c "
 from twilio.rest import Client
 import os
@@ -149,32 +185,39 @@ print(f'SMS sent: {msg.sid}')
 
 ---
 
-## 3. Expo Push (Optional — Mobile Push Channel)
+## 3. Expo Push (Mobile Push Channel)
 
-Expo Push is an **optional** alert channel. Each SMS urgency tier (5–8) carries a per-tier `channel` setting (`sms` / `push` / `both`, default `both`) that selects whether that tier is delivered by Twilio SMS, by push, or by both; the urgency 9–10 call also fires a push additively. It is **off by default** and needs no account or paid plan for basic sends — Expo's push service is free.
+Expo Push delivers alerts to the companion mobile app. Each SMS urgency tier (5-8) has a `channel` setting (`sms` / `push` / `both`) that selects Twilio SMS, push, or both; the urgency 9-10 call also fires a push additively. Expo's push service is free.
+
+Defaults and production differ:
+
+- Code default and template: push is disabled (`alerts.push.enabled: false`, no tokens) and tiers 5-8 use `channel: both`. With push disabled, every tier sends SMS only and the 9-10 push does nothing.
+- Production (`config/config.yaml`): push is enabled, tiers 5-8 use `channel: push` (no SMS), and the device token comes from the environment as `"${EXPO_PUSH_TOKEN}"`. Push is the only channel that reaches the phone while the Twilio account is unfunded.
 
 There is no API key to obtain. The two pieces you provide are:
 
-1. **(Optional) `EXPO_ACCESS_TOKEN`** — an Expo access token used as a bearer credential to harden sends against spoofing. Create one at **https://expo.dev → Account → Access Tokens**, then add it to `.env`:
+1. `EXPO_ACCESS_TOKEN` — an Expo access token that `sentinel/alerts/push_client.py` sends as a bearer credential. It is required when "Enhanced Security for Push Notifications" is turned on in the Expo project, because Expo then rejects unauthenticated sends. Production has it turned on (see the [server runbook](server-runbook.md)), so production needs this token. Without that setting, basic sends work without it. Create one at https://expo.dev (Account → Access Tokens), then add it to `.env`:
    ```
    EXPO_ACCESS_TOKEN=your-expo-access-token
    ```
-   Leave it unset for basic (unauthenticated) sends.
 
-2. **Device push tokens** — the per-device tokens (`ExponentPushToken[...]`) that identify which phones receive alerts. These are surfaced by the companion mobile app under `mobile/`, which prints/copies the device's Expo push token. Paste each token into `alerts.push.tokens` in `config/config.yaml` and set `alerts.push.enabled: true`:
+2. Device push tokens — the per-device tokens (`ExponentPushToken[...]`) that identify which phones receive alerts. The companion mobile app under `mobile/` shows the device's token. Put it in `.env` as `EXPO_PUSH_TOKEN` and reference it from the config, then set `alerts.push.enabled: true`:
    ```yaml
    alerts:
      push:
        enabled: true
        tokens:
-         - "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]"
+         - "${EXPO_PUSH_TOKEN}"
    ```
+   Never paste a literal device token into `config/config.yaml`: it is tracked in a public repo. A literal token is acceptable only in an untracked local config such as `data/config.local.yaml`.
 
-The 5–8 tiers default to `channel: both`, so once push is enabled with a token they push immediately (alongside SMS) — no `channel` change is required. To change a tier's delivery, set its `channel` — e.g. `alerts.urgency_levels.high.channel: push` (push only, no SMS) or leave it at `both` (SMS and push). The urgency 9–10 call also fires its additive push as soon as push is enabled with a token (no `channel` needed there). While push is disabled or no token is set, every tier still sends SMS only and the 9–10 push no-ops.
+Every `${VAR}` in the config must be set when the config loads, or loading stops with a config error. So any machine that loads `config/config.yaml` needs `EXPO_PUSH_TOKEN` in its environment.
+
+To change a tier's delivery, set its `channel`, for example `alerts.urgency_levels.high.channel: push` (push only, no SMS) or `both` (SMS and push).
 
 See the [mobile companion app explanation](../explanation/mobile-app.md) for how to obtain a device token, and the [Configuration Reference](../reference/config-reference.md) for the full `alerts.push` block and the `channel` field.
 
-Test it once configured with `./run.sh --test-alert push`.
+Test it once configured with `./run.sh --config data/config.local.yaml --test-alert push`. This sends a real push to the configured device.
 
 ---
 
@@ -205,7 +248,10 @@ Telegram monitoring uses a personal account via `telethon`. You do NOT need a bo
 
 The first time you run the Telegram fetcher, it will ask for your phone number and a verification code sent via Telegram. After that, a session file is created and subsequent runs don't need verification.
 
+Run it from the repo folder. The first line exports the `.env` variables, because the snippet reads them from the environment:
+
 ```bash
+set -a; . ./.env; set +a
 python -c "
 import os
 from telethon import TelegramClient
@@ -258,15 +304,21 @@ The Telegram session file (`sentinel_session.session`) is equivalent to being lo
 
 ## 5. GDELT API
 
-**No setup needed.** The GDELT DOC 2.0 API is free and requires no API key or registration. Endpoint: `https://api.gdeltproject.org/api/v2/doc/doc` (GDELT is currently **disabled** in production — `sources.gdelt.enabled: false` — due to IP-level throttling, but no credentials are required if you re-enable it.)
+No setup needed. The GDELT DOC 2.0 API is free and requires no API key or registration. Endpoint: `https://api.gdeltproject.org/api/v2/doc/doc`. Production disables GDELT (`sources.gdelt.enabled`) because of IP-level throttling; the template leaves it enabled. No credentials are required either way.
 
 ## 6. Google News RSS
 
-**No setup needed.** Google News RSS feeds are public and free.
+No setup needed. Google News RSS feeds are public and free.
+
+## 7. OpenRouter (Optional, Evals Only)
+
+`OPENROUTER_API_KEY` is used only by the offline model comparison (`python -m sentinel.eval.compare_models`). Production alerting never uses it. Use a separate evaluation key with an OpenRouter credit limit. Setup and commands are in [Compare candidate classification models](model-comparison.md#openrouter-setup).
 
 ---
 
 ## Complete `.env` Template
+
+This mirrors `.env.example` plus the two Expo variables. Values below are placeholders.
 
 ```bash
 # Twilio
@@ -277,13 +329,23 @@ TWILIO_PHONE_NUMBER=+1XXXXXXXXXX
 # Alert recipient
 ALERT_PHONE_NUMBER=+48XXXXXXXXX
 
-# Anthropic
+# Direct OpenAI classifier (required; paid API, separate from a ChatGPT/Codex subscription)
+OPENAI_API_KEY=your_project_api_key
+
+# Anthropic (only for explicit legacy rollback)
 ANTHROPIC_API_KEY=sk-ant-xxxxx
 
-# Telegram
+# Optional: offline model comparison only; never used by production alerting.
+# Use a separate evaluation key with an OpenRouter credit limit.
+OPENROUTER_API_KEY=
+
+# Telegram (channel monitoring)
 TELEGRAM_API_ID=12345678
 TELEGRAM_API_HASH=abcdef1234567890abcdef1234567890
 
-# Expo Push (optional — device push tokens go in alerts.push.tokens, not here)
-# EXPO_ACCESS_TOKEN=your-expo-access-token
+# Expo Push
+# Required whenever the loaded config references ${EXPO_PUSH_TOKEN} (config/config.yaml does).
+EXPO_PUSH_TOKEN=ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]
+# Required when Enhanced Security for Push Notifications is on (production); optional otherwise.
+EXPO_ACCESS_TOKEN=your-expo-access-token
 ```

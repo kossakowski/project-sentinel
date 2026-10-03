@@ -1,6 +1,8 @@
 # Project Sentinel
 
-Project Sentinel is a real-time monitoring bot that scans PL/EN/UA/RU media sources for military attacks or invasions targeting Poland and the Baltic states. It classifies what it finds with Claude Haiku 4.5 and, when a corroborated high-urgency threat is detected, alerts via a Twilio phone call and SMS — with an optional Expo push channel for a companion mobile app. It runs in production on a Hetzner VPS.
+Last verified: 2026-10-03 (deployed commit 6429124)
+
+Project Sentinel is a real-time monitoring bot that scans PL/EN/UA/RU media sources for military attacks or invasions targeting Poland and the Baltic states. It classifies what it finds with an LLM. Production uses OpenAI (Anthropic Haiku is a legacy rollback path only); the choice is set by `classification.provider` and `classification.model` in `config/config.yaml`. For urgency 9–10 it places a Twilio phone call, plus a confirmation SMS and an app push; urgency 5–8 goes to the companion iPhone app as an Expo push only. Today a single source is enough to trigger a call. The owner keeps the Twilio account unfunded on purpose, so calls and SMS currently fail with HTTP 401 until it is recharged; this is a known state, described in [CLAUDE.md](CLAUDE.md). It runs in production on a Hetzner VPS.
 
 ## Start here
 

@@ -1,5 +1,7 @@
 # Project Sentinel — Per-Tier Push Channel — Implementation Specification
 
+> **[AMENDMENT 2026-10-03]** All three phases are implemented and live since tag `deploy-20260603-114957`; tiers 5-8 run `channel: push` since 2026-06-04 (commit 7c024a5). Superseded points in the text below: the push token comes from `EXPO_PUSH_TOKEN` in the server's `sentinel.env`, and `config.yaml` holds only the `${EXPO_PUSH_TOKEN}` placeholder, never a literal token (commit 6621a40). Since 2026-09-20 (commit 8864861) push dedup works per notification revision, so updates no longer bypass dedup; they push once per new revision. The 3.4 last-push panel is no longer fed after the inbox rewrite (see [INBOX_APP_SPEC.md](INBOX_APP_SPEC.md)). `app.json` has a real EAS `projectId` since 2026-06-02. Current behaviour: [docs/explanation/mobile-app.md](../docs/explanation/mobile-app.md).
+
 ## Overview
 
 When complete, Project Sentinel's alert router will let the operator choose, **per urgency

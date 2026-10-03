@@ -1,5 +1,7 @@
 # First 50 model-comparison labels
 
+> **[AMENDMENT 2026-10-03]** These first-round labels encode the legacy (pre-v2) prompt policy. Production now uses policy v2. For the live policy use `tests/fixtures/model_comparison_v2_development.yaml` (see model-comparison-v2-label-review.md), which changes several labels here; for example, v2 labels mc-scramble-pl-01 as urgency 2–3, silent, not critical. `sentinel/eval/compare_models.py` still defaults to this first50 fixture with the legacy prompt; v2 cases need an explicit `--policy-file`. Living guide: docs/how-to/model-comparison.md.
+
 ## Status and scope
 
 - This note documents [`tests/fixtures/model_comparison_first50.yaml`](../../tests/fixtures/model_comparison_first50.yaml). The fixture contains exactly 50 cases: 44 verbatim articles from `data/eval/production-candidates.json` and 6 explicitly synthetic policy contrasts.

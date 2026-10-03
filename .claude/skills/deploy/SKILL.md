@@ -4,8 +4,9 @@ description: >-
   Deploy Project Sentinel to production. Runs pre-flight checks (uncommitted changes,
   failing tests, unmerged branch), merges current branch to master, tags the deploy commit,
   pushes master and tag to remote, creates a full server backup (code, config, database,
-  Telegram session), pulls the tagged commit from GitHub on the server, rebuilds the venv
-  if needed, restarts the service, and verifies everything is running. Only invoke when
+  cost ledger, Telegram session), checks the live config for server-only edits, checks out
+  the tagged commit on the server, syncs the config, installs dependencies into the existing
+  venv, restarts the service, and verifies everything is running. Only invoke when
   the user explicitly calls /deploy. Do NOT auto-trigger.
 ---
 
@@ -26,14 +27,17 @@ You are deploying Project Sentinel to its production Hetzner VPS. Invoking /depl
 <server_file_layout>
 | Path | Contents | Owner | Notes |
 |------|----------|-------|-------|
-| `/home/deploy/sentinel/` | Application code (git clone) | deploy:deploy | Deployed via git pull from GitHub |
-| `/home/deploy/sentinel/.venv/` | Python venv (server-side) | deploy:deploy | Rebuilt on server after deploy |
-| `/etc/sentinel/config.yaml` | Live config | root:sentinel 640 | Needs sudo to read |
-| `/etc/sentinel/sentinel.env` | API keys and secrets | root:deploy 640 | NEVER touch — not backed up, not deployed |
+| `/home/deploy/sentinel/` | Application code (git clone) | deploy:deploy | Detached HEAD on the deployed `deploy-*` tag (set by 6b) |
+| `/home/deploy/sentinel/.venv/` | Python venv (server-side) | deploy:deploy | Never recreated; 6d installs `requirements.txt` into it on every deploy |
+| `/etc/sentinel/config.yaml` | Live config | root:sentinel 640 | Needs sudo to read; overwritten from the repo's `config/config.yaml` in 6c |
+| `/etc/sentinel/sentinel.env` | Twilio, Telegram, Expo push secrets, legacy Anthropic key | root:deploy 640 | Never touch: not read, not backed up, not deployed |
+| `/etc/sentinel/openai.env` | `OPENAI_API_KEY` for the live classifier | root:root 600 | Never touch: not read, not backed up, not deployed |
+| `/etc/systemd/system/sentinel.service.d/20-openai.conf` | systemd drop-in that loads `openai.env` | root | Not managed by /deploy. The repo's `deploy/configs/sentinel.service` is not the full live unit |
 | `/var/lib/sentinel/sentinel.db` | SQLite database | sentinel:sentinel | Hot-backup via sqlite3 .backup |
+| `/var/lib/sentinel/model-usage.db` | OpenAI cost ledger (SQLite) | sentinel:sentinel 600 | Hot-backup needs `sudo sqlite3` |
 | `/var/lib/sentinel/sentinel_session.session` | Telegram auth session | sentinel:sentinel 600 | Needs sudo to read |
-| `/var/lib/sentinel/health.json` | Health status | sentinel:sentinel | Updated every pipeline cycle |
-| `/home/deploy/backups/` | Backup storage | deploy:deploy | Deploy backups stored here |
+| `/var/lib/sentinel/health.json` | Health status | sentinel:sentinel | Written after each scheduled cycle, not after the startup cycle |
+| `/home/deploy/backups/` | Backup storage | deploy:deploy | `deploy-<ts>/` snapshots (6f keeps the 10 newest) |
 </server_file_layout>
 
 ---
@@ -108,7 +112,7 @@ On success, report: "Merged `{branch}` into `master`."
 
 ### Step 3: Tag the Deploy Commit
 
-Tag the exact commit that is about to be deployed. Use the same timestamp format as the backup so they match.
+Tag the exact commit that is about to be deployed. The tag uses the same name format as the backup directory, but the two timestamps differ (tag = local time, backup = server UTC).
 
 ```bash
 DEPLOY_TAG="deploy-$(date +%Y%m%d-%H%M%S)"
@@ -117,7 +121,7 @@ git tag "$DEPLOY_TAG"
 
 Report: "Tagged as `{tag}`."
 
-This tag marks the exact commit deployed to production. To rollback later: `git checkout {tag}` and re-deploy.
+This tag marks the exact commit deployed to production. /deploy can only deploy `master` HEAD; it cannot re-deploy an older tag. For a rollback, use the manual procedure under **On Failure**.
 
 ### Step 4: Push to Remote
 
@@ -157,6 +161,10 @@ sudo cp /etc/sentinel/config.yaml "$BACKUP_DIR/config.yaml"
 # 3. Database (hot backup — safe while service is running)
 echo "  Backing up database..."
 sqlite3 /var/lib/sentinel/sentinel.db ".backup '$BACKUP_DIR/sentinel.db'"
+
+# 3b. OpenAI cost ledger (hot backup; requires sudo — sentinel:sentinel 600)
+echo "  Backing up cost ledger..."
+sudo sqlite3 /var/lib/sentinel/model-usage.db ".backup '$BACKUP_DIR/model-usage.db'"
 
 # 4. Telegram session (requires sudo — sentinel:sentinel 600)
 echo "  Backing up Telegram session..."
@@ -242,12 +250,13 @@ PY
 DRIFT_CHECK
 ```
 
-Values of keys whose name looks like a token, key, secret, password, SID or auth are shown as `***`.
+Values are shown as `***` when the dotted key path contains `token`, `key`, `secret`, `password`, `sid` or `auth` anywhere. This masks more than secrets: all `monitoring.keywords.*` and `monitoring.exclude_keywords.*` lists and every `*max_tokens` / `*_tokens` value are masked too. For an UNEXPECTED masked key, read the live value from the Step 5 backup copy (`sudo cat /home/deploy/backups/deploy-<ts>/config.yaml`) before telling the user what to copy.
 
 - Exit 0 → report the EXPECTED list and continue to 6b.
 - `FETCH_FAILED` → **STOP:** "Failed to fetch from GitHub on the server. Check the deploy key and network access."
 - Exit 3 (any UNEXPECTED key) → **STOP:** "The live config has server-only edits that this deploy would overwrite. Nothing on the server has changed yet. Copy these values into `config/config.yaml`, commit, and run /deploy again." Show both lists. Do NOT continue and do NOT copy the config.
-- Any other failure (e.g. the script or `sudo cat` fails) → **STOP** and show the output; the server is unchanged.
+- Any other failure (e.g. the script itself fails) → **STOP** and show the output; the server is unchanged.
+- The script has no `set -e`, so two failures look like normal results. If `sudo cat` fails, every key shows as UNEXPECTED with exit 3: check that the live values are not all `<missing>` before blaming server edits. If a `git show` fails, the check can pass with exit 0 and repo values of `<missing>`: if any EXPECTED line shows `repo='<missing>'` for many keys, **STOP**. This is a known gap in the script: it lacks explicit exit guards after `sudo cat` and `git show`.
 
 **6b. Check out the tag** (server switches to the exact tagged commit fetched in 6a):
 
@@ -269,13 +278,13 @@ This copies the repo config (which git just updated) to the live path the servic
 
 If the copy fails → **STOP.** Report the error. The service is still running with the old config; no damage done.
 
-**6d. Rebuild Python dependencies:**
+**6d. Install Python dependencies** (into the existing venv, every deploy; the venv is never recreated, and packages removed from `requirements.txt` stay installed):
 
 ```bash
 ssh -p 2222 deploy@178.104.76.254 'cd /home/deploy/sentinel && .venv/bin/pip install -r requirements.txt'
 ```
 
-If pip install fails → **STOP.** Report the error and remind the user that a backup exists.
+If pip install fails → **STOP.** Report the error and remind the user that a backup exists. Warn that the server is now half-deployed: the new code (6b) and new config (6c) are on disk, while the old process still runs from memory. The unit has `Restart=always`, so any crash or restart loads the new code and config, possibly without the new dependencies. To restore, follow the manual rollback under **On Failure**.
 
 **6e. Restart the service:**
 
@@ -310,11 +319,17 @@ ssh -p 2222 deploy@178.104.76.254 'sudo journalctl -u sentinel --since "30 secon
 ```
 Scan for `ERROR`, `Exception`, `Traceback`, `CRITICAL`. If found → **ALERT** and show the relevant lines.
 
+Known pre-existing log lines (not deploy failures; report them, but do not raise ALERT for them):
+- `Failed to fetch RSS source Rzeczpospolita` with HTTP 403. The feed blocks the VPS; it appears whenever that source is fetched, including the startup cycle.
+- `Twilio call failed` / `Twilio SMS failed` with HTTP 401 and `is not active`. The owner keeps the Twilio account unfunded on purpose since 2026-09-21; calls and SMS return when the owner recharges it.
+
+For any other ERROR, compare it with the journal from before the restart (`sudo journalctl -u sentinel --until "<restart time>" -n 200 --no-pager`). Raise ALERT only if the error is new.
+
 **7c. Health check:**
 ```bash
 ssh -p 2222 deploy@178.104.76.254 'cat /var/lib/sentinel/health.json 2>/dev/null || echo "health.json not yet available"'
 ```
-Report the health status. Note: health.json may take up to 3 minutes to refresh (first fast-lane cycle after restart).
+The startup cycle does not write health.json; the first scheduled fast-lane cycle does, about `scheduler.fast_interval_minutes` (plus up to 10 s jitter) after the restart. Compare `last_cycle_at` with the restart time. If it is older, report "pre-restart snapshot; first post-restart write expected about 3 minutes after restart". Optionally re-check after 3–4 minutes.
 
 **7d. Extended log check** (wait for first pipeline cycle):
 ```bash
@@ -336,14 +351,14 @@ After all steps succeed, output this summary:
 - Git tag: {deploy-YYYYMMDD-HHMMSS}
 - Pushed to remote: master + {tag}
 - Backup location: /home/deploy/backups/deploy-{timestamp}/
-- Backup contents: code.tar.gz, config.yaml, sentinel.db, sentinel_session.session
+- Backup contents: code.tar.gz, config.yaml, sentinel.db, model-usage.db, sentinel_session.session
 - Config drift check: no server-only edits; expected changes: {list or "none"}
 - Git checkout: {DEPLOY_TAG} on server
 - Config synced: config/config.yaml → /etc/sentinel/config.yaml
 - pip install: {success/no changes}
 - Service status: active (running)
-- Health: {health.json contents or "awaiting first cycle"}
-- Log errors: none (or list them)
+- Health: {health.json contents, or "pre-restart snapshot; awaiting first scheduled cycle"}
+- Log errors: none (or list them; name known pre-existing lines separately)
 ```
 
 ## On Failure (at any verification step)
@@ -351,14 +366,20 @@ After all steps succeed, output this summary:
 1. Report **exactly what failed** with the full command output
 2. State the backup location: "A pre-deployment backup exists at `/home/deploy/backups/deploy-{timestamp}/`"
 3. **STOP** — do not attempt automatic rollback
-4. Suggest: "To rollback: restore the backup on the server and restart the service, or re-deploy a previous git tag (`git tag -l 'deploy-*'` to list)."
+4. Suggest the manual rollback below. /deploy itself deploys only `master` HEAD, so it cannot roll back.
+
+Manual rollback (run only when the user asks; the user lists tags with `git tag -l 'deploy-*'`):
+1. On the server: `cd /home/deploy/sentinel && git fetch --tags origin && git checkout <previous-deploy-tag>`.
+2. Restore the matching config: `sudo cp /home/deploy/backups/deploy-<ts>/config.yaml /etc/sentinel/config.yaml && sudo chown root:sentinel /etc/sentinel/config.yaml && sudo chmod 640 /etc/sentinel/config.yaml`. The snapshot `<ts>` is server UTC time (Step 5) and does not equal the tag's local-time name. Pick the first snapshot taken after `<previous-deploy-tag>` was deployed (`ls -1d /home/deploy/backups/deploy-*`). Do not use the snapshot made during that previous deploy itself: it holds the older config that deploy replaced; use the next one in the list. Confirm it with `diff <(git show <previous-deploy-tag>:config/config.yaml) <(sudo cat /home/deploy/backups/deploy-<ts>/config.yaml)`.
+3. Keep the live `sentinel.db` and `model-usage.db`. Restore a database from the backup only if it is damaged.
+4. `sudo systemctl restart sentinel`, then run the Step 7 checks.
 
 ---
 
 ## Critical Safety Rules
 
 1. **Always `deploy@`** — never `root@` or `kossa@` for SSH. A wrong username triggers a fail2ban ban.
-2. **Never touch `/etc/sentinel/sentinel.env`** — not in backups, not in deploys, not ever.
+2. **Never touch `/etc/sentinel/sentinel.env` or `/etc/sentinel/openai.env`** — never read, print, back up or deploy them.
 3. **This skill overrides the no-server-modification CLAUDE.md rule** — /deploy is blanket authorization. No confirmation prompts between steps.
 4. **On failure: STOP** — do not retry, do not work around, do not auto-rollback. Report and stop.
 5. **Stay on `master`** — after deployment completes (or fails after merge), leave the local repo on the `master` branch.

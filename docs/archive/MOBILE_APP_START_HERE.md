@@ -1,3 +1,5 @@
+> **[AMENDMENT 2026-10-03]** HISTORIC: this is the June 2026 handoff for the mobile worktree, moved here from the repo root on 2026-10-03. It is not current truth. The `mobile-push-app` branch and its worktree no longer exist, and the main checkout is not a do-not-touch repo. The push channel and the in-app inbox were merged to master and are live since tag `deploy-20260603-114957`; push is enabled with a real EAS `projectId`, and a token-registration route was made a non-goal. Current docs: [docs/explanation/mobile-app.md](../explanation/mobile-app.md) and [docs/how-to/mobile-push-setup.md](../how-to/mobile-push-setup.md). See also [README.md](README.md) in this folder.
+
 # Mobile Push App — START HERE
 
 **Worktree branch:** `mobile-push-app` (base: `master` @ df4f6ea). Created 2026-06-01.

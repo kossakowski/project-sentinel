@@ -5,9 +5,12 @@ your local machine; **never deployed** and not part of the monitoring runtime. S
 this subsystem: [`../SPEC.md`](../SPEC.md). Architecture + full route/component map:
 [`../docs/explanation/architecture.md`](../docs/explanation/architecture.md).
 
-The API is a Flask **blueprint package** under `dashboard/api/` (articles, events, stats, sync,
-annotations), with `cli.py`, `config.py`, `db.py`, `sync.py`, `annotations.py`, and
-`classifier_input.py` modules — not a single `api.py`.
+The API is a Flask blueprint package under `dashboard/api/` (articles, events, stats, sync,
+annotations) — not a single `api.py`. Top-level modules: `app.py` (the `create_app()` factory: it
+registers the blueprints under `/api`, enables CORS for the Vite dev server on `:5173` and serves
+`frontend/dist/` at `/`), `cli.py`, `config.py`, `db.py`, `sync.py`, `annotations.py`, and
+`classifier_input.py` (rebuilds the classifier input shown on the article page). The sync blueprint
+exposes `POST /api/sync` and `GET /api/sync/status`.
 
 ## Backend (Flask API)
 - Launch: `./dashboard/run-dashboard.sh` (venv-bootstrap wrapper → `python -m dashboard`)
@@ -25,6 +28,10 @@ annotations), with `cli.py`, `config.py`, `db.py`, `sync.py`, `annotations.py`, 
 Routes: `/` Overview (KPI cards, pipeline funnel, time-series, urgency histogram, source breakdown),
 `/articles` (filterable list), `/articles/:id` (classifier view + event timeline + annotation panel),
 `/events/:id` (event detail: metadata header + article list + alert timeline). Charts use `recharts`.
+The classifier view rebuilds the legacy Anthropic prompt block (`Classifier._build_user_prompt`).
+The live OpenAI path sends a different input (`messages()` in `sentinel/classification/policy.py`:
+system policy plus a JSON payload with `remembered_incidents`), so the view is only approximate for
+rows classified by the live model.
 
 ## Annotations (Phase 4)
 User labels (correct / incorrect / uncertain), expected-urgency overrides, and notes live in a
@@ -41,11 +48,13 @@ it, or null), via a correlated subquery scoped to the last `EVENT_ID_RETENTION_D
 override via `DashboardDB(event_id_retention_days=…)` or `app.config["EVENT_ID_RETENTION_DAYS"]`. The
 article table does a single-pass visual grouping over consecutive same-event rows (chevron +
 member-count linking to `/events/<id>`; continuation rows get faded background + coloured left
-border). `GET /api/events/<event_id>` returns `{event, articles[], alert_records[]}` (404 on unknown id).
+border). `GET /api/events/<event_id>` returns the event's fields flat plus `articles[]` and
+`alert_records[]` (404 on unknown id).
 
 The implemented event-grouping spec is archived at
-[`../docs/archive/SPEC_ALERT_GROUPING.md`](../docs/archive/SPEC_ALERT_GROUPING.md) (historic;
-current behaviour is in `../SPEC.md` and the architecture doc). Source comments cite it by name.
+[`../docs/archive/SPEC_ALERT_GROUPING.md`](../docs/archive/SPEC_ALERT_GROUPING.md) (historic).
+Current behaviour is described in this file and the architecture doc; `../SPEC.md` does not cover
+event grouping. Source comments cite the archived spec by name.
 
 ## Datetime
 Store UTC, render Europe/Warsaw. Util surfaces: `dashboard/frontend/src/utils/datetime.ts` (and the

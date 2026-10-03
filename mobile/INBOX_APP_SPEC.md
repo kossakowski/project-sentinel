@@ -1,5 +1,7 @@
 # Project Sentinel Mobile — In-App Message Inbox — Implementation Specification
 
+> **[AMENDMENT 2026-10-03]** Phases 1-3 are implemented and live since tag `deploy-20260603-114957`. The record-presence dedup and `is_update` bypass that requirement 1.4 asks to preserve were replaced on 2026-09-20 (commit 8864861) by per-notification-revision dedup: one successful push per revision, and a failed push stays retryable. The Appendix A payload contract (3500-byte data budget, trim order, `PUSH_BODY_SUMMARY_MAX_CHARS` = 80) still matches the code. Current behaviour: [docs/explanation/mobile-app.md](../docs/explanation/mobile-app.md).
+
 ## Overview
 
 When complete, the Sentinel iOS app opens directly to a **message inbox**: a scrollable list of

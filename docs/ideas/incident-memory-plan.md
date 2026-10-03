@@ -1,5 +1,7 @@
 # Incident memory repair
 
+> **[AMENDMENT 2026-10-03]** Superseded status: incident memory was merged to master (commit 8864861) and enabled in production on 2026-09-20 with the Luna deployment (tag deploy-20260920-232235). It is still live in deploy-20260925-143105 (commit 6429124). It now runs inside the direct OpenAI `gpt-5.6-luna` classification request through the v2 policy prompt, not inside a Haiku request. The code default stays `enabled: false` (`sentinel/config.py`); config/config.yaml switches it on under `classification.incident_memory`. The Haiku cost projections and the USD 20 ceiling below are historical; the live allowance is `classification.budget.monthly_usd` ($30 at commit 6429124). Living reference: docs/reference/config-reference.md (classification section).
+
 Status: implemented on `fix/incident-memory`, opt-in and not deployed; final validation
 is recorded below. Production deployment requires operator approval.
 

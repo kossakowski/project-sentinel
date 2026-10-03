@@ -1,3 +1,7 @@
+> **[AMENDMENT 2026-10-03]** Status as of 2026-10-03: redesign Phases 0-2 remain unmerged on the branches `redesign-phase0-geography`, `redesign-phase1-alerting` and `redesign-phase2-policy` (last commits 2026-07-11/12), and Phases 3-4 were never started. The "NOT merged / NOT deployed", "do at merge" and "PAUSED" lines below are therefore still unresolved, not pending steps for master. Master has diverged since then: the OpenAI Luna classifier ([docs/reference/luna-deployment-20260920.md](docs/reference/luna-deployment-20260920.md)), incident memory, push-only tiers 5-8, and phone calls restored on 2026-07-31 (commit 2cad033). The branches' `AlertPolicy`/`GeoWeighter` modules do not exist on master, and corroboration is still live there with `corroboration_required: 1` in `config/config.yaml`. The "do at merge" follow-ups apply only if those branches are ever rebased and merged. This file logs only the redesign run; later owner decisions are not recorded here.
+
+> **[AMENDMENT 2026-10-03]** Correction to the Phase 0 and Phase 2 lines that say `DECISIONS.md` and the `.code-refiner-state-redesign-phase0/` and `-phase2/` directories are gitignored: all of them were committed to master in 5b07d2a (2026-08-28) and are tracked.
+
 # Autonomous run decisions — classification-alerting-redesign Phase 1
 
 Overnight `/workflow-code-refiner` run — Phase 1 (Alerting reliability: durable failure records + bounded retry). One line per judgement call.

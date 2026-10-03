@@ -1,5 +1,7 @@
 # Clarified benchmark, version 2
 
+> **[AMENDMENT 2026-10-03]** Outcome: this v2 policy prompt is no longer evaluation-only. It went to production on 2026-09-20 with `gpt-5.6-luna` (tag deploy-20260920-232235) and is still live in deploy-20260925-143105. It now lives in `sentinel/classification/policy.py` (`sentinel/eval/clarified_policy.py` only re-exports it) and is parameterised by `classification.policy` in config/config.yaml, whose prompt hash equals the frozen `aa4d4ca8…`. Any change to it changes live classification. See docs/reference/luna-deployment-20260920.md.
+
 Scope: evaluation only. Preserve the first-round fixture, prompts and results.
 Do not modify the production classifier, runtime configuration or alert routing.
 

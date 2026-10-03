@@ -1,5 +1,7 @@
 # Clarified model comparison: run record
 
+> **[AMENDMENT 2026-10-03]** Outcome: `gpt-5.6-luna` became the production classifier on 2026-09-20 (tag deploy-20260920-232235) via the direct OpenAI API, not OpenRouter, with incident memory enabled; see docs/reference/luna-deployment-20260920.md. Haiku is now the rollback path only. The $4.39/month estimate below proved too low: commit 31acd3a records about 420-580 classifications a day and about $11-17 a month by the ledger, so the cap `classification.budget.monthly_usd` was raised to $30. The "do not deploy" next step below is historical.
+
 ## Scope and operator decisions
 
 This is an evaluation-only comparison. Production prompts, model selection,

@@ -1,5 +1,7 @@
 # Version 2 holdout construction notes
 
+> **[AMENDMENT 2026-10-03]** Both scoring choices called "unresolved" under 'Policy ambiguity flags' were resolved by the operator on 2026-09-20 (`tests/fixtures/benchmark_policy_v2.yaml`, status resolved): near-border strike = awareness, neutralised drone = original severity. They are live as `classification.policy.near_border_strike` and `classification.policy.neutralised_drone` in config/config.yaml. This holdout fixture still contains no case that tests either choice.
+
 This note records the inventory and policy boundaries of
 `tests/fixtures/model_comparison_v2_holdout.yaml`. It does not reproduce the
 held-out report text.

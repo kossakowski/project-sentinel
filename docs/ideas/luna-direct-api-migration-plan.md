@@ -1,5 +1,7 @@
 # Direct Luna migration — local implementation plan
 
+> **[AMENDMENT 2026-10-03]** Status: implemented and deployed on 2026-09-20 (tag deploy-20260920-232235). Production now runs deploy-20260925-143105 (commit 6429124). The live application allowance is `classification.budget.monthly_usd` in config/config.yaml, $30 since commit 31acd3a; the code default (`sentinel/config.py`) and config/config.example.yaml stay at $10. The OpenAI project hard cap was $10 on 2026-09-20 (docs/reference/luna-deployment-20260920.md); no record shows whether it was raised. The $20 and $10 figures below are historical. Living docs: docs/how-to/api-setup.md and docs/reference/config-reference.md.
+
 Date: 2026-09-20. Target: direct OpenAI `gpt-5.6-luna`. Production deployment
 requires separate permission. Account setup is the final step, after coding and
 offline verification, as requested by the operator.

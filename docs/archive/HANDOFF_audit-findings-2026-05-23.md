@@ -1,5 +1,7 @@
 > ⚠️ **HISTORIC — archived 2026-05-30.** Describes a completed implementation effort; do not consult as current truth. See [docs/archive/README.md](README.md) and the living docs it points to.
 
+> **[AMENDMENT 2026-10-03]** Links in this archived handoff were written relative to the repo root, so they break from this folder. The audit report is the untracked local file `data/audit-reports/audit-2026-05-23.md` (repo root; not in git). The runbook is now [docs/how-to/server-runbook.md](../how-to/server-runbook.md), and CLAUDE.md is [../../CLAUDE.md](../../CLAUDE.md). Status of Issue #1 on 2026-10-03: the nuclear keywords proposed under "Fix" (for example `nuclear warheads`, `głowice jądrowe`, `ядерные учения`) are not in `config/config.yaml`; they are tracked in [TODO.md](../../TODO.md) §2 as "Nuclear keyword gaps from the 2026-05-23 audit". English `Kaliningrad` and the older English terms `nuclear strike`, `nuclear drill(s)` and `nuclear forces` are present.
+
 # Handoff — Audit Findings 2026-05-23
 
 **Status:** Open. None of the items below are addressed in code yet.
@@ -62,6 +64,8 @@ Three mechanisms combine to produce the miss:
 2. **PL: `ćwiczenia jądrowe` is excluded by `ćwiczenia`.** Polish uses substring matching, so `ćwiczenia` in the EXCLUDE list matches `ćwiczenia jądrowe` and filters it out. The fix in Polish is to add the bigram `ćwiczenia jądrowe` to CRITICAL — CRITICAL keywords unconditionally override EXCLUDE per the skill's documented logic.
 
 3. **Kaliningrad — completely missing.** `Kaliningrad` (EN), `Kaliningrad`/`Obwód Kaliningradzki` (PL), `Калининград` (RU), `Калінінград` (UK) appear in zero keyword list. The audit found two articles missed because of this: LRT Lithuania publishing the Lithuanian FM publicly stating "NATO has means to neutralise Kaliningrad air defences" (2026-05-22), followed by the PM publicly disciplining the FM for it (2026-05-21). Both went unclassified.
+
+> **[AMENDMENT 2026-10-03]** Do not hand-edit `/etc/sentinel/config.yaml`. Today config changes are made in the tracked `config/config.yaml`, committed, and synced to the server by `/deploy` step 6c. Step 6a stops the deploy when the server config has its own edits. The runbook is now [docs/how-to/server-runbook.md](../how-to/server-runbook.md).
 
 ### Fix
 

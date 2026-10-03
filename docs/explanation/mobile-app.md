@@ -1,5 +1,16 @@
 # The Mobile Companion App (`mobile/`)
 
+Last verified: 2026-10-03 (deployed commit 6429124)
+
+Status: shipped and live since 2026-06-03. The owner's iPhone runs a standalone EAS `preview`
+build, and server push is enabled (see [`TODO.md`](../../TODO.md), mobile inbox section).
+
+**Contents:** [Purpose](#purpose) · [Push channel](#how-it-relates-to-the-push-channel-in-the-runtime) ·
+[Current known state](#current-known-state-twilio-unfunded) ·
+[Stack](#stack--key-components) · [Running it](#running-it) ·
+[What this app is NOT](#what-this-app-is-not) · [Known limitations](#known-limitations) ·
+[See also](#see-also)
+
 > **Diátaxis: explanation.** This page explains *what* the `mobile/` app is and *why* it
 > exists. It is not the monitoring runtime — it never collects sources, classifies, or
 > decides to alert. It is a companion app whose operational jobs are to hand the server a
@@ -10,9 +21,11 @@
 
 Project Sentinel's monitoring runtime gained an Expo **push** alert channel (push
 notifications) alongside the existing phone call and SMS channels. Each SMS urgency tier
-(5–8) carries a per-tier `channel` setting (`sms` / `push` / `both`, default `both`) that
-selects how that tier is delivered, and the urgency 9–10 call path additionally fires a push
-— see the push section in [`architecture.md`](architecture.md). To deliver a push, the server
+(5–8) carries a per-tier `channel` setting (`sms` / `push` / `both`) that selects how that
+tier is delivered. The code default and the template use `both`; production uses `push`, so
+tiers 5–8 are push-only (see [Configuration in production](#configuration-in-production)).
+The urgency 9–10 call path additionally fires a push — see the push section in
+[`architecture.md`](architecture.md). To deliver a push, the server
 needs the target device's **Expo push token**, and that token can only be minted *on the
 device*.
 
@@ -20,15 +33,18 @@ The `mobile/` app exists to solve that bootstrap problem **and** to give the own
 SMS-equivalent history of the alerts that land on the phone. It:
 
 1. Registers the physical device for Expo push notifications and **surfaces the resulting
-   Expo push token** (in the Settings/token panel) so you can copy it and paste it into the
-   server's `alerts.push.tokens` config list.
+   Expo push token** (in the Settings/token panel) so you can copy it. The token then goes
+   into the environment variable `EXPO_PUSH_TOKEN` (on the server in
+   `/etc/sentinel/sentinel.env`), never into a tracked config file — see
+   [mobile-push-setup.md](../how-to/mobile-push-setup.md) Step 4.
 2. **Receives push alerts** once the token is registered server-side. On Android it uses a
    MAX-importance notification channel so a critical military-threat alert breaks through with
    sound and a heads-up banner. On **iOS** a normal Expo push does **not** bypass silent mode
    or Do Not Disturb — it lands as an ordinary notification respecting the phone's ringer/DND
    state. Breaking through silent mode on iOS requires Apple **Critical Alerts** (a separate
-   entitlement, pending), so on the owner's iPhone the push is supplementary and the Twilio
-   phone call remains the primary 9–10 wake-up.
+   entitlement, pending). By design the Twilio phone call is the primary 9–10 wake-up and
+   the push is supplementary. Today the push is the only alert that reaches the phone (see
+   [Current known state](#current-known-state-twilio-unfunded)).
 3. **Captures each alert into a persistent on-device inbox** and presents it as a List of
    SMS-style tiles plus a structured Detail screen — the in-app equivalent of the alert SMS,
    surviving restarts and viewable offline. An unread **app-icon badge** tracks unread
@@ -46,13 +62,15 @@ The push channel in the monitoring runtime is implemented by `sentinel/alerts/pu
 by the per-tier `channel` setting plus the call path:**
 
 - **Urgency 5–8 (the SMS tiers)** — `AlertStateMachine._determine_action` returns the matched
-  tier's `channel`. A `push` tier sends a push **instead of** the Twilio SMS; a `both` tier
-  sends SMS **and** push; an `sms` tier sends SMS only.
-- **Urgency 9–10** — the path keeps its Twilio call + confirmation/stop SMS and **additionally
-  fires an Expo push** (additive — it does **not** replace the call). The `channel` field is
-  ignored on this tier. The additive push is for visibility only: a normal push does **not**
-  bypass silent mode / Do Not Disturb until Apple **Critical Alerts** (a separate entitlement,
-  pending) is active, so the Twilio call remains the primary wake-up.
+  tier's `channel`. A `push` tier sends a push instead of the Twilio SMS; a `both` tier
+  sends SMS and push; an `sms` tier sends SMS only. In production both tiers are `push`, so
+  no SMS is sent for urgency 5–8.
+- **Urgency 9–10** — the path keeps its Twilio call + confirmation/stop SMS and additionally
+  fires an Expo push (additive — it does not replace the call). The push is sent before the
+  call is attempted (`state_machine.py`). The `channel` field is ignored on this tier. A
+  normal push does not bypass silent mode / Do Not Disturb until Apple Critical Alerts (a
+  separate entitlement, pending) is active, so by design the Twilio call is the primary
+  wake-up.
 - **Acknowledged-event updates** — the update SMS is sent **and** an additive push fires, so
   the phone shows each escalation of an active critical event.
 
@@ -61,19 +79,53 @@ countries, aggressor, summary, sources, detection time) plus the original SMS bo
 inside the notification's `data`, so the Detail screen can render the full alert offline with
 no callback to the server (see **AD-1** below).
 
-The channel is **off by default**: the config block `alerts.push` has `enabled: false` and an
-empty `tokens: []` list, and the live `config/config.yaml` omits the block entirely — so until
-push is enabled, a `both`/`push` tier still sends SMS only and the deployed behavior is
-unchanged. Switching a tier to `channel: push` (with push enabled) is what removes that tier's
-Twilio SMS cost. See [`../how-to/api-setup.md`](../how-to/api-setup.md) for enabling it.
+The builder is `_build_push_data` in `sentinel/alerts/state_machine.py`. Besides the fields
+above, `data` carries `message_id` (a fresh id per send), `event_id`, `kind` (`event` or
+`update`) and `event_type_pl`. The serialized `data` is capped at `PUSH_DATA_MAX_BYTES` (3500
+UTF-8 bytes). When it is too large, the builder trims in a fixed order: trailing sources
+first, then `sms_body`, then `summary_pl`. So for a very large event the Detail screen can
+show fewer sources than the SMS would. The visible push `body` carries only a short summary
+snippet (`PUSH_BODY_SUMMARY_MAX_CHARS`). `push_client.py` sends with `priority: high`,
+`sound: default` and `_contentAvailable: true`, the best-effort background wake behind AD-3.
+
+### Configuration in production
+
+Keep three sources apart:
+
+- **Code default** (`sentinel/config.py`) and **template** (`config/config.example.yaml`):
+  push is disabled, `tokens: []`, and tiers 5–8 use `channel: both`.
+- **Live production** (`config/config.yaml`, copied to `/etc/sentinel/config.yaml` by
+  `/deploy`): `alerts.push.enabled: true`, and `tokens` holds only the placeholder
+  `"${EXPO_PUSH_TOKEN}"`. `sentinel/config.py` (`_substitute_env_vars`) replaces it at load
+  with the value from `/etc/sentinel/sentinel.env`. The `high` and `medium` tiers use
+  `channel: push`, so tiers 5–8 are push-only by owner decision; SMS for them is switched
+  off on purpose. `tests/test_config.py` asserts this shape and the placeholder.
+- **Urgency 9–10** keeps its phone call plus the additive push.
+
+If push is disabled or the token is missing, a `push` tier delivers nothing at all, and a
+missing `EXPO_PUSH_TOKEN` variable stops config loading with a `ConfigError`. See
+[`config-reference.md`](../reference/config-reference.md) for the keys and
+[`../how-to/api-setup.md`](../how-to/api-setup.md) for credentials.
+
+**Expo access token.** `push_client.py` sends `EXPO_ACCESS_TOKEN` as an
+`Authorization: Bearer` header when that variable is set. Production keeps it in
+`/etc/sentinel/sentinel.env`. According to the owner's record from 2026-06-04, "Enhanced
+Security for Push Notifications" is turned on for the EAS project, so Expo rejects a send
+without this token (log: `Expo push failed` or `no tickets accepted`). If the access token
+leaks, rotate it in the Expo dashboard and update `sentinel.env`. Keep the device token out
+of tracked files as well. The comment in the config push block that calls Expo's push API
+"unauthenticated" is outdated; `TODO.md` tracks it under misleading config comments.
 
 The end-to-end relationship is:
 
 ```
-mobile/ app  ──(mints + displays Expo push token)──►  you copy/paste the token
+mobile/ app  ──(mints + displays Expo push token)──►  you copy the token
                                                           │
                                                           ▼
-config/config.yaml  alerts.push.tokens: ["ExponentPushToken[…]"]
+/etc/sentinel/sentinel.env  EXPO_PUSH_TOKEN=…   (owner-only server write)
+                                                          │  substituted at load
+                                                          ▼
+config/config.yaml  alerts.push.tokens: ["${EXPO_PUSH_TOKEN}"]
                                                           │
                                                           ▼
 sentinel/alerts/push_client.py  ──(POST exp.host, fat payload)──►  mobile/ device
@@ -87,6 +139,16 @@ nor the alerting pipeline: it produces the token going in, and it is the recipie
 the archive) coming out. It is intentionally decoupled from the server — nothing in the
 monitoring runtime imports or depends on it.
 
+## Current known state: Twilio unfunded
+
+The owner deliberately leaves the Twilio account unfunded. Since 2026-09-21 every Twilio
+call and SMS fails with HTTP 401 (`account … with status 4 is not active`), including the
+6-digit confirmation SMS. This is a known state chosen by the owner, not an outage. Calls
+stay configured and return when the owner recharges the account. Until then the Expo push,
+which is sent before the call is attempted, is the only alert that reaches the phone, also
+for urgency 9–10. It does not bypass silent mode or Do Not Disturb without Critical Alerts.
+See the [server runbook troubleshooting](../how-to/server-runbook.md#troubleshooting).
+
 ## Stack & key components
 
 - **Expo SDK 54** (`expo ~54.0.33`), React Native `0.81.5`, React `19.1.0`, TypeScript
@@ -96,9 +158,13 @@ monitoring runtime imports or depends on it.
   and `react-native-safe-area-context`) for the List/Detail navigation shell,
   `expo-web-browser` for in-app source links, `@react-native-async-storage/async-storage` for
   the persistent store, and `expo-task-manager` for the best-effort background capture task.
-- **The navigation + screen native modules require a fresh dev build** (`eas build` or a local
-  dev build) — Expo Go cannot load them, which is why the on-device inbox checklist is a
-  separate, non-gating runbook (see below).
+  `expo-dev-client` is installed, so `npm start` targets a development build rather than
+  Expo Go.
+- **The navigation + screen native modules need a native build that includes them** (an EAS
+  `preview` or `development` build). Expo Go cannot load them, which is why the on-device
+  inbox checklist is a separate, non-gating runbook (see below).
+- `mobile/.npmrc` sets `legacy-peer-deps=true`, so `npm install` resolves the SDK-54-pinned
+  tree (React Native Testing Library 13 on React 19.1) without a peer-dependency conflict.
 - **`AGENTS.md` pins the Expo version** and instructs agents to read the *exact* versioned
   Expo docs at `https://docs.expo.dev/versions/v54.0.0/` before touching any code — the
   `expo-notifications` API shape changes across SDK lines. `mobile/CLAUDE.md` is a one-line
@@ -115,12 +181,12 @@ monitoring runtime imports or depends on it.
 | `mobile/src/screens/MessageDetailScreen.tsx` | The **Detail** view: the alert's structured fields (header, urgency, countries, aggressor when present, summary, sources, detection time) in a fixed order, marks the message read on mount, supports delete-with-confirm, and falls back to the stored SMS body when structured fields are absent. Source rows open their article URL in the in-app browser. |
 | `mobile/src/components/MessageTile.tsx` | The memoized SMS-style list tile: kind emoji + event type, urgency, a single-line summary snippet, a relative timestamp, and an unread dot. |
 | `mobile/src/messages/` | The persistent data layer (Phase 2): `store.ts` (AsyncStorage source of truth), `parsePayload.ts` (foreground + headless payload adapters), `types.ts`, and the `useMessages()` hook the screens consume. |
-| `mobile/src/notifications/` | The capture + routing layer: `bootstrap.ts` (the single `setNotificationHandler` + the headless background task, registered at module load via `index.ts`), `capture.ts` (foreground-received capture + tray-sweep), `routing.ts` (pure tap-routing decision), and `useNotificationRouting.ts` (warm + cold tap → ingest → navigate). |
+| `mobile/src/notifications/` | The capture + routing layer: `bootstrap.ts` (the single `setNotificationHandler` + the headless background task, registered at module load via `index.ts`), `capture.ts` (foreground-received capture + tray-sweep, plus `dismissFromTray`), `routing.ts` (pure tap-routing decision), and `useNotificationRouting.ts` (warm + cold tap → ingest → navigate). |
 | `mobile/src/navigation/navigationRef.ts` | The navigation ref plus a guarded `navigate()` that queues a single latest-wins pending route when the container is not yet ready, replayed once on `onReady` — so a cold-start tap routes correctly. |
 | `mobile/src/badge.ts` | `syncBadge(unreadCount)` — sets the app-icon badge from the store's unread count, tolerating an ungranted `allowBadge` as a silent no-op. |
 | `mobile/src/utils/datetime.ts` | `relative()` / `absolute()` rendering (store UTC, render device-local), consistent with the project's timezone convention. |
 | `mobile/push/registerForPush.ts` | The push-registration logic: creates the Android `alerts` channel at MAX importance, requests permission (now including iOS alert/badge/sound), and calls `getExpoPushTokenAsync({ projectId })`. Short-circuits with a clear status on simulators (`must-use-physical-device`) and on denied permission. It **no longer** registers the foreground notification handler — that is owned by `bootstrap.ts`. |
-| `mobile/push/PushPanel.tsx` | The **Settings/token panel**, reachable from the List header. Shows the registration status, the Expo push token in a selectable mono box, and a **"KOPIUJ TOKEN"** (copy token) button with a Polish hint to paste it into the server config. |
+| `mobile/push/PushPanel.tsx` | The Settings/token panel (title "POWIADOMIENIA PUSH"), opened as a modal from the ⚙ button in the List header. Shows the registration status, the Expo push token in a selectable mono box, and a "KOPIUJ TOKEN" (copy token) button. Its Polish hint says to paste the token into the server configuration; in practice that means `EXPO_PUSH_TOKEN` in `sentinel.env`. Its "OSTATNI PUSH" section is inert: no caller passes `lastPush`, so it always shows "brak (jeszcze nic nie odebrano)" (tracked in `TODO.md`). |
 | `mobile/push/usePushReceiver.ts` | Legacy observability hook from the push-only phase. The live capture path is now `src/notifications/` + `src/messages/`; `usePushReceiver` is no longer mounted at the App root (only its `LastPush` type is still referenced by `PushPanel`). |
 | `mobile/designs/` | The cosmetic theme mock screens (`Original`, `Moro`, `MoroActive`, `MoroArctic`, `Tactical`). Presentational only; no longer wired into the app entry. |
 
@@ -132,7 +198,8 @@ The UI copy is **in Polish**, consistent with the rest of Sentinel's user-facing
 the stored notification payload; the app never fetches.
 - Context: the inbox must show full alert content (summary, sources, countries, aggressor,
   detection time) with tappable article links **offline**, with no HTTP/token API back to the
-  server (single owner, no server ingress opened — same posture as the token paste flow).
+  server (single owner, no server ingress opened — same posture as the manual token copy
+  flow).
 - Consequences: every screen renders purely from the stored payload, and the structured
   Detail render can be longer than the SMS by design. The original SMS body is stored as a
   fidelity fallback, rendered only when the structured fields are absent.
@@ -144,7 +211,7 @@ the stored notification payload; the app never fetches.
 - Consequences: `App.tsx` becomes the nav shell and the design showcase is no longer the
   entry. Taps route by the alert's stored `message_id` through a navigation ref, not URL
   schemes. The added native modules (`react-native-screens`, `react-native-safe-area-context`)
-  require a fresh dev build, so the automated gates stay JS-only and on-device behaviour is
+  require a native rebuild, so the automated gates stay JS-only and on-device behaviour is
   verified by a separate manual checklist.
 
 **AD-3 — Visible push is primary; reliable capture is foreground-listener + tap handler +
@@ -154,8 +221,14 @@ tray-sweep-on-open; the background headless task is non-gating.**
   so guaranteed background capture is impossible.
 - Consequences: `App.tsx` sweeps the notification tray on every foreground transition (and
   once on mount), which is the de-facto capture path; the headless task is a best-effort
-  bonus. The urgency 9–10 Twilio call stays the guaranteed wake-up — the inbox is visibility +
+  bonus. By design the urgency 9–10 Twilio call is the wake-up (see
+  [Current known state](#current-known-state-twilio-unfunded)); the inbox is visibility +
   history only.
+- Tray dismissal (since 2026-06-04, commit 1c7697b): after a successful ingest, every capture
+  path (foreground listener, tray sweep, tap routing) calls `dismissFromTray()`. The alert
+  then disappears from the iOS Notification Center once it is in the inbox. The store keeps
+  no deletion record, so a tray copy left behind would bring a deleted message back on the
+  next sweep.
 
 **AD-4 — `data.message_id` is the cross-delivery dedup key; one tap's cold + warm double-fire
 is collapsed in-session only.**
@@ -198,11 +271,9 @@ no longer sets the handler, and the iOS badge permission was added.
 
 ### Configuration notes
 
-- The EAS `projectId` is read from `app.json` (`extra.eas.projectId`) and is **never
-  hardcoded** in `registerForPush.ts`. Without a real project id the Expo push service
-  cannot mint a token. The committed `app.json` ships a placeholder
-  (`00000000-0000-0000-0000-000000000000`); a real EAS project id is required before token
-  minting works against a build. *(See the bug note at the end of this page.)*
+- `app.json` carries the linked EAS project id (`extra.eas.projectId`) and the Expo owner
+  account `beepbeepjeep`, both set on 2026-06-02 (commit 7181f16). `registerForPush.ts`
+  reads the id from there and never hardcodes it. Token minting works against this project.
 - iOS declares the `remote-notification` background mode; bundle id
   `com.kossakowski.sentinel`. Android sets the same package and an adaptive icon.
 
@@ -219,22 +290,32 @@ npm run ios          # expo start --ios
 npm run android      # expo start --android
 ```
 
-**You must run on a physical device with a fresh dev build** — Expo push tokens are not issued
-on simulators or emulators (`registerForPush.ts` short-circuits with `must-use-physical-device`
-there), and the navigation/web-browser native modules cannot load under Expo Go. Open the app,
-open **Settings** from the inbox header, grant the notification permission (alert + badge +
-sound), then copy the token shown in the panel.
+This development path needs a development build on a physical device. Expo push tokens are
+not issued on simulators or emulators (`registerForPush.ts` short-circuits with
+`must-use-physical-device` there), and the navigation/web-browser native modules cannot load
+under Expo Go. Open the app, tap ⚙ in the inbox header, grant the notification permission
+(alert + badge + sound), then copy the token shown in the panel. The token goes into
+`EXPO_PUSH_TOKEN`, as described in [mobile-push-setup.md](../how-to/mobile-push-setup.md).
 
-**Builds (EAS).** `eas.json` defines `development`, `preview`, and `production` profiles.
-A development/preview build is distributed internally; production auto-increments the
-version. Building requires Expo CLI `>= 16.0.0` and a configured EAS project. Typical flow:
+**Builds (EAS).** `eas.json` defines `development` (dev client, needs Metro), `preview`
+(standalone, internal distribution) and `production` (auto-increments the version) profiles.
+App versions are managed remotely (`appVersionSource: remote`). Building requires the EAS
+CLI (`eas-cli`) `>= 16.0.0` and the linked EAS project.
 
-```bash
-npx eas build --profile development --platform ios   # or android
-```
+- **Shipped path.** The phone runs a standalone `preview` build. A JS fix reaches the phone
+  only after a new build and a reinstall, so batch fixes as the mobile section of `TODO.md`
+  describes:
+
+  ```bash
+  npx eas build --profile preview --platform ios
+  ```
+
+- **Development path.** `npx eas build --profile development --platform ios` produces a dev
+  client that loads JS from Metro (`npm start`).
 
 **Tests.** The app's logic is covered by a Jest suite (`npm test` from `mobile/`) that runs
 JS-only — the capture, routing, navigation-ref, badge, datetime, store, and screen behaviours.
+`npm run typecheck` (`tsc --noEmit`) is the second automated gate.
 The on-device behaviours that need native modules (tap-to-Detail, tray-sweep, badge, in-app
 browser, delete/clear persistence) are verified by hand against the
 [mobile-inbox-verification.md](../how-to/mobile-inbox-verification.md) checklist (MA-1…MA-7).
@@ -249,18 +330,20 @@ browser, delete/clear persistence) are verified by hand against the
 - **Not a control surface.** It cannot acknowledge alerts, change config, or trigger
   anything on the server. The inbox is read/manage-only over locally stored alerts.
   (Phone-call acknowledgment is still the 6-digit confirmation-SMS reply flow — see
-  [`architecture.md`](architecture.md).)
+  [`architecture.md`](architecture.md). That SMS also goes through Twilio, so it is not
+  delivered while the account is unfunded.)
 
 ## Known limitations
 
 - **Background capture is best-effort only (AD-3).** With a visible push, iOS usually will not
   run the headless task, so in practice capture is the tray-sweep on app open; the headless
-  payload shape is assumed-from-docs and unverified on-device. The urgency 9–10 Twilio call
-  remains the guaranteed wake-up.
-- **On-device verification (MA-1…MA-7) is pending.** The navigation + web-browser native
-  modules require a fresh dev build, so these behaviours cannot be confirmed by the JS-only
-  automated gates — they are checked by hand per
-  [mobile-inbox-verification.md](../how-to/mobile-inbox-verification.md).
+  payload shape is assumed-from-docs and unverified on-device. By design the urgency 9–10
+  Twilio call is the wake-up; see [Current known state](#current-known-state-twilio-unfunded).
+- **On-device checks are manual.** The inbox went live on 2026-06-03 after the owner ran the
+  on-device checks (per the owner's project notes). The JS-only automated gates cannot
+  confirm native behaviour, so re-run MA-1…MA-7 from
+  [mobile-inbox-verification.md](../how-to/mobile-inbox-verification.md) after every new
+  build.
 - **The inbox starts empty with no historical backfill**, and is **single owner / single
   iPhone** only — the push payload budget assumes one device and would need revisiting for
   multiple tokens.
@@ -268,7 +351,7 @@ browser, delete/clear persistence) are verified by hand against the
 ## See also
 
 - [`../how-to/mobile-push-setup.md`](../how-to/mobile-push-setup.md) — the manual runbook for
-  provisioning the EAS `projectId`, building the app, and verifying a push end-to-end on the
+  building the app, putting a device token in place, and verifying a push end-to-end on the
   device.
 - [`../how-to/mobile-inbox-verification.md`](../how-to/mobile-inbox-verification.md) — the
   non-gating on-device checklist (MA-1…MA-7) for the in-app inbox.
@@ -278,10 +361,3 @@ browser, delete/clear persistence) are verified by hand against the
   how it relates to the phone-call and SMS channels.
 - [`../../mobile/AGENTS.md`](../../mobile/AGENTS.md) / [`../../mobile/CLAUDE.md`](../../mobile/CLAUDE.md)
   — the in-repo agent instructions for the app (Expo version pin).
-
----
-
-**Bug noticed while documenting (not fixed):** `mobile/app.json` ships a placeholder EAS
-`projectId` of all zeros (`00000000-0000-0000-0000-000000000000`). Expo's push service
-cannot mint a real token against a placeholder project id, so `getExpoPushTokenAsync` will
-fail until a real EAS project id is wired in. Handed to the TODO owner.

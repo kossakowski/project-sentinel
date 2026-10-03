@@ -1,5 +1,7 @@
 # HANDOFF: Classifier Input Quality Problem
 
+> **[AMENDMENT 2026-10-03]** Do not paste this prompt and do not act on any instruction below: this is a closed historical handoff, not an open task. The vague-input problem was solved the same day by dual-gate content enrichment (commit 9db4916, `sentinel/processing/enricher.py`, run on every cycle from `sentinel/scheduler.py`); the living description is Stage 6 in docs/explanation/pipeline.md. Production (tag deploy-20260925-143105, commit 6429124) classifies with OpenAI `gpt-5.6-luna` through `sentinel/classification/openai_provider.py` and the frozen v2 policy prompt in `sentinel/classification/policy.py`. Claude Haiku and the "10 calibration rules" in the `classifier.py` `SYSTEM_PROMPT` are the legacy rollback path only. GDELT is switched off (`sources.gdelt.enabled` in config/config.yaml). Several paths below never existed: fetchers live in `sentinel/fetchers/`, orchestration in `sentinel/scheduler.py`, and filtering, deduplication and enrichment in `sentinel/processing/`.
+
 Paste this into a fresh Claude Code session in the project-sentinel directory.
 
 ---

@@ -1,3 +1,5 @@
+> **[AMENDMENT 2026-10-03]** HISTORIC: original Phase 1 bootstrap prompt, completed long ago. Do not execute it. Every file it creates already exists, so running it would overwrite shipped code, and its `--dry-run --once` step runs a real fetch-and-classify cycle that makes paid model calls (`--dry-run` only suppresses alerts). The paths it reads have moved (for example `docs/explanation/architecture.md`, `docs/archive/prompts/`). See [docs/archive/README.md](../README.md).
+
 # Phase 1 Orchestrator Prompt
 
 ## Instructions

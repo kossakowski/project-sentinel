@@ -1,5 +1,7 @@
 # Direct Luna validation — qualified result
 
+> **[AMENDMENT 2026-10-03]** The Polish-output issue below was solved by the Polish summary guard (polish-summary-guard.md, commit 7048a91, `sentinel/classification/summary_language.py`). Luna with the guard was deployed on 2026-09-20 (tag deploy-20260920-232235, see docs/reference/luna-deployment-20260920.md) and is still live in deploy-20260925-143105. The rollout is no longer blocked.
+
 Date: 2026-09-20. Operator-approved total test allowance: **$0.25**.
 Provider: direct OpenAI API, `gpt-5.6-luna`, explicit reasoning `none`, standard
 service tier, strict structured output, no immediate retry or provider fallback.

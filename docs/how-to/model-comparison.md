@@ -1,8 +1,21 @@
 # Compare candidate classification models
 
-This is an **evaluation-only** workflow. Production still uses Haiku. It never
-constructs Twilio or Expo clients, accesses the live database, or sends alerts.
-Read-only production sampling is a separate, explicit preparation command.
+Last verified: 2026-10-03 (deployed commit 6429124)
+
+Contents: [First round](#prepared-first-round) · [Validate](#validate-without-a-key-or-network) ·
+[OpenRouter setup](#openrouter-setup) · [Paid command](#legacy-paid-exploratory-command) ·
+[Read the results](#read-the-results) · [Version 2](#version-2-separate-understanding-from-runtime-behaviour) ·
+[Reanalyse](#reanalyse-an-existing-report-without-api-spending) ·
+[Replay](#replay-saved-runtime-answers-without-calling-a-model-again) · [Outcome](#outcome)
+
+This is an evaluation-only workflow. Production now runs `gpt-5.6-luna` through the
+direct OpenAI API (see the [Luna deployment record](../reference/luna-deployment-20260920.md));
+Claude Haiku is legacy and kept only for rollback. The live provider and model are set
+in `config/config.yaml` (`classification.provider`, `classification.model`). This workflow
+never constructs Twilio or Expo clients, accesses the live database, or sends alerts.
+Read-only production sampling is a separate, explicit preparation command:
+`.venv/bin/python -m sentinel.eval.export_candidates --from-production` (it connects to
+the server over SSH as `deploy` and only reads).
 
 ## Prepared first round
 
@@ -120,8 +133,11 @@ before making a production decision.
 ## Version 2: separate understanding from runtime behaviour
 
 The [clarified plan](../ideas/model-comparison-v2-plan.md) defines the evaluation-only
-contract. Production still uses its existing prompt, model, memory settings and
-alert policy. There is no article-body fetch in either benchmark version.
+contract. Since the 2026-09-20 Luna deployment, production uses the same clarified
+version-2 prompt and policy (`sentinel/classification/policy.py`) with `gpt-5.6-luna`
+and incident memory enabled. The benchmark modules import that runtime contract, so a
+prompt change here is a production change. There is no article-body fetch in either
+benchmark version.
 
 - `tests/fixtures/model_comparison_v2_development.yaml` contains 34 revised development
   cases plus 2 synthetic positive controls for the confirmed Ukraine-side awareness
@@ -192,8 +208,12 @@ recorded. An absent reasoning count is not proof that no hidden reasoning occurr
 
 The original evaluation key has a **$5 cumulative allowance**, not $5 per command.
 Check its actual remaining credit before each paid batch and reserve part for the
-held-out comparison. The ongoing production target is separately **$20/month**.
-This test neither enforces that production limit nor proves it will be met.
+held-out comparison. Production has a separate monthly cap
+(`classification.budget.monthly_usd` in `config/config.yaml`, see the
+[config reference](../reference/config-reference.md)). The persistent usage ledger in
+`sentinel/classification/openai_provider.py` enforces it: classification pauses when the
+month's total plus the next reservation would exceed the cap. This test neither uses
+nor proves that limit.
 
 ## Reanalyse an existing report without API spending
 
@@ -223,6 +243,15 @@ response. If history or messages differ, replay stops rather than pretending the
 old answer applies to a different question. This is not a way to evaluate a new
 prompt without calling the model.
 
+The replay compares the classification settings of the `--config` file (default
+`config/config.yaml`) with those saved in the report. The Luna deployment changed
+`config/config.yaml`, so a replay of a report made before it stops with
+`Current make_config classification settings differ from the source report`. Pass
+`--config` with the config file used for the original run. You can recreate it from
+git into a scratch file, for example
+`git show <commit>:config/config.yaml > /tmp/eval-config.yaml`, where `<commit>` is
+the commit the run was made from.
+
 The derived report explicitly records zero new API requests and charges. Its
 per-case provider costs and response times are original evidence, not newly
 measured performance or additional spending. Original reports remain unchanged.
@@ -232,3 +261,22 @@ follow-up SMS bookkeeping through local recording transports. Omitting those SMS
 records would falsely suggest that a later same-revision article triggered a
 duplicate. No real call, inbound-SMS polling, delivery confirmation or retry is
 performed by the simulation.
+
+## Outcome
+
+The comparison ended with `gpt-5.6-luna` being adopted and deployed on 2026-09-20.
+The records are:
+
+- [Version-2 run record](../ideas/model-comparison-v2-run-record.md) — the clarified
+  version-2 comparison runs and their results.
+- [Runtime comparison 2026-09-20](../ideas/model-runtime-comparison-20260920.md) — the
+  no-send runtime replay of Luna versus DeepSeek through Sentinel's memory and alert logic.
+- [Direct-API validation 2026-09-20](../ideas/luna-direct-api-validation-20260920.md) —
+  the checks of Luna through the direct OpenAI API instead of OpenRouter.
+- [Luna deployment record](../reference/luna-deployment-20260920.md) — the production
+  deployment and the rollback procedure.
+
+The direct-API checks use a separate runner, `sentinel.eval.direct_luna`. It is offline
+by default, makes paid calls only with `--live` and a cost cap (`--max-cost-usd`), and
+reads `tests/fixtures/luna_direct_fresh.yaml` by default. Its fake alert transports send
+nothing. List its options with `.venv/bin/python -m sentinel.eval.direct_luna --help`.

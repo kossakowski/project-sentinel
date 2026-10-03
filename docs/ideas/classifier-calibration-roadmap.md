@@ -1,5 +1,7 @@
 # Classifier Calibration Roadmap
 
+> **[AMENDMENT 2026-10-03]** Superseded plan from May 2026. The "current state" line describes the old Haiku prompt. Production now classifies with `gpt-5.6-luna` using the frozen v2 policy prompt (`sentinel/classification/policy.py`, parameters in `classification.policy` in config/config.yaml). The 10 rules in the `classifier.py` `SYSTEM_PROMPT` are the legacy rollback path only, so adding few-shot examples there changes nothing in production. Any change to the v2 prompt changes its frozen hash and needs a fresh evaluation. The dev/holdout split exists as `tests/fixtures/model_comparison_v2_development.yaml` and `model_comparison_v2_holdout.yaml` (see model-comparison-v2-run-record.md); no `labeled_data/` directory was ever created. GDELT is switched off (`sources.gdelt.enabled`). Living guide: docs/how-to/model-comparison.md.
+
 Post-first-iteration plan for continued calibration of Sentinel's military threat classifier.
 
 **Current state:** 50 human-labeled articles, 10 calibration rules in system prompt, action-tier accuracy at 98%.

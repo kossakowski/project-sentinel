@@ -11,6 +11,8 @@
 > **illustrative** (captured at an earlier point in time) — treat them as orders of
 > magnitude, not live figures.
 
+> **[AMENDMENT 2026-10-03]** Correction to the status banner above: event grouping (the per-row `event_id`, the `/events/:id` page, `GET /api/events/<event_id>` and `EVENT_ID_RETENTION_DAYS`) is not specified in this file. It is documented in [docs/explanation/architecture.md](docs/explanation/architecture.md) and [dashboard/CLAUDE.md](dashboard/CLAUDE.md).
+
 ## Overview
 
 When complete, the Article Dashboard will be a locally-running web application that
@@ -55,6 +57,8 @@ from a single `dashboard/` subfolder within the existing project-sentinel reposi
 - **Existing DB layer:** `sentinel/database.py` provides `Database` class with SQLite operations
 - **Test framework:** pytest, tests in `tests/`
 - **Linting:** Project uses Python standard tooling
+
+> **[AMENDMENT 2026-10-03]** The live classifier is OpenAI `gpt-5.6-luna` (config key `classification.model`, provider `openai`); Claude Haiku is the rollback path only. New `classifications.model_used` values are therefore the Luna model name, not the Haiku ID shown below. The schema below predates incident memory and the Luna migration. `sentinel/database.py` (`_create_tables` and `_migrate_schema`) adds columns such as `facts`, `summary_processing`, `provider_used`, `prompt_version`, `request_hash`, `response_id`, `cached_input_tokens`, `estimated_cost_usd` and `incident_memory`, plus `events.notification_revision`, `alert_records.event_revision` and a new `classification_queue` table. Tiers 5-8 are routed to push only, so most new alert records have `alert_type` `push`. Phone calls stay configured, but since 2026-09-21 every Twilio call and SMS fails with HTTP 401 because the owner has deliberately left the Twilio account unfunded; calls return when the owner recharges it.
 
 ### Production Database Schema
 
@@ -130,6 +134,8 @@ CREATE TABLE alert_records (
 > and no code writes it anymore. The dashboard still renders an icon for legacy `whatsapp`
 > rows in the event timeline. Row counts below (`365 rows`, etc.) are illustrative snapshots,
 > not live totals.
+
+> **[AMENDMENT 2026-10-03]** Since the Luna migration (2026-09-20), keyword-selected articles wait in the `classification_queue` table until they are classified. An article with no `classifications` row may therefore still be queued or have failed classification (for example, the model budget was exhausted); it was not necessarily filtered out. Stage 5 now goes to OpenAI `gpt-5.6-luna`, not Claude Haiku, and stage 7 is mostly push (Expo), not Twilio SMS. The dashboard does not read `classification_queue` yet, so it labels such articles "not classified (filtered out)". See the dashboard item in TODO.md.
 
 ### Pipeline Stage Context
 
@@ -342,6 +348,8 @@ explicit `sort` is provided; an explicit `sort` parameter overrides FTS rank.
 full article with classification, classifier input reconstruction, linked events, and
 alert records.
 
+> **[AMENDMENT 2026-10-03]** Since the Luna migration (commit 0cdb3cb, 2026-09-20) the live classifier is OpenAI `gpt-5.6-luna`. It receives a JSON payload built by `messages()` in `sentinel/classification/policy.py` (`evaluation_time`, the article fields and `remembered_incidents`) plus a policy-built system prompt, not the 5-line block below. `classifier_input` (`dashboard/classifier_input.py`) still rebuilds only the legacy Anthropic/Haiku rollback prompt (`_build_user_prompt` in `sentinel/classification/classifier.py`), so it is not what the live model saw.
+
 **1.5a** — The response MUST include a `classifier_input` field containing the reconstructed
 text that was sent to the classifier, formatted as:
 ```
@@ -486,6 +494,8 @@ aggressor, affected_countries, pipeline_status, summary_pl, is_military_event.
 
 **2.3a** — Column visibility state MUST persist in `localStorage` so the user's
 preferences survive page reloads.
+
+> **[AMENDMENT 2026-10-03]** `articles.language` can also be `ru` (the enabled Telegram source NEXTA Live). The FilterBar language dropdown offers only pl/en/uk, so `ru` articles cannot be filtered by language.
 
 **2.4 — Filter Bar:** `FilterBar` MUST provide filter controls for: source name
 (multi-select dropdown populated from available sources), source type (dropdown:
@@ -640,6 +650,8 @@ to source URL), published date, fetched date, language badge, pipeline status ba
 **3.7c** — Below the classifier view, the page MUST show the `EventTimeline` component
 if the article is linked to any events.
 
+> **[AMENDMENT 2026-10-03]** The "text sent to Claude" in 3.8 is the legacy rollback prompt, not what the live OpenAI model saw; see the amendment above requirement 1.5a. The 3.8b message "filtered out" is also wrong for queued or failed articles; see the amendment above Pipeline Stage Context.
+
 **3.8 — Classifier View:** `ClassifierView` MUST render a side-by-side layout. Left side:
 "Classifier Input" showing the reconstructed text sent to Claude (from `classifier_input`
 field). Right side: "Classifier Output" showing urgency score (color-coded), event type,
@@ -653,6 +665,8 @@ display.
 **3.8b** — If the article has no classification (was filtered out), the ClassifierView
 MUST show a message: "This article was not classified (filtered out before classification
 stage)" with a gray background.
+
+> **[AMENDMENT 2026-10-03]** `push` is now the main `alert_type` for tiers 5-8. The dashboard has no push icon or label, and the `AlertRecord.alert_type` TypeScript union (`dashboard/frontend/src/types.ts`) lacks `push`, so push rows render with a generic "•" and the raw string. See the dashboard item in TODO.md.
 
 **3.9 — Event Timeline:** `EventTimeline` MUST show a vertical timeline of events linked
 to this article, each showing: event type, urgency score, alert status badge, source

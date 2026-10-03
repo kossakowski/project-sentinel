@@ -1,5 +1,7 @@
 # First-round model comparison
 
+> **[AMENDMENT 2026-10-03]** Executed on 2026-09-20 with all four models on the 34 development cases only. Its review (`data/eval/model-comparison-review-20260920.md`, local and not tracked in git) found contradictions in the legacy prompt policy, and the effort continued in model-comparison-v2-plan.md. The effort ended with `gpt-5.6-luna` in production via the direct OpenAI API (docs/reference/luna-deployment-20260920.md). Living guide: docs/how-to/model-comparison.md.
+
 Prepare an offline, opt-in paid benchmark of 50 cases, comparing Haiku 4.5,
 DeepSeek V4.1 Flash, Qwen 3.8 Flash and GPT-5.6 Luna via OpenRouter.
 No production changes and no notification transports are permitted.

@@ -1,3 +1,5 @@
+> **[AMENDMENT 2026-10-03]** HISTORIC: sub-agent prompt from the original Phase 1 bootstrap, completed long ago. Do not execute it. Every file it creates already exists, so running it would overwrite shipped code. See [docs/archive/README.md](../README.md).
+
 # Agent 3: Tests & Validation
 
 Use standard thinking.

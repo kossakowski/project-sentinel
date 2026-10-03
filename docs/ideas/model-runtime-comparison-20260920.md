@@ -1,5 +1,7 @@
 # Luna versus DeepSeek: no-send runtime replay
 
+> **[AMENDMENT 2026-10-03]** Outcome: production switched to direct Luna with incident memory enabled on 2026-09-20 (tag deploy-20260920-232235; see docs/reference/luna-deployment-20260920.md, and luna-direct-api-validation-20260920.md for the follow-up repeated-input checks). The memory gates tested here (`classification.incident_memory.min_confidence` 0.85, `critical_min_confidence` 0.9) and `corroboration_required` 1 are the live values in config/config.yaml at commit 6429124, so the Luna gate results below describe the live configuration. DeepSeek was not adopted, and there is no automatic model fallback.
+
 ## Scope fixed before inference
 
 The operator requested testing both shortlisted models through Sentinel's memory

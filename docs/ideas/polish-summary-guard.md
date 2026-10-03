@@ -1,5 +1,7 @@
 # Polish summary guard
 
+> **[AMENDMENT 2026-10-03]** Status: deployed to production on 2026-09-20 (commit 7048a91, tag deploy-20260920-232235) and still live in deploy-20260925-143105 (commit 6429124). In production, repair requests count against the monthly application allowance (`classification.budget.monthly_usd`), not a test allowance; the explicit test spending cap applies only to paid test runs. The deployment-permission and server-checkout statements below are historical. Living reference: `classification.summary_language` in docs/reference/config-reference.md.
+
 The direct-Luna test found a critical Latvian warning summarized in Ukrainian
 in two of six identical requests. This change adds `polish-summary-v1` after
 strict classification parsing. The frozen classification prompt and schema stay
