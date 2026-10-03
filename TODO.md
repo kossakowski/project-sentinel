@@ -13,6 +13,7 @@ This is the project backlog. Each open item has a stable title (a `###` heading 
 - [4. Productize Sentinel](#4-productize-sentinel--strategy--roadmap)
 - [5. Pipeline analysis & classifier refinement](#5-pipeline-analysis--classifier-refinement)
 - [6. Codebase refactoring, config/code defects, dashboard, production host](#6-codebase-refactoring-plan)
+- [7. Findings from the 2026-09-23 model-eval work](#7-findings-from-the-2026-09-23-model-eval-work-not-yet-fixed)
 - [Commentary: priority & sequencing (2026-05-24, partly superseded)](#commentary-priority--sequencing-claudes-assessment-2026-05-24)
 - [Completed debt](#completed-debt-reference) · [Documentation reorganization](#documentation-reorganization-2026-05-30)
 
@@ -70,7 +71,8 @@ Known state, not an item: SMS is off on purpose for urgency 5–8 (push-only sin
 
 - **What:** Branches `redesign-phase0-geography`, `redesign-phase1-alerting` and `redesign-phase2-policy` (2026-07-12) are unmerged. Master has since diverged (Luna classifier, incident memory, push-only 5–8). Their owner follow-ups ("6.0 Alerting reliability & resilience" and "Phase 1 redesign owner follow-ups") exist only in the branch copies of TODO.md.
 - **Evidence:** `git show redesign-phase2-policy:TODO.md`; DECISIONS.md (Phase 1 notes: "Owner follow-ups … logged to TODO.md").
-- **Decide:** rebase and merge, cherry-pick parts (for example the Phase-1 bounded retry sweep and durable failure records), or abandon. Open rubric gap from Phase 0: there is no urgency band for an attack on a non-monitored NATO state.
+- **Decided (owner, 2026-10-03):** the three branches are closed. They are not rebased or merged, and they stay on GitHub as a record. Two parts remain backlog candidates: the Phase-1 bounded retry sweep with durable failure records (see "Unacknowledged calls are retried only when a new article joins the event") and the Phase-0 Romania coverage.
+- **Still open:** the rubric gap from Phase 0. There is no urgency band for an attack on a non-monitored NATO state.
 
 ### OpenAI project hard spend cap vs the 30 USD app allowance
 
@@ -360,13 +362,14 @@ Read-only server audit findings. Each is a server change, so the owner decides a
 
 Surfaced while building the eval suite (`docs/how-to/model-eval.md`). Code was not changed for these.
 
-1. **URGENT — monthly model budget will stop classification in October.** Classification volume rose to ~450/day (2026-09-21..23). At that rate `gpt-5.6-luna` costs ~$10.8/month at list prices and ~$12.3 by the ledger's own estimate, above `classification.budget.monthly_usd: 10` and the OpenAI project's $10 hard cap. Once reached, `UsageLedger.reserve` (`sentinel/classification/openai_provider.py:64`) raises `BudgetExceeded` and articles stay pending — a missed-alert risk. Raise both caps before 2026-10-20. **App cap raised to $30 on 2026-09-24 (commit 31acd3a, not yet deployed); still open: deploy it and raise the OpenAI project's own hard cap in the OpenAI dashboard.** Measured 2026-09-24: 420–580 classifications/day, ~$0.00095/article by the ledger (~$0.00084 at list prices).
+1. **URGENT — monthly model budget will stop classification in October.** Classification volume rose to ~450/day (2026-09-21..23). At that rate `gpt-5.6-luna` costs ~$10.8/month at list prices and ~$12.3 by the ledger's own estimate, above `classification.budget.monthly_usd: 10` and the OpenAI project's $10 hard cap. Once reached, `UsageLedger.reserve` (`sentinel/classification/openai_provider.py:64`) raises `BudgetExceeded` and articles stay pending — a missed-alert risk. Raise both caps before 2026-10-20. **App cap raised to $30 on 2026-09-24 (commit 31acd3a) and live on the server (verified 2026-10-03: `/etc/sentinel/config.yaml` has `monthly_usd: 30`). Still open: the OpenAI project's own hard cap; see "OpenAI project hard spend cap vs the 30 USD app allowance" in section 0.** Measured 2026-09-24: 420–580 classifications/day, ~$0.00095/article by the ledger (~$0.00084 at list prices). Measured 2026-10-03: the ledger showed `month_usd=1.2627` at 12:20 UTC on day 3, about $0.50/day.
 2. **Ledger overstates OpenAI cost.** `cache_write_multiplier: 1.25` charges uncached input 1.25×; OpenAI does not bill cache writes, so the ledger shows ~$0.0009/article where the bill is ~$0.0008. Harmless for safety, but it brings the cap breach earlier.
 3. **Enrichment is never persisted.** `enricher.py` replaces `article.summary` and writes `raw_metadata["enrichment"]` in memory only; the DB keeps the pre-enrichment text. Nobody can audit or replay what the model actually saw.
 4. **Live prompt gets no headline-only signal.** The "body could not be fetched" caution exists only in the dead legacy prompt (`classifier.py` `_build_user_prompt`); `policy.messages()` passes title/summary with no hint that the text is just a headline.
 5. **Enriched body truncated to 500 characters** (`_fetch_body`), which can cut the clause that states geography.
 6. **Reproducible `gpt-5.6-luna` rule violations on the synthetic hold-out:** reads past-tense narration of an unresolved precaution as `resolved`; treats an explicitly ended alarm as an active `official_warning`; ignores the worked example that a civilian object found in a monitored country populates `affected_countries`.
 7. **Google News decoder can stall the whole cycle.** `ArticleEnricher._fetch_body` calls `_resolve_url` → `googlenewsdecoder.new_decoderv1` synchronously on the event loop; that library calls `requests.get`/`requests.post` with no timeout (0.1.7, lines 49, 71, 126). A hung Google request would freeze the cycle, including phone calls. Fix: run it on a small dedicated thread pool under a deadline (see `specs/fulltext-second-read/PRODUCTION_NOTES.md`, pitfall 1). Found 2026-09-24 during spec verification.
+8. **The pre-registered decision rule still names the $10 cap.** The rule in `docs/how-to/model-eval.md` gates a candidate on "projected busy-month cost within the $10 monthly cap", and the report prices against $10. The app allowance has been 30 USD since 2026-09-24. The owner sets the gate value before the locked-pool run; changing it after seeing locked-pool results would break the pre-registration. Found 2026-10-03.
 
 ---
 

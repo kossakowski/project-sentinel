@@ -41,6 +41,7 @@ When adding a new doc, decide which of these four needs it serves and place it i
 ## Records (dated, not current truth)
 
 - [reference/luna-deployment-20260920.md](reference/luna-deployment-20260920.md) — the 2026-09-20 Luna deployment and rollback record. Production has moved on since then. Use the [server runbook](how-to/server-runbook.md) for the current state. The file stays in `reference/` because the runbook links to it there.
+- [reference/gpt-6-luna-eval-20260923.md](reference/gpt-6-luna-eval-20260923.md) — the 2026-09-23 evaluation of GPT-6 Luna against the live GPT-5.6 Luna, and why production stayed on GPT-5.6 Luna.
 
 ## Ideas, plans and evaluation records
 
@@ -56,5 +57,7 @@ When adding a new doc, decide which of these four needs it serves and place it i
 ---
 
 Two living documents stay at the repository root: [SPEC.md](../SPEC.md) is the source-of-truth spec for the read-only dashboard subsystem, and [TODO.md](../TODO.md) is the project backlog. Where the code has moved on, dated `[AMENDMENT]` banners in SPEC.md say so; read them before the section they sit above.
+
+One implementation spec lives outside `docs/`: [specs/fulltext-second-read/SPEC.md](../specs/fulltext-second-read/SPEC.md) describes the offline test of a full-text second read (variants A/B/C). It is ready to implement and not implemented yet. `PRODUCTION_NOTES.md` next to it holds the owner's decisions and the known pitfalls for a later production spec.
 
 Other root and `mobile/` files are dated records, not current truth: [DECISIONS.md](../DECISIONS.md) (decision log of the unmerged July 2026 redesign run), `review_report_pending.md` (an untracked local review of an unmerged branch, present only in some checkouts), and [mobile/PUSH_APP_SPEC.md](../mobile/PUSH_APP_SPEC.md) and [mobile/INBOX_APP_SPEC.md](../mobile/INBOX_APP_SPEC.md) (completed specs). For current mobile behaviour, read [explanation/mobile-app.md](explanation/mobile-app.md).
