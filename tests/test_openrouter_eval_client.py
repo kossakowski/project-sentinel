@@ -297,6 +297,17 @@ async def test_max_price_uses_worst_catalogue_overrides():
             _success_payload(
                 choices=[
                     {
+                        "finish_reason": "error",
+                        "message": {"content": "{}", "refusal": None},
+                    }
+                ]
+            ),
+            "provider_error",
+        ),
+        (
+            _success_payload(
+                choices=[
+                    {
                         "finish_reason": "stop",
                         "message": {"content": "{}", "refusal": "cannot comply"},
                     }

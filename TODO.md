@@ -356,6 +356,18 @@ Read-only server audit findings. Each is a server change, so the owner decides a
 7. **Postfix listens on port 25 on all interfaces.** UFW blocks it from outside. Consider `inet_interfaces = loopback-only`.
 8. **SSH login notification script not installed.** `/etc/profile.d/ssh-login-notify.sh` from the hardening guide is absent. Install it only if wanted.
 
+## 7. Findings from the 2026-09-23 model-eval work (not yet fixed)
+
+Surfaced while building the eval suite (`docs/how-to/model-eval.md`). Code was not changed for these.
+
+1. **URGENT — monthly model budget will stop classification in October.** Classification volume rose to ~450/day (2026-09-21..23). At that rate `gpt-5.6-luna` costs ~$10.8/month at list prices and ~$12.3 by the ledger's own estimate, above `classification.budget.monthly_usd: 10` and the OpenAI project's $10 hard cap. Once reached, `UsageLedger.reserve` (`sentinel/classification/openai_provider.py:64`) raises `BudgetExceeded` and articles stay pending — a missed-alert risk. Raise both caps before 2026-10-20. **App cap raised to $30 on 2026-09-24 (commit 31acd3a, not yet deployed); still open: deploy it and raise the OpenAI project's own hard cap in the OpenAI dashboard.** Measured 2026-09-24: 420–580 classifications/day, ~$0.00095/article by the ledger (~$0.00084 at list prices).
+2. **Ledger overstates OpenAI cost.** `cache_write_multiplier: 1.25` charges uncached input 1.25×; OpenAI does not bill cache writes, so the ledger shows ~$0.0009/article where the bill is ~$0.0008. Harmless for safety, but it brings the cap breach earlier.
+3. **Enrichment is never persisted.** `enricher.py` replaces `article.summary` and writes `raw_metadata["enrichment"]` in memory only; the DB keeps the pre-enrichment text. Nobody can audit or replay what the model actually saw.
+4. **Live prompt gets no headline-only signal.** The "body could not be fetched" caution exists only in the dead legacy prompt (`classifier.py` `_build_user_prompt`); `policy.messages()` passes title/summary with no hint that the text is just a headline.
+5. **Enriched body truncated to 500 characters** (`_fetch_body`), which can cut the clause that states geography.
+6. **Reproducible `gpt-5.6-luna` rule violations on the synthetic hold-out:** reads past-tense narration of an unresolved precaution as `resolved`; treats an explicitly ended alarm as an active `official_warning`; ignores the worked example that a civilian object found in a monitored country populates `affected_countries`.
+7. **Google News decoder can stall the whole cycle.** `ArticleEnricher._fetch_body` calls `_resolve_url` → `googlenewsdecoder.new_decoderv1` synchronously on the event loop; that library calls `requests.get`/`requests.post` with no timeout (0.1.7, lines 49, 71, 126). A hung Google request would freeze the cycle, including phone calls. Fix: run it on a small dedicated thread pool under a deadline (see `specs/fulltext-second-read/PRODUCTION_NOTES.md`, pitfall 1). Found 2026-09-24 during spec verification.
+
 ---
 
 ## Commentary: Priority & sequencing (Claude's assessment, 2026-05-24)

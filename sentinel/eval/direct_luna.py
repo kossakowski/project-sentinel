@@ -26,6 +26,8 @@ from sentinel.eval.compare_models import (
     make_config,
 )
 
+DIRECT_LUNA_MODELS = {"gpt-5.6-luna", "gpt-6-luna"}
+
 
 def cases_for_run(fresh_path, repeats):
     source = yaml.safe_load(Path("tests/fixtures/model_comparison_v2_holdout.yaml").read_text())
@@ -71,7 +73,7 @@ async def run(args):
     cases = cases_for_run(args.fresh, args.repeats)
     # Offline mode loads config and cases only: no key, client, DB writes or billing.
     config = make_config(args.config)
-    if config.classification.provider != "openai" or config.classification.model != "gpt-5.6-luna":
+    if config.classification.provider != "openai" or config.classification.model not in DIRECT_LUNA_MODELS:
         raise ValueError("This verification command requires the selected direct Luna configuration")
     if not args.live:
         print(json.dumps(dict(cases=len(cases), known_repeats=args.repeats, live=False, new_api_calls=0)))

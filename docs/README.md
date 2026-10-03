@@ -19,6 +19,7 @@ When adding a new doc, decide which of these four needs it serves and place it i
 
 - [how-to/api-setup.md](how-to/api-setup.md) — set up the direct OpenAI API (Luna, the live classifier), Twilio, Expo Push and Telegram credentials. GDELT and Google News need no setup. Anthropic is the legacy rollback provider only.
 - [how-to/testing.md](how-to/testing.md) — dry runs, test fixtures, the eval harness, and manual alert testing.
+- [how-to/model-eval.md](how-to/model-eval.md) — build the labelled eval suite, run candidate models, and get the quality/price verdict.
 - [how-to/mobile-push-setup.md](how-to/mobile-push-setup.md) — verify a push end-to-end (token → backend → Expo → phone), put a new device token in place, or re-provision from scratch. Push is live; the EAS project is already linked.
 - [how-to/mobile-inbox-verification.md](how-to/mobile-inbox-verification.md) — on-device checklist (MA-1…MA-7) for the in-app message inbox: tap-to-Detail, tray-sweep, foreground receive, in-app source links, the app-icon badge, and delete/clear persistence.
 - [how-to/model-comparison.md](how-to/model-comparison.md) — run the offline, evaluation-only comparison of candidate classifier models (fixtures, validation without a key, paid runs). It sends no alerts and does not change production.
