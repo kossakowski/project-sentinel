@@ -28,8 +28,13 @@ COUNTRIES = {"PL", "LT", "LV", "EE"}
 MAX_ALT_GAP = 2
 
 
-def build_queue(items: list[dict], seed: int, retest_count: int = RETEST_COUNT) -> list[dict]:
+def build_queue(
+    items: list[dict], seed: int, retest_count: int = RETEST_COUNT, first_pool: str | None = None
+) -> list[dict]:
     """Shuffle labelling units (a chain stays together, in time order); add hidden repeats.
+
+    With `first_pool`, the units of that pool come first (still shuffled among themselves),
+    so the pool can be scored before the whole suite is labelled.
 
     Repeats are drawn from single production items in the first 60% of the queue and
     placed at random in the last 40%, so there is a long gap before they reappear. They
@@ -41,6 +46,8 @@ def build_queue(items: list[dict], seed: int, retest_count: int = RETEST_COUNT) 
         units.setdefault(item["chain_id"] or item["id"], []).append(item)
     order = sorted(units)
     rng.shuffle(order)
+    if first_pool:
+        order.sort(key=lambda key: units[key][0].get("pool") != first_pool)
     slots, unit_of = [], []
     for key in order:
         for item in sorted(units[key], key=lambda i: (i["chain_pos"] or 0, i["article"]["fetched_at"])):
@@ -145,7 +152,13 @@ def page_labels(path: Path) -> dict[str, dict]:
 
 class LabelStore:
     def __init__(
-        self, items_path: Path, queue_path: Path, labels_path: Path, seed: int, translations_path: Path | None = None
+        self,
+        items_path: Path,
+        queue_path: Path,
+        labels_path: Path,
+        seed: int,
+        translations_path: Path | None = None,
+        first_pool: str | None = None,
     ):
         data = json.loads(items_path.read_text(encoding="utf-8"))
         self.translations = (
@@ -160,9 +173,12 @@ class LabelStore:
                 raise SystemExit("queue.json was built for a different items.json; refusing to mix them")
             self.slots = queue["slots"]
         else:
-            self.slots = build_queue(data["items"], seed)
+            self.slots = build_queue(data["items"], seed, first_pool=first_pool)
             queue_path.write_text(
-                json.dumps({"items_sha256": data["items_sha256"], "seed": seed, "slots": self.slots}, indent=1),
+                json.dumps(
+                    {"items_sha256": data["items_sha256"], "seed": seed, "first_pool": first_pool, "slots": self.slots},
+                    indent=1,
+                ),
                 encoding="utf-8",
             )
         self.by_slot = {s["slot"]: s for s in self.slots}
@@ -261,8 +277,15 @@ def main() -> None:
     parser.add_argument("--queue", default=str(QUEUE))
     parser.add_argument("--labels", default=str(LABELS))
     parser.add_argument("--translations", default=str(TRANSLATIONS))
+    parser.add_argument(
+        "--first-pool",
+        choices=("dev", "locked"),
+        help="put this pool's items first; like --seed, used only when queue.json does not exist yet",
+    )
     args = parser.parse_args()
-    store = LabelStore(Path(args.items), Path(args.queue), Path(args.labels), args.seed, Path(args.translations))
+    store = LabelStore(
+        Path(args.items), Path(args.queue), Path(args.labels), args.seed, Path(args.translations), args.first_pool
+    )
     socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer(("127.0.0.1", args.port), make_handler(store)) as server:
         done = len(latest_labels(store.labels_path))

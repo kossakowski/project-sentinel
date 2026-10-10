@@ -60,7 +60,7 @@ const TIERS = [
   {t:"NOISE", name:"SZUM (NOISE)",     range:[1,4],  desc:"Tło. Nic nie robię."},
 ];
 const COUNTRIES = [["PL","Polska"],["LT","Litwa"],["LV","Łotwa"],["EE","Estonia"]];
-const BATCH = 100;
+const BATCH = 60;
 let queue = [], labels = {}, pos = 0, draft = null, pausedAt = null, showOrig = false, showFull = false;
 
 function fmtTime(iso){ try { return new Date(iso).toLocaleString("pl-PL",{timeZone:"Europe/Warsaw",dateStyle:"medium",timeStyle:"short"}); } catch(e){ return iso; } }

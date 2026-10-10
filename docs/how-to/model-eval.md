@@ -32,6 +32,12 @@ The page shows only what the model saw (Ukrainian/Russian with a Polish translat
 `data/eval/suite/labels.jsonl`; the last answer per slot wins. 20 hidden repeats measure
 the operator's own consistency.
 
+- The order is frozen in `data/eval/suite/queue.json` on the first start. `--first-pool dev`
+  (used only when that file does not exist yet) puts the development pool first, so dev runs
+  can be scored before the locked pool is labelled. The current queue was built this way on
+  2026-10-10: slots 1–149 are the dev pool, and the repeats start at slot 201.
+- The page pauses after every 60 answers and resumes at the first unanswered slot.
+
 ## 3. Run models
 
 ```bash

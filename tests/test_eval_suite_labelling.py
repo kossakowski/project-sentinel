@@ -102,6 +102,28 @@ def test_queue_keeps_chains_in_order_and_hides_repeats_at_end():
     assert build_queue(items, seed=3, retest_count=10) == queue
 
 
+def test_queue_can_put_one_pool_first_and_still_hides_repeats_at_end():
+    items = [item(f"p{n}") for n in range(60)] + [
+        item(f"k{c}{n}", "holdout", f"seq{c}", n) for c in range(6) for n in range(4)
+    ]
+    for it in items:
+        it["pool"] = (
+            "dev" if it["id"] in {f"p{n}" for n in range(0, 60, 2)} or it["chain_id"] in ("seq0", "seq1") else "locked"
+        )
+    queue = build_queue(items, seed=3, retest_count=10, first_pool="dev")
+    pool_of = {it["id"]: it["pool"] for it in items}
+    originals = [s for s in queue if not s["retest_of"]]
+    assert [pool_of[s["item_id"]] for s in originals] == ["dev"] * 38 + ["locked"] * 46
+    ids = [s["item_id"] for s in originals]
+    for c in range(6):
+        positions = [ids.index(f"k{c}{n}") for n in range(4)]
+        assert positions == list(range(positions[0], positions[0] + 4))
+    repeats = [s for s in queue if s["retest_of"]]
+    assert len(repeats) == 10 and all(queue.index(s) >= int(84 * 0.6) for s in repeats)
+    assert sorted(s["item_id"] for s in originals) == sorted(pool_of)
+    assert build_queue(items, seed=3, retest_count=10) != queue
+
+
 def test_public_view_never_leaks_scores_origin_or_target():
     view = public_view(item("p1", urgency=10), {"slot": "s001", "retest_of": None}, [])
     assert set(view) == {
