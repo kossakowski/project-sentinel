@@ -133,6 +133,14 @@ def add(
 
 
 def build():
+    # The canonical files can advance while this dated snapshot stays immutable.
+    for name in ["ledger.csv", "current-monthly.csv", "history-monthly.csv"]:
+        canonical, archived = ROOT / name, AUDIT / name
+        if canonical.exists() and archived.exists() and canonical.read_bytes() != archived.read_bytes():
+            raise RuntimeError(
+                "This snapshot has been superseded. Use --check to validate it; "
+                "rebuilding would overwrite newer finance records."
+            )
     billing = source("billing")
     for invoice in billing["invoices"]:
         for month in invoice["service_months"]:
@@ -1175,8 +1183,8 @@ def check():
     assert abs(sum((D(r["amount"]) for r in costs if r["provider"] == "TypeSafe"), ZERO) - D("0.074125296")) < D(
         ".000000001"
     )
-    for name in ["ledger.csv", "current-monthly.csv", "history-monthly.csv"]:
-        assert (ROOT / name).read_bytes() == (AUDIT / name).read_bytes()
+    # Validate the dated records, not today's canonical exports, which may include
+    # later confirmations without altering this historical snapshot.
     html_text = (AUDIT / "report.html").read_text()
     assert html_text.startswith("<!doctype html>") and "PLN 200/month" in html_text
     print(

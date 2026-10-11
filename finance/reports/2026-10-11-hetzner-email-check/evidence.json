@@ -1,0 +1,56 @@
+{
+  "recorded_at": "2026-10-11T09:09:26.872483+00:00",
+  "effective_period": {
+    "start": "2026-07-01",
+    "end": "2026-09-30"
+  },
+  "scope": "Hetzner email and owner-payment recheck",
+  "documents": [
+    {
+      "reference": "billing-1",
+      "invoice_date": "2026-10-01",
+      "service_months": [
+        "2026-07",
+        "2026-08"
+      ],
+      "currency": "EUR",
+      "amount": "8.98",
+      "tax": "0.00"
+    },
+    {
+      "reference": "billing-2",
+      "invoice_date": "2026-10-04",
+      "service_months": [
+        "2026-09"
+      ],
+      "currency": "EUR",
+      "amount": "4.49",
+      "tax": "0.00"
+    }
+  ],
+  "monthly_server_eur": "3.99",
+  "monthly_ipv4_eur": "0.50",
+  "monthly_total_eur": "4.49",
+  "total_invoiced_eur": "13.47",
+  "payment_status": "paid_owner_confirmed",
+  "payment_confirmation_source": "Owner stated in this audit that both discussed Hetzner bills are paid.",
+  "confirmed_payment_amount_eur": "13.47",
+  "payment_date": null,
+  "cash_settlement_currency_or_bank_debit_amount": null,
+  "provider_or_bank_payment_record_verified": false,
+  "source_method": "Both PDFs freshly downloaded from billing emails and read through existing text layers. No OCR needed. Sentinel project marker and service-month tokens checked. Private identifiers, authentication messages and attachments excluded from published records.",
+  "mailbox_coverage": {
+    "mailboxes": [
+      "k87",
+      "lk"
+    ],
+    "locations": "all folders including Spam and Trash",
+    "older_hetzner_invoice_or_receipt_found": false
+  },
+  "cost_totals_changed": false,
+  "limits": [
+    "Payment dates and bank FX are unknown.",
+    "Older service periods remain reconstructed pending provider billing records.",
+    "User is logged into Hetzner manually, but Chrome MCP has not attached to that session."
+  ]
+}
