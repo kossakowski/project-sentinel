@@ -1,0 +1,157 @@
+{
+  "recorded_at": "2026-10-11T00:56:09.768517+00:00",
+  "effective_period": {
+    "start": "2026-03-21",
+    "end": "2026-10-11"
+  },
+  "evidence": {
+    "audit_date": "2026-10-11",
+    "scope": "repository_and_local_artifacts_only",
+    "cwd": "/home/kossa/code/project-sentinel",
+    "network_calls": 0,
+    "production_ssh": 0,
+    "sanitization": {
+      "secret_values_included": false,
+      "personal_data_included": false,
+      "article_correspondence_included": false
+    },
+    "git": {
+      "reachable_commits_all_refs": 320,
+      "master": "70b13c84ef5c1a06a4423b08740a4afdbd27c163",
+      "documented_production_commit": "642912488861ca47e98b9a07a9704ecb37f9ee1d",
+      "documented_production_tag": "deploy-20260925-143105",
+      "first_commit": "43dbbbdc9552226bb8a73689a3664baa6d864caa",
+      "first_spec_commit": "0d378d71b8f21c23502d11d0e550f01df7c5899d",
+      "first_classifier_commit": "6fbdb0f8e37d516a975a91574c1859ad2e80b355",
+      "first_production_commit": "791ed0a911a718c279df46660156f87c58be739e",
+      "deploy_tags": {
+        "deploy-20260324-232637": "6c1ce9b7b2dbbd0d07f48304e74bb76b8e26de64",
+        "deploy-20260326-000845": "fc24ffc80e2c9762c34c290979a36b1da6293aef",
+        "deploy-20260326-205656": "9d601988e2fd0599051b191f7b4daaf761998722",
+        "deploy-20260328-103543": "9d601988e2fd0599051b191f7b4daaf761998722",
+        "deploy-20260404-112501": "669679f5b1e08c943817852ba9dc60b610341418",
+        "deploy-20260404-113735": "02c2feabf0f0d2f95b3b65703bc7f9dffdbfd353",
+        "deploy-20260413-160834": "a8d1967f1da043ef68b61c116bc1b61d21eb3c7b",
+        "deploy-20260522-041840": "58b4c5541a214f6301bf148da7c6fed019c9d76e",
+        "deploy-20260522-123054": "9db491656594b469ebc0dc196cf84b6d66bb4292",
+        "deploy-20260522-204415": "2603cf81f993580f5c88e1ecd89c4229bdfd8192",
+        "deploy-20260523-143413": "62858b872e1ca51575388fbbf334c27b8da6ca6d",
+        "deploy-20260523-143905": "62858b872e1ca51575388fbbf334c27b8da6ca6d",
+        "deploy-20260524-001113": "1457f29064444df0a35179502f0c7e3049fe63ef",
+        "deploy-20260524-003208": "426fdab45d4f5465ddbf10748df9f3b37bc6a0ab",
+        "deploy-20260524-141622": "71350e1a5e351815178104aab1e1acd87dfd1b2e",
+        "deploy-20260525-192753": "aa0cba86276ffab3dc60bd03f5cd8ed90f98dafd",
+        "deploy-20260525-195036": "cf84c960ce5b7ed11d76131f5a4cf31815f578dd",
+        "deploy-20260526-032424": "b19f1ff790855074e52ebc4df3cce5405f7528cc",
+        "deploy-20260527-112819": "7948b0f97a13bacd7692012031f44dd8453e7753",
+        "deploy-20260527-114727": "bd120c1d67edafaaca683bcac9021003716e3149",
+        "deploy-20260527-120235": "b464a91ce1ce05a7c7b5df9f3c4332cf65bcaaf8",
+        "deploy-20260527-121733": "959300ba5aa7045b8f7f8ed847b01ed37319a602",
+        "deploy-20260528-152300": "ea6c258b731c4571766deddd9713293306c6402b",
+        "deploy-20260528-213820": "f4ecf7f8d17b96cbb4ca336071f7b795349b3c11",
+        "deploy-20260529-210034": "9bb00d7dc1ebd5a963274eacf00913f9886746dc",
+        "deploy-20260529-213222": "4c03b7b052b26ef5cc9bab41053b719c2fdd3d92",
+        "deploy-20260530-163637": "2e1b4c62b1d23be5916364b320ed5900fe4453cd",
+        "deploy-20260603-114957": "444889b93f974144b5294c16dac49547704008c6",
+        "deploy-20260604-140211": "66613e8f46d8c0766291bd9648aca65e66a2ae25",
+        "deploy-20260730-095654": "be034b37fee1bac39f99591e337192e32251b520",
+        "deploy-20260730-100755": "4353653a5a9668caac32a3151c12e5c59dad57f1",
+        "deploy-20260730-102047": "e749c5ba9e39b8ac2ef40f64417dc8d518435b5d",
+        "deploy-20260731-030331": "2cad0334a56cfa1d0a5a25abfc1967a6f35b49b6",
+        "deploy-20260920-232235": "7048a910cab7296b3f1bf24e04f3bc07985e1d47",
+        "deploy-20260925-141910": "314f1c2d892b7efcac74d691c895afbd5e289534",
+        "deploy-20260925-143105": "642912488861ca47e98b9a07a9704ecb37f9ee1d"
+      },
+      "unmerged_branches": [
+        "backup/docs-overhaul-pre-rebase",
+        "build/worktree-base",
+        "code-surgeon/multi-tenant-evolution",
+        "docs-overhaul",
+        "eval/clarified-policy",
+        "redesign-phase0-geography",
+        "redesign-phase1-alerting",
+        "redesign-phase2-policy"
+      ]
+    },
+    "runtime_model_phases": [
+      {
+        "from": "2026-03-21",
+        "to": "2026-09-20",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5-20251001"
+      },
+      {
+        "from": "2026-09-20",
+        "to": "documented-current",
+        "provider": "openai_direct",
+        "model": "gpt-5.6-luna",
+        "deploy_commit": "7048a910cab7296b3f1bf24e04f3bc07985e1d47"
+      }
+    ],
+    "frozen_ids": {
+      "v2_prompt_sha256": "aa4d4ca8853bc1cc0852241bec01faeec065cbe163c1448c7828ba56a33f5115",
+      "v2_schema_sha256": "dddcaa3db1c04203c4a400552acb1227478c70f3d89f5a12f1525fa11a72ef9e",
+      "v2_dev_fixture_sha256": "81bbf9f7f2cf68f4a1951a7b66d02aeae6d5c44475f94d07c9a7ee5dd18d6158",
+      "v2_holdout_fixture_sha256": "47fc04cfebd51da3354f262e7610b407929342dc15326277dc75b273e3dd1b17",
+      "eval_suite_schema_sha256": "eaaa8734ddd1ae4924cb5a0fd74c9d5349d788e2672ffb445ab9274c9c7195a8"
+    },
+    "experiment_costs_usd": {
+      "may_haiku_evals": 1.5847672,
+      "sep20_openrouter_selection_and_runtime": 0.8309656156,
+      "direct_luna_migration_and_summary_guard_excluded_seed": 0.01801648,
+      "jev_typesafe_cumulative": 0.179967336,
+      "gpt6_evaluation_revised": 0.246141725,
+      "gpt6_direct_artifact_summary_overlap_excluded": 0.032474315,
+      "eval_suite_smoke_and_baseline": 2.3260262272,
+      "nonoverlapping_artifact_total_excluding_migration_seed": 5.1678681038,
+      "superseded_mechanical_total": 5.2183588988,
+      "is_provider_invoice": false
+    },
+    "experiment_counts": {
+      "may_haiku_case_results": 696,
+      "sep20_openrouter_logical_requests": 736,
+      "direct_luna_settled_ledger_rows": 51,
+      "jev_settled_ledger_rows": 407,
+      "gpt6_requests": 954,
+      "eval_suite_logical_rows": 985,
+      "eval_suite_attempt_records": 1017,
+      "eval_suite_extra_attempts": 32,
+      "aggregate_logical_or_settled_rows_excluding_migration_seed": 3778
+    },
+    "local_runtime_snapshots": [
+      {
+        "path": "data/sentinel.db",
+        "model": "claude-haiku-4-5-20251001",
+        "classifications": 42,
+        "input_tokens": 29220,
+        "output_tokens": 6179,
+        "source_rate_estimate_usd": 0.048092,
+        "included_in_experiment_total": false
+      },
+      {
+        "path": "dashboard/data/sentinel.db",
+        "model": "claude-haiku-4-5-20251001",
+        "classifications": 5774,
+        "input_tokens": 7192771,
+        "output_tokens": 892347,
+        "source_rate_estimate_usd": 9.3236048,
+        "included_in_experiment_total": false
+      }
+    ],
+    "workflow_artifacts": {
+      "runs_with_complete_numeric_diagnostics": 7,
+      "iterations": 12,
+      "spawned_agents": 37,
+      "additional_handdriven_run": true,
+      "token_usage_saved": false,
+      "cost_saved": false
+    },
+    "coverage_gaps": [
+      "No continuous local production database or provider billing record.",
+      "Old Haiku eval reports count final cases but not HTTP retry attempts.",
+      "Twilio and VPS amounts are planning or historical claims without source bills.",
+      "Unmerged branches must not be treated as production state.",
+      "Ignored secret-bearing and article-content artifacts were intentionally not inspected."
+    ]
+  }
+}

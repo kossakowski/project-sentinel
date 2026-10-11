@@ -1,0 +1,11 @@
+provider,effective_start,effective_end,evidence_category,amount,currency,gap,treatment,recorded_at
+Apple,2026-05-30,2027-06-01,Unknown,,UNKNOWN,"Actual purchase amount, settlement currency, payment/renewal date",Owner confirms project-only purchase; June 1 active-date and $99 tariff scenario used.,2026-10-11
+Netcup,2026-06-05,2026-12-05,Unknown,,UNKNOWN,Sentinel share of shared-account VPS,"No project marker or deployment match; left unallocated, owner asked.",2026-10-11
+OpenAI / Anthropic / OpenRouter / TypeSafe,2026-03-21,2026-10-11,Unknown,,UNKNOWN,"Funding payments, balances, tax, discounts and free credits; all organizations/deleted keys",Billing pages require login/security verification; normal keys cannot read complete billing.,2026-10-11
+Anthropic,2026-03-21,2026-09-20,Unknown,,UNKNOWN,Unlogged served retries and exact period of referenced $22.18 bill,Old successful-result records omit attempts; bill note lacks invoice/period. Phase-specific token reconstruction used.,2026-10-11
+OpenAI,2026-09-20,2026-09-30,Unknown,,UNKNOWN,Actual billed cost behind $0.0615143 unresolved reservations,Excluded from incurred costs; provider reconciliation required.,2026-10-11
+OpenRouter,2026-09-20,2026-09-24,Unknown,,UNKNOWN,Unknown-cost failed attempts and funding minimum fees,Known request costs verified; no charge inferred merely from attempt count.,2026-10-11
+Twilio,2026-03-21,2026-10-11,Unknown,,UNKNOWN,"Original number purchase date/type, trial credits, retained number status, incoming SMS and Meta fees",SMS/voice/rental scenarios provided; initial playground scenario explicit; no cash receipts.,2026-10-11
+Expo/EAS,2026-05-30,2026-10-11,Unknown,,UNKNOWN,Paid EAS plan or quota overages,Free Expo Push verified; no attributable paid-build evidence.,2026-10-11
+Hetzner,2026-03-23,2026-10-11,Unknown,,UNKNOWN,"Exact server creation/prior plan, historical cloud extras, current provider inventory and co-hosting",Sentinel deployment and invoice marker support dedicated hosting estimate; owner asked about sharing.,2026-10-11
+Paid workflow API usage,2026-03-21,2026-10-11,Unknown,,UNKNOWN,Any separately billed project coding-agent API consumption,"Workflow logs contain no billed tokens/cost/confirmed API route. Shared Claude Code/Codex subscriptions excluded, not attributed as API spending.",2026-10-11

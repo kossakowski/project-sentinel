@@ -1,0 +1,17 @@
+{
+  "recorded_at": "2026-10-11T01:10:59.189Z",
+  "effective_period": {
+    "start": "2026-03-21",
+    "end": "2026-10-11"
+  },
+  "opened_html": true,
+  "desktop_title": "Sentinel cost audit · 2026-10-11",
+  "local_links_checked": 13,
+  "csv_json_arithmetic_check": "passed",
+  "ruff_check": "passed",
+  "ruff_format": "passed",
+  "sanitization": "passed: no credentials, cookies, email/phone values or private invoice IDs",
+  "instruction_files_changed": false,
+  "provider_billing_reconciliation": "incomplete; authentication required",
+  "mobile_page_overflow": false
+}

@@ -1,0 +1,19 @@
+{
+  "recorded_at": "2026-10-11T00:56:09.768517+00:00",
+  "effective_period": {
+    "start": "2026-06-01",
+    "end": "2027-06-01",
+    "dates_estimated": true
+  },
+  "evidence": [
+    {
+      "provider": "Apple Developer",
+      "allocation_fraction": 1,
+      "source": "Owner confirmed in this audit: the developer account was bought specifically for Sentinel.",
+      "payment_amount": null,
+      "payment_currency": null,
+      "payment_date": null,
+      "date_assumption": "Account documented active June 1; assume June 1 purchase pending receipt/date clarification."
+    }
+  ]
+}

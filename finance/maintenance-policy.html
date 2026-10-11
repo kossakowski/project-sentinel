@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Proposed Sentinel finance maintenance policy</title>
+<style>body{font:17px/1.6 system-ui,sans-serif;max-width:850px;margin:40px auto;padding:0 24px;color:#172638}aside{background:#fff7e8;padding:16px;border-left:4px solid #b37e28}code{overflow-wrap:anywhere}a{color:#0b657b}</style>
+<h1>Shared finance maintenance policy — proposed</h1>
+<p>Recorded October 11, 2026. Adoption/effective date is pending owner approval. No CLAUDE.md or AGENTS.md change has been applied.</p>
+<aside>This is the one proposed policy referenced by both instruction files. The October 11 audit is authorized work; adopting these future instruction changes is a separate decision.</aside>
+<ol>
+<li>For every confirmed Sentinel price, plan, service, model tariff, usage allocation, renewal, cancellation, refund or payment change, update the relevant finance records. Record the effective date or usage period and the date recorded. Cite sanitized evidence.</li>
+<li>Append confirmed invoices, attributable provider usage and payments to <code>finance/ledger.csv</code>. Identify their different transaction kinds. Record unknown purchase amounts explicitly. Keep estimates in a separate reconstruction file; never turn an estimate into a payment or count both prepaid funding and its consumption.</li>
+<li>Recalculate <code>finance/current-monthly.csv</code> and <code>finance/history-monthly.csv</code>, preserving native currencies and dated exchange-rate sources. Confirm shared-account allocation, taxes/credits, partial periods and duplicate handling.</li>
+<li>Create a new dated snapshot under <code>finance/reports/</code>, including the HTML report, ledger snapshot, assumptions, evidence and machine totals. Do not replace previously confirmed dated reports; add a dated correction or superseding report. Update <code>finance/index.html</code> to link the latest report.</li>
+<li>Parse the CSV/JSON files, independently check sums and date ranges, and open the HTML before reporting completion. The October 11 snapshot can be checked with <code>python3 finance/build_report.py --check</code>; its reconstruction code is specific to that snapshot and must not be used to overwrite it with future evidence.</li>
+<li>Commit and push only sanitized project artifacts under the project's existing rules. Keep credentials, tokens, cookies, private invoice identifiers, unrelated correspondence and raw private attachments out of Git. Finance work does not authorize changes to production files or service plans.</li>
+</ol>
+<h2>Proposed short instruction additions</h2>
+<p><b>CLAUDE.md:</b> Confirmed Sentinel cost changes must update finance records, recalculate totals and preserve dated history under <code>finance/maintenance-policy.html</code>.</p>
+<p><b>Root AGENTS.md, currently absent:</b> Apply the shared finance maintenance policy in <code>finance/maintenance-policy.html</code> when confirming a Sentinel cost change.</p>
+<p><a href="reports/2026-10-11/report.html">October 11 cost audit</a></p>
+</html>

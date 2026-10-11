@@ -1,0 +1,986 @@
+{
+  "recorded_at": "2026-10-11T00:56:09.768517+00:00",
+  "effective_period": {
+    "start": "2026-03-21",
+    "end": "2026-10-11"
+  },
+  "evidence": {
+    "observed_at": "2026-10-11T00:38:49.094627+00:00",
+    "schema": [
+      {
+        "name": "articles",
+        "sql": "CREATE TABLE articles (\n                    id TEXT PRIMARY KEY,\n                    source_name TEXT NOT NULL,\n                    source_url TEXT NOT NULL,\n                    source_type TEXT NOT NULL,\n                    title TEXT NOT NULL,\n                    summary TEXT,\n                    language TEXT NOT NULL,\n                    published_at TEXT NOT NULL,\n                    fetched_at TEXT NOT NULL,\n                    url_hash TEXT NOT NULL,\n                    title_normalized TEXT NOT NULL,\n                    raw_metadata TEXT\n                )"
+      },
+      {
+        "name": "classifications",
+        "sql": "CREATE TABLE classifications (\n                    id TEXT PRIMARY KEY,\n                    article_id TEXT NOT NULL REFERENCES articles(id),\n                    is_military_event INTEGER NOT NULL,\n                    event_type TEXT,\n                    urgency_score INTEGER NOT NULL,\n                    affected_countries TEXT,\n                    aggressor TEXT,\n                    is_new_event INTEGER NOT NULL,\n                    confidence REAL NOT NULL,\n                    summary_pl TEXT,\n                    classified_at TEXT NOT NULL,\n                    model_used TEXT NOT NULL,\n                    input_tokens INTEGER,\n                    output_tokens INTEGER\n                , facts TEXT NOT NULL DEFAULT '{}', summary_processing TEXT NOT NULL DEFAULT '{}', provider_used TEXT NOT NULL DEFAULT 'legacy', prompt_version TEXT NOT NULL DEFAULT 'legacy-unversioned', request_hash TEXT NOT NULL DEFAULT '', response_id TEXT NOT NULL DEFAULT '', cached_input_tokens INTEGER NOT NULL DEFAULT 0, estimated_cost_usd REAL NOT NULL DEFAULT 0, incident_memory TEXT NOT NULL DEFAULT '{}')"
+      },
+      {
+        "name": "events",
+        "sql": "CREATE TABLE events (\n                    id TEXT PRIMARY KEY,\n                    event_type TEXT NOT NULL,\n                    urgency_score INTEGER NOT NULL,\n                    affected_countries TEXT NOT NULL,\n                    aggressor TEXT,\n                    summary_pl TEXT NOT NULL,\n                    first_seen_at TEXT NOT NULL,\n                    last_updated_at TEXT NOT NULL,\n                    source_count INTEGER NOT NULL DEFAULT 1,\n                    article_ids TEXT NOT NULL,\n                    alert_status TEXT NOT NULL DEFAULT 'pending',\n                    acknowledged_at TEXT\n                , notification_revision INTEGER NOT NULL DEFAULT 1)"
+      },
+      {
+        "name": "alert_records",
+        "sql": "CREATE TABLE alert_records (\n                    id TEXT PRIMARY KEY,\n                    event_id TEXT NOT NULL REFERENCES events(id),\n                    alert_type TEXT NOT NULL,\n                    twilio_sid TEXT,\n                    status TEXT NOT NULL,\n                    duration_seconds INTEGER,\n                    attempt_number INTEGER NOT NULL DEFAULT 1,\n                    sent_at TEXT NOT NULL,\n                    message_body TEXT\n                , event_revision INTEGER NOT NULL DEFAULT 1)"
+      },
+      {
+        "name": "classification_queue",
+        "sql": "CREATE TABLE classification_queue (\n            article_id TEXT PRIMARY KEY REFERENCES articles(id), attempts INTEGER NOT NULL DEFAULT 0,\n            next_attempt_at TEXT NOT NULL, last_error TEXT NOT NULL DEFAULT '')"
+      }
+    ],
+    "classifications": [
+      {
+        "month": "2026-09",
+        "model_used": "claude-haiku-4-5-20251001",
+        "requests": 2090,
+        "first_utc": "2026-09-11T00:55:29.553459+00:00",
+        "last_utc": "2026-09-20T21:22:42.024267+00:00",
+        "input_tokens": 4694312,
+        "output_tokens": 463532
+      },
+      {
+        "month": "2026-09",
+        "model_used": "gpt-5.6-luna",
+        "requests": 5694,
+        "first_utc": "2026-09-20T21:30:00.669553+00:00",
+        "last_utc": "2026-09-30T23:57:42.153399+00:00",
+        "input_tokens": 22898297,
+        "output_tokens": 1547036
+      },
+      {
+        "month": "2026-10",
+        "model_used": "gpt-5.6-luna",
+        "requests": 5670,
+        "first_utc": "2026-10-01T00:00:38.565257+00:00",
+        "last_utc": "2026-10-11T00:29:58.474603+00:00",
+        "input_tokens": 23179491,
+        "output_tokens": 1546749
+      }
+    ],
+    "alerts": [
+      {
+        "month": "2026-07",
+        "alert_type": "phone_call",
+        "status": "completed",
+        "records": 55,
+        "seconds": 1327
+      },
+      {
+        "month": "2026-07",
+        "alert_type": "push",
+        "status": "sent",
+        "records": 92,
+        "seconds": null
+      },
+      {
+        "month": "2026-07",
+        "alert_type": "sms",
+        "status": "sent",
+        "records": 59,
+        "seconds": null
+      },
+      {
+        "month": "2026-08",
+        "alert_type": "phone_call",
+        "status": "completed",
+        "records": 18,
+        "seconds": 457
+      },
+      {
+        "month": "2026-08",
+        "alert_type": "push",
+        "status": "sent",
+        "records": 201,
+        "seconds": null
+      },
+      {
+        "month": "2026-08",
+        "alert_type": "sms",
+        "status": "sent",
+        "records": 21,
+        "seconds": null
+      },
+      {
+        "month": "2026-09",
+        "alert_type": "push",
+        "status": "sent",
+        "records": 430,
+        "seconds": null
+      },
+      {
+        "month": "2026-10",
+        "alert_type": "push",
+        "status": "sent",
+        "records": 136,
+        "seconds": null
+      }
+    ],
+    "usage_daily": [
+      {
+        "day": "2026-09-20",
+        "model": "gpt-5.6-luna",
+        "purpose": "classification",
+        "status": "settled",
+        "requests": 63,
+        "input_tokens": 153318,
+        "cached_tokens": 110630,
+        "output_tokens": 16506,
+        "configured_cost_usd": 0.0326918
+      },
+      {
+        "day": "2026-09-20",
+        "model": "gpt-5.6-luna",
+        "purpose": "enrichment_quality",
+        "status": "settled",
+        "requests": 4,
+        "input_tokens": 1937,
+        "cached_tokens": 0,
+        "output_tokens": 186,
+        "configured_cost_usd": 0.00070745
+      },
+      {
+        "day": "2026-09-20",
+        "model": "gpt-5.6-luna",
+        "purpose": "summary_translation",
+        "status": "settled",
+        "requests": 6,
+        "input_tokens": 1111,
+        "cached_tokens": 0,
+        "output_tokens": 461,
+        "configured_cost_usd": 0.00083095
+      },
+      {
+        "day": "2026-09-21",
+        "model": "gpt-5.6-luna",
+        "purpose": "classification",
+        "status": "settled",
+        "requests": 420,
+        "input_tokens": 1595099,
+        "cached_tokens": 724394,
+        "output_tokens": 111120,
+        "configured_cost_usd": 0.36550813
+      },
+      {
+        "day": "2026-09-21",
+        "model": "gpt-5.6-luna",
+        "purpose": "enrichment_quality",
+        "status": "settled",
+        "requests": 125,
+        "input_tokens": 64964,
+        "cached_tokens": 0,
+        "output_tokens": 6044,
+        "configured_cost_usd": 0.0234938
+      },
+      {
+        "day": "2026-09-21",
+        "model": "gpt-5.6-luna",
+        "purpose": "summary_translation",
+        "status": "settled",
+        "requests": 1,
+        "input_tokens": 211,
+        "cached_tokens": 0,
+        "output_tokens": 93,
+        "configured_cost_usd": 0.00016434999999999998
+      },
+      {
+        "day": "2026-09-22",
+        "model": "gpt-5.6-luna",
+        "purpose": "classification",
+        "status": "settled",
+        "requests": 475,
+        "input_tokens": 1846813,
+        "cached_tokens": 823175,
+        "output_tokens": 124391,
+        "configured_cost_usd": 0.42164219999999997
+      },
+      {
+        "day": "2026-09-22",
+        "model": "gpt-5.6-luna",
+        "purpose": "enrichment_quality",
+        "status": "settled",
+        "requests": 156,
+        "input_tokens": 83019,
+        "cached_tokens": 0,
+        "output_tokens": 7518,
+        "configured_cost_usd": 0.02977635
+      },
+      {
+        "day": "2026-09-23",
+        "model": "gpt-5.6-luna",
+        "purpose": "classification",
+        "status": "settled",
+        "requests": 519,
+        "input_tokens": 2088129,
+        "cached_tokens": 897694,
+        "output_tokens": 141103,
+        "configured_cost_usd": 0.48488623
+      },
+      {
+        "day": "2026-09-23",
+        "model": "gpt-5.6-luna",
+        "purpose": "enrichment_quality",
+        "status": "settled",
+        "requests": 154,
+        "input_tokens": 78700,
+        "cached_tokens": 0,
+        "output_tokens": 7461,
+        "configured_cost_usd": 0.0286282
+      },
+      {
+        "day": "2026-09-24",
+        "model": "gpt-5.6-luna",
+        "purpose": "classification",
+        "status": "settled",
+        "requests": 609,
+        "input_tokens": 2487793,
+        "cached_tokens": 1055397,
+        "output_tokens": 167610,
+        "configured_cost_usd": 0.58033894
+      },
+      {
+        "day": "2026-09-24",
+        "model": "gpt-5.6-luna",
+        "purpose": "enrichment_quality",
+        "status": "settled",
+        "requests": 148,
+        "input_tokens": 77722,
+        "cached_tokens": 0,
+        "output_tokens": 7163,
+        "configured_cost_usd": 0.0280261
+      },
+      {
+        "day": "2026-09-24",
+        "model": "gpt-5.6-luna",
+        "purpose": "summary_translation",
+        "status": "settled",
+        "requests": 2,
+        "input_tokens": 449,
+        "cached_tokens": 0,
+        "output_tokens": 201,
+        "configured_cost_usd": 0.00035344999999999994
+      },
+      {
+        "day": "2026-09-25",
+        "model": "gpt-5.6-luna",
+        "purpose": "classification",
+        "status": "settled",
+        "requests": 498,
+        "input_tokens": 2061630,
+        "cached_tokens": 856102,
+        "output_tokens": 133643,
+        "configured_cost_usd": 0.47887564
+      },
+      {
+        "day": "2026-09-25",
+        "model": "gpt-5.6-luna",
+        "purpose": "enrichment_quality",
+        "status": "settled",
+        "requests": 159,
+        "input_tokens": 81785,
+        "cached_tokens": 0,
+        "output_tokens": 7554,
+        "configured_cost_usd": 0.02951105
+      },
+      {
+        "day": "2026-09-25",
+        "model": "gpt-5.6-luna",
+        "purpose": "summary_translation",
+        "status": "settled",
+        "requests": 5,
+        "input_tokens": 1058,
+        "cached_tokens": 0,
+        "output_tokens": 467,
+        "configured_cost_usd": 0.0008248999999999999
+      },
+      {
+        "day": "2026-09-26",
+        "model": "gpt-5.6-luna",
+        "purpose": "classification",
+        "status": "settled",
+        "requests": 446,
+        "input_tokens": 1799023,
+        "cached_tokens": 769452,
+        "output_tokens": 121376,
+        "configured_cost_usd": 0.41843299
+      },
+      {
+        "day": "2026-09-26",
+        "model": "gpt-5.6-luna",
+        "purpose": "enrichment_quality",
+        "status": "settled",
+        "requests": 101,
+        "input_tokens": 52724,
+        "cached_tokens": 0,
+        "output_tokens": 4916,
+        "configured_cost_usd": 0.019080200000000002
+      },
+      {
+        "day": "2026-09-26",
+        "model": "gpt-5.6-luna",
+        "purpose": "summary_translation",
+        "status": "settled",
+        "requests": 4,
+        "input_tokens": 815,
+        "cached_tokens": 0,
+        "output_tokens": 334,
+        "configured_cost_usd": 0.00060455
+      },
+      {
+        "day": "2026-09-27",
+        "model": "gpt-5.6-luna",
+        "purpose": "classification",
+        "status": "settled",
+        "requests": 474,
+        "input_tokens": 1932608,
+        "cached_tokens": 817976,
+        "output_tokens": 126928,
+        "configured_cost_usd": 0.44733111999999997
+      },
+      {
+        "day": "2026-09-27",
+        "model": "gpt-5.6-luna",
+        "purpose": "enrichment_quality",
+        "status": "settled",
+        "requests": 94,
+        "input_tokens": 50443,
+        "cached_tokens": 0,
+        "output_tokens": 4648,
+        "configured_cost_usd": 0.01818835
+      },
+      {
+        "day": "2026-09-27",
+        "model": "gpt-5.6-luna",
+        "purpose": "summary_translation",
+        "status": "settled",
+        "requests": 28,
+        "input_tokens": 5819,
+        "cached_tokens": 0,
+        "output_tokens": 2393,
+        "configured_cost_usd": 0.00432635
+      },
+      {
+        "day": "2026-09-28",
+        "model": "gpt-5.6-luna",
+        "purpose": "classification",
+        "status": "settled",
+        "requests": 755,
+        "input_tokens": 3083981,
+        "cached_tokens": 1306682,
+        "output_tokens": 203086,
+        "configured_cost_usd": 0.71416159
+      },
+      {
+        "day": "2026-09-28",
+        "model": "gpt-5.6-luna",
+        "purpose": "enrichment_quality",
+        "status": "settled",
+        "requests": 187,
+        "input_tokens": 96204,
+        "cached_tokens": 0,
+        "output_tokens": 9054,
+        "configured_cost_usd": 0.034915800000000004
+      },
+      {
+        "day": "2026-09-28",
+        "model": "gpt-5.6-luna",
+        "purpose": "summary_translation",
+        "status": "settled",
+        "requests": 52,
+        "input_tokens": 10704,
+        "cached_tokens": 0,
+        "output_tokens": 4313,
+        "configured_cost_usd": 0.0078516
+      },
+      {
+        "day": "2026-09-29",
+        "model": "gpt-5.6-luna",
+        "purpose": "classification",
+        "status": "reserved",
+        "requests": 1,
+        "input_tokens": null,
+        "cached_tokens": null,
+        "output_tokens": null,
+        "configured_cost_usd": 0.006688550000000001
+      },
+      {
+        "day": "2026-09-29",
+        "model": "gpt-5.6-luna",
+        "purpose": "classification",
+        "status": "settled",
+        "requests": 691,
+        "input_tokens": 2759832,
+        "cached_tokens": 1194797,
+        "output_tokens": 186320,
+        "configured_cost_usd": 0.6387386899999999
+      },
+      {
+        "day": "2026-09-29",
+        "model": "gpt-5.6-luna",
+        "purpose": "enrichment_quality",
+        "status": "settled",
+        "requests": 164,
+        "input_tokens": 85473,
+        "cached_tokens": 0,
+        "output_tokens": 7931,
+        "configured_cost_usd": 0.030885450000000002
+      },
+      {
+        "day": "2026-09-29",
+        "model": "gpt-5.6-luna",
+        "purpose": "summary_translation",
+        "status": "settled",
+        "requests": 46,
+        "input_tokens": 9700,
+        "cached_tokens": 0,
+        "output_tokens": 4064,
+        "configured_cost_usd": 0.0073018
+      },
+      {
+        "day": "2026-09-30",
+        "model": "gpt-5.6-luna",
+        "purpose": "classification",
+        "status": "reserved",
+        "requests": 8,
+        "input_tokens": null,
+        "cached_tokens": null,
+        "output_tokens": null,
+        "configured_cost_usd": 0.050899900000000005
+      },
+      {
+        "day": "2026-09-30",
+        "model": "gpt-5.6-luna",
+        "purpose": "classification",
+        "status": "settled",
+        "requests": 789,
+        "input_tokens": 3137722,
+        "cached_tokens": 1374165,
+        "output_tokens": 210332,
+        "configured_cost_usd": 0.72077095
+      },
+      {
+        "day": "2026-09-30",
+        "model": "gpt-5.6-luna",
+        "purpose": "enrichment_quality",
+        "status": "reserved",
+        "requests": 1,
+        "input_tokens": null,
+        "cached_tokens": null,
+        "output_tokens": null,
+        "configured_cost_usd": 0.00199745
+      },
+      {
+        "day": "2026-09-30",
+        "model": "gpt-5.6-luna",
+        "purpose": "enrichment_quality",
+        "status": "settled",
+        "requests": 169,
+        "input_tokens": 86645,
+        "cached_tokens": 0,
+        "output_tokens": 8083,
+        "configured_cost_usd": 0.03136085
+      },
+      {
+        "day": "2026-09-30",
+        "model": "gpt-5.6-luna",
+        "purpose": "summary_translation",
+        "status": "reserved",
+        "requests": 1,
+        "input_tokens": null,
+        "cached_tokens": null,
+        "output_tokens": null,
+        "configured_cost_usd": 0.0019284
+      },
+      {
+        "day": "2026-09-30",
+        "model": "gpt-5.6-luna",
+        "purpose": "summary_translation",
+        "status": "settled",
+        "requests": 54,
+        "input_tokens": 11105,
+        "cached_tokens": 0,
+        "output_tokens": 4403,
+        "configured_cost_usd": 0.00805985
+      },
+      {
+        "day": "2026-10-01",
+        "model": "gpt-5.6-luna",
+        "purpose": "classification",
+        "status": "settled",
+        "requests": 489,
+        "input_tokens": 1882476,
+        "cached_tokens": 833573,
+        "output_tokens": 129033,
+        "configured_cost_usd": 0.43373681
+      },
+      {
+        "day": "2026-10-01",
+        "model": "gpt-5.6-luna",
+        "purpose": "enrichment_quality",
+        "status": "settled",
+        "requests": 184,
+        "input_tokens": 95987,
+        "cached_tokens": 0,
+        "output_tokens": 8923,
+        "configured_cost_usd": 0.03470435
+      },
+      {
+        "day": "2026-10-01",
+        "model": "gpt-5.6-luna",
+        "purpose": "summary_translation",
+        "status": "settled",
+        "requests": 24,
+        "input_tokens": 4941,
+        "cached_tokens": 0,
+        "output_tokens": 2010,
+        "configured_cost_usd": 0.00364725
+      },
+      {
+        "day": "2026-10-02",
+        "model": "gpt-5.6-luna",
+        "purpose": "classification",
+        "status": "settled",
+        "requests": 583,
+        "input_tokens": 2307485,
+        "cached_tokens": 999941,
+        "output_tokens": 152520,
+        "configured_cost_usd": 0.52990882
+      },
+      {
+        "day": "2026-10-02",
+        "model": "gpt-5.6-luna",
+        "purpose": "enrichment_quality",
+        "status": "settled",
+        "requests": 163,
+        "input_tokens": 83870,
+        "cached_tokens": 0,
+        "output_tokens": 7916,
+        "configured_cost_usd": 0.0304667
+      },
+      {
+        "day": "2026-10-02",
+        "model": "gpt-5.6-luna",
+        "purpose": "summary_translation",
+        "status": "settled",
+        "requests": 21,
+        "input_tokens": 4232,
+        "cached_tokens": 0,
+        "output_tokens": 1659,
+        "configured_cost_usd": 0.0030488
+      },
+      {
+        "day": "2026-10-03",
+        "model": "gpt-5.6-luna",
+        "purpose": "classification",
+        "status": "settled",
+        "requests": 350,
+        "input_tokens": 1429083,
+        "cached_tokens": 599618,
+        "output_tokens": 95242,
+        "configured_cost_usd": 0.33364900999999997
+      },
+      {
+        "day": "2026-10-03",
+        "model": "gpt-5.6-luna",
+        "purpose": "enrichment_quality",
+        "status": "settled",
+        "requests": 114,
+        "input_tokens": 60446,
+        "cached_tokens": 0,
+        "output_tokens": 5444,
+        "configured_cost_usd": 0.0216443
+      },
+      {
+        "day": "2026-10-03",
+        "model": "gpt-5.6-luna",
+        "purpose": "summary_translation",
+        "status": "settled",
+        "requests": 5,
+        "input_tokens": 1064,
+        "cached_tokens": 0,
+        "output_tokens": 465,
+        "configured_cost_usd": 0.000824
+      },
+      {
+        "day": "2026-10-04",
+        "model": "gpt-5.6-luna",
+        "purpose": "classification",
+        "status": "settled",
+        "requests": 426,
+        "input_tokens": 1742314,
+        "cached_tokens": 734792,
+        "output_tokens": 116486,
+        "configured_cost_usd": 0.40635953999999996
+      },
+      {
+        "day": "2026-10-04",
+        "model": "gpt-5.6-luna",
+        "purpose": "enrichment_quality",
+        "status": "settled",
+        "requests": 111,
+        "input_tokens": 58101,
+        "cached_tokens": 0,
+        "output_tokens": 5368,
+        "configured_cost_usd": 0.02096685
+      },
+      {
+        "day": "2026-10-04",
+        "model": "gpt-5.6-luna",
+        "purpose": "summary_translation",
+        "status": "settled",
+        "requests": 4,
+        "input_tokens": 805,
+        "cached_tokens": 0,
+        "output_tokens": 323,
+        "configured_cost_usd": 0.00058885
+      },
+      {
+        "day": "2026-10-05",
+        "model": "gpt-5.6-luna",
+        "purpose": "classification",
+        "status": "settled",
+        "requests": 537,
+        "input_tokens": 2188410,
+        "cached_tokens": 923689,
+        "output_tokens": 143978,
+        "configured_cost_usd": 0.50742763
+      },
+      {
+        "day": "2026-10-05",
+        "model": "gpt-5.6-luna",
+        "purpose": "enrichment_quality",
+        "status": "settled",
+        "requests": 158,
+        "input_tokens": 81524,
+        "cached_tokens": 0,
+        "output_tokens": 7640,
+        "configured_cost_usd": 0.029549
+      },
+      {
+        "day": "2026-10-05",
+        "model": "gpt-5.6-luna",
+        "purpose": "summary_translation",
+        "status": "settled",
+        "requests": 6,
+        "input_tokens": 1268,
+        "cached_tokens": 0,
+        "output_tokens": 541,
+        "configured_cost_usd": 0.0009662
+      },
+      {
+        "day": "2026-10-06",
+        "model": "gpt-5.6-luna",
+        "purpose": "classification",
+        "status": "settled",
+        "requests": 614,
+        "input_tokens": 2431406,
+        "cached_tokens": 1064062,
+        "output_tokens": 165611,
+        "configured_cost_usd": 0.56185044
+      },
+      {
+        "day": "2026-10-06",
+        "model": "gpt-5.6-luna",
+        "purpose": "enrichment_quality",
+        "status": "settled",
+        "requests": 202,
+        "input_tokens": 103520,
+        "cached_tokens": 0,
+        "output_tokens": 9765,
+        "configured_cost_usd": 0.037598
+      },
+      {
+        "day": "2026-10-06",
+        "model": "gpt-5.6-luna",
+        "purpose": "summary_translation",
+        "status": "settled",
+        "requests": 20,
+        "input_tokens": 4087,
+        "cached_tokens": 0,
+        "output_tokens": 1673,
+        "configured_cost_usd": 0.00302935
+      },
+      {
+        "day": "2026-10-07",
+        "model": "gpt-5.6-luna",
+        "purpose": "classification",
+        "status": "settled",
+        "requests": 667,
+        "input_tokens": 2707205,
+        "cached_tokens": 1150712,
+        "output_tokens": 177074,
+        "configured_cost_usd": 0.62462629
+      },
+      {
+        "day": "2026-10-07",
+        "model": "gpt-5.6-luna",
+        "purpose": "enrichment_quality",
+        "status": "settled",
+        "requests": 156,
+        "input_tokens": 80660,
+        "cached_tokens": 0,
+        "output_tokens": 7441,
+        "configured_cost_usd": 0.0290942
+      },
+      {
+        "day": "2026-10-07",
+        "model": "gpt-5.6-luna",
+        "purpose": "summary_translation",
+        "status": "settled",
+        "requests": 16,
+        "input_tokens": 3133,
+        "cached_tokens": 0,
+        "output_tokens": 1207,
+        "configured_cost_usd": 0.00223165
+      },
+      {
+        "day": "2026-10-08",
+        "model": "gpt-5.6-luna",
+        "purpose": "classification",
+        "status": "settled",
+        "requests": 661,
+        "input_tokens": 2737108,
+        "cached_tokens": 1135115,
+        "output_tokens": 176351,
+        "configured_cost_usd": 0.63482175
+      },
+      {
+        "day": "2026-10-08",
+        "model": "gpt-5.6-luna",
+        "purpose": "enrichment_quality",
+        "status": "settled",
+        "requests": 178,
+        "input_tokens": 92707,
+        "cached_tokens": 0,
+        "output_tokens": 8621,
+        "configured_cost_usd": 0.03352195
+      },
+      {
+        "day": "2026-10-08",
+        "model": "gpt-5.6-luna",
+        "purpose": "summary_translation",
+        "status": "settled",
+        "requests": 26,
+        "input_tokens": 5411,
+        "cached_tokens": 0,
+        "output_tokens": 2201,
+        "configured_cost_usd": 0.0039939500000000005
+      },
+      {
+        "day": "2026-10-09",
+        "model": "gpt-5.6-luna",
+        "purpose": "classification",
+        "status": "settled",
+        "requests": 708,
+        "input_tokens": 3011625,
+        "cached_tokens": 1216566,
+        "output_tokens": 196455,
+        "configured_cost_usd": 0.70884207
+      },
+      {
+        "day": "2026-10-09",
+        "model": "gpt-5.6-luna",
+        "purpose": "enrichment_quality",
+        "status": "settled",
+        "requests": 171,
+        "input_tokens": 90512,
+        "cached_tokens": 0,
+        "output_tokens": 8280,
+        "configured_cost_usd": 0.032564
+      },
+      {
+        "day": "2026-10-09",
+        "model": "gpt-5.6-luna",
+        "purpose": "summary_translation",
+        "status": "settled",
+        "requests": 9,
+        "input_tokens": 1853,
+        "cached_tokens": 0,
+        "output_tokens": 750,
+        "configured_cost_usd": 0.00136325
+      },
+      {
+        "day": "2026-10-10",
+        "model": "gpt-5.6-luna",
+        "purpose": "classification",
+        "status": "settled",
+        "requests": 630,
+        "input_tokens": 2687321,
+        "cached_tokens": 1091790,
+        "output_tokens": 178767,
+        "configured_cost_usd": 0.63523895
+      },
+      {
+        "day": "2026-10-10",
+        "model": "gpt-5.6-luna",
+        "purpose": "enrichment_quality",
+        "status": "settled",
+        "requests": 103,
+        "input_tokens": 55721,
+        "cached_tokens": 0,
+        "output_tokens": 5039,
+        "configured_cost_usd": 0.01997705
+      },
+      {
+        "day": "2026-10-10",
+        "model": "gpt-5.6-luna",
+        "purpose": "summary_translation",
+        "status": "settled",
+        "requests": 36,
+        "input_tokens": 7364,
+        "cached_tokens": 0,
+        "output_tokens": 2996,
+        "configured_cost_usd": 0.0054361999999999995
+      },
+      {
+        "day": "2026-10-11",
+        "model": "gpt-5.6-luna",
+        "purpose": "classification",
+        "status": "settled",
+        "requests": 5,
+        "input_tokens": 20900,
+        "cached_tokens": 8665,
+        "output_tokens": 1407,
+        "configured_cost_usd": 0.00492045
+      }
+    ],
+    "log_coverage": [
+      {
+        "file": "sentinel.log",
+        "first": "2026-10-11",
+        "last": "2026-10-11",
+        "lines": 446
+      },
+      {
+        "file": "sentinel.log.1",
+        "first": "2026-10-10",
+        "last": "2026-10-10",
+        "lines": 17973
+      },
+      {
+        "file": "sentinel.log.10.gz",
+        "first": "2026-10-01",
+        "last": "2026-10-01",
+        "lines": 17361
+      },
+      {
+        "file": "sentinel.log.11.gz",
+        "first": "2026-09-30",
+        "last": "2026-09-30",
+        "lines": 18439
+      },
+      {
+        "file": "sentinel.log.12.gz",
+        "first": "2026-09-29",
+        "last": "2026-09-29",
+        "lines": 18009
+      },
+      {
+        "file": "sentinel.log.13.gz",
+        "first": "2026-09-28",
+        "last": "2026-09-28",
+        "lines": 18572
+      },
+      {
+        "file": "sentinel.log.14.gz",
+        "first": "2026-09-27",
+        "last": "2026-09-27",
+        "lines": 17101
+      },
+      {
+        "file": "sentinel.log.2.gz",
+        "first": "2026-10-09",
+        "last": "2026-10-09",
+        "lines": 18210
+      },
+      {
+        "file": "sentinel.log.3.gz",
+        "first": "2026-10-08",
+        "last": "2026-10-08",
+        "lines": 18180
+      },
+      {
+        "file": "sentinel.log.4.gz",
+        "first": "2026-10-07",
+        "last": "2026-10-07",
+        "lines": 17973
+      },
+      {
+        "file": "sentinel.log.5.gz",
+        "first": "2026-10-06",
+        "last": "2026-10-06",
+        "lines": 17897
+      },
+      {
+        "file": "sentinel.log.6.gz",
+        "first": "2026-10-05",
+        "last": "2026-10-05",
+        "lines": 17722
+      },
+      {
+        "file": "sentinel.log.7.gz",
+        "first": "2026-10-04",
+        "last": "2026-10-04",
+        "lines": 17276
+      },
+      {
+        "file": "sentinel.log.8.gz",
+        "first": "2026-10-03",
+        "last": "2026-10-03",
+        "lines": 16786
+      },
+      {
+        "file": "sentinel.log.9.gz",
+        "first": "2026-10-02",
+        "last": "2026-10-02",
+        "lines": 17581
+      }
+    ],
+    "log_daily_statistics": {
+      "2026-10-11": {
+        "classified_cycles": 5
+      },
+      "2026-10-10": {
+        "classified_cycles": 630
+      },
+      "2026-10-01": {
+        "classified_cycles": 489
+      },
+      "2026-09-30": {
+        "classified_cycles": 789
+      },
+      "2026-09-29": {
+        "classified_cycles": 691
+      },
+      "2026-09-28": {
+        "classified_cycles": 755
+      },
+      "2026-09-27": {
+        "classified_cycles": 474
+      },
+      "2026-10-09": {
+        "classified_cycles": 708
+      },
+      "2026-10-08": {
+        "classified_cycles": 661
+      },
+      "2026-10-07": {
+        "classified_cycles": 667
+      },
+      "2026-10-06": {
+        "classified_cycles": 614
+      },
+      "2026-10-05": {
+        "classified_cycles": 537
+      },
+      "2026-10-04": {
+        "classified_cycles": 426
+      },
+      "2026-10-03": {
+        "classified_cycles": 350
+      },
+      "2026-10-02": {
+        "classified_cycles": 583
+      }
+    }
+  }
+}

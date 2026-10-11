@@ -1,0 +1,72 @@
+{
+  "recorded_at": "2026-10-11T00:56:09.768517+00:00",
+  "effective_period": {
+    "start": "2026-03-21",
+    "end": "2026-10-11"
+  },
+  "evidence": [
+    {
+      "source_file": "/etc/sentinel/openai.env",
+      "provider": "OpenAI",
+      "credential_label": "OpenAI credential variant 1",
+      "file_modified_utc": "2026-09-20T21:27:40.737209+00:00",
+      "note": "file modification date is not a key activation date"
+    },
+    {
+      "source_file": "/etc/sentinel/sentinel.env",
+      "provider": "Twilio account",
+      "credential_label": "Twilio account credential variant 1",
+      "file_modified_utc": "2026-06-04T14:03:35.307711+00:00",
+      "note": "file modification date is not a key activation date"
+    },
+    {
+      "source_file": "/etc/sentinel/sentinel.env",
+      "provider": "Anthropic",
+      "credential_label": "Anthropic credential variant 1",
+      "file_modified_utc": "2026-06-04T14:03:35.307711+00:00",
+      "note": "file modification date is not a key activation date"
+    },
+    {
+      "source_file": "/etc/sentinel/sentinel.env.bak-20260604-pre-accesstoken",
+      "provider": "Twilio account",
+      "credential_label": "Twilio account credential variant 1",
+      "file_modified_utc": "2026-06-04T14:03:35.294711+00:00",
+      "note": "file modification date is not a key activation date"
+    },
+    {
+      "source_file": "/etc/sentinel/sentinel.env.bak-20260604-pre-accesstoken",
+      "provider": "Anthropic",
+      "credential_label": "Anthropic credential variant 1",
+      "file_modified_utc": "2026-06-04T14:03:35.294711+00:00",
+      "note": "file modification date is not a key activation date"
+    },
+    {
+      "source_file": "/etc/sentinel/sentinel.env.bak-20260604-pre-pushtoken",
+      "provider": "Twilio account",
+      "credential_label": "Twilio account credential variant 1",
+      "file_modified_utc": "2026-06-04T11:55:42.879505+00:00",
+      "note": "file modification date is not a key activation date"
+    },
+    {
+      "source_file": "/etc/sentinel/sentinel.env.bak-20260604-pre-pushtoken",
+      "provider": "Anthropic",
+      "credential_label": "Anthropic credential variant 1",
+      "file_modified_utc": "2026-06-04T11:55:42.879505+00:00",
+      "note": "file modification date is not a key activation date"
+    },
+    {
+      "source_file": "/home/deploy/sentinel/.env",
+      "provider": "Twilio account",
+      "credential_label": "Twilio account credential variant 1",
+      "file_modified_utc": "2026-03-28T11:15:04.432726+00:00",
+      "note": "file modification date is not a key activation date"
+    },
+    {
+      "source_file": "/home/deploy/sentinel/.env",
+      "provider": "Anthropic",
+      "credential_label": "Anthropic credential variant 1",
+      "file_modified_utc": "2026-03-28T11:15:04.432726+00:00",
+      "note": "file modification date is not a key activation date"
+    }
+  ]
+}

@@ -1,0 +1,901 @@
+{
+  "recorded_at": "2026-10-11T00:56:09.768517+00:00",
+  "effective_period": {
+    "start": "2026-03-21",
+    "end": "2026-10-11"
+  },
+  "evidence": {
+    "recorded_at": "2026-10-11",
+    "deduplication": "unique classifications.id across all recovered server snapshots, live database and two local runtime snapshots; local records contribute only when id not already recovered",
+    "server_unique_rows": 31068,
+    "local_coverage": [
+      {
+        "file": "data/sentinel.db",
+        "rows": 42,
+        "new_unique_rows": 42
+      },
+      {
+        "file": "dashboard/data/sentinel.db",
+        "rows": 5774,
+        "new_unique_rows": 418
+      }
+    ],
+    "daily": [
+      {
+        "day": "2026-03-22",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 12,
+        "input_tokens": 8219,
+        "output_tokens": 1731
+      },
+      {
+        "day": "2026-03-23",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 30,
+        "input_tokens": 21001,
+        "output_tokens": 4448
+      },
+      {
+        "day": "2026-04-27",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 221,
+        "input_tokens": 235316,
+        "output_tokens": 32575
+      },
+      {
+        "day": "2026-04-28",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 197,
+        "input_tokens": 207120,
+        "output_tokens": 28930
+      },
+      {
+        "day": "2026-04-29",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 184,
+        "input_tokens": 193938,
+        "output_tokens": 27147
+      },
+      {
+        "day": "2026-04-30",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 187,
+        "input_tokens": 195434,
+        "output_tokens": 27644
+      },
+      {
+        "day": "2026-05-01",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 138,
+        "input_tokens": 146531,
+        "output_tokens": 20331
+      },
+      {
+        "day": "2026-05-02",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 118,
+        "input_tokens": 125447,
+        "output_tokens": 17782
+      },
+      {
+        "day": "2026-05-03",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 105,
+        "input_tokens": 110219,
+        "output_tokens": 15813
+      },
+      {
+        "day": "2026-05-04",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 176,
+        "input_tokens": 184477,
+        "output_tokens": 26164
+      },
+      {
+        "day": "2026-05-05",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 205,
+        "input_tokens": 214792,
+        "output_tokens": 30349
+      },
+      {
+        "day": "2026-05-06",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 187,
+        "input_tokens": 197595,
+        "output_tokens": 27801
+      },
+      {
+        "day": "2026-05-07",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 223,
+        "input_tokens": 233243,
+        "output_tokens": 33506
+      },
+      {
+        "day": "2026-05-08",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 193,
+        "input_tokens": 204498,
+        "output_tokens": 28904
+      },
+      {
+        "day": "2026-05-09",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 109,
+        "input_tokens": 115784,
+        "output_tokens": 16242
+      },
+      {
+        "day": "2026-05-10",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 104,
+        "input_tokens": 109784,
+        "output_tokens": 15464
+      },
+      {
+        "day": "2026-05-11",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 149,
+        "input_tokens": 158501,
+        "output_tokens": 21793
+      },
+      {
+        "day": "2026-05-12",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 173,
+        "input_tokens": 183553,
+        "output_tokens": 25595
+      },
+      {
+        "day": "2026-05-13",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 295,
+        "input_tokens": 307719,
+        "output_tokens": 43755
+      },
+      {
+        "day": "2026-05-14",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 258,
+        "input_tokens": 268746,
+        "output_tokens": 38564
+      },
+      {
+        "day": "2026-05-15",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 189,
+        "input_tokens": 200315,
+        "output_tokens": 28206
+      },
+      {
+        "day": "2026-05-16",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 98,
+        "input_tokens": 105159,
+        "output_tokens": 14664
+      },
+      {
+        "day": "2026-05-17",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 197,
+        "input_tokens": 203761,
+        "output_tokens": 29347
+      },
+      {
+        "day": "2026-05-18",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 239,
+        "input_tokens": 249526,
+        "output_tokens": 35384
+      },
+      {
+        "day": "2026-05-19",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 296,
+        "input_tokens": 305588,
+        "output_tokens": 44581
+      },
+      {
+        "day": "2026-05-20",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 290,
+        "input_tokens": 299171,
+        "output_tokens": 43124
+      },
+      {
+        "day": "2026-05-21",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 261,
+        "input_tokens": 269658,
+        "output_tokens": 39544
+      },
+      {
+        "day": "2026-05-22",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 176,
+        "input_tokens": 351632,
+        "output_tokens": 31711
+      },
+      {
+        "day": "2026-05-23",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 142,
+        "input_tokens": 319843,
+        "output_tokens": 25931
+      },
+      {
+        "day": "2026-05-24",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 132,
+        "input_tokens": 298379,
+        "output_tokens": 24064
+      },
+      {
+        "day": "2026-05-25",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 179,
+        "input_tokens": 402839,
+        "output_tokens": 32276
+      },
+      {
+        "day": "2026-05-26",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 210,
+        "input_tokens": 473052,
+        "output_tokens": 38711
+      },
+      {
+        "day": "2026-05-27",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 220,
+        "input_tokens": 493726,
+        "output_tokens": 39964
+      },
+      {
+        "day": "2026-05-28",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 204,
+        "input_tokens": 458405,
+        "output_tokens": 34412
+      },
+      {
+        "day": "2026-05-29",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 671,
+        "input_tokens": 1496287,
+        "output_tokens": 173935
+      },
+      {
+        "day": "2026-05-30",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 287,
+        "input_tokens": 642201,
+        "output_tokens": 71210
+      },
+      {
+        "day": "2026-05-31",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 168,
+        "input_tokens": 377435,
+        "output_tokens": 36907
+      },
+      {
+        "day": "2026-06-01",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 209,
+        "input_tokens": 469738,
+        "output_tokens": 38792
+      },
+      {
+        "day": "2026-06-02",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 247,
+        "input_tokens": 556948,
+        "output_tokens": 48221
+      },
+      {
+        "day": "2026-06-03",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 277,
+        "input_tokens": 622483,
+        "output_tokens": 51826
+      },
+      {
+        "day": "2026-06-04",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 96,
+        "input_tokens": 215436,
+        "output_tokens": 18699
+      },
+      {
+        "day": "2026-06-30",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 204,
+        "input_tokens": 459743,
+        "output_tokens": 34040
+      },
+      {
+        "day": "2026-07-01",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 191,
+        "input_tokens": 430774,
+        "output_tokens": 31988
+      },
+      {
+        "day": "2026-07-02",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 241,
+        "input_tokens": 542913,
+        "output_tokens": 48284
+      },
+      {
+        "day": "2026-07-03",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 235,
+        "input_tokens": 527403,
+        "output_tokens": 48016
+      },
+      {
+        "day": "2026-07-04",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 131,
+        "input_tokens": 295604,
+        "output_tokens": 25778
+      },
+      {
+        "day": "2026-07-05",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 107,
+        "input_tokens": 242421,
+        "output_tokens": 19791
+      },
+      {
+        "day": "2026-07-06",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 256,
+        "input_tokens": 575088,
+        "output_tokens": 50033
+      },
+      {
+        "day": "2026-07-07",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 243,
+        "input_tokens": 546665,
+        "output_tokens": 44214
+      },
+      {
+        "day": "2026-07-08",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 235,
+        "input_tokens": 526059,
+        "output_tokens": 38269
+      },
+      {
+        "day": "2026-07-09",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 223,
+        "input_tokens": 502287,
+        "output_tokens": 38562
+      },
+      {
+        "day": "2026-07-10",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 182,
+        "input_tokens": 409149,
+        "output_tokens": 31890
+      },
+      {
+        "day": "2026-07-11",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 120,
+        "input_tokens": 271944,
+        "output_tokens": 21811
+      },
+      {
+        "day": "2026-07-12",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 124,
+        "input_tokens": 279411,
+        "output_tokens": 19868
+      },
+      {
+        "day": "2026-07-13",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 200,
+        "input_tokens": 450400,
+        "output_tokens": 33577
+      },
+      {
+        "day": "2026-07-14",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 180,
+        "input_tokens": 406279,
+        "output_tokens": 29433
+      },
+      {
+        "day": "2026-07-15",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 213,
+        "input_tokens": 479436,
+        "output_tokens": 38961
+      },
+      {
+        "day": "2026-07-16",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 181,
+        "input_tokens": 408111,
+        "output_tokens": 30423
+      },
+      {
+        "day": "2026-07-17",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 179,
+        "input_tokens": 403215,
+        "output_tokens": 28740
+      },
+      {
+        "day": "2026-07-18",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 134,
+        "input_tokens": 303291,
+        "output_tokens": 22233
+      },
+      {
+        "day": "2026-07-19",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 119,
+        "input_tokens": 268974,
+        "output_tokens": 19977
+      },
+      {
+        "day": "2026-07-20",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 225,
+        "input_tokens": 506952,
+        "output_tokens": 39500
+      },
+      {
+        "day": "2026-07-21",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 200,
+        "input_tokens": 451174,
+        "output_tokens": 36981
+      },
+      {
+        "day": "2026-07-22",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 190,
+        "input_tokens": 426627,
+        "output_tokens": 31405
+      },
+      {
+        "day": "2026-07-23",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 149,
+        "input_tokens": 337514,
+        "output_tokens": 24864
+      },
+      {
+        "day": "2026-07-24",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 229,
+        "input_tokens": 514555,
+        "output_tokens": 41996
+      },
+      {
+        "day": "2026-07-25",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 175,
+        "input_tokens": 393621,
+        "output_tokens": 32198
+      },
+      {
+        "day": "2026-07-26",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 159,
+        "input_tokens": 358024,
+        "output_tokens": 31261
+      },
+      {
+        "day": "2026-07-27",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 194,
+        "input_tokens": 436942,
+        "output_tokens": 34768
+      },
+      {
+        "day": "2026-07-28",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 171,
+        "input_tokens": 385855,
+        "output_tokens": 29580
+      },
+      {
+        "day": "2026-07-29",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 177,
+        "input_tokens": 400304,
+        "output_tokens": 29508
+      },
+      {
+        "day": "2026-07-30",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 343,
+        "input_tokens": 773647,
+        "output_tokens": 65466
+      },
+      {
+        "day": "2026-07-31",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 2,
+        "input_tokens": 4472,
+        "output_tokens": 288
+      },
+      {
+        "day": "2026-08-21",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 222,
+        "input_tokens": 499885,
+        "output_tokens": 39199
+      },
+      {
+        "day": "2026-08-22",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 111,
+        "input_tokens": 251111,
+        "output_tokens": 18979
+      },
+      {
+        "day": "2026-08-23",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 117,
+        "input_tokens": 264520,
+        "output_tokens": 21202
+      },
+      {
+        "day": "2026-08-24",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 181,
+        "input_tokens": 407292,
+        "output_tokens": 33950
+      },
+      {
+        "day": "2026-08-25",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 196,
+        "input_tokens": 441195,
+        "output_tokens": 36731
+      },
+      {
+        "day": "2026-08-26",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 183,
+        "input_tokens": 412662,
+        "output_tokens": 33611
+      },
+      {
+        "day": "2026-08-27",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 178,
+        "input_tokens": 400775,
+        "output_tokens": 32174
+      },
+      {
+        "day": "2026-08-28",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 198,
+        "input_tokens": 446939,
+        "output_tokens": 39291
+      },
+      {
+        "day": "2026-08-29",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 135,
+        "input_tokens": 304422,
+        "output_tokens": 25486
+      },
+      {
+        "day": "2026-08-30",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 117,
+        "input_tokens": 265560,
+        "output_tokens": 21846
+      },
+      {
+        "day": "2026-08-31",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 221,
+        "input_tokens": 495699,
+        "output_tokens": 43859
+      },
+      {
+        "day": "2026-09-01",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 306,
+        "input_tokens": 685558,
+        "output_tokens": 70503
+      },
+      {
+        "day": "2026-09-02",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 281,
+        "input_tokens": 628787,
+        "output_tokens": 71325
+      },
+      {
+        "day": "2026-09-03",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 253,
+        "input_tokens": 568196,
+        "output_tokens": 52785
+      },
+      {
+        "day": "2026-09-04",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 240,
+        "input_tokens": 539616,
+        "output_tokens": 47175
+      },
+      {
+        "day": "2026-09-05",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 136,
+        "input_tokens": 306695,
+        "output_tokens": 29816
+      },
+      {
+        "day": "2026-09-06",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 121,
+        "input_tokens": 273752,
+        "output_tokens": 24214
+      },
+      {
+        "day": "2026-09-07",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 159,
+        "input_tokens": 360472,
+        "output_tokens": 28046
+      },
+      {
+        "day": "2026-09-08",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 224,
+        "input_tokens": 505350,
+        "output_tokens": 42592
+      },
+      {
+        "day": "2026-09-09",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 240,
+        "input_tokens": 540787,
+        "output_tokens": 43212
+      },
+      {
+        "day": "2026-09-10",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 285,
+        "input_tokens": 640434,
+        "output_tokens": 63793
+      },
+      {
+        "day": "2026-09-11",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 203,
+        "input_tokens": 457823,
+        "output_tokens": 37264
+      },
+      {
+        "day": "2026-09-12",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 153,
+        "input_tokens": 344990,
+        "output_tokens": 30927
+      },
+      {
+        "day": "2026-09-13",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 316,
+        "input_tokens": 709547,
+        "output_tokens": 88768
+      },
+      {
+        "day": "2026-09-14",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 393,
+        "input_tokens": 881029,
+        "output_tokens": 99429
+      },
+      {
+        "day": "2026-09-15",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 402,
+        "input_tokens": 899400,
+        "output_tokens": 79996
+      },
+      {
+        "day": "2026-09-16",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 322,
+        "input_tokens": 722754,
+        "output_tokens": 68754
+      },
+      {
+        "day": "2026-09-17",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 104,
+        "input_tokens": 234429,
+        "output_tokens": 19402
+      },
+      {
+        "day": "2026-09-19",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 1,
+        "input_tokens": 2209,
+        "output_tokens": 155
+      },
+      {
+        "day": "2026-09-20",
+        "model": "claude-haiku-4-5-20251001",
+        "requests": 196,
+        "input_tokens": 442131,
+        "output_tokens": 38837
+      },
+      {
+        "day": "2026-09-20",
+        "model": "gpt-5.6-luna",
+        "requests": 18,
+        "input_tokens": 65806,
+        "output_tokens": 4859
+      },
+      {
+        "day": "2026-09-21",
+        "model": "gpt-5.6-luna",
+        "requests": 420,
+        "input_tokens": 1595310,
+        "output_tokens": 111213
+      },
+      {
+        "day": "2026-09-22",
+        "model": "gpt-5.6-luna",
+        "requests": 475,
+        "input_tokens": 1846813,
+        "output_tokens": 124391
+      },
+      {
+        "day": "2026-09-23",
+        "model": "gpt-5.6-luna",
+        "requests": 519,
+        "input_tokens": 2088129,
+        "output_tokens": 141103
+      },
+      {
+        "day": "2026-09-24",
+        "model": "gpt-5.6-luna",
+        "requests": 609,
+        "input_tokens": 2488242,
+        "output_tokens": 167811
+      },
+      {
+        "day": "2026-09-25",
+        "model": "gpt-5.6-luna",
+        "requests": 498,
+        "input_tokens": 2062688,
+        "output_tokens": 134110
+      },
+      {
+        "day": "2026-09-26",
+        "model": "gpt-5.6-luna",
+        "requests": 446,
+        "input_tokens": 1799838,
+        "output_tokens": 121710
+      },
+      {
+        "day": "2026-09-27",
+        "model": "gpt-5.6-luna",
+        "requests": 474,
+        "input_tokens": 1938427,
+        "output_tokens": 129321
+      },
+      {
+        "day": "2026-09-28",
+        "model": "gpt-5.6-luna",
+        "requests": 755,
+        "input_tokens": 3094685,
+        "output_tokens": 207399
+      },
+      {
+        "day": "2026-09-29",
+        "model": "gpt-5.6-luna",
+        "requests": 691,
+        "input_tokens": 2769532,
+        "output_tokens": 190384
+      },
+      {
+        "day": "2026-09-30",
+        "model": "gpt-5.6-luna",
+        "requests": 789,
+        "input_tokens": 3148827,
+        "output_tokens": 214735
+      },
+      {
+        "day": "2026-10-01",
+        "model": "gpt-5.6-luna",
+        "requests": 489,
+        "input_tokens": 1887417,
+        "output_tokens": 131043
+      },
+      {
+        "day": "2026-10-02",
+        "model": "gpt-5.6-luna",
+        "requests": 583,
+        "input_tokens": 2311717,
+        "output_tokens": 154179
+      },
+      {
+        "day": "2026-10-03",
+        "model": "gpt-5.6-luna",
+        "requests": 350,
+        "input_tokens": 1430147,
+        "output_tokens": 95707
+      },
+      {
+        "day": "2026-10-04",
+        "model": "gpt-5.6-luna",
+        "requests": 426,
+        "input_tokens": 1743119,
+        "output_tokens": 116809
+      },
+      {
+        "day": "2026-10-05",
+        "model": "gpt-5.6-luna",
+        "requests": 537,
+        "input_tokens": 2189678,
+        "output_tokens": 144519
+      },
+      {
+        "day": "2026-10-06",
+        "model": "gpt-5.6-luna",
+        "requests": 614,
+        "input_tokens": 2435493,
+        "output_tokens": 167284
+      },
+      {
+        "day": "2026-10-07",
+        "model": "gpt-5.6-luna",
+        "requests": 667,
+        "input_tokens": 2710338,
+        "output_tokens": 178281
+      },
+      {
+        "day": "2026-10-08",
+        "model": "gpt-5.6-luna",
+        "requests": 661,
+        "input_tokens": 2742519,
+        "output_tokens": 178552
+      },
+      {
+        "day": "2026-10-09",
+        "model": "gpt-5.6-luna",
+        "requests": 708,
+        "input_tokens": 3013478,
+        "output_tokens": 197205
+      },
+      {
+        "day": "2026-10-10",
+        "model": "gpt-5.6-luna",
+        "requests": 630,
+        "input_tokens": 2694685,
+        "output_tokens": 181763
+      },
+      {
+        "day": "2026-10-11",
+        "model": "gpt-5.6-luna",
+        "requests": 11,
+        "input_tokens": 46005,
+        "output_tokens": 3160
+      }
+    ]
+  }
+}

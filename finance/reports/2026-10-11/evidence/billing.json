@@ -1,0 +1,117 @@
+{
+  "recorded_at": "2026-10-11T00:56:09.768517+00:00",
+  "effective_period": {
+    "start": "2026-03-21",
+    "end": "2026-10-11"
+  },
+  "evidence": {
+    "invoices": [
+      {
+        "reference": "billing-1",
+        "provider": "Hetzner",
+        "invoice_date": "2026-10-01",
+        "service_months": [
+          "2026-07",
+          "2026-08"
+        ],
+        "currency": "EUR",
+        "amount": 8.98,
+        "tax_amount": 0.0,
+        "monthly_server": 3.99,
+        "monthly_ipv4": 0.5,
+        "payment_confirmed": false,
+        "source": "PDF attached to provider billing email; explicitly labelled project sentinel; text layer read; private identifiers omitted"
+      },
+      {
+        "reference": "billing-2",
+        "provider": "Hetzner",
+        "invoice_date": "2026-10-04",
+        "service_months": [
+          "2026-09"
+        ],
+        "currency": "EUR",
+        "amount": 4.49,
+        "tax_amount": 0.0,
+        "monthly_server": 3.99,
+        "monthly_ipv4": 0.5,
+        "payment_confirmed": false,
+        "source": "PDF attached to provider billing email; explicitly labelled project sentinel; text layer read; private identifiers omitted"
+      }
+    ],
+    "mailbox_coverage": {
+      "gmail_search": "in:anywhere, including Spam and Trash",
+      "history": "all available history, with additional focused searches from 2026-01-01",
+      "project_names": [
+        "twilio-playground",
+        "sentinel",
+        "project-sentinel"
+      ],
+      "providers": [
+        "Hetzner",
+        "Twilio",
+        "OpenAI",
+        "Anthropic",
+        "OpenRouter",
+        "TypeSafe/Jev",
+        "Expo/EAS",
+        "Apple Developer",
+        "GitHub/GitLab",
+        "Better Stack",
+        "Cloudflare",
+        "Viperhost",
+        "common hosting, domain, backup, storage, monitoring, CI and email providers"
+      ]
+    },
+    "pagination_limit": {
+      "gmail_tool_limit": "Each search requested at most 100 results and the tool exposes no pagination cursor.",
+      "observed": "No relevant targeted provider, sender, invoice or PDF query reached the 100-result cap; the largest targeted provider result set had 23 messages.",
+      "period": "Provider searches covered all available history; focused billing searches additionally covered 2026-01-01 through 2026-10-11. The earliest project-linked mailbox event found was 2026-03-21."
+    },
+    "unquantified": [
+      {
+        "provider": "Twilio",
+        "period": "2026-04-20 through 2026-08-23",
+        "evidence": "Seven account notices say the balance was empty, communications were suspended, and retained phone-number or other paid resources would continue accruing recurring charges.",
+        "amount": null,
+        "payment_or_topup": "No successful payment, top-up, receipt, statement or invoice was found in either mailbox.",
+        "attribution_limit": "Twilio is a configured Sentinel alert provider, but Gmail does not quantify calls, SMS, number rental, balance depletion or later payment."
+      },
+      {
+        "provider": "OpenAI API",
+        "date": "2026-10-08",
+        "evidence": "Auto-recharge failed for a Personal organization and was disabled.",
+        "amount": null,
+        "payment_status": "failed",
+        "attribution_limit": "No 2026 API funding receipt or usage invoice was found. The organization is shared and no portion can be assigned solely to Sentinel."
+      }
+    ],
+    "excluded_or_unallocated": [
+      {
+        "provider": "Claude Code/Codex",
+        "reason": "Shared subscriptions excluded by owner instruction."
+      },
+      {
+        "provider": "ChatGPT consumer subscription",
+        "reason": "Not attributed: no evidence of a Sentinel share; separate from OpenAI API consumption."
+      },
+      {
+        "provider": "Anthropic consumer plan/extra usage",
+        "reason": "Shared consumer billing has no Sentinel API attribution; shared coding subscription excluded, other shared usage unallocated."
+      },
+      {
+        "provider": "Other project hosting/domains/monitoring",
+        "reason": "No Sentinel service marker; kept outside this project."
+      },
+      {
+        "provider": "Google Vision",
+        "reason": "Excluded by owner instruction."
+      },
+      {
+        "provider": "Netcup",
+        "reason": "A shared-account VPS invoice has no Sentinel marker or deployment match. Allocation is unknown; owner was asked. No unrelated invoice identifiers or amounts published."
+      }
+    ],
+    "refunds": "No Sentinel-specific refund found; absence is not proof that none exists.",
+    "successful_api_funding_payments": "No attributable receipt found; amounts and balances remain unknown."
+  }
+}

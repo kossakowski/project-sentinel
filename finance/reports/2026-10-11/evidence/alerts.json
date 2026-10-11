@@ -1,0 +1,75 @@
+{
+  "recorded_at": "2026-10-11T00:56:09.768517+00:00",
+  "effective_period": {
+    "start": "2026-03-21",
+    "end": "2026-10-11"
+  },
+  "evidence": {
+    "deduplication": "actual-looking provider SID primary key, then local alert id across snapshots; no SIDs retained in output",
+    "duplicate_sid_rows": 0,
+    "invalid_provider_sid_rows": [],
+    "monthly": {
+      "2026-03": {
+        "calls": 13,
+        "call_minutes": 13,
+        "duration_missing_completed": 0,
+        "voice_character_upper": 5503,
+        "voice_tts_upper_usd": 0.05360000000000002,
+        "sms": 64,
+        "sms_segments": 608,
+        "whatsapp": 17
+      },
+      "2026-04": {
+        "calls": 4,
+        "call_minutes": 4,
+        "duration_missing_completed": 0,
+        "voice_character_upper": 2076,
+        "voice_tts_upper_usd": 0.0176,
+        "sms": 90,
+        "sms_segments": 943,
+        "whatsapp": 0
+      },
+      "2026-05": {
+        "calls": 27,
+        "call_minutes": 27,
+        "duration_missing_completed": 0,
+        "voice_character_upper": 15377,
+        "voice_tts_upper_usd": 0.1352,
+        "sms": 260,
+        "sms_segments": 3015,
+        "whatsapp": 0
+      },
+      "2026-06": {
+        "calls": 28,
+        "call_minutes": 28,
+        "duration_missing_completed": 4,
+        "voice_character_upper": 15812,
+        "voice_tts_upper_usd": 0.13679999999999998,
+        "sms": 34,
+        "sms_segments": 343,
+        "whatsapp": 0
+      },
+      "2026-07": {
+        "calls": 57,
+        "call_minutes": 57,
+        "duration_missing_completed": 3,
+        "voice_character_upper": 35429,
+        "voice_tts_upper_usd": 0.3024,
+        "sms": 61,
+        "sms_segments": 509,
+        "whatsapp": 0
+      },
+      "2026-08": {
+        "calls": 18,
+        "call_minutes": 18,
+        "duration_missing_completed": 0,
+        "voice_character_upper": 11130,
+        "voice_tts_upper_usd": 0.09680000000000001,
+        "sms": 21,
+        "sms_segments": 149,
+        "whatsapp": 0
+      }
+    },
+    "tts_note": "Upper bound synthesizes all three Say blocks including repeated full text; early hangups and caching can lower charge. Zero-duration completed calls use 1 minute as conservative proxy."
+  }
+}

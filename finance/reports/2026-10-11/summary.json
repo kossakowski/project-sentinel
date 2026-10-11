@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-10-11",
+  "as_of_utc": "2026-10-11T00:38:49+00:00",
+  "historical_basis": "Attributable invoice/provider-reported consumption plus tariff reconstruction and annual purchase scenario; not a cash-payment total. Unverified taxes/credits/funding remain outside base totals.",
+  "historical": {
+    "EUR": {
+      "verified_cost": "13.4700000000",
+      "estimated_additions": "16.7578580000",
+      "reconstructed_total": "30.2278580000",
+      "reconstructed_low": "29.5366580000",
+      "reconstructed_high": "30.4006580000"
+    },
+    "USD": {
+      "verified_cost": "3.2630141728",
+      "estimated_additions": "506.7435782014",
+      "reconstructed_total": "510.0065923742",
+      "reconstructed_low": "391.9493512193",
+      "reconstructed_high": "626.7512103748"
+    },
+    "PLN": {
+      "verified_cost": "71.4758246493",
+      "estimated_additions": "1937.2488368824",
+      "reconstructed_total": "2008.7246615316",
+      "reconstructed_low": "1569.9631072062",
+      "reconstructed_high": "2438.6273063760"
+    }
+  },
+  "current_pln": "134.0871134266",
+  "current_low_pln": "88.3222100450",
+  "current_high_pln": "161.8143827151",
+  "current_native": {
+    "EUR": "4.4900000000",
+    "USD": "29.3250316300"
+  },
+  "production_api_30day_usd": "17.0750316300",
+  "production_api_31day_usd": "17.6441993510",
+  "production_api_ordinary_input_30day_usd": "14.9432644800",
+  "api_reservations_not_counted_usd": "0.0615143000",
+  "confirmed_cash_total": null,
+  "apple_annual_estimate_usd": "99",
+  "apple_remaining_service_value_estimate_usd": "63.1972602740",
+  "planning_fx": {
+    "EUR": {
+      "pln_per_unit": "4.3775000000",
+      "date": "2026-10-09",
+      "table": "197/A/NBP/2026"
+    },
+    "USD": {
+      "pln_per_unit": "3.9022000000",
+      "date": "2026-10-09",
+      "table": "197/A/NBP/2026"
+    }
+  },
+  "recommended_budget_pln": "200",
+  "provider_rows": 20,
+  "cost_items": 129,
+  "ledger_rows": 40,
+  "instruction_files_changed": false,
+  "subagents": {
+    "count": 3,
+    "peak_parallel": 3,
+    "model": "gpt-5.6-sol",
+    "repository_agent_reused_for_cost_refinement": true
+  }
+}

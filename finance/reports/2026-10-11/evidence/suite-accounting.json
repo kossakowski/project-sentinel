@@ -1,0 +1,194 @@
+{
+  "recorded_at": "2026-10-11T00:56:09.768517+00:00",
+  "effective_period": {
+    "start": "2026-03-21",
+    "end": "2026-10-11"
+  },
+  "evidence": [
+    {
+      "path": "data/eval/suite/runs/dev-baseline-20260924/calls.jsonl",
+      "groups": {
+        "openai/gpt-5.6-luna@openai": {
+          "rows": 447,
+          "known_cost": 447,
+          "reported_cost": 0.18818456999999983,
+          "retry_cost": 0,
+          "no_response_reserved": 0,
+          "attempts": 447
+        },
+        "anthropic/claude-haiku-4.5": {
+          "rows": 447,
+          "known_cost": 447,
+          "reported_cost": 2.0146290000000002,
+          "retry_cost": 0,
+          "no_response_reserved": 0,
+          "attempts": 447
+        }
+      }
+    },
+    {
+      "path": "data/eval/suite/runs/smoke-20260923/calls.jsonl",
+      "groups": {
+        "openai/gpt-5.6-luna": {
+          "rows": 5,
+          "known_cost": 5,
+          "reported_cost": 0.0023881999999999996,
+          "retry_cost": 0,
+          "no_response_reserved": 0,
+          "attempts": 5
+        },
+        "openai/gpt-6-luna": {
+          "rows": 5,
+          "known_cost": 5,
+          "reported_cost": 0.0010224000000000001,
+          "retry_cost": 0,
+          "no_response_reserved": 0,
+          "attempts": 5
+        },
+        "openai/gpt-5.6-luna-pro": {
+          "rows": 5,
+          "known_cost": 5,
+          "reported_cost": 0.0095202,
+          "retry_cost": 0,
+          "no_response_reserved": 0,
+          "attempts": 5
+        },
+        "openai/gpt-6-sol": {
+          "rows": 5,
+          "known_cost": 5,
+          "reported_cost": 0.020838,
+          "retry_cost": 0,
+          "no_response_reserved": 0,
+          "attempts": 5
+        },
+        "deepseek/deepseek-v4.1-flash": {
+          "rows": 5,
+          "known_cost": 5,
+          "reported_cost": 0.0009882699999999999,
+          "retry_cost": 0,
+          "no_response_reserved": 0,
+          "attempts": 5
+        },
+        "deepseek/deepseek-v4-flash-0731": {
+          "rows": 5,
+          "known_cost": 5,
+          "reported_cost": 0.0011424532,
+          "retry_cost": 0,
+          "no_response_reserved": 0,
+          "attempts": 5
+        },
+        "qwen/qwen3.8-flash": {
+          "rows": 5,
+          "known_cost": 5,
+          "reported_cost": 0.001241634,
+          "retry_cost": 0,
+          "no_response_reserved": 0,
+          "attempts": 5
+        },
+        "qwen/qwen3.7-flash": {
+          "rows": 5,
+          "known_cost": 0,
+          "reported_cost": 0,
+          "retry_cost": 0,
+          "no_response_reserved": 0,
+          "attempts": 5
+        },
+        "z-ai/glm-5.3-flash": {
+          "rows": 5,
+          "known_cost": 0,
+          "reported_cost": 0,
+          "retry_cost": 0,
+          "no_response_reserved": 0,
+          "attempts": 5
+        },
+        "google/gemini-3.1-flash-lite": {
+          "rows": 5,
+          "known_cost": 5,
+          "reported_cost": 0.00537,
+          "retry_cost": 0,
+          "no_response_reserved": 0,
+          "attempts": 5
+        },
+        "mistralai/mistral-small-2603": {
+          "rows": 5,
+          "known_cost": 0,
+          "reported_cost": 0,
+          "retry_cost": 0,
+          "no_response_reserved": 0,
+          "attempts": 5
+        },
+        "anthropic/claude-haiku-4.5": {
+          "rows": 5,
+          "known_cost": 5,
+          "reported_cost": 0.020952000000000002,
+          "retry_cost": 0,
+          "no_response_reserved": 0,
+          "attempts": 5
+        },
+        "anthropic/claude-sonnet-5": {
+          "rows": 5,
+          "known_cost": 5,
+          "reported_cost": 0.056634,
+          "retry_cost": 0,
+          "no_response_reserved": 0,
+          "attempts": 5
+        }
+      }
+    },
+    {
+      "path": "data/eval/suite/runs/smoke2-20260923/calls.jsonl",
+      "groups": {
+        "z-ai/glm-5.3-flash": {
+          "rows": 5,
+          "known_cost": 0,
+          "reported_cost": 0,
+          "retry_cost": 0,
+          "no_response_reserved": 0,
+          "attempts": 5
+        },
+        "mistralai/mistral-small-2603": {
+          "rows": 5,
+          "known_cost": 1,
+          "reported_cost": 0.0004266,
+          "retry_cost": 0,
+          "no_response_reserved": 0,
+          "attempts": 5
+        }
+      }
+    },
+    {
+      "path": "data/eval/suite/runs/smoke3-20260923/calls.jsonl",
+      "groups": {
+        "z-ai/glm-5.3-flash": {
+          "rows": 5,
+          "known_cost": 0,
+          "reported_cost": 0,
+          "retry_cost": 0,
+          "no_response_reserved": 0,
+          "attempts": 20
+        },
+        "mistralai/mistral-small-2603": {
+          "rows": 5,
+          "known_cost": 0,
+          "reported_cost": 0,
+          "retry_cost": 0,
+          "no_response_reserved": 0,
+          "attempts": 20
+        }
+      }
+    },
+    {
+      "path": "data/eval/suite/runs/smoke4-20260923/calls.jsonl",
+      "groups": {
+        "z-ai/glm-5.3-flash": {
+          "rows": 6,
+          "known_cost": 6,
+          "reported_cost": 0.0026888999999999997,
+          "retry_cost": 0,
+          "no_response_reserved": 0,
+          "attempts": 8
+        }
+      }
+    }
+  ]
+}

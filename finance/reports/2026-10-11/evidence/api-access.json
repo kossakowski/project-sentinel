@@ -1,0 +1,33 @@
+{
+  "recorded_at": "2026-10-11T00:56:09.768517+00:00",
+  "effective_period": {
+    "start": "2026-03-21",
+    "end": "2026-10-11"
+  },
+  "evidence": [
+    {
+      "provider": "OpenAI",
+      "read_only_endpoint": "https://api.openai.com/v1/organization/costs",
+      "http_status": 403,
+      "error_type": "not_authorized_or_unavailable"
+    },
+    {
+      "provider": "Anthropic",
+      "read_only_endpoint": "https://api.anthropic.com/v1/organizations/cost_report",
+      "http_status": 401,
+      "error_type": "authentication_error"
+    },
+    {
+      "provider": "OpenRouter",
+      "read_only_endpoint": "https://openrouter.ai/api/v1/credits",
+      "http_status": 401,
+      "error_type": "not_authorized"
+    },
+    {
+      "provider": "Twilio",
+      "read_only_endpoint": "https://api.twilio.com/2010-04-01/Accounts/[account]/Usage/Records/Monthly.json",
+      "http_status": 401,
+      "error_type": "not_authorized"
+    }
+  ]
+}

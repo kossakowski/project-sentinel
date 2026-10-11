@@ -1,0 +1,374 @@
+{
+  "recorded_at": "2026-10-11T00:56:09.768517+00:00",
+  "effective_period": {
+    "start": "2026-03-21",
+    "end": "2026-10-11"
+  },
+  "evidence": {
+    "scope": "Public list-price research for Project Sentinel, March-October 2026; no authenticated billing data and no paid API calls.",
+    "currency_note": "Provider-native currencies are preserved. No FX conversion is applied.",
+    "sentinel_configuration": {
+      "live_provider": "openai",
+      "live_model": "gpt-5.6-luna",
+      "reasoning_effort": "none",
+      "configured_standard_rates_usd_per_million": {
+        "input": 0.2,
+        "cached_input": 0.02,
+        "cache_write": 0.25,
+        "output": 1.2
+      },
+      "legacy_rollback_model": "claude-haiku-4-5-20251001",
+      "repo_evidence": [
+        "config/config.yaml",
+        "sentinel/config.py",
+        "docs/ideas/model-comparison-v2-run-record.md"
+      ]
+    },
+    "providers": {
+      "hetzner": {
+        "service": "CX23 in Germany/Finland",
+        "prices_exclude_vat": true,
+        "timeline": [
+          {
+            "period": "2026-03-01/2026-03-31",
+            "cx23_base_eur": null,
+            "status": "unknown_from_retained_official_public_sources",
+            "note": "Hetzner confirms a general increase effective 2026-04-01 for existing and new products, but the retained official announcement does not enumerate the pre-April CX23 tariff. Use the March invoice or authenticated price record."
+          },
+          {
+            "period": "2026-04-01/2026-06-15T07:59:59+02:00",
+            "cx23_base_eur_per_hour": 0.0064,
+            "cx23_base_eur_per_month_cap": 3.99,
+            "primary_ipv4_eur_per_hour": 0.0008,
+            "primary_ipv4_eur_per_month": 0.5,
+            "cx23_plus_ipv4_eur_per_hour": 0.0072,
+            "cx23_plus_ipv4_eur_per_month_cap": 4.49,
+            "backup_percent_of_server_base": 20,
+            "backup_eur_per_month": 0.798,
+            "status": "supported_by_June_old-price_table_plus_April_effective-date_statement"
+          },
+          {
+            "period": "2026-06-15T08:00:00+02:00/2026-10-11",
+            "legacy_existing_instance": {
+              "cx23_base_eur_per_hour": 0.0064,
+              "cx23_base_eur_per_month_cap": 3.99,
+              "primary_ipv4_eur_per_hour": 0.0008,
+              "primary_ipv4_eur_per_month": 0.5,
+              "cx23_plus_ipv4_eur_per_month_cap": 4.49,
+              "backup_eur_per_month": 0.798
+            },
+            "new_or_rescaled_instance": {
+              "cx23_base_eur_per_hour": 0.0088,
+              "cx23_base_eur_per_month_cap": 5.49,
+              "primary_ipv4_eur_per_hour": 0.0008,
+              "primary_ipv4_eur_per_month": 0.5,
+              "cx23_plus_ipv4_eur_per_hour": 0.0096,
+              "cx23_plus_ipv4_eur_per_month_cap": 5.99,
+              "backup_eur_per_month": 1.098
+            },
+            "note": "The 15 June increase applied to new orders and rescales. Existing rented servers kept the prior tariff unless a documented triggering action changed the price scheme."
+          }
+        ],
+        "storage_and_backups": {
+          "backups": {
+            "rate": "20% of server price",
+            "slots": 7,
+            "billing": "monthly flat charge"
+          },
+          "snapshots": {
+            "current_eur_per_compressed_gb_month": 0.0143,
+            "historic_pre_current_official_page_value_eur_per_gb_month": 0.011,
+            "historic_change_date": "not_explicitly_preserved_in_current_official_rate_page",
+            "inference": "The April 1 general price-change announcement is the plausible boundary, but the retained official announcement does not enumerate Snapshot rates. Treat the date as unverified until an invoice or contemporaneous official price table confirms it.",
+            "billing": "pro rata for the fraction of a month; compressed stored size"
+          },
+          "volumes": {
+            "current_eur_per_gb_month": 0.044,
+            "billing": "hourly/pro rata",
+            "june_2026_change": false,
+            "historic_march_to_may_status": "not conclusively established by retained official public sources"
+          }
+        },
+        "vat_poland": {
+          "without_valid_eu_vat_id_percent": 23,
+          "with_valid_polish_eu_vat_id": "reverse charge; Hetzner invoice without German VAT",
+          "examples_at_23_percent": {
+            "post_april_legacy_cx23_plus_ipv4_eur": 5.5227,
+            "post_june_new_cx23_plus_ipv4_eur": 7.3677,
+            "post_april_legacy_backup_eur": 0.98154,
+            "post_june_new_backup_eur": 1.35054,
+            "current_snapshot_eur_per_gb_month": 0.017589,
+            "current_volume_eur_per_gb_month": 0.05412
+          },
+          "rounding_note": "Examples are arithmetic before invoice-level rounding."
+        },
+        "sources": [
+          "https://www.hetzner.com/pressroom/statement-price-adjustment/",
+          "https://docs.hetzner.com/general/infrastructure-and-availability/price-adjustment/",
+          "https://www.hetzner.com/pressroom/standardization-and-price-adjustment-of-our-server-products/",
+          "https://docs.hetzner.com/cloud/servers/overview/",
+          "https://docs.hetzner.com/cloud/billing/faq/",
+          "https://website-price-api.hetzner.com/api/v1/products/CLOUD_24",
+          "https://www.hetzner.com/cloud/block-storage/",
+          "https://docs.hetzner.com/de/general/billing-and-account-management/billing-at-hetzner/value-added-tax/"
+        ]
+      },
+      "openai": {
+        "gpt-5.6-luna": {
+          "model_id": "gpt-5.6-luna",
+          "released": "2026-07-09",
+          "timeline_usd_per_million_tokens": [
+            {
+              "period": "2026-07-09/2026-07-29",
+              "standard_short_context": {
+                "input": 1.0,
+                "cached_input": 0.1,
+                "cache_write": 1.25,
+                "output": 6.0
+              },
+              "derivation": "Official launch tariff plus the official statement that 30 July reduced Luna by 80%; cache read is 10% and cache write is 1.25x input."
+            },
+            {
+              "period": "2026-07-30/2026-10-11",
+              "standard_short_context": {
+                "input": 0.2,
+                "cached_input": 0.02,
+                "cache_write": 0.25,
+                "output": 1.2
+              },
+              "standard_long_context_over_272k_input": {
+                "input": 0.4,
+                "cached_input": 0.04,
+                "cache_write": 0.5,
+                "output": 1.8
+              },
+              "batch_or_flex_short_context": {
+                "input": 0.1,
+                "cached_input": 0.01,
+                "cache_write": 0.125,
+                "output": 0.6
+              }
+            }
+          ],
+          "sentinel_applicability": "Sentinel uses standard processing, reasoning effort none, short prompts, and no OpenAI built-in tools. Batch/Flex/Fast rates are not the live tariff."
+        },
+        "gpt-6-luna": {
+          "model_id": "gpt-6-luna",
+          "released": "2026-09-22",
+          "standard_short_context_usd_per_million": {
+            "input": 0.1,
+            "cached_input": 0.01,
+            "cache_write": 0.125,
+            "output": 0.5
+          },
+          "standard_long_context_over_272k_input_usd_per_million": {
+            "input": 0.2,
+            "cached_input": 0.02,
+            "cache_write": 0.25,
+            "output": 0.75
+          },
+          "batch_or_flex_short_context_usd_per_million": {
+            "input": 0.05,
+            "cached_input": 0.005,
+            "cache_write": 0.0625,
+            "output": 0.25
+          },
+          "fast_short_context_usd_per_million": {
+            "input": 0.2,
+            "cached_input": 0.02,
+            "cache_write": 0.25,
+            "output": 1.0
+          },
+          "regional_processing_premium_percent": 10
+        },
+        "billing_rules": {
+          "reasoning_tokens": "included in output tokens and billed at output rate",
+          "responses_api_fee": "none separate; model token usage is billed",
+          "built_in_tools": "may add per-call and token charges, but Sentinel classification does not invoke them",
+          "batch_discount": "50% of Standard where available"
+        },
+        "sources": [
+          "https://developers.openai.com/api/docs/models/gpt-5.6-luna",
+          "https://developers.openai.com/api/docs/models/gpt-6-luna",
+          "https://developers.openai.com/api/docs/changelog",
+          "https://developers.openai.com/api/docs/pricing",
+          "https://developers.openai.com/api/docs/guides/agents-api/observability"
+        ]
+      },
+      "anthropic": {
+        "model_id": "claude-haiku-4-5-20251001",
+        "role": "legacy Sentinel rollback path",
+        "standard_usd_per_million": {
+          "input": 1.0,
+          "output": 5.0,
+          "cache_write_5m": 1.25,
+          "cache_write_1h": 2.0,
+          "cache_read": 0.1
+        },
+        "batch_usd_per_million": {
+          "input": 0.5,
+          "output": 2.5,
+          "cache_write_5m": 0.625,
+          "cache_write_1h": 1.0,
+          "cache_read": 0.05
+        },
+        "tool_billing": "Client tool schemas/results consume normal input tokens. Server-side tools can add usage charges. Sentinel's rollback classifier does not use server-side tools.",
+        "march_october_price_change_found": false,
+        "sources": [
+          "https://platform.claude.com/docs/en/models/haiku-4-5/overview",
+          "https://platform.claude.com/docs/en/about-claude/pricing"
+        ]
+      },
+      "openrouter": {
+        "run_date": "2026-09-20",
+        "pricing_note": "Inference is passed through at provider rates. Standard credit purchases carry a separate 5.5% platform fee, with a stated $0.80 minimum per purchase. The fee is not part of per-request inference cost.",
+        "models": [
+          {
+            "model": "anthropic/claude-haiku-4.5",
+            "pinned_endpoint_in_run": "amazon-bedrock/global",
+            "current_endpoint_usd_per_million": {
+              "input": 1.0,
+              "output": 5.0,
+              "cache_read": 0.1,
+              "cache_write_5m": 1.25,
+              "cache_write_1h": 2.0
+            },
+            "run_reported_cost_usd": {
+              "development_36_calls": 0.1686,
+              "holdout_64_calls": 0.29322
+            }
+          },
+          {
+            "model": "deepseek/deepseek-v4.1-flash",
+            "pinned_endpoint_in_run": "deepinfra/fp8",
+            "current_endpoint_usd_per_million_as_of_2026-10-11": {
+              "input": 0.14,
+              "output": 0.42,
+              "cache_read": 0.0042,
+              "displayed_discount_fraction": 0.3
+            },
+            "historic_2026-09-20_list_tariff": "not archived in the run report or retained official public catalogue",
+            "run_reported_cost_usd": {
+              "development_36_calls": 0.0086772224,
+              "holdout_64_calls": 0.0141470504
+            }
+          },
+          {
+            "model": "qwen/qwen3.8-flash",
+            "pinned_endpoint_in_run": "alibaba",
+            "current_endpoint_usd_per_million": {
+              "input": 0.15,
+              "output": 0.47,
+              "cache_read": 0.016,
+              "cache_write_5m": 0.2
+            },
+            "run_reported_cost_usd": {
+              "development_36_calls": 0.00986736,
+              "holdout_64_calls": 0.016583594
+            }
+          },
+          {
+            "model": "openai/gpt-5.6-luna",
+            "pinned_endpoint_in_run": "openai",
+            "current_endpoint_usd_per_million": {
+              "input": 0.2,
+              "output": 1.2,
+              "cache_read": 0.02,
+              "cache_write": 0.25
+            },
+            "run_reported_cost_usd": {
+              "development_36_calls": 0.01694245,
+              "holdout_64_calls": 0.02848325
+            }
+          }
+        ],
+        "sources": [
+          "https://openrouter.ai/api/v1/models",
+          "https://openrouter.ai/api/v1/models/anthropic/claude-haiku-4.5/endpoints",
+          "https://openrouter.ai/api/v1/models/deepseek/deepseek-v4.1-flash/endpoints",
+          "https://openrouter.ai/api/v1/models/qwen/qwen3.8-flash/endpoints",
+          "https://openrouter.ai/api/v1/models/openai/gpt-5.6-luna/endpoints",
+          "https://openrouter.ai/pricing/"
+        ]
+      },
+      "typesafe_jev": {
+        "model_alias": "jev-latest",
+        "model_version": "jev-1.13.0",
+        "verified": "2026-10-11 live official page; local facts last verified 2026-10-03",
+        "usd_per_million_input_tokens": 0.042,
+        "usd_per_billion_input_tokens": 42.0,
+        "output_tokens": "free",
+        "historic_march_october_tariff": "Official current documentation does not publish price history; do not back-cast before the verified snapshot.",
+        "sources": [
+          "https://docs.typesafe.ai/models.md",
+          "https://docs.typesafe.ai/api.md"
+        ]
+      },
+      "twilio_poland": {
+        "number_type": "Polish mobile +48",
+        "monthly_number_usd": 4.0,
+        "outbound_voice_to_polish_mobile_from_eea_usd_per_minute": 0.0715,
+        "outbound_voice_to_polish_mobile_non_eea_usd_per_minute": 0.2202,
+        "inbound_voice_to_polish_mobile_number_usd_per_minute": 0.0107,
+        "voice_billing": "Each call leg is billed separately; partial minutes are rounded up to the next minute. A +48 caller ID in E.164 qualifies for from-EEA pricing.",
+        "sms": {
+          "outbound_usd_per_segment": 0.0457,
+          "inbound_usd_per_segment": 0.0075,
+          "failed_status_processing_fee_usd_per_message": 0.001,
+          "note": "SMS is billed per segment, not per logical message."
+        },
+        "tts_polly_ewa": {
+          "tier": "Amazon Polly Standard",
+          "usd_per_100_characters": 0.0008,
+          "billing": "Rounded in 100-character blocks at the end of each call, minimum 100 characters. Repeated Say text is synthesized usage and must be counted each time it executes."
+        },
+        "historical_status": "The public Voice page labels its tariff current as of August 2026 and the SMS page labels its tariff current as of October 2026. Twilio does not expose a public historical Poland rate table for March-July 2026; use invoices or authenticated pricing history for those months.",
+        "sources": [
+          "https://www.twilio.com/en-us/voice/pricing/pl",
+          "https://www.twilio.com/en-us/sms/pricing/pl",
+          "https://help.twilio.com/articles/223183188",
+          "https://www.twilio.com/en-us/changelog/new-text-to-speech-voices-for-say-update-03-2025",
+          "https://www.twilio.com/docs/voice/twiml/say/text-speech"
+        ]
+      },
+      "expo_eas": {
+        "expo_push_service_cost_usd": 0,
+        "rate_limit": "600 notifications per second per project",
+        "eas_note": "EAS subscriptions/build/update charges are separate from free Expo Push. Shared EAS charges require Sentinel allocation; they are not covered by the exclusion for shared Claude Code/Codex subscriptions.",
+        "current_eas_plan_reference": {
+          "free_usd_per_month": 0,
+          "starter_usd_per_month": 19,
+          "production_usd_per_month": 199
+        },
+        "sources": [
+          "https://docs.expo.dev/push-notifications/faq/",
+          "https://expo.dev/pricing"
+        ]
+      },
+      "apple_developer": {
+        "program": "Apple Developer Program",
+        "usd_per_membership_year": 99,
+        "monthly_accrual_if_prorated_usd": 8.25,
+        "tax_note": "Local-currency price and regional tax can apply. Use the purchase receipt for actual PLN/VAT.",
+        "note": "This is an annual membership needed for distribution and push credentials; monthly accrual is an accounting allocation, not Apple's billing cadence.",
+        "sources": [
+          "https://developer.apple.com/support/compare-memberships/",
+          "https://developer.apple.com/help/account/membership/program-enrollment/"
+        ]
+      }
+    },
+    "excluded": [
+      "owner time",
+      "shared Claude Code/Codex subscriptions",
+      "Google Vision"
+    ],
+    "unsupported_or_needs_invoice": [
+      "Exact March 2026 Hetzner CX23 list rate in retained official public sources",
+      "Exact effective date of the Snapshot change from EUR 0.011 to EUR 0.0143 in a retained official per-SKU table",
+      "Twilio Poland Voice/SMS tariff history before the public pages' August/October 2026 as-of dates",
+      "DeepInfra endpoint list tariff on the 2026-09-20 OpenRouter run date",
+      "Jev tariffs before the 2026-10-03 verified official snapshot",
+      "Actual taxes, account discounts, credits, and FX charged on invoices"
+    ]
+  }
+}
