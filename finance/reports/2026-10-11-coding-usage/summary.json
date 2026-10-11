@@ -1,0 +1,46 @@
+{
+  "recorded_at": "2026-10-11",
+  "effective_period": {
+    "start": "2026-05-28T20:15:38.130Z",
+    "end": "2026-10-10T21:23:35.052Z"
+  },
+  "conditional_standard_global_token_valuation_usd": "1792.96201335",
+  "attributable_paid_cost": null,
+  "paid_cost_status": "Unknown; not booked",
+  "finance_baseline_change": "None",
+  "by_model": {
+    "claude-fable-5": "528.8600785",
+    "claude-fable-5-1": "46.16968825",
+    "claude-haiku-4-5-20251001": "3.72026940",
+    "claude-opus-4-7": "0.853217",
+    "claude-opus-4-8": "983.87247150",
+    "claude-opus-5": "9.0107985",
+    "claude-opus-5-5": "206.4744402",
+    "claude-sonnet-4-6": "3.2771268",
+    "claude-sonnet-5": "6.8215473",
+    "claude-sonnet-5-5": "3.9023759"
+  },
+  "scenarios": [
+    "If usage was entirely included in excluded shared subscriptions, incremental project spending is zero.",
+    "If all observed usage was separately paid via the Standard global API, token consumption would be USD 1792.96201335 before taxes, credits, discounts or tool charges.",
+    "Mixed subscription and paid usage requires request-level allocation; neither endpoint is established as the actual bill."
+  ],
+  "gaps": [
+    "No matching coding transcripts before May 28; no invented tokens for March 21\u2013May 27.",
+    "No historical session billing-route metadata or authoritative provider balance ledger.",
+    "Partial virtual cost-state records report 40 web searches while per-message counters report zero. Separate tool costs remain unresolved; virtual states are not added.",
+    "Failed or unrecorded requests and background provider usage may be absent.",
+    "Current Claude Max and Codex ChatGPT authentication do not prove historical routes or absence of paid extra usage.",
+    "Shared extra-usage purchase exists but Sentinel allocation is unknown."
+  ],
+  "currency_conversion": "No PLN equivalent: this hypothetical tariff valuation is not a payment or established historical cost.",
+  "validation": {
+    "priced_model_month_rows": 14,
+    "unique_assistant_records": 11002,
+    "duplicates_removed": 17279,
+    "token_totals_reconciled": true,
+    "release_and_rate_date_checks": true,
+    "thinking_not_counted_twice": true,
+    "virtual_costs_not_added": true
+  }
+}

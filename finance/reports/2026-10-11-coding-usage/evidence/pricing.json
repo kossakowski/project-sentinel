@@ -1,0 +1,488 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-10-11T00:00:00+02:00",
+  "purpose": "Official Anthropic API list-price timeline for exact Claude model IDs observed in Project Sentinel Claude Code transcripts.",
+  "usage_evidence_path": "usage.json",
+  "pricing_unit": "USD per 1,000,000 tokens unless otherwise stated",
+  "billing_status": {
+    "actual_paid_route": "Unknown",
+    "attributable_paid_cost": null,
+    "shared_claude_code_subscription": "Excluded",
+    "finance_baseline_effect": "None. This file is tariff evidence for a hypothetical first-party API scenario only.",
+    "warning": "Transcript token counters and Claude Code virtual cost states are not invoices and do not prove API-key billing, subscription inclusion, or separately billed extra usage."
+  },
+  "hypothetical_standard_global_api_formula": {
+    "expression": "(input_tokens * input + cache_creation_ephemeral_5m_input_tokens * cache_write_5m + cache_creation_ephemeral_1h_input_tokens * cache_write_1h + cache_read_input_tokens * cache_read + output_tokens * output) / 1000000",
+    "thinking_rule": "thinking_tokens are already a subset of output_tokens and must not be added again",
+    "tool_rule": "Tool schemas, tool calls, tool results, and tool-system prompts are billed through token usage. Do not add current documented tool-token overhead again when the observed usage counters already include it.",
+    "not_applied_here": false
+  },
+  "global_modifiers": {
+    "batch": {
+      "discount_fraction": 0.5,
+      "applies_to": "input and output token prices; prompt-cache modifiers also apply",
+      "observed_in_usage_evidence": false
+    },
+    "first_party_us_only_inference": {
+      "multiplier": 1.1,
+      "applies_to_models": "Claude 4.6 and later",
+      "applies_to": "input, output, cache writes, and cache reads",
+      "observed_in_usage_evidence": "Unknown; service_tier=standard does not establish inference geography",
+      "included_in_model_rates_below": false
+    },
+    "partner_regional_or_multi_region": {
+      "multiplier": 1.1,
+      "scope": "Partner-operated Bedrock/Google regional pricing for Claude 4.5 and later",
+      "observed_route": "Unknown",
+      "included_in_model_rates_below": false
+    },
+    "priority_tier": {
+      "price": "Contract-specific; no public per-token list price substituted",
+      "observed_in_usage_evidence": false,
+      "evidence": "All non-synthetic observed model records report service_tier=standard"
+    }
+  },
+  "models": [
+    {
+      "model_id": "claude-opus-4-7",
+      "release_date": "2026-04-16",
+      "observed_usage_window": {
+        "first": "2026-05-28T20:15:38.130Z",
+        "last": "2026-05-29T17:53:58.911Z",
+        "messages": 3,
+        "speed_counts": {
+          "standard": 3
+        },
+        "service_tier_counts": {
+          "standard": 3
+        }
+      },
+      "standard_global_price": {
+        "effective_from": "2026-04-16",
+        "effective_to": null,
+        "input": 5.0,
+        "output": 25.0,
+        "cache_write_5m": 6.25,
+        "cache_write_1h": 10.0,
+        "cache_read": 0.5
+      },
+      "fast_mode": {
+        "available_during_observed_window": true,
+        "effective_from": "2026-05-12",
+        "historic_input": 30.0,
+        "historic_output": 150.0,
+        "historic_cache_write_5m": 37.5,
+        "historic_cache_write_1h": 60.0,
+        "historic_cache_read": 3.0,
+        "deprecated": "2026-06-25",
+        "exact_removal_date": "2026-07-24",
+        "current_status": "Unavailable; current fast requests return an error",
+        "applied_to_observed_usage": false
+      },
+      "batch_input": 2.5,
+      "batch_output": 12.5,
+      "sources": [
+        "https://platform.claude.com/docs/en/models/opus-4-7/overview",
+        "https://platform.claude.com/docs/en/release-notes/overview",
+        "https://www-cdn.anthropic.com/files/4zrzovbb/website/5678bc2f5978e5bcd4f1fe7c14b2c72284dcf9f8.pdf",
+        "https://www.anthropic.com/news/claude-opus-4-7"
+      ]
+    },
+    {
+      "model_id": "claude-opus-4-8",
+      "release_date": "2026-05-28",
+      "observed_usage_window": {
+        "first": "2026-05-28T20:27:50.001Z",
+        "last": "2026-07-12T13:11:53.847Z",
+        "messages": 6413,
+        "speed_counts": {
+          "standard": 5116,
+          "unspecified": 1297
+        },
+        "service_tier_counts": {
+          "standard": 6413
+        }
+      },
+      "standard_global_price": {
+        "effective_from": "2026-05-28",
+        "effective_to": null,
+        "input": 5.0,
+        "output": 25.0,
+        "cache_write_5m": 6.25,
+        "cache_write_1h": 10.0,
+        "cache_read": 0.5
+      },
+      "fast_mode": {
+        "available_during_observed_window": true,
+        "effective_from": "2026-05-28",
+        "input": 10.0,
+        "output": 50.0,
+        "cache_write_5m": 12.5,
+        "cache_write_1h": 20.0,
+        "cache_read": 1.0,
+        "applied_to_observed_usage": false,
+        "evidence": "No observed record has speed=fast; unspecified speed is not treated as fast"
+      },
+      "batch_input": 2.5,
+      "batch_output": 12.5,
+      "sources": [
+        "https://platform.claude.com/docs/en/models/opus-4-8/overview",
+        "https://www.anthropic.com/news/claude-opus-4-8",
+        "https://platform.claude.com/docs/en/about-claude/pricing"
+      ]
+    },
+    {
+      "model_id": "claude-fable-5",
+      "release_date": "2026-06-09",
+      "observed_usage_window": {
+        "first": "2026-07-11T01:05:00.297Z",
+        "last": "2026-07-31T01:29:54.383Z",
+        "messages": 1318,
+        "speed_counts": {
+          "standard": 1235,
+          "unspecified": 83
+        },
+        "service_tier_counts": {
+          "standard": 1318
+        }
+      },
+      "standard_global_price": {
+        "effective_from": "2026-06-09",
+        "effective_to": null,
+        "input": 10.0,
+        "output": 50.0,
+        "cache_write_5m": 12.5,
+        "cache_write_1h": 20.0,
+        "cache_read": 1.0
+      },
+      "fast_mode": {
+        "available": false,
+        "price": null
+      },
+      "batch_input": 5.0,
+      "batch_output": 25.0,
+      "availability_note": "Anthropic release notes say access was restored on 2026-07-01; the observed window begins after restoration.",
+      "sources": [
+        "https://platform.claude.com/docs/en/models/fable-5/overview",
+        "https://platform.claude.com/docs/en/release-notes/overview",
+        "https://platform.claude.com/docs/en/about-claude/pricing"
+      ]
+    },
+    {
+      "model_id": "claude-sonnet-4-6",
+      "release_date": "2026-02-17",
+      "observed_usage_window": {
+        "first": "2026-07-11T18:14:32.596Z",
+        "last": "2026-07-30T07:51:14.695Z",
+        "messages": 78,
+        "speed_counts": {
+          "standard": 65,
+          "unspecified": 13
+        },
+        "service_tier_counts": {
+          "standard": 78
+        }
+      },
+      "standard_global_price": {
+        "effective_from": "2026-02-17",
+        "effective_to": null,
+        "input": 3.0,
+        "output": 15.0,
+        "cache_write_5m": 3.75,
+        "cache_write_1h": 6.0,
+        "cache_read": 0.3
+      },
+      "fast_mode": {
+        "available": false,
+        "price": null
+      },
+      "batch_input": 1.5,
+      "batch_output": 7.5,
+      "sources": [
+        "https://platform.claude.com/docs/en/models/sonnet-4-6/overview",
+        "https://platform.claude.com/docs/en/about-claude/pricing"
+      ]
+    },
+    {
+      "model_id": "claude-opus-5",
+      "release_date": "2026-07-24",
+      "observed_usage_window": {
+        "first": "2026-07-30T07:45:36.913Z",
+        "last": "2026-07-30T08:28:31.421Z",
+        "messages": 95,
+        "speed_counts": {
+          "standard": 95
+        },
+        "service_tier_counts": {
+          "standard": 95
+        }
+      },
+      "standard_global_price": {
+        "effective_from": "2026-07-24",
+        "effective_to": null,
+        "input": 5.0,
+        "output": 25.0,
+        "cache_write_5m": 6.25,
+        "cache_write_1h": 10.0,
+        "cache_read": 0.5
+      },
+      "fast_mode": {
+        "available_during_observed_window": true,
+        "input": 10.0,
+        "output": 50.0,
+        "cache_write_5m": 12.5,
+        "cache_write_1h": 20.0,
+        "cache_read": 1.0,
+        "applied_to_observed_usage": false
+      },
+      "batch_input": 2.5,
+      "batch_output": 12.5,
+      "sources": [
+        "https://platform.claude.com/docs/en/models/opus-5/overview",
+        "https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-7",
+        "https://platform.claude.com/docs/en/about-claude/pricing"
+      ]
+    },
+    {
+      "model_id": "claude-sonnet-5",
+      "release_date": "2026-06-30",
+      "observed_usage_window": {
+        "first": "2026-09-23T19:23:22.693Z",
+        "last": "2026-09-24T15:02:33.076Z",
+        "messages": 165,
+        "speed_counts": {
+          "standard": 162,
+          "unspecified": 3
+        },
+        "service_tier_counts": {
+          "standard": 165
+        }
+      },
+      "standard_global_price": {
+        "effective_from": "2026-06-30",
+        "effective_to": null,
+        "input": 2.0,
+        "output": 10.0,
+        "cache_write_5m": 2.5,
+        "cache_write_1h": 4.0,
+        "cache_read": 0.2
+      },
+      "price_history_note": "The $2/$10 launch price was initially described as introductory and became the standard price on 2026-08-10; the numeric rate did not change.",
+      "fast_mode": {
+        "available": false,
+        "price": null
+      },
+      "batch_input": 1.0,
+      "batch_output": 5.0,
+      "sources": [
+        "https://platform.claude.com/docs/en/models/sonnet-5/overview",
+        "https://platform.claude.com/docs/en/release-notes/overview",
+        "https://platform.claude.com/docs/en/about-claude/pricing"
+      ]
+    },
+    {
+      "model_id": "claude-opus-5-5",
+      "release_date": "2026-09-22",
+      "observed_usage_window": {
+        "first": "2026-09-23T19:19:04.515Z",
+        "last": "2026-10-10T21:23:35.052Z",
+        "messages": 2245,
+        "speed_counts": {
+          "standard": 2237,
+          "unspecified": 8
+        },
+        "service_tier_counts": {
+          "standard": 2245
+        }
+      },
+      "standard_global_price": {
+        "effective_from": "2026-09-22",
+        "effective_to": null,
+        "input": 4.0,
+        "output": 20.0,
+        "cache_write_5m": 5.0,
+        "cache_write_1h": 8.0,
+        "cache_read": 0.2
+      },
+      "fast_mode": {
+        "available_during_observed_window": true,
+        "input": 8.0,
+        "output": 40.0,
+        "cache_write_5m": 10.0,
+        "cache_write_1h": 16.0,
+        "cache_read": 0.4,
+        "applied_to_observed_usage": false,
+        "derivation": "Anthropic states fast rates are $8/$40 and prompt-cache multipliers stack; Opus 5.5 cache reads use the documented 0.05x input multiplier."
+      },
+      "batch_input": 2.0,
+      "batch_output": 10.0,
+      "sources": [
+        "https://platform.claude.com/docs/en/models/opus-5-5/overview",
+        "https://platform.claude.com/docs/en/models/opus-5-5/whats-new-opus-5-5",
+        "https://platform.claude.com/docs/en/build-with-claude/fast-mode",
+        "https://platform.claude.com/docs/en/about-claude/pricing"
+      ]
+    },
+    {
+      "model_id": "claude-fable-5-1",
+      "release_date": "2026-09-01",
+      "observed_usage_window": {
+        "first": "2026-10-03T11:51:23.489Z",
+        "last": "2026-10-03T13:50:23.504Z",
+        "messages": 203,
+        "speed_counts": {
+          "standard": 201,
+          "unspecified": 2
+        },
+        "service_tier_counts": {
+          "standard": 203
+        }
+      },
+      "standard_global_price": {
+        "effective_from": "2026-09-01",
+        "effective_to": null,
+        "input": 10.0,
+        "output": 50.0,
+        "cache_write_5m": 12.5,
+        "cache_write_1h": 20.0,
+        "cache_read": 0.25
+      },
+      "price_history_note": "Input, output, and cache-write prices match Fable 5; Fable 5.1 launched with cache reads reduced from $1.00 to $0.25 per MTok.",
+      "fast_mode": {
+        "available": false,
+        "price": null
+      },
+      "batch_input": 5.0,
+      "batch_output": 25.0,
+      "sources": [
+        "https://platform.claude.com/docs/en/models/fable-5-1/overview",
+        "https://platform.claude.com/docs/en/models/fable-5-1/whats-new-fable-5-1",
+        "https://platform.claude.com/docs/en/about-claude/pricing"
+      ]
+    },
+    {
+      "model_id": "claude-sonnet-5-5",
+      "release_date": "2026-09-28",
+      "observed_usage_window": {
+        "first": "2026-10-03T11:26:50.760Z",
+        "last": "2026-10-10T19:37:15.333Z",
+        "messages": 103,
+        "speed_counts": {
+          "standard": 101,
+          "unspecified": 2
+        },
+        "service_tier_counts": {
+          "standard": 103
+        }
+      },
+      "standard_global_price": {
+        "effective_from": "2026-09-28",
+        "effective_to": null,
+        "input": 2.0,
+        "output": 10.0,
+        "cache_write_5m": 2.5,
+        "cache_write_1h": 4.0,
+        "cache_read": 0.1
+      },
+      "price_history_note": "Input, output, and cache-write prices match Sonnet 5; Sonnet 5.5 launched with cache reads reduced from $0.20 to $0.10 per MTok.",
+      "fast_mode": {
+        "available": false,
+        "price": null
+      },
+      "batch_input": 1.0,
+      "batch_output": 5.0,
+      "sources": [
+        "https://platform.claude.com/docs/en/models/sonnet-5-5/overview",
+        "https://platform.claude.com/docs/en/about-claude/pricing"
+      ]
+    },
+    {
+      "model_id": "claude-haiku-4-5-20251001",
+      "release_date": "2025-10-15",
+      "observed_usage_window": {
+        "first": "2026-05-29T18:13:27.889Z",
+        "last": "2026-06-05T13:00:31.277Z",
+        "messages": 327,
+        "speed_counts": {
+          "standard": 259,
+          "unspecified": 68
+        },
+        "service_tier_counts": {
+          "standard": 327
+        }
+      },
+      "standard_global_price": {
+        "effective_from": "2025-10-15",
+        "effective_to": null,
+        "input": 1.0,
+        "output": 5.0,
+        "cache_write_5m": 1.25,
+        "cache_write_1h": 2.0,
+        "cache_read": 0.1
+      },
+      "fast_mode": {
+        "available": false,
+        "price": null
+      },
+      "batch_input": 0.5,
+      "batch_output": 2.5,
+      "sources": [
+        "https://platform.claude.com/docs/en/models/haiku-4-5/overview",
+        "https://www.anthropic.com/news/claude-haiku-4-5",
+        "https://platform.claude.com/docs/en/about-claude/pricing"
+      ]
+    }
+  ],
+  "tool_pricing": {
+    "applicability_to_observed_by_model_evidence": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "separate_server_tool_surcharge_in_hypothetical_scenario": 0,
+      "note": "This follows the by_model evidence requested for this task. A separate partial Claude Code virtual cost-state section is not an invoice and is not used to override it."
+    },
+    "current_official_reference_rates": {
+      "web_search_usd_per_request": 0.01,
+      "web_search_content": "Search-result content is also billed as input tokens",
+      "web_fetch_per_request": 0,
+      "web_fetch_content": "Fetched content is billed as input tokens",
+      "code_execution": {
+        "with_web_search_or_web_fetch": "No separate execution charge beyond token costs",
+        "without_web_search_or_web_fetch": "$0.05 per container-hour after 1,550 free organization-hours per month",
+        "minimum_execution_minutes": 5
+      },
+      "bash_definition_overhead_input_tokens": {
+        "claude_4_7_and_later": 325,
+        "claude_4_6_and_earlier": 244
+      },
+      "text_editor_20250728_overhead_input_tokens": {
+        "claude_4_7_and_later": 974,
+        "claude_4_6_and_earlier": 745
+      },
+      "computer_and_browser_use": "No flat per-call price stated; tool definitions, screenshots, and results are billed as input/image tokens."
+    },
+    "source": "https://platform.claude.com/docs/en/about-claude/pricing"
+  },
+  "validation": {
+    "exact_model_ids_in_usage_evidence": [
+      "claude-opus-4-7",
+      "claude-opus-4-8",
+      "claude-fable-5",
+      "claude-sonnet-4-6",
+      "claude-opus-5",
+      "claude-sonnet-5",
+      "claude-opus-5-5",
+      "claude-fable-5-1",
+      "claude-sonnet-5-5",
+      "claude-haiku-4-5-20251001"
+    ],
+    "models_with_unknown_standard_price_at_observed_time": [],
+    "synthetic_records_excluded": true,
+    "no_alias_substitution_used": true,
+    "no_price_before_release_used": true
+  },
+  "recorded_at": "2026-10-11",
+  "effective_period": {
+    "start": "2026-05-28",
+    "end": "2026-10-10"
+  }
+}

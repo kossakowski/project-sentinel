@@ -1,0 +1,1225 @@
+{
+  "schema_version": 1,
+  "audit_date": "2026-10-11",
+  "scope": {
+    "included_directories": [
+      "~/.claude/projects/-home-kossa-code-project-sentinel",
+      "~/.claude/projects/-home-kossa-code-project-sentinel-buildtree",
+      "~/.claude/projects/-home-kossa-code-project-sentinel-mobile",
+      "~/.claude/projects/-home-kossa-code-project-sentinel-mobile-mobile",
+      "~/.claude/projects/-home-kossa-code-sentinel-mobile",
+      "~/.claude/projects/-home-kossa-code-sentinel-mobile-mobile"
+    ],
+    "explicitly_excluded_directory": "~/.claude/projects/-home-kossa-code-story-sentinel",
+    "reason_excluded": "Different project; name collision only.",
+    "matched_twilio_playground_directory_found": false,
+    "content_fields_read_or_exported": false,
+    "attachments_or_tool_payloads_read": false
+  },
+  "coverage": {
+    "scanned_jsonl_files_excluding_workflow_journals": 680,
+    "assistant_bearing_files": 667,
+    "main_transcript_files": 53,
+    "subagent_transcript_files": 614,
+    "bad_json_lines_skipped": 3,
+    "first_assistant_timestamp": "2026-05-28T20:15:38.130Z",
+    "last_assistant_timestamp": "2026-10-10T21:23:35.052Z",
+    "unique_session_ids": 53,
+    "coverage_limit": "No matching transcript directory covers the March launch; matched assistant metadata starts 2026-05-28."
+  },
+  "deduplication": {
+    "raw_assistant_records": 28281,
+    "unique_assistant_messages": 11002,
+    "stream_duplicate_records_removed": 17279,
+    "message_ids_with_multiple_records": 8942,
+    "max_records_for_one_message_id": 1453,
+    "method": "Global message.id. For repeated streamed records, keep the record with the largest input+cache-create+cache-read+output usage; break ties by latest timestamp.",
+    "cross_file_duplicate_message_ids": 0,
+    "cross_directory_duplicate_message_ids": 0
+  },
+  "usage_total": {
+    "messages": 11002,
+    "input_tokens": 6386783,
+    "cache_creation_input_tokens": 82813650,
+    "cache_read_input_tokens": 1392435042,
+    "output_tokens": 13873924,
+    "thinking_tokens": 1079016,
+    "web_search_requests": 0,
+    "web_fetch_requests": 0,
+    "thinking_tokens_are_subset_of_output_tokens": true,
+    "virtual_cost_usd_computed_from_tokens": false,
+    "cache_creation_ephemeral_5m_input_tokens": 54286003,
+    "cache_creation_ephemeral_1h_input_tokens": 28527647,
+    "cache_creation_unspecified_input_tokens": 0,
+    "speed_counts": {
+      "standard": 9474,
+      "None": 1528
+    },
+    "service_tier_counts": {
+      "standard": 10950,
+      "None": 52
+    }
+  },
+  "by_model": [
+    {
+      "messages": 52,
+      "input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "output_tokens": 0,
+      "thinking_tokens": 0,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "model": "<synthetic>",
+      "sessions": 16,
+      "first_timestamp": "2026-05-30T14:16:54.734Z",
+      "last_timestamp": "2026-09-24T15:53:43.765Z",
+      "cache_creation_ephemeral_5m_input_tokens": 0,
+      "cache_creation_ephemeral_1h_input_tokens": 0,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "None": 52
+      },
+      "service_tier_counts": {
+        "None": 52
+      }
+    },
+    {
+      "messages": 1318,
+      "input_tokens": 18893,
+      "cache_creation_input_tokens": 13202946,
+      "cache_read_input_tokens": 226294126,
+      "output_tokens": 1857404,
+      "thinking_tokens": 0,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "model": "claude-fable-5",
+      "sessions": 10,
+      "first_timestamp": "2026-07-11T01:05:00.297Z",
+      "last_timestamp": "2026-07-31T01:29:54.383Z",
+      "cache_creation_ephemeral_5m_input_tokens": 7273613,
+      "cache_creation_ephemeral_1h_input_tokens": 5929333,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 1235,
+        "None": 83
+      },
+      "service_tier_counts": {
+        "standard": 1318
+      }
+    },
+    {
+      "messages": 203,
+      "input_tokens": 412,
+      "cache_creation_input_tokens": 1949864,
+      "cache_read_input_tokens": 30792523,
+      "output_tokens": 250733,
+      "thinking_tokens": 114470,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "model": "claude-fable-5-1",
+      "sessions": 1,
+      "first_timestamp": "2026-10-03T11:51:23.489Z",
+      "last_timestamp": "2026-10-03T13:50:23.504Z",
+      "cache_creation_ephemeral_5m_input_tokens": 1742199,
+      "cache_creation_ephemeral_1h_input_tokens": 207665,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 201,
+        "None": 2
+      },
+      "service_tier_counts": {
+        "standard": 203
+      }
+    },
+    {
+      "messages": 327,
+      "input_tokens": 16697,
+      "cache_creation_input_tokens": 1271152,
+      "cache_read_input_tokens": 16333424,
+      "output_tokens": 96258,
+      "thinking_tokens": 0,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "model": "claude-haiku-4-5-20251001",
+      "sessions": 10,
+      "first_timestamp": "2026-05-29T18:13:27.889Z",
+      "last_timestamp": "2026-06-05T13:00:31.277Z",
+      "cache_creation_ephemeral_5m_input_tokens": 1271152,
+      "cache_creation_ephemeral_1h_input_tokens": 0,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 259,
+        "None": 68
+      },
+      "service_tier_counts": {
+        "standard": 327
+      }
+    },
+    {
+      "messages": 3,
+      "input_tokens": 13,
+      "cache_creation_input_tokens": 68826,
+      "cache_read_input_tokens": 76484,
+      "output_tokens": 5066,
+      "thinking_tokens": 0,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "model": "claude-opus-4-7",
+      "sessions": 1,
+      "first_timestamp": "2026-05-28T20:15:38.130Z",
+      "last_timestamp": "2026-05-29T17:53:58.911Z",
+      "cache_creation_ephemeral_5m_input_tokens": 0,
+      "cache_creation_ephemeral_1h_input_tokens": 68826,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 3
+      },
+      "service_tier_counts": {
+        "standard": 3
+      }
+    },
+    {
+      "messages": 6413,
+      "input_tokens": 6343148,
+      "cache_creation_input_tokens": 50651727,
+      "cache_read_input_tokens": 705681753,
+      "output_tokens": 8779289,
+      "thinking_tokens": 0,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "model": "claude-opus-4-8",
+      "sessions": 41,
+      "first_timestamp": "2026-05-28T20:27:50.001Z",
+      "last_timestamp": "2026-07-12T13:11:53.847Z",
+      "cache_creation_ephemeral_5m_input_tokens": 33782304,
+      "cache_creation_ephemeral_1h_input_tokens": 16869423,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 5116,
+        "None": 1297
+      },
+      "service_tier_counts": {
+        "standard": 6413
+      }
+    },
+    {
+      "messages": 95,
+      "input_tokens": 175,
+      "cache_creation_input_tokens": 163742,
+      "cache_read_input_tokens": 11437007,
+      "output_tokens": 66160,
+      "thinking_tokens": 0,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "model": "claude-opus-5",
+      "sessions": 1,
+      "first_timestamp": "2026-07-30T07:45:36.913Z",
+      "last_timestamp": "2026-07-30T08:28:31.421Z",
+      "cache_creation_ephemeral_5m_input_tokens": 0,
+      "cache_creation_ephemeral_1h_input_tokens": 163742,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 95
+      },
+      "service_tier_counts": {
+        "standard": 95
+      }
+    },
+    {
+      "messages": 2245,
+      "input_tokens": 4576,
+      "cache_creation_input_tokens": 12883190,
+      "cache_read_input_tokens": 384520761,
+      "output_tokens": 2463503,
+      "thinking_tokens": 877161,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "model": "claude-opus-5-5",
+      "sessions": 5,
+      "first_timestamp": "2026-09-23T19:19:04.515Z",
+      "last_timestamp": "2026-10-10T21:23:35.052Z",
+      "cache_creation_ephemeral_5m_input_tokens": 7594532,
+      "cache_creation_ephemeral_1h_input_tokens": 5288658,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 2237,
+        "None": 8
+      },
+      "service_tier_counts": {
+        "standard": 2245
+      }
+    },
+    {
+      "messages": 78,
+      "input_tokens": 2328,
+      "cache_creation_input_tokens": 346166,
+      "cache_read_input_tokens": 2316601,
+      "output_tokens": 85136,
+      "thinking_tokens": 0,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "model": "claude-sonnet-4-6",
+      "sessions": 2,
+      "first_timestamp": "2026-07-11T18:14:32.596Z",
+      "last_timestamp": "2026-07-30T07:51:14.695Z",
+      "cache_creation_ephemeral_5m_input_tokens": 346166,
+      "cache_creation_ephemeral_1h_input_tokens": 0,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 65,
+        "None": 13
+      },
+      "service_tier_counts": {
+        "standard": 78
+      }
+    },
+    {
+      "messages": 165,
+      "input_tokens": 335,
+      "cache_creation_input_tokens": 1301421,
+      "cache_read_input_tokens": 8307624,
+      "output_tokens": 190580,
+      "thinking_tokens": 77894,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "model": "claude-sonnet-5",
+      "sessions": 1,
+      "first_timestamp": "2026-09-23T19:23:22.693Z",
+      "last_timestamp": "2026-09-24T15:02:33.076Z",
+      "cache_creation_ephemeral_5m_input_tokens": 1301421,
+      "cache_creation_ephemeral_1h_input_tokens": 0,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 162,
+        "None": 3
+      },
+      "service_tier_counts": {
+        "standard": 165
+      }
+    },
+    {
+      "messages": 103,
+      "input_tokens": 206,
+      "cache_creation_input_tokens": 974616,
+      "cache_read_input_tokens": 6674739,
+      "output_tokens": 79795,
+      "thinking_tokens": 9491,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "model": "claude-sonnet-5-5",
+      "sessions": 2,
+      "first_timestamp": "2026-10-03T11:26:50.760Z",
+      "last_timestamp": "2026-10-10T19:37:15.333Z",
+      "cache_creation_ephemeral_5m_input_tokens": 974616,
+      "cache_creation_ephemeral_1h_input_tokens": 0,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 101,
+        "None": 2
+      },
+      "service_tier_counts": {
+        "standard": 103
+      }
+    }
+  ],
+  "by_directory": [
+    {
+      "messages": 8129,
+      "input_tokens": 3869455,
+      "cache_creation_input_tokens": 65547497,
+      "cache_read_input_tokens": 1102797966,
+      "output_tokens": 10856598,
+      "thinking_tokens": 1079016,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "directory": "~/.claude/projects/-home-kossa-code-project-sentinel",
+      "exists": true,
+      "assistant_files": 472,
+      "sessions": 39,
+      "first_timestamp": "2026-05-28T20:15:38.130Z",
+      "last_timestamp": "2026-10-10T21:23:35.052Z",
+      "cache_creation_ephemeral_5m_input_tokens": 41953608,
+      "cache_creation_ephemeral_1h_input_tokens": 23593889,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 7148,
+        "None": 981
+      },
+      "service_tier_counts": {
+        "standard": 8090,
+        "None": 39
+      }
+    },
+    {
+      "messages": 57,
+      "input_tokens": 96,
+      "cache_creation_input_tokens": 374777,
+      "cache_read_input_tokens": 5082182,
+      "output_tokens": 92642,
+      "thinking_tokens": 0,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "directory": "~/.claude/projects/-home-kossa-code-project-sentinel-buildtree",
+      "exists": true,
+      "assistant_files": 4,
+      "sessions": 2,
+      "first_timestamp": "2026-07-12T08:58:25.777Z",
+      "last_timestamp": "2026-07-12T09:32:23.351Z",
+      "cache_creation_ephemeral_5m_input_tokens": 112026,
+      "cache_creation_ephemeral_1h_input_tokens": 262751,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 52,
+        "None": 5
+      },
+      "service_tier_counts": {
+        "standard": 54,
+        "None": 3
+      }
+    },
+    {
+      "messages": 2498,
+      "input_tokens": 2426581,
+      "cache_creation_input_tokens": 15884038,
+      "cache_read_input_tokens": 245246666,
+      "output_tokens": 2573705,
+      "thinking_tokens": 0,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "directory": "~/.claude/projects/-home-kossa-code-project-sentinel-mobile",
+      "exists": true,
+      "assistant_files": 179,
+      "sessions": 10,
+      "first_timestamp": "2026-06-01T19:54:20.928Z",
+      "last_timestamp": "2026-06-03T11:40:24.636Z",
+      "cache_creation_ephemeral_5m_input_tokens": 11678332,
+      "cache_creation_ephemeral_1h_input_tokens": 4205706,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 1988,
+        "None": 510
+      },
+      "service_tier_counts": {
+        "standard": 2489,
+        "None": 9
+      }
+    },
+    {
+      "directory": "~/.claude/projects/-home-kossa-code-project-sentinel-mobile-mobile",
+      "exists": true,
+      "assistant_files": 0,
+      "sessions": 0,
+      "first_timestamp": null,
+      "last_timestamp": null,
+      "cache_creation_ephemeral_5m_input_tokens": 0,
+      "cache_creation_ephemeral_1h_input_tokens": 0,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {},
+      "service_tier_counts": {}
+    },
+    {
+      "messages": 318,
+      "input_tokens": 90651,
+      "cache_creation_input_tokens": 1007338,
+      "cache_read_input_tokens": 39308228,
+      "output_tokens": 350979,
+      "thinking_tokens": 0,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "directory": "~/.claude/projects/-home-kossa-code-sentinel-mobile",
+      "exists": true,
+      "assistant_files": 12,
+      "sessions": 2,
+      "first_timestamp": "2026-06-04T09:53:12.857Z",
+      "last_timestamp": "2026-06-05T13:04:15.539Z",
+      "cache_creation_ephemeral_5m_input_tokens": 542037,
+      "cache_creation_ephemeral_1h_input_tokens": 465301,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 286,
+        "None": 32
+      },
+      "service_tier_counts": {
+        "standard": 317,
+        "None": 1
+      }
+    },
+    {
+      "directory": "~/.claude/projects/-home-kossa-code-sentinel-mobile-mobile",
+      "exists": true,
+      "assistant_files": 0,
+      "sessions": 0,
+      "first_timestamp": null,
+      "last_timestamp": null,
+      "cache_creation_ephemeral_5m_input_tokens": 0,
+      "cache_creation_ephemeral_1h_input_tokens": 0,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {},
+      "service_tier_counts": {}
+    }
+  ],
+  "by_month": [
+    {
+      "messages": 1050,
+      "input_tokens": 1429236,
+      "cache_creation_input_tokens": 15081613,
+      "cache_read_input_tokens": 104328592,
+      "output_tokens": 2515416,
+      "thinking_tokens": 0,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "month": "2026-05",
+      "sessions": 11,
+      "cache_creation_ephemeral_5m_input_tokens": 9206632,
+      "cache_creation_ephemeral_1h_input_tokens": 5874981,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 826,
+        "None": 224
+      },
+      "service_tier_counts": {
+        "standard": 1042,
+        "None": 8
+      }
+    },
+    {
+      "messages": 4417,
+      "input_tokens": 4928182,
+      "cache_creation_input_tokens": 30736670,
+      "cache_read_input_tokens": 389313797,
+      "output_tokens": 4336207,
+      "thinking_tokens": 0,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "month": "2026-06",
+      "sessions": 24,
+      "cache_creation_ephemeral_5m_input_tokens": 22422322,
+      "cache_creation_ephemeral_1h_input_tokens": 8314348,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 3342,
+        "None": 1075
+      },
+      "service_tier_counts": {
+        "standard": 4405,
+        "None": 12
+      }
+    },
+    {
+      "messages": 2817,
+      "input_tokens": 23836,
+      "cache_creation_input_tokens": 19886276,
+      "cache_read_input_tokens": 468497006,
+      "output_tokens": 4037690,
+      "thinking_tokens": 0,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "month": "2026-07",
+      "sessions": 14,
+      "cache_creation_ephemeral_5m_input_tokens": 11044281,
+      "cache_creation_ephemeral_1h_input_tokens": 8841995,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 2605,
+        "None": 212
+      },
+      "service_tier_counts": {
+        "standard": 2787,
+        "None": 30
+      }
+    },
+    {
+      "messages": 1013,
+      "input_tokens": 2081,
+      "cache_creation_input_tokens": 7993856,
+      "cache_read_input_tokens": 226164090,
+      "output_tokens": 1303251,
+      "thinking_tokens": 549497,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "month": "2026-09",
+      "sessions": 2,
+      "cache_creation_ephemeral_5m_input_tokens": 3197222,
+      "cache_creation_ephemeral_1h_input_tokens": 4796634,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 1007,
+        "None": 6
+      },
+      "service_tier_counts": {
+        "standard": 1011,
+        "None": 2
+      }
+    },
+    {
+      "messages": 1705,
+      "input_tokens": 3448,
+      "cache_creation_input_tokens": 9115235,
+      "cache_read_input_tokens": 204131557,
+      "output_tokens": 1681360,
+      "thinking_tokens": 529519,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "month": "2026-10",
+      "sessions": 3,
+      "cache_creation_ephemeral_5m_input_tokens": 8415546,
+      "cache_creation_ephemeral_1h_input_tokens": 699689,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 1694,
+        "None": 11
+      },
+      "service_tier_counts": {
+        "standard": 1705
+      }
+    }
+  ],
+  "main_vs_subagents": {
+    "main": {
+      "messages": 2906,
+      "input_tokens": 751302,
+      "cache_creation_input_tokens": 28527647,
+      "cache_read_input_tokens": 715878177,
+      "output_tokens": 6120739,
+      "thinking_tokens": 266317,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "cache_creation_ephemeral_5m_input_tokens": 0,
+      "cache_creation_ephemeral_1h_input_tokens": 28527647,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 2857,
+        "None": 49
+      },
+      "service_tier_counts": {
+        "standard": 2868,
+        "None": 38
+      }
+    },
+    "subagents": {
+      "messages": 8096,
+      "input_tokens": 5635481,
+      "cache_creation_input_tokens": 54286003,
+      "cache_read_input_tokens": 676556865,
+      "output_tokens": 7753185,
+      "thinking_tokens": 812699,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "cache_creation_ephemeral_5m_input_tokens": 54286003,
+      "cache_creation_ephemeral_1h_input_tokens": 0,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 6617,
+        "None": 1479
+      },
+      "service_tier_counts": {
+        "standard": 8082,
+        "None": 14
+      }
+    }
+  },
+  "usage_metadata": {
+    "service_tier_counts": {
+      "standard": 10950,
+      "None": 52
+    },
+    "speed_counts": {
+      "standard": 9474,
+      "None": 1528
+    },
+    "fallback_credit_counts": {
+      "None": 11002
+    },
+    "note": "service_tier=standard and fallback_credit=None describe inference metadata, not the payment route.",
+    "cache_creation_duration_total": {
+      "ephemeral_5m_input_tokens": 54286003,
+      "ephemeral_1h_input_tokens": 28527647,
+      "unspecified_input_tokens": 0
+    },
+    "service_tier_by_model": {
+      "<synthetic>": {
+        "None": 52
+      },
+      "claude-fable-5": {
+        "standard": 1318
+      },
+      "claude-fable-5-1": {
+        "standard": 203
+      },
+      "claude-haiku-4-5-20251001": {
+        "standard": 327
+      },
+      "claude-opus-4-7": {
+        "standard": 3
+      },
+      "claude-opus-4-8": {
+        "standard": 6413
+      },
+      "claude-opus-5": {
+        "standard": 95
+      },
+      "claude-opus-5-5": {
+        "standard": 2245
+      },
+      "claude-sonnet-4-6": {
+        "standard": 78
+      },
+      "claude-sonnet-5": {
+        "standard": 165
+      },
+      "claude-sonnet-5-5": {
+        "standard": 103
+      }
+    },
+    "speed_by_model": {
+      "<synthetic>": {
+        "None": 52
+      },
+      "claude-fable-5": {
+        "standard": 1235,
+        "None": 83
+      },
+      "claude-fable-5-1": {
+        "standard": 201,
+        "None": 2
+      },
+      "claude-haiku-4-5-20251001": {
+        "standard": 259,
+        "None": 68
+      },
+      "claude-opus-4-7": {
+        "standard": 3
+      },
+      "claude-opus-4-8": {
+        "standard": 5116,
+        "None": 1297
+      },
+      "claude-opus-5": {
+        "standard": 95
+      },
+      "claude-opus-5-5": {
+        "standard": 2237,
+        "None": 8
+      },
+      "claude-sonnet-4-6": {
+        "standard": 65,
+        "None": 13
+      },
+      "claude-sonnet-5": {
+        "standard": 162,
+        "None": 3
+      },
+      "claude-sonnet-5-5": {
+        "standard": 101,
+        "None": 2
+      }
+    },
+    "billing_caveat": "Cache duration, speed and service tier can support later pricing only after a separately billed API route is proven."
+  },
+  "cost_state_records": {
+    "sessions_with_final_cost_state": 4,
+    "sum_final_virtual_cost_usd": 263.64213515000006,
+    "interpretation": "Claude Code-generated virtual/list-price accounting for four of 53 sessions only. Partial coverage; not provider invoices and not evidence of billed spend."
+  },
+  "billing_route_evidence": {
+    "explicit_auth_or_billing_mode_found": false,
+    "fields_not_found": [
+      "authType",
+      "apiKeySource",
+      "billingMode",
+      "subscriptionPlan",
+      "extraUsageBilled"
+    ],
+    "opaque_bridge_account_ids": {
+      "records": 308,
+      "distinct_account_ids": 3,
+      "distinct_organization_ids": 3,
+      "values_exported": false
+    },
+    "service_tier_is_not_billing_route": true,
+    "fallback_credit_all_none": true,
+    "attributable_paid_cost_evidenced_usd": null,
+    "conclusion": "The transcripts prove model/token/cache-duration/speed/service-tier usage and four partial virtual cost-state totals. They do not prove API-key billing, Max/subscription inclusion, separately charged extra usage, or a zero cost.",
+    "missing_billing_inputs": [
+      "Claude Code authentication source or billing mode for each session/account.",
+      "Anthropic usage/billing export split by API key, workspace or session timestamps.",
+      "Extra-usage ledger showing which requests consumed prepaid balance.",
+      "Mapping of the opaque account/organization IDs to subscription versus API billing.",
+      "Provider invoice lines or admin-console usage scoped to the Sentinel sessions."
+    ],
+    "attributable_paid_cost_status": "unknown_not_booked",
+    "shared_extra_usage_purchase": {
+      "exists": true,
+      "project_allocation_available": false,
+      "allocated_to_sentinel_eur": null,
+      "allocation_status": "unknown_not_booked",
+      "note": "A shared extra-usage purchase exists, but publishable transcript evidence contains no amount or Sentinel allocation."
+    },
+    "current_auth_context": {
+      "claude": {
+        "auth": "oauth_subscription",
+        "plan": "Max20x",
+        "api_key_value_exported": false
+      },
+      "codex": {
+        "auth_mode": "chatgpt",
+        "api_key_or_environment_override_value_exported": false
+      },
+      "temporal_scope": "current_only",
+      "historical_inference_allowed": false,
+      "note": "Current authentication metadata does not prove how historical Claude Code sessions or extra usage were billed."
+    }
+  },
+  "by_model_month": [
+    {
+      "model": "<synthetic>",
+      "month": "2026-05",
+      "first_timestamp": "2026-05-30T14:16:54.734Z",
+      "last_timestamp": "2026-05-31T15:35:15.826Z",
+      "messages": 8,
+      "sessions": 3,
+      "input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_creation_ephemeral_5m_input_tokens": 0,
+      "cache_creation_ephemeral_1h_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "output_tokens": 0,
+      "thinking_tokens": 0,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "None": 8
+      },
+      "service_tier_counts": {
+        "None": 8
+      }
+    },
+    {
+      "model": "<synthetic>",
+      "month": "2026-06",
+      "first_timestamp": "2026-06-02T07:53:00.630Z",
+      "last_timestamp": "2026-06-24T00:10:27.278Z",
+      "messages": 12,
+      "sessions": 5,
+      "input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_creation_ephemeral_5m_input_tokens": 0,
+      "cache_creation_ephemeral_1h_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "output_tokens": 0,
+      "thinking_tokens": 0,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "None": 12
+      },
+      "service_tier_counts": {
+        "None": 12
+      }
+    },
+    {
+      "model": "<synthetic>",
+      "month": "2026-07",
+      "first_timestamp": "2026-07-11T11:56:56.659Z",
+      "last_timestamp": "2026-07-12T13:27:43.520Z",
+      "messages": 30,
+      "sessions": 8,
+      "input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_creation_ephemeral_5m_input_tokens": 0,
+      "cache_creation_ephemeral_1h_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "output_tokens": 0,
+      "thinking_tokens": 0,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "None": 30
+      },
+      "service_tier_counts": {
+        "None": 30
+      }
+    },
+    {
+      "model": "<synthetic>",
+      "month": "2026-09",
+      "first_timestamp": "2026-09-23T20:51:52.760Z",
+      "last_timestamp": "2026-09-24T15:53:43.765Z",
+      "messages": 2,
+      "sessions": 1,
+      "input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_creation_ephemeral_5m_input_tokens": 0,
+      "cache_creation_ephemeral_1h_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "output_tokens": 0,
+      "thinking_tokens": 0,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "None": 2
+      },
+      "service_tier_counts": {
+        "None": 2
+      }
+    },
+    {
+      "model": "claude-fable-5",
+      "month": "2026-07",
+      "first_timestamp": "2026-07-11T01:05:00.297Z",
+      "last_timestamp": "2026-07-31T01:29:54.383Z",
+      "messages": 1318,
+      "sessions": 10,
+      "input_tokens": 18893,
+      "cache_creation_input_tokens": 13202946,
+      "cache_creation_ephemeral_5m_input_tokens": 7273613,
+      "cache_creation_ephemeral_1h_input_tokens": 5929333,
+      "cache_read_input_tokens": 226294126,
+      "output_tokens": 1857404,
+      "thinking_tokens": 0,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 1235,
+        "None": 83
+      },
+      "service_tier_counts": {
+        "standard": 1318
+      }
+    },
+    {
+      "model": "claude-fable-5-1",
+      "month": "2026-10",
+      "first_timestamp": "2026-10-03T11:51:23.489Z",
+      "last_timestamp": "2026-10-03T13:50:23.504Z",
+      "messages": 203,
+      "sessions": 1,
+      "input_tokens": 412,
+      "cache_creation_input_tokens": 1949864,
+      "cache_creation_ephemeral_5m_input_tokens": 1742199,
+      "cache_creation_ephemeral_1h_input_tokens": 207665,
+      "cache_read_input_tokens": 30792523,
+      "output_tokens": 250733,
+      "thinking_tokens": 114470,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 201,
+        "None": 2
+      },
+      "service_tier_counts": {
+        "standard": 203
+      }
+    },
+    {
+      "model": "claude-haiku-4-5-20251001",
+      "month": "2026-05",
+      "first_timestamp": "2026-05-29T18:13:27.889Z",
+      "last_timestamp": "2026-05-31T14:55:00.782Z",
+      "messages": 62,
+      "sessions": 3,
+      "input_tokens": 269,
+      "cache_creation_input_tokens": 343451,
+      "cache_creation_ephemeral_5m_input_tokens": 343451,
+      "cache_creation_ephemeral_1h_input_tokens": 0,
+      "cache_read_input_tokens": 4699458,
+      "output_tokens": 29134,
+      "thinking_tokens": 0,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 48,
+        "None": 14
+      },
+      "service_tier_counts": {
+        "standard": 62
+      }
+    },
+    {
+      "model": "claude-haiku-4-5-20251001",
+      "month": "2026-06",
+      "first_timestamp": "2026-06-01T19:54:56.801Z",
+      "last_timestamp": "2026-06-05T13:00:31.277Z",
+      "messages": 265,
+      "sessions": 7,
+      "input_tokens": 16428,
+      "cache_creation_input_tokens": 927701,
+      "cache_creation_ephemeral_5m_input_tokens": 927701,
+      "cache_creation_ephemeral_1h_input_tokens": 0,
+      "cache_read_input_tokens": 11633966,
+      "output_tokens": 67124,
+      "thinking_tokens": 0,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "None": 54,
+        "standard": 211
+      },
+      "service_tier_counts": {
+        "standard": 265
+      }
+    },
+    {
+      "model": "claude-opus-4-7",
+      "month": "2026-05",
+      "first_timestamp": "2026-05-28T20:15:38.130Z",
+      "last_timestamp": "2026-05-29T17:53:58.911Z",
+      "messages": 3,
+      "sessions": 1,
+      "input_tokens": 13,
+      "cache_creation_input_tokens": 68826,
+      "cache_creation_ephemeral_5m_input_tokens": 0,
+      "cache_creation_ephemeral_1h_input_tokens": 68826,
+      "cache_read_input_tokens": 76484,
+      "output_tokens": 5066,
+      "thinking_tokens": 0,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 3
+      },
+      "service_tier_counts": {
+        "standard": 3
+      }
+    },
+    {
+      "model": "claude-opus-4-8",
+      "month": "2026-05",
+      "first_timestamp": "2026-05-28T20:27:50.001Z",
+      "last_timestamp": "2026-05-31T18:46:43.338Z",
+      "messages": 977,
+      "sessions": 10,
+      "input_tokens": 1428954,
+      "cache_creation_input_tokens": 14669336,
+      "cache_creation_ephemeral_5m_input_tokens": 8863181,
+      "cache_creation_ephemeral_1h_input_tokens": 5806155,
+      "cache_read_input_tokens": 99552650,
+      "output_tokens": 2481216,
+      "thinking_tokens": 0,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 775,
+        "None": 202
+      },
+      "service_tier_counts": {
+        "standard": 977
+      }
+    },
+    {
+      "model": "claude-opus-4-8",
+      "month": "2026-06",
+      "first_timestamp": "2026-06-01T00:34:52.049Z",
+      "last_timestamp": "2026-06-24T01:02:14.660Z",
+      "messages": 4140,
+      "sessions": 23,
+      "input_tokens": 4911754,
+      "cache_creation_input_tokens": 29808969,
+      "cache_creation_ephemeral_5m_input_tokens": 21494621,
+      "cache_creation_ephemeral_1h_input_tokens": 8314348,
+      "cache_read_input_tokens": 377679831,
+      "output_tokens": 4269083,
+      "thinking_tokens": 0,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 3131,
+        "None": 1009
+      },
+      "service_tier_counts": {
+        "standard": 4140
+      }
+    },
+    {
+      "model": "claude-opus-4-8",
+      "month": "2026-07",
+      "first_timestamp": "2026-07-11T16:20:33.512Z",
+      "last_timestamp": "2026-07-12T13:11:53.847Z",
+      "messages": 1296,
+      "sessions": 9,
+      "input_tokens": 2440,
+      "cache_creation_input_tokens": 6173422,
+      "cache_creation_ephemeral_5m_input_tokens": 3424502,
+      "cache_creation_ephemeral_1h_input_tokens": 2748920,
+      "cache_read_input_tokens": 228449272,
+      "output_tokens": 2028990,
+      "thinking_tokens": 0,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 1210,
+        "None": 86
+      },
+      "service_tier_counts": {
+        "standard": 1296
+      }
+    },
+    {
+      "model": "claude-opus-5",
+      "month": "2026-07",
+      "first_timestamp": "2026-07-30T07:45:36.913Z",
+      "last_timestamp": "2026-07-30T08:28:31.421Z",
+      "messages": 95,
+      "sessions": 1,
+      "input_tokens": 175,
+      "cache_creation_input_tokens": 163742,
+      "cache_creation_ephemeral_5m_input_tokens": 0,
+      "cache_creation_ephemeral_1h_input_tokens": 163742,
+      "cache_read_input_tokens": 11437007,
+      "output_tokens": 66160,
+      "thinking_tokens": 0,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 95
+      },
+      "service_tier_counts": {
+        "standard": 95
+      }
+    },
+    {
+      "model": "claude-opus-5-5",
+      "month": "2026-09",
+      "first_timestamp": "2026-09-23T19:19:04.515Z",
+      "last_timestamp": "2026-09-25T12:40:47.599Z",
+      "messages": 846,
+      "sessions": 2,
+      "input_tokens": 1746,
+      "cache_creation_input_tokens": 6692435,
+      "cache_creation_ephemeral_5m_input_tokens": 1895801,
+      "cache_creation_ephemeral_1h_input_tokens": 4796634,
+      "cache_read_input_tokens": 217856466,
+      "output_tokens": 1112671,
+      "thinking_tokens": 471603,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 845,
+        "None": 1
+      },
+      "service_tier_counts": {
+        "standard": 846
+      }
+    },
+    {
+      "model": "claude-opus-5-5",
+      "month": "2026-10",
+      "first_timestamp": "2026-10-03T11:26:13.404Z",
+      "last_timestamp": "2026-10-10T21:23:35.052Z",
+      "messages": 1399,
+      "sessions": 3,
+      "input_tokens": 2830,
+      "cache_creation_input_tokens": 6190755,
+      "cache_creation_ephemeral_5m_input_tokens": 5698731,
+      "cache_creation_ephemeral_1h_input_tokens": 492024,
+      "cache_read_input_tokens": 166664295,
+      "output_tokens": 1350832,
+      "thinking_tokens": 405558,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 1392,
+        "None": 7
+      },
+      "service_tier_counts": {
+        "standard": 1399
+      }
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "month": "2026-07",
+      "first_timestamp": "2026-07-11T18:14:32.596Z",
+      "last_timestamp": "2026-07-30T07:51:14.695Z",
+      "messages": 78,
+      "sessions": 2,
+      "input_tokens": 2328,
+      "cache_creation_input_tokens": 346166,
+      "cache_creation_ephemeral_5m_input_tokens": 346166,
+      "cache_creation_ephemeral_1h_input_tokens": 0,
+      "cache_read_input_tokens": 2316601,
+      "output_tokens": 85136,
+      "thinking_tokens": 0,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 65,
+        "None": 13
+      },
+      "service_tier_counts": {
+        "standard": 78
+      }
+    },
+    {
+      "model": "claude-sonnet-5",
+      "month": "2026-09",
+      "first_timestamp": "2026-09-23T19:23:22.693Z",
+      "last_timestamp": "2026-09-24T15:02:33.076Z",
+      "messages": 165,
+      "sessions": 1,
+      "input_tokens": 335,
+      "cache_creation_input_tokens": 1301421,
+      "cache_creation_ephemeral_5m_input_tokens": 1301421,
+      "cache_creation_ephemeral_1h_input_tokens": 0,
+      "cache_read_input_tokens": 8307624,
+      "output_tokens": 190580,
+      "thinking_tokens": 77894,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 162,
+        "None": 3
+      },
+      "service_tier_counts": {
+        "standard": 165
+      }
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "month": "2026-10",
+      "first_timestamp": "2026-10-03T11:26:50.760Z",
+      "last_timestamp": "2026-10-10T19:37:15.333Z",
+      "messages": 103,
+      "sessions": 2,
+      "input_tokens": 206,
+      "cache_creation_input_tokens": 974616,
+      "cache_creation_ephemeral_5m_input_tokens": 974616,
+      "cache_creation_ephemeral_1h_input_tokens": 0,
+      "cache_read_input_tokens": 6674739,
+      "output_tokens": 79795,
+      "thinking_tokens": 9491,
+      "web_search_requests": 0,
+      "web_fetch_requests": 0,
+      "cache_creation_unspecified_input_tokens": 0,
+      "speed_counts": {
+        "standard": 101,
+        "None": 2
+      },
+      "service_tier_counts": {
+        "standard": 103
+      }
+    }
+  ],
+  "recorded_at": "2026-10-11",
+  "effective_period": {
+    "start": "2026-05-28T20:15:38.130Z",
+    "end": "2026-10-10T21:23:35.052Z"
+  }
+}
