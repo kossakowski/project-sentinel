@@ -1,0 +1,26 @@
+{
+  "recorded_at": "2026-10-11",
+  "effective_period": {
+    "start": "2026-06-05",
+    "end": "2026-12-05"
+  },
+  "provider": "Netcup",
+  "evidence_category": "Estimated",
+  "included_in_base_totals": false,
+  "allocation_fraction_scenario": "1.0",
+  "source": "Mailbox research found a six-month VPS advance billing document with no Sentinel marker or deployment match. Private identifiers omitted.",
+  "assumptions": "Conditional scenario only if owner confirms this VPS was entirely for Sentinel. Later zero-value settlement is not another purchase. Payment is not established.",
+  "currency": "EUR",
+  "historical_purchase_addition": "24.60",
+  "normalized_monthly_addition": "4.10",
+  "historical_fx_date": "2026-06-05",
+  "historical_fx_eur_to_pln": "4.2348",
+  "historical_pln_addition": "104.176080",
+  "current_fx_date": "2026-10-09",
+  "current_pln_addition": "17.947750000000",
+  "conditional_current_total_pln": "152.034863426600",
+  "conditional_historical_total_pln": "2112.9007415316",
+  "confidence": "low for attribution; owner confirmation required",
+  "cash_payment": "unknown",
+  "formula": "Historical addition EUR 24.60 \u00d7 allocation share 100%; monthly EUR 24.60/6 =4.10; FX June 5 for purchase and October 9 for planning."
+}
