@@ -1,0 +1,44 @@
+[
+  {
+    "effective_start": "2026-10-04",
+    "effective_end": "2026-10-10T23:59:59Z",
+    "recorded_at": "2026-10-11T11:05:17.463462+00:00",
+    "complete_days": 7,
+    "currency": "USD",
+    "configured_cost": "4.3000471700",
+    "production_monthly_30day": "18.4287735857",
+    "formula": "Sum settled configured-cost daily aggregates *30/complete days",
+    "evidence_category": "Estimated",
+    "source": "../2026-10-11/evidence/production.json",
+    "assumptions": "Luna production only; no September20 migration test seeds in these periods; cache-write premium remains a conservative scenario; provider account adjustments unknown.",
+    "confidence": "Medium; workload sensitivity, not a billing interval"
+  },
+  {
+    "effective_start": "2026-10-01",
+    "effective_end": "2026-10-10T23:59:59Z",
+    "recorded_at": "2026-10-11T11:05:17.463462+00:00",
+    "complete_days": 10,
+    "currency": "USD",
+    "configured_cost": "5.6916772100",
+    "production_monthly_30day": "17.0750316300",
+    "formula": "Sum settled configured-cost daily aggregates *30/complete days",
+    "evidence_category": "Estimated",
+    "source": "../2026-10-11/evidence/production.json",
+    "assumptions": "Luna production only; no September20 migration test seeds in these periods; cache-write premium remains a conservative scenario; provider account adjustments unknown.",
+    "confidence": "Medium; workload sensitivity, not a billing interval"
+  },
+  {
+    "effective_start": "2026-09-21",
+    "effective_end": "2026-10-10T23:59:59Z",
+    "recorded_at": "2026-10-11T11:05:17.463462+00:00",
+    "complete_days": 20,
+    "currency": "USD",
+    "configured_cost": "11.2657166900",
+    "production_monthly_30day": "16.8985750350",
+    "formula": "Sum settled configured-cost daily aggregates *30/complete days",
+    "evidence_category": "Estimated",
+    "source": "../2026-10-11/evidence/production.json",
+    "assumptions": "Luna production only; no September20 migration test seeds in these periods; cache-write premium remains a conservative scenario; provider account adjustments unknown.",
+    "confidence": "Medium; workload sensitivity, not a billing interval"
+  }
+]

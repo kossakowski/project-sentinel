@@ -1,0 +1,48 @@
+{
+  "recorded_at": "2026-10-11T11:05:17.463462+00:00",
+  "source": "read-only /var/lib/sentinel/model-usage.db",
+  "effective_period_start": "2026-10-11T00:00:00Z",
+  "usage_daily": [
+    {
+      "day": "2026-10-11",
+      "model": "gpt-5.6-luna",
+      "purpose": "classification",
+      "status": "settled",
+      "requests": 224,
+      "first_utc": "2026-10-11T00:08:19.410135+00:00",
+      "last_utc": "2026-10-11T11:01:09.347466+00:00",
+      "input_tokens": 933316,
+      "cached_tokens": 388192,
+      "output_tokens": 65555,
+      "configured_cost_usd": "0.2227108400"
+    },
+    {
+      "day": "2026-10-11",
+      "model": "gpt-5.6-luna",
+      "purpose": "enrichment_quality",
+      "status": "settled",
+      "requests": 53,
+      "first_utc": "2026-10-11T02:08:01.767803+00:00",
+      "last_utc": "2026-10-11T11:00:01.008659+00:00",
+      "input_tokens": 28286,
+      "cached_tokens": 0,
+      "output_tokens": 2513,
+      "configured_cost_usd": "0.0100871000"
+    },
+    {
+      "day": "2026-10-11",
+      "model": "gpt-5.6-luna",
+      "purpose": "summary_translation",
+      "status": "settled",
+      "requests": 1,
+      "first_utc": "2026-10-11T07:25:30.439992+00:00",
+      "last_utc": "2026-10-11T07:25:30.439992+00:00",
+      "input_tokens": 206,
+      "cached_tokens": 0,
+      "output_tokens": 89,
+      "configured_cost_usd": "0.0001583000"
+    }
+  ],
+  "basis": "local configured-tariff estimate, not authoritative provider bill",
+  "query_only": true
+}

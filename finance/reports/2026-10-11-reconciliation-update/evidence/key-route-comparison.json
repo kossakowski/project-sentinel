@@ -1,0 +1,275 @@
+{
+  "recorded_at": "2026-10-11T11:09:39.852458+00:00",
+  "status": "ok",
+  "method": {
+    "algorithm": "HMAC-SHA256 equality comparison inside local and remote Python processes",
+    "random_salt_scope": "single run only",
+    "salt_persisted": false,
+    "digests_persisted": false,
+    "raw_values_persisted": false,
+    "raw_remote_output_persisted": false,
+    "server_access": "read-only SSH as deploy on port 2222; readonly sudo python3",
+    "api_requests": 0
+  },
+  "comparison_scope": {
+    "providers": [
+      "Anthropic",
+      "OpenAI",
+      "Twilio account"
+    ],
+    "local_variant_namespace": "local-key-history.json; Twilio account-only comparison for billing route",
+    "server_variant_namespace": "from finance/reports/2026-10-11/evidence/key-history.json",
+    "server_sources_compared": 9
+  },
+  "comparisons": [
+    {
+      "provider": "OpenAI",
+      "local_variant_label": "OpenAI local variant A",
+      "server_variant_label": "OpenAI credential variant 1",
+      "comparison_basis": "API credential value",
+      "same_value": true,
+      "comparison_status": "compared",
+      "local_sources": [
+        {
+          "worktree": "project-sentinel",
+          "relative_path": ".env",
+          "file_modified_utc": "2026-09-22T21:25:22.082921+00:00"
+        }
+      ],
+      "server_source_path": "/etc/sentinel/openai.env",
+      "server_file_modified_utc": "2026-09-20T21:27:40.737209+00:00",
+      "effective_date_caveats": [
+        "Local and server file mtimes are not activation or rotation dates.",
+        "Equality establishes only that the surviving values match at comparison time.",
+        "The comparison cannot enumerate deleted or unavailable historical credentials."
+      ]
+    },
+    {
+      "provider": "Twilio account",
+      "local_variant_label": "Twilio account local variant A",
+      "server_variant_label": "Twilio account credential variant 1",
+      "comparison_basis": "billing account route only; authentication token not part of this comparison",
+      "same_value": true,
+      "comparison_status": "compared",
+      "local_sources": [
+        {
+          "worktree": "project-sentinel",
+          "relative_path": ".env",
+          "file_modified_utc": "2026-09-22T21:25:22.082921+00:00"
+        },
+        {
+          "worktree": "project-sentinel-buildtree",
+          "relative_path": ".env",
+          "file_modified_utc": "2026-07-12T08:55:20.163771+00:00"
+        }
+      ],
+      "server_source_path": "/etc/sentinel/sentinel.env",
+      "server_file_modified_utc": "2026-06-04T14:03:35.307711+00:00",
+      "effective_date_caveats": [
+        "Local and server file mtimes are not activation or rotation dates.",
+        "Equality establishes only that the surviving values match at comparison time.",
+        "The comparison cannot enumerate deleted or unavailable historical credentials."
+      ]
+    },
+    {
+      "provider": "Anthropic",
+      "local_variant_label": "Anthropic local variant A",
+      "server_variant_label": "Anthropic credential variant 1",
+      "comparison_basis": "API credential value",
+      "same_value": true,
+      "comparison_status": "compared",
+      "local_sources": [
+        {
+          "worktree": "project-sentinel",
+          "relative_path": ".env",
+          "file_modified_utc": "2026-09-22T21:25:22.082921+00:00"
+        },
+        {
+          "worktree": "project-sentinel-buildtree",
+          "relative_path": ".env",
+          "file_modified_utc": "2026-07-12T08:55:20.163771+00:00"
+        }
+      ],
+      "server_source_path": "/etc/sentinel/sentinel.env",
+      "server_file_modified_utc": "2026-06-04T14:03:35.307711+00:00",
+      "effective_date_caveats": [
+        "Local and server file mtimes are not activation or rotation dates.",
+        "Equality establishes only that the surviving values match at comparison time.",
+        "The comparison cannot enumerate deleted or unavailable historical credentials."
+      ]
+    },
+    {
+      "provider": "Twilio account",
+      "local_variant_label": "Twilio account local variant A",
+      "server_variant_label": "Twilio account credential variant 1",
+      "comparison_basis": "billing account route only; authentication token not part of this comparison",
+      "same_value": true,
+      "comparison_status": "compared",
+      "local_sources": [
+        {
+          "worktree": "project-sentinel",
+          "relative_path": ".env",
+          "file_modified_utc": "2026-09-22T21:25:22.082921+00:00"
+        },
+        {
+          "worktree": "project-sentinel-buildtree",
+          "relative_path": ".env",
+          "file_modified_utc": "2026-07-12T08:55:20.163771+00:00"
+        }
+      ],
+      "server_source_path": "/etc/sentinel/sentinel.env.bak-20260604-pre-accesstoken",
+      "server_file_modified_utc": "2026-06-04T14:03:35.294711+00:00",
+      "effective_date_caveats": [
+        "Local and server file mtimes are not activation or rotation dates.",
+        "Equality establishes only that the surviving values match at comparison time.",
+        "The comparison cannot enumerate deleted or unavailable historical credentials."
+      ]
+    },
+    {
+      "provider": "Anthropic",
+      "local_variant_label": "Anthropic local variant A",
+      "server_variant_label": "Anthropic credential variant 1",
+      "comparison_basis": "API credential value",
+      "same_value": true,
+      "comparison_status": "compared",
+      "local_sources": [
+        {
+          "worktree": "project-sentinel",
+          "relative_path": ".env",
+          "file_modified_utc": "2026-09-22T21:25:22.082921+00:00"
+        },
+        {
+          "worktree": "project-sentinel-buildtree",
+          "relative_path": ".env",
+          "file_modified_utc": "2026-07-12T08:55:20.163771+00:00"
+        }
+      ],
+      "server_source_path": "/etc/sentinel/sentinel.env.bak-20260604-pre-accesstoken",
+      "server_file_modified_utc": "2026-06-04T14:03:35.294711+00:00",
+      "effective_date_caveats": [
+        "Local and server file mtimes are not activation or rotation dates.",
+        "Equality establishes only that the surviving values match at comparison time.",
+        "The comparison cannot enumerate deleted or unavailable historical credentials."
+      ]
+    },
+    {
+      "provider": "Twilio account",
+      "local_variant_label": "Twilio account local variant A",
+      "server_variant_label": "Twilio account credential variant 1",
+      "comparison_basis": "billing account route only; authentication token not part of this comparison",
+      "same_value": true,
+      "comparison_status": "compared",
+      "local_sources": [
+        {
+          "worktree": "project-sentinel",
+          "relative_path": ".env",
+          "file_modified_utc": "2026-09-22T21:25:22.082921+00:00"
+        },
+        {
+          "worktree": "project-sentinel-buildtree",
+          "relative_path": ".env",
+          "file_modified_utc": "2026-07-12T08:55:20.163771+00:00"
+        }
+      ],
+      "server_source_path": "/etc/sentinel/sentinel.env.bak-20260604-pre-pushtoken",
+      "server_file_modified_utc": "2026-06-04T11:55:42.879505+00:00",
+      "effective_date_caveats": [
+        "Local and server file mtimes are not activation or rotation dates.",
+        "Equality establishes only that the surviving values match at comparison time.",
+        "The comparison cannot enumerate deleted or unavailable historical credentials."
+      ]
+    },
+    {
+      "provider": "Anthropic",
+      "local_variant_label": "Anthropic local variant A",
+      "server_variant_label": "Anthropic credential variant 1",
+      "comparison_basis": "API credential value",
+      "same_value": true,
+      "comparison_status": "compared",
+      "local_sources": [
+        {
+          "worktree": "project-sentinel",
+          "relative_path": ".env",
+          "file_modified_utc": "2026-09-22T21:25:22.082921+00:00"
+        },
+        {
+          "worktree": "project-sentinel-buildtree",
+          "relative_path": ".env",
+          "file_modified_utc": "2026-07-12T08:55:20.163771+00:00"
+        }
+      ],
+      "server_source_path": "/etc/sentinel/sentinel.env.bak-20260604-pre-pushtoken",
+      "server_file_modified_utc": "2026-06-04T11:55:42.879505+00:00",
+      "effective_date_caveats": [
+        "Local and server file mtimes are not activation or rotation dates.",
+        "Equality establishes only that the surviving values match at comparison time.",
+        "The comparison cannot enumerate deleted or unavailable historical credentials."
+      ]
+    },
+    {
+      "provider": "Twilio account",
+      "local_variant_label": "Twilio account local variant A",
+      "server_variant_label": "Twilio account credential variant 1",
+      "comparison_basis": "billing account route only; authentication token not part of this comparison",
+      "same_value": true,
+      "comparison_status": "compared",
+      "local_sources": [
+        {
+          "worktree": "project-sentinel",
+          "relative_path": ".env",
+          "file_modified_utc": "2026-09-22T21:25:22.082921+00:00"
+        },
+        {
+          "worktree": "project-sentinel-buildtree",
+          "relative_path": ".env",
+          "file_modified_utc": "2026-07-12T08:55:20.163771+00:00"
+        }
+      ],
+      "server_source_path": "/home/deploy/sentinel/.env",
+      "server_file_modified_utc": "2026-03-28T11:15:04.432726+00:00",
+      "effective_date_caveats": [
+        "Local and server file mtimes are not activation or rotation dates.",
+        "Equality establishes only that the surviving values match at comparison time.",
+        "The comparison cannot enumerate deleted or unavailable historical credentials."
+      ]
+    },
+    {
+      "provider": "Anthropic",
+      "local_variant_label": "Anthropic local variant A",
+      "server_variant_label": "Anthropic credential variant 1",
+      "comparison_basis": "API credential value",
+      "same_value": true,
+      "comparison_status": "compared",
+      "local_sources": [
+        {
+          "worktree": "project-sentinel",
+          "relative_path": ".env",
+          "file_modified_utc": "2026-09-22T21:25:22.082921+00:00"
+        },
+        {
+          "worktree": "project-sentinel-buildtree",
+          "relative_path": ".env",
+          "file_modified_utc": "2026-07-12T08:55:20.163771+00:00"
+        }
+      ],
+      "server_source_path": "/home/deploy/sentinel/.env",
+      "server_file_modified_utc": "2026-03-28T11:15:04.432726+00:00",
+      "effective_date_caveats": [
+        "Local and server file mtimes are not activation or rotation dates.",
+        "Equality establishes only that the surviving values match at comparison time.",
+        "The comparison cannot enumerate deleted or unavailable historical credentials."
+      ]
+    }
+  ],
+  "limits": [
+    "Only previously inventoried surviving server files were compared.",
+    "Twilio billing route is matched by account credential, without exporting the account identifier.",
+    "No claim is made about deleted keys, provider-console rotations or credentials absent from surviving files.",
+    "File modification timestamps are evidence-file metadata, not effective dates."
+  ],
+  "effective_period": {
+    "start": "2026-10-11",
+    "end": "2026-10-11",
+    "basis": "equality at comparison time; file mtimes do not prove activation dates"
+  }
+}

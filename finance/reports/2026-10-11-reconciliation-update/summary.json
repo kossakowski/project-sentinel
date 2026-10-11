@@ -1,0 +1,105 @@
+{
+  "recorded_at": "2026-10-11T11:05:17.463462+00:00",
+  "effective_end": "2026-10-11T11:05:17.463462+00:00",
+  "historical": {
+    "EUR": {
+      "verified_cost": "13.4700000000",
+      "estimated_additions": "16.8330349269",
+      "reconstructed_total": "30.3030349269"
+    },
+    "USD": {
+      "verified_cost": "3.2630141728",
+      "estimated_additions": "506.9716139914",
+      "reconstructed_total": "510.2346281642"
+    },
+    "PLN": {
+      "verified_cost": "71.4758246493",
+      "estimated_additions": "1938.4677651396",
+      "reconstructed_total": "2009.9435897889"
+    }
+  },
+  "changes_since_prior_snapshot": {
+    "EUR": "0.0751769269",
+    "USD": "0.2280357900",
+    "PLN": "1.21892825724275000000"
+  },
+  "current_monthly": {
+    "EUR": "4.4900000000",
+    "USD": "29.3250316300"
+  },
+  "current_monthly_pln_equivalent": "134.0871134266",
+  "recommended_budget_pln": "200",
+  "supersedes": [
+    "2026-10-11/report.html",
+    "2026-10-11-hetzner-email-check/report.html"
+  ],
+  "range_is_complete": false,
+  "unpriced_current_categories": [
+    "CI/builds",
+    "Domains and operational email",
+    "Ongoing testing",
+    "Cloud storage/backups or hosting add-ons",
+    "Managed email/monitoring or paid source add-ons"
+  ],
+  "api_measurement_windows": [
+    {
+      "effective_start": "2026-10-04",
+      "effective_end": "2026-10-10T23:59:59Z",
+      "recorded_at": "2026-10-11T11:05:17.463462+00:00",
+      "complete_days": 7,
+      "currency": "USD",
+      "configured_cost": "4.3000471700",
+      "production_monthly_30day": "18.4287735857",
+      "formula": "Sum settled configured-cost daily aggregates *30/complete days",
+      "evidence_category": "Estimated",
+      "source": "../2026-10-11/evidence/production.json",
+      "assumptions": "Luna production only; no September20 migration test seeds in these periods; cache-write premium remains a conservative scenario; provider account adjustments unknown.",
+      "confidence": "Medium; workload sensitivity, not a billing interval"
+    },
+    {
+      "effective_start": "2026-10-01",
+      "effective_end": "2026-10-10T23:59:59Z",
+      "recorded_at": "2026-10-11T11:05:17.463462+00:00",
+      "complete_days": 10,
+      "currency": "USD",
+      "configured_cost": "5.6916772100",
+      "production_monthly_30day": "17.0750316300",
+      "formula": "Sum settled configured-cost daily aggregates *30/complete days",
+      "evidence_category": "Estimated",
+      "source": "../2026-10-11/evidence/production.json",
+      "assumptions": "Luna production only; no September20 migration test seeds in these periods; cache-write premium remains a conservative scenario; provider account adjustments unknown.",
+      "confidence": "Medium; workload sensitivity, not a billing interval"
+    },
+    {
+      "effective_start": "2026-09-21",
+      "effective_end": "2026-10-10T23:59:59Z",
+      "recorded_at": "2026-10-11T11:05:17.463462+00:00",
+      "complete_days": 20,
+      "currency": "USD",
+      "configured_cost": "11.2657166900",
+      "production_monthly_30day": "16.8985750350",
+      "formula": "Sum settled configured-cost daily aggregates *30/complete days",
+      "evidence_category": "Estimated",
+      "source": "../2026-10-11/evidence/production.json",
+      "assumptions": "Luna production only; no September20 migration test seeds in these periods; cache-write premium remains a conservative scenario; provider account adjustments unknown.",
+      "confidence": "Medium; workload sensitivity, not a billing interval"
+    }
+  ],
+  "owner_confirmed_invoiced_cash_eur": "13.4700000000",
+  "provider_or_bank_verified_cash_total": null,
+  "unresolved": [
+    "Actual API consumption after provider credits, discounts, free allowances, taxes, refunds and billed failures.",
+    "Historical provider organizations/workspaces and rotated/deleted key coverage.",
+    "Apple payment amount/currency/date; current $99 annual proxy remains Estimated.",
+    "Twilio retained number, trial credit and historical rental/communications bill.",
+    "Hetzner exact creation/prior plans, storage/backups/extras and co-hosting allocation.",
+    "Netcup project allocation and paid EAS or CI overages, if any.",
+    "Project-specific coding paid extras/API routing; conditional valuation remains outside spending."
+  ],
+  "validation": {
+    "monthly_and_aggregate_sums": true,
+    "old_today_usage_subtracted": true,
+    "cash_not_added_to_consumption": true,
+    "current_api_window_unchanged": "October 1\u201310 complete UTC days"
+  }
+}

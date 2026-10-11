@@ -1,0 +1,310 @@
+{
+  "recorded_at": "2026-10-11T11:10:02Z",
+  "effective_period": {
+    "start": "2026-03-21",
+    "end": "2026-10-11",
+    "basis": "cost audit coverage; not new consumption"
+  },
+  "overall_goal_status": "Incomplete; full current and aggregate costs not proven",
+  "requirement_review": [
+    {
+      "requirement": "Full current monthly cost",
+      "status": "PARTIAL",
+      "evidence": "A reproducible planning estimate and sensitivity range exist, but Twilio number retention, Apple settlement, EAS/CI overages, API account adjustments, hosting extras and shared-resource allocation remain unknown. Several unknown categories are encoded with numerical high=0.",
+      "references": [
+        "finance/reports/2026-10-11/summary.json",
+        "finance/current-monthly.csv:2",
+        "finance/build_report.py:740",
+        "finance/build_report.py:766",
+        "finance/reports/2026-10-11/coverage-gaps.csv:2"
+      ]
+    },
+    {
+      "requirement": "Aggregate true spending since first development on 2026-03-21",
+      "status": "NOT_COMPLETE",
+      "evidence": "The reconstruction covers March 21 onward, but most USD value is tariff reconstruction. Funding payments, invoices, credits, taxes, top-ups and balances were not reconciled. Only EUR 13.47 has owner-confirmed payment status.",
+      "references": [
+        "finance/reports/2026-10-11/summary.json",
+        "finance/reports/2026-10-11/coverage-gaps.csv:4",
+        "finance/ledger.csv:2",
+        "finance/ledger.csv:3"
+      ]
+    },
+    {
+      "requirement": "How cost changed over months and project phases",
+      "status": "SUBSTANTIALLY_COMPLETE",
+      "evidence": "Monthly native/PLN histories and provider-model-phase rows exist, and the reconciliation update adds a clear phase narrative. The figures remain provisional wherever usage was sampled or current tariffs were back-cast.",
+      "references": [
+        "finance/history-monthly.csv",
+        "finance/reports/2026-10-11-reconciliation-update/llm-by-model-phase.csv",
+        "finance/build_reconciliation_update.py:161"
+      ]
+    },
+    {
+      "requirement": "Separate true spending from coding-agent virtual values and shared subscriptions",
+      "status": "COMPLETE_FOR_AVAILABLE_EVIDENCE",
+      "evidence": "The conditional USD 1792.96201335 coding valuation has attributable_paid_cost=null and finance_baseline_change=None. It is not added to spending.",
+      "references": [
+        "finance/reports/2026-10-11-coding-usage/summary.json:7",
+        "finance/reports/2026-10-11-coding-usage/summary.json:23"
+      ]
+    },
+    {
+      "requirement": "Avoid material double counting",
+      "status": "COMPLETE_FOR_REVIEWED_ROWS",
+      "evidence": "No material duplicate was found. The build removes overlapping runtime IDs, reclassifies migration seeds, excludes corrected replays and reservations, does not add OpenRouter funding principal, counts the Apple purchase once historically, and keeps the monthly Apple accrual in the current planning view only.",
+      "references": [
+        "finance/build_report.py",
+        "finance/reports/2026-10-11/summary.json",
+        "finance/reports/2026-10-11-coding-usage/summary.json:37"
+      ]
+    },
+    {
+      "requirement": "Provider/category coverage: domains, storage/backups, email, CI, EAS, Apple, Twilio",
+      "status": "PARTIAL",
+      "evidence": "All named categories were considered, but several have only repository/mailbox non-findings rather than authoritative billing evidence. Expo Push itself is supported as free; EAS plans/build overages remain unknown. Domains/email and included storage/backups have no Sentinel-only charge found, but absence is not proof of zero account cost.",
+      "references": [
+        "finance/build_report.py:766",
+        "finance/reports/2026-10-11/coverage-gaps.csv:2",
+        "finance/reports/2026-10-11/coverage-gaps.csv:8"
+      ]
+    },
+    {
+      "requirement": "Integrate latest Hetzner paid confirmation",
+      "status": "PARTIAL",
+      "evidence": "Canonical ledger rows now carry EUR 8.98 and EUR 4.49 owner-confirmed cash, and the reconciliation summary reports EUR 13.47. The committed detailed snapshot still says confirmed_cash_total=null and its report says neither invoice is a confirmed payment total.",
+      "references": [
+        "finance/ledger.csv:2",
+        "finance/ledger.csv:3",
+        "finance/reports/2026-10-11-hetzner-email-check/evidence.json:31",
+        "finance/reports/2026-10-11/summary.json",
+        "finance/build_report.py:898",
+        "finance/build_report.py:981"
+      ]
+    },
+    {
+      "requirement": "Document dates, sources and calculations",
+      "status": "MOSTLY_COMPLETE",
+      "evidence": "The ledger/cost items and reconciliation deltas carry effective periods, evidence category, calculation and assumptions. The important remaining gaps are explicitly listed, but some back-cast tariff scenarios have no contemporaneous invoice corroboration.",
+      "references": [
+        "finance/reports/2026-10-11/cost-items.csv",
+        "finance/reports/2026-10-11/coverage-gaps.csv",
+        "finance/build_reconciliation_update.py:90"
+      ]
+    },
+    {
+      "requirement": "Current-month representativity",
+      "status": "PARTIAL",
+      "evidence": "The OpenAI recurring estimate uses ten complete UTC days and shows quietest/busiest-day sensitivity plus ordinary-input and cache-write-premium scenarios. Traffic increased materially inside that window, and unknown account credits/tax/cache-write billing are outside the range. The estimate should be refreshed as a rolling complete-day window.",
+      "references": [
+        "finance/build_report.py:740",
+        "finance/build_report.py:962",
+        "finance/reports/2026-10-11/summary.json"
+      ]
+    },
+    {
+      "requirement": "Reproducibility and validation",
+      "status": "PARTIAL",
+      "evidence": "finance/build_report.py --check passes arithmetic and internal-control assertions for the immutable 2026-10-11 snapshot. It intentionally does not test current canonical exports or require later cash confirmation to be reflected in the consolidated summary, so passing is not an evidence-completeness guarantee.",
+      "references": [
+        "finance/build_report.py:1167",
+        "finance/build_report.py:1186"
+      ]
+    }
+  ],
+  "later_fix_review": {
+    "schema_version": 1,
+    "reviewed_at_utc": "2026-10-11T11:15:49Z",
+    "repository_head": "4e7d2dc0a03c47076da2a77ed82d9b87192a14ad",
+    "scope": "Current-file verification of fixes F01, F03 and F11 only. No repeat provider, mailbox, billing, secret or web research was performed.",
+    "overall_result": "PASS",
+    "material_remaining_defect_in_targeted_fixes": false,
+    "goal_status": "PARTIAL_PENDING_PROVIDER_BILLING",
+    "current_artifacts_reviewed": [
+      "finance/index.html",
+      "finance/current-monthly.csv",
+      "finance/history-monthly.csv",
+      "finance/ledger.csv",
+      "finance/build_reconciliation_update.py",
+      "finance/reports/2026-10-11-reconciliation-update/report.html",
+      "finance/reports/2026-10-11-reconciliation-update/summary.json",
+      "finance/reports/2026-10-11-reconciliation-update/current-monthly.csv",
+      "finance/reports/2026-10-11-reconciliation-update/history-monthly.csv",
+      "finance/reports/2026-10-11-reconciliation-update/estimated-additions.csv",
+      "finance/reports/2026-10-11-reconciliation-update/measurement-windows.json"
+    ],
+    "fix_results": [
+      {
+        "id": "F01",
+        "result": "PASS",
+        "requirement": "Provide one current consolidated entry point and distinguish owner-confirmed cash from verified economic cost.",
+        "evidence": [
+          "finance/index.html:1 links the reconciliation report first, before the payment recheck and original audit.",
+          "finance/reports/2026-10-11-reconciliation-update/summary.json:32-35 explicitly supersedes the original audit and Hetzner payment recheck.",
+          "finance/reports/2026-10-11-reconciliation-update/summary.json:88 records EUR 13.47 as owner-confirmed invoiced cash.",
+          "finance/reports/2026-10-11-reconciliation-update/summary.json:89 leaves provider_or_bank_verified_cash_total null.",
+          "finance/reports/2026-10-11-reconciliation-update/report.html states that totals are provisional reconstructed costs, defines Verified as invoice/provider-returned usage rather than bank settlement, and states that payment dates and bank settlement remain unknown."
+        ],
+        "checked_values": {
+          "reconstructed_historical": {
+            "EUR": "30.3030349269",
+            "USD": "510.2346281642",
+            "PLN_equivalent": "2009.9435897889"
+          },
+          "owner_confirmed_invoiced_cash_EUR": "13.4700000000",
+          "provider_or_bank_verified_cash_total": null
+        },
+        "assessment": "The latest report is now the primary entry point and the cash distinction is explicit in both machine-readable and rendered output. Older snapshots remain available as dated evidence rather than silently overwritten."
+      },
+      {
+        "id": "F03",
+        "result": "PASS",
+        "requirement": "Do not encode unresolved recurring categories as bounded zero; scope supported free/included components separately.",
+        "evidence": [
+          "finance/current-monthly.csv:9 marks CI/builds Unknown, blanks all amount/range fields and excludes it from the total.",
+          "finance/current-monthly.csv:10 applies the same treatment to domains and operational email.",
+          "finance/current-monthly.csv:12 applies the same treatment to ongoing testing.",
+          "finance/current-monthly.csv:14-15 adds separate Unknown rows for cloud storage/backups or hosting add-ons and managed email/monitoring or paid source add-ons.",
+          "finance/current-monthly.csv:6-8 and :11/:13 retain zero only for specifically observed free/included components and state that unknown paid add-ons are separate.",
+          "finance/reports/2026-10-11-reconciliation-update/summary.json:36 sets range_is_complete=false and :37-43 enumerates all five unpriced current categories.",
+          "finance/reports/2026-10-11-reconciliation-update/report.html says the PLN 88.32-161.81 sensitivity covers quantified components only and unknown services sit outside it."
+        ],
+        "checked_values": {
+          "unknown_rows": 5,
+          "unknown_rows_with_populated_amount_or_range": 0,
+          "unknown_rows_included_in_total": 0,
+          "quantified_current_point_PLN": "134.0871134266",
+          "quantified_current_low_PLN": "88.3222100450",
+          "quantified_current_high_PLN": "161.8143827151",
+          "range_is_complete": false
+        },
+        "assessment": "The former false-zero problem is fixed. The point and sensitivity totals are clearly limited to quantified components."
+      },
+      {
+        "id": "F11",
+        "result": "PASS",
+        "requirement": "Remove the global EUR 13.47 cash amount from every monthly row when no monthly payment allocation exists.",
+        "evidence": [
+          "finance/history-monthly.csv:2-25 leaves confirmed_cash_payments blank for every month.",
+          "finance/history-monthly.csv:2-25 uses the neutral status 'Payment dates/settlements unknown; monthly cash allocation unavailable' and contains no EUR 13.47 amount in row-level cash_status.",
+          "finance/build_reconciliation_update.py:68 generates the neutral status without copying a global cash amount into each month.",
+          "finance/ledger.csv:2-3 remains the correct location for the two owner-confirmed Hetzner cash amounts."
+        ],
+        "checked_values": {
+          "monthly_rows": 24,
+          "monthly_confirmed_cash_cells_populated": 0,
+          "monthly_cash_status_rows_containing_13_47": 0
+        },
+        "assessment": "The monthly table no longer implies that EUR 13.47 belongs to every month. Cash confirmation remains at ledger and consolidated-summary level until payment dates permit allocation."
+      }
+    ],
+    "arithmetic_and_consistency_checks": {
+      "result": "PASS",
+      "checks": [
+        {
+          "check": "Every monthly verified_cost plus estimated_additions equals reconstructed_total",
+          "result": "PASS",
+          "rows_checked": 24
+        },
+        {
+          "check": "Monthly currency sums equal consolidated historical summary",
+          "result": "PASS",
+          "currencies": [
+            "EUR",
+            "USD",
+            "PLN"
+          ]
+        },
+        {
+          "check": "Canonical current-monthly.csv matches the dated reconciliation copy byte-for-byte",
+          "result": "PASS"
+        },
+        {
+          "check": "Canonical history-monthly.csv matches the dated reconciliation copy byte-for-byte",
+          "result": "PASS"
+        },
+        {
+          "check": "Quantified current PLN rows sum to summary.current_monthly_pln_equivalent",
+          "result": "PASS",
+          "value": "134.0871134266"
+        },
+        {
+          "check": "Unpriced categories in CSV exactly match summary.unpriced_current_categories",
+          "result": "PASS",
+          "categories": [
+            "CI/builds",
+            "Domains and operational email",
+            "Ongoing testing",
+            "Cloud storage/backups or hosting add-ons",
+            "Managed email/monitoring or paid source add-ons"
+          ]
+        },
+        {
+          "check": "Partial October 11 OpenAI delta subtracts the amount already present in the prior snapshot",
+          "result": "PASS",
+          "prior_snapshot_today_USD": "0.00492045",
+          "fresh_today_USD": "0.2329562400",
+          "delta_USD": "0.2280357900"
+        },
+        {
+          "check": "October hosting elapsed-time update",
+          "result": "PASS",
+          "prior_EUR": "1.7326580000",
+          "updated_EUR": "1.8078349269",
+          "delta_EUR": "0.0751769269"
+        },
+        {
+          "check": "Seven-, ten- and twenty-day measurement-window formulas and summary copy",
+          "result": "PASS",
+          "windows": [
+            {
+              "complete_days": 7,
+              "configured_cost_USD": "4.3000471700",
+              "projected_30day_USD": "18.4287735857"
+            },
+            {
+              "complete_days": 10,
+              "configured_cost_USD": "5.6916772100",
+              "projected_30day_USD": "17.0750316300"
+            },
+            {
+              "complete_days": 20,
+              "configured_cost_USD": "11.2657166900",
+              "projected_30day_USD": "16.8985750350"
+            }
+          ]
+        },
+        {
+          "check": "Rendered report carries provisional-cost, incomplete-range, verified-cost and cash-limit wording",
+          "result": "PASS"
+        }
+      ]
+    },
+    "remaining_nonblocking_issues": [
+      {
+        "severity": "LOW",
+        "issue": "The rendered report says 'Monthly spending includes experiments' in the month-by-month introduction even though the rows are reconstructed economic costs rather than verified cash spending.",
+        "evidence": "finance/build_reconciliation_update.py:245 and the generated report.html",
+        "suggested_fix": "Change 'Monthly spending' to 'The monthly reconstruction' on the next regeneration. The preceding notice and table labels currently prevent this isolated phrase from becoming a material misstatement."
+      },
+      {
+        "severity": "LOW",
+        "issue": "The reconciliation generator has useful inline assertions, but no read-only --check mode validates the current consolidated CSV/JSON/HTML as a package. Several rendered figures are embedded in the HTML template rather than read back and asserted against output rows.",
+        "evidence": "finance/build_reconciliation_update.py:72-87, :165, :189-250",
+        "suggested_fix": "Add a non-mutating check mode that reads existing artifacts and verifies totals, unpriced-row invariants, cash separation, measurement windows and rendered numeric values. This is a future drift control; current artifacts passed independent read-only checks."
+      }
+    ],
+    "unresolved_billing_limits": [
+      "No provider or bank proof currently verifies the EUR 13.47 settlement; it remains owner-confirmed paid invoice cash with payment date and settlement amount unknown.",
+      "Actual API charges after credits, discounts, free allowances, taxes, refunds and billed failures remain unknown.",
+      "Historical organizations/workspaces and rotated or deleted key coverage remain incomplete.",
+      "Apple actual payment amount, currency and date remain unknown; USD 99 is still a tariff proxy.",
+      "Twilio number retention, trial credits and historical communications billing remain unknown.",
+      "Earlier Hetzner plan/resource extras and co-hosting allocation remain unknown.",
+      "Netcup allocation and paid EAS/CI charges, if any, remain unresolved.",
+      "Project-specific paid coding-agent extras or API routing remain unknown; the conditional coding valuation stays outside spending."
+    ],
+    "final_assessment": "F01, F03 and F11 are fixed in the current files. The consolidated report is suitable as the primary provisional reconstruction, with an explicit incomplete range and a separate EUR 13.47 owner-confirmed cash field. It must continue to be described as partial until authoritative provider or bank billing evidence resolves the listed gaps."
+  },
+  "interpretation": "Requirement statuses reflect initial review; later targeted fixes resolve misleading zero rows, monthly cash wording and latest-summary selection. Provider billing gaps remain. Validation passes are arithmetic/artifact checks, not proof of complete spending."
+}

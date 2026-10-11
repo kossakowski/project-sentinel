@@ -1,0 +1,93 @@
+{
+  "audit": {
+    "project": "Project Sentinel",
+    "as_of": "2026-10-11",
+    "mode": "read-only local downloaded-invoice filename audit",
+    "locations": {
+      "linux_downloads": {
+        "checked": true,
+        "directory_count": 1
+      },
+      "mounted_windows_user_downloads": {
+        "checked": true,
+        "directory_count": 2
+      }
+    },
+    "provider_filename_terms": [
+      "Hetzner",
+      "Anthropic",
+      "OpenAI",
+      "OpenRouter",
+      "TypeSafe",
+      "Twilio",
+      "Apple Developer",
+      "Expo/EAS",
+      "netcup"
+    ],
+    "method": "Recursive filename search in Downloads directories. Only provider-named candidates would have been eligible for metadata inspection and text-layer PDF extraction.",
+    "mailbox_or_provider_api_calls": false,
+    "ocr_used": false
+  },
+  "coverage": {
+    "provider_named_candidate_files": 0,
+    "provider_named_pdf_candidates": 0,
+    "pdf_text_layers_extracted": 0,
+    "anonymous_sources": [],
+    "provider_name_hits": {
+      "Hetzner": 0,
+      "Anthropic": 0,
+      "OpenAI": 0,
+      "OpenRouter": 0,
+      "TypeSafe": 0,
+      "Twilio": 0,
+      "Apple Developer": 0,
+      "Expo/EAS": 0,
+      "netcup": 0
+    }
+  },
+  "downloaded_invoice_evidence": [],
+  "deduplication": {
+    "existing_hetzner_mail_evidence": {
+      "known_invoice_count": 2,
+      "known_service_periods": [
+        "2026-07",
+        "2026-08",
+        "2026-09"
+      ],
+      "known_total": {
+        "currency": "EUR",
+        "gross": 13.47,
+        "tax": 0.0
+      },
+      "matching_downloaded_copies_found": 0,
+      "amount_added_by_this_search": 0.0
+    }
+  },
+  "attribution": {
+    "new_sentinel_attributable_evidence": [],
+    "new_shared_or_unallocated_evidence": [],
+    "apple_developer": {
+      "attribution_if_found": "100% Sentinel",
+      "downloaded_bill_found": false,
+      "amount": null,
+      "issue_date": null,
+      "service_period": null
+    }
+  },
+  "result": {
+    "status": "no provider-named downloaded billing files found",
+    "interpretation": "This is a coverage result, not evidence of zero cost. Generic invoice files were intentionally excluded because their filenames do not identify an in-scope provider and could contain unrelated private correspondence or client billing.",
+    "limitations": [
+      "The search covered the existing Linux Downloads directory and two mounted standard Windows user Downloads directories.",
+      "Evidence stored outside Downloads or under generic filenames was outside this narrowly authorized local search.",
+      "No OCR decision was needed because there were no candidate PDFs."
+    ]
+  },
+  "sanitization": "No raw filenames, paths, invoice or customer identifiers, tax identifiers, personal addresses, account identifiers, attachment identifiers or tokens are included.",
+  "recorded_at": "2026-10-11",
+  "effective_period": {
+    "start": "2026-10-11",
+    "end": "2026-10-11",
+    "basis": "date of local evidence coverage check"
+  }
+}

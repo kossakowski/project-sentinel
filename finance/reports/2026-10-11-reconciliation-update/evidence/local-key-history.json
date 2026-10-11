@@ -1,0 +1,873 @@
+{
+  "recorded_at": "2026-10-11T11:06:12.745684+00:00",
+  "scope": {
+    "worktrees": [
+      {
+        "label": "project-sentinel",
+        "path": "/home/kossa/code/project-sentinel"
+      },
+      {
+        "label": "project-sentinel-buildtree",
+        "path": "/home/kossa/code/project-sentinel-buildtree"
+      },
+      {
+        "label": "sentinel-mobile",
+        "path": "/home/kossa/code/sentinel-mobile"
+      }
+    ],
+    "git_worktree_heads": [
+      {
+        "label": "project-sentinel",
+        "head": "ae4acd17251239191aa2a3496947022706c6952f",
+        "state": "branch master"
+      },
+      {
+        "label": "project-sentinel-buildtree",
+        "head": "a0ced2dcac7117351813f12d2e58c832b64e8a1f",
+        "state": "branch build/worktree-base"
+      },
+      {
+        "label": "sentinel-mobile",
+        "head": "dbeaaf90c815793596069b61e3077908942f72e8",
+        "state": "detached"
+      }
+    ],
+    "excluded": [
+      "all other projects",
+      "Claude transcript content",
+      "global credential stores",
+      "jev.env",
+      "portale.env",
+      "browser profiles",
+      "EAS/APNs remote credential stores"
+    ],
+    "network_or_api_calls": 0,
+    "repository_modified": false
+  },
+  "sanitization": {
+    "credential_values_exported": false,
+    "hashes_exported": false,
+    "prefixes_exported": false,
+    "lengths_exported": false,
+    "account_identifiers_exported": false,
+    "variant_method": "Exact equality comparison in process memory. Labels use a local-only namespace; raw values and fingerprints are discarded.",
+    "server_label_compatibility": "Local variant labels cannot be matched to server labels in finance evidence because that file deliberately stores no comparison fingerprint."
+  },
+  "status_definitions": {
+    "configured_value": "A non-placeholder value exists in the local source.",
+    "unresolved_placeholder": "The source contains an environment-variable substitution; runtime environment must provide it.",
+    "placeholder": "Example or test placeholder, not a usable credential.",
+    "empty": "Credential route exists but the value is empty.",
+    "no_credentials": "No value or credential file exists in this checkout."
+  },
+  "local_evidence": [
+    {
+      "worktree": "project-sentinel",
+      "provider": "Anthropic",
+      "credential_kind": "API key",
+      "variant_label": "Anthropic local variant A",
+      "status": "configured_value",
+      "source_relative_path": ".env",
+      "file_exists": true,
+      "file_modified_utc": "2026-09-22T21:25:22.082921+00:00",
+      "effective_date_caveat": "File mtime is not credential activation or rotation time."
+    },
+    {
+      "worktree": "project-sentinel",
+      "provider": "OpenAI",
+      "credential_kind": "API key",
+      "variant_label": "OpenAI local variant A",
+      "status": "configured_value",
+      "source_relative_path": ".env",
+      "file_exists": true,
+      "file_modified_utc": "2026-09-22T21:25:22.082921+00:00",
+      "effective_date_caveat": "File mtime is not credential activation or rotation time."
+    },
+    {
+      "worktree": "project-sentinel",
+      "provider": "OpenRouter",
+      "credential_kind": "API key",
+      "variant_label": "OpenRouter local variant A",
+      "status": "configured_value",
+      "source_relative_path": ".env",
+      "file_exists": true,
+      "file_modified_utc": "2026-09-22T21:25:22.082921+00:00",
+      "effective_date_caveat": "File mtime is not credential activation or rotation time."
+    },
+    {
+      "worktree": "project-sentinel",
+      "provider": "Twilio",
+      "credential_kind": "account credential bundle",
+      "variant_label": "Twilio local variant A",
+      "status": "configured_value",
+      "source_relative_path": ".env",
+      "file_exists": true,
+      "file_modified_utc": "2026-09-22T21:25:22.082921+00:00",
+      "effective_date_caveat": "File mtime is not credential activation or rotation time."
+    },
+    {
+      "worktree": "project-sentinel",
+      "provider": "Telegram API",
+      "credential_kind": "API credential bundle",
+      "variant_label": "Telegram API local variant A",
+      "status": "configured_value",
+      "source_relative_path": ".env",
+      "file_exists": true,
+      "file_modified_utc": "2026-09-22T21:25:22.082921+00:00",
+      "effective_date_caveat": "File mtime is not credential activation or rotation time."
+    },
+    {
+      "worktree": "project-sentinel",
+      "provider": "Expo access",
+      "credential_kind": "access token",
+      "variant_label": null,
+      "status": "no_credentials",
+      "source_relative_path": ".env",
+      "file_exists": true,
+      "file_modified_utc": "2026-09-22T21:25:22.082921+00:00",
+      "effective_date_caveat": "File mtime is not credential activation or rotation time."
+    },
+    {
+      "worktree": "project-sentinel",
+      "provider": "Expo device",
+      "credential_kind": "device push token",
+      "variant_label": null,
+      "status": "no_credentials",
+      "source_relative_path": ".env",
+      "file_exists": true,
+      "file_modified_utc": "2026-09-22T21:25:22.082921+00:00",
+      "effective_date_caveat": "File mtime is not credential activation or rotation time."
+    },
+    {
+      "worktree": "project-sentinel-buildtree",
+      "provider": "Anthropic",
+      "credential_kind": "API key",
+      "variant_label": "Anthropic local variant A",
+      "status": "configured_value",
+      "source_relative_path": ".env",
+      "file_exists": true,
+      "file_modified_utc": "2026-07-12T08:55:20.163771+00:00",
+      "effective_date_caveat": "File mtime is not credential activation or rotation time."
+    },
+    {
+      "worktree": "project-sentinel-buildtree",
+      "provider": "OpenAI",
+      "credential_kind": "API key",
+      "variant_label": null,
+      "status": "no_credentials",
+      "source_relative_path": ".env",
+      "file_exists": true,
+      "file_modified_utc": "2026-07-12T08:55:20.163771+00:00",
+      "effective_date_caveat": "File mtime is not credential activation or rotation time."
+    },
+    {
+      "worktree": "project-sentinel-buildtree",
+      "provider": "OpenRouter",
+      "credential_kind": "API key",
+      "variant_label": null,
+      "status": "no_credentials",
+      "source_relative_path": ".env",
+      "file_exists": true,
+      "file_modified_utc": "2026-07-12T08:55:20.163771+00:00",
+      "effective_date_caveat": "File mtime is not credential activation or rotation time."
+    },
+    {
+      "worktree": "project-sentinel-buildtree",
+      "provider": "Twilio",
+      "credential_kind": "account credential bundle",
+      "variant_label": "Twilio local variant A",
+      "status": "configured_value",
+      "source_relative_path": ".env",
+      "file_exists": true,
+      "file_modified_utc": "2026-07-12T08:55:20.163771+00:00",
+      "effective_date_caveat": "File mtime is not credential activation or rotation time."
+    },
+    {
+      "worktree": "project-sentinel-buildtree",
+      "provider": "Telegram API",
+      "credential_kind": "API credential bundle",
+      "variant_label": "Telegram API local variant A",
+      "status": "configured_value",
+      "source_relative_path": ".env",
+      "file_exists": true,
+      "file_modified_utc": "2026-07-12T08:55:20.163771+00:00",
+      "effective_date_caveat": "File mtime is not credential activation or rotation time."
+    },
+    {
+      "worktree": "project-sentinel-buildtree",
+      "provider": "Expo access",
+      "credential_kind": "access token",
+      "variant_label": null,
+      "status": "no_credentials",
+      "source_relative_path": ".env",
+      "file_exists": true,
+      "file_modified_utc": "2026-07-12T08:55:20.163771+00:00",
+      "effective_date_caveat": "File mtime is not credential activation or rotation time."
+    },
+    {
+      "worktree": "project-sentinel-buildtree",
+      "provider": "Expo device",
+      "credential_kind": "device push token",
+      "variant_label": null,
+      "status": "no_credentials",
+      "source_relative_path": ".env",
+      "file_exists": true,
+      "file_modified_utc": "2026-07-12T08:55:20.163771+00:00",
+      "effective_date_caveat": "File mtime is not credential activation or rotation time."
+    },
+    {
+      "worktree": "sentinel-mobile",
+      "provider": "Anthropic",
+      "credential_kind": "API key",
+      "variant_label": null,
+      "status": "no_credentials",
+      "source_relative_path": ".env",
+      "file_exists": false,
+      "file_modified_utc": null,
+      "effective_date_caveat": "No local .env file in this checkout."
+    },
+    {
+      "worktree": "sentinel-mobile",
+      "provider": "OpenAI",
+      "credential_kind": "API key",
+      "variant_label": null,
+      "status": "no_credentials",
+      "source_relative_path": ".env",
+      "file_exists": false,
+      "file_modified_utc": null,
+      "effective_date_caveat": "No local .env file in this checkout."
+    },
+    {
+      "worktree": "sentinel-mobile",
+      "provider": "OpenRouter",
+      "credential_kind": "API key",
+      "variant_label": null,
+      "status": "no_credentials",
+      "source_relative_path": ".env",
+      "file_exists": false,
+      "file_modified_utc": null,
+      "effective_date_caveat": "No local .env file in this checkout."
+    },
+    {
+      "worktree": "sentinel-mobile",
+      "provider": "Twilio",
+      "credential_kind": "account credential bundle",
+      "variant_label": null,
+      "status": "no_credentials",
+      "source_relative_path": ".env",
+      "file_exists": false,
+      "file_modified_utc": null,
+      "effective_date_caveat": "No local .env file in this checkout."
+    },
+    {
+      "worktree": "sentinel-mobile",
+      "provider": "Telegram API",
+      "credential_kind": "API credential bundle",
+      "variant_label": null,
+      "status": "no_credentials",
+      "source_relative_path": ".env",
+      "file_exists": false,
+      "file_modified_utc": null,
+      "effective_date_caveat": "No local .env file in this checkout."
+    },
+    {
+      "worktree": "sentinel-mobile",
+      "provider": "Expo access",
+      "credential_kind": "access token",
+      "variant_label": null,
+      "status": "no_credentials",
+      "source_relative_path": ".env",
+      "file_exists": false,
+      "file_modified_utc": null,
+      "effective_date_caveat": "No local .env file in this checkout."
+    },
+    {
+      "worktree": "sentinel-mobile",
+      "provider": "Expo device",
+      "credential_kind": "device push token",
+      "variant_label": null,
+      "status": "no_credentials",
+      "source_relative_path": ".env",
+      "file_exists": false,
+      "file_modified_utc": null,
+      "effective_date_caveat": "No local .env file in this checkout."
+    },
+    {
+      "worktree": "project-sentinel",
+      "provider": "Anthropic",
+      "credential_kind": "API key",
+      "variant_label": null,
+      "status": "placeholder",
+      "source_relative_path": ".env.example",
+      "file_exists": true,
+      "file_modified_utc": "2026-09-20T18:40:48.973754+00:00",
+      "effective_date_caveat": "Example/template only; never evidence of a configured credential."
+    },
+    {
+      "worktree": "project-sentinel",
+      "provider": "OpenAI",
+      "credential_kind": "API key",
+      "variant_label": null,
+      "status": "placeholder",
+      "source_relative_path": ".env.example",
+      "file_exists": true,
+      "file_modified_utc": "2026-09-20T18:40:48.973754+00:00",
+      "effective_date_caveat": "Example/template only; never evidence of a configured credential."
+    },
+    {
+      "worktree": "project-sentinel",
+      "provider": "OpenRouter",
+      "credential_kind": "API key",
+      "variant_label": null,
+      "status": "empty",
+      "source_relative_path": ".env.example",
+      "file_exists": true,
+      "file_modified_utc": "2026-09-20T18:40:48.973754+00:00",
+      "effective_date_caveat": "Example/template only; never evidence of a configured credential."
+    },
+    {
+      "worktree": "project-sentinel",
+      "provider": "Twilio",
+      "credential_kind": "account credential bundle",
+      "variant_label": null,
+      "status": "placeholder",
+      "source_relative_path": ".env.example",
+      "file_exists": true,
+      "file_modified_utc": "2026-09-20T18:40:48.973754+00:00",
+      "effective_date_caveat": "Example/template only; never evidence of a configured credential."
+    },
+    {
+      "worktree": "project-sentinel",
+      "provider": "Telegram API",
+      "credential_kind": "API credential bundle",
+      "variant_label": null,
+      "status": "placeholder",
+      "source_relative_path": ".env.example",
+      "file_exists": true,
+      "file_modified_utc": "2026-09-20T18:40:48.973754+00:00",
+      "effective_date_caveat": "Example/template only; never evidence of a configured credential."
+    },
+    {
+      "worktree": "project-sentinel",
+      "provider": "Expo access",
+      "credential_kind": "access token",
+      "variant_label": null,
+      "status": "no_credentials",
+      "source_relative_path": ".env.example",
+      "file_exists": true,
+      "file_modified_utc": "2026-09-20T18:40:48.973754+00:00",
+      "effective_date_caveat": "Example/template only; never evidence of a configured credential."
+    },
+    {
+      "worktree": "project-sentinel",
+      "provider": "Expo device",
+      "credential_kind": "device push token",
+      "variant_label": null,
+      "status": "no_credentials",
+      "source_relative_path": ".env.example",
+      "file_exists": true,
+      "file_modified_utc": "2026-09-20T18:40:48.973754+00:00",
+      "effective_date_caveat": "Example/template only; never evidence of a configured credential."
+    },
+    {
+      "worktree": "project-sentinel-buildtree",
+      "provider": "Anthropic",
+      "credential_kind": "API key",
+      "variant_label": null,
+      "status": "placeholder",
+      "source_relative_path": ".env.example",
+      "file_exists": true,
+      "file_modified_utc": "2026-07-12T08:55:20.122283+00:00",
+      "effective_date_caveat": "Example/template only; never evidence of a configured credential."
+    },
+    {
+      "worktree": "project-sentinel-buildtree",
+      "provider": "OpenAI",
+      "credential_kind": "API key",
+      "variant_label": null,
+      "status": "no_credentials",
+      "source_relative_path": ".env.example",
+      "file_exists": true,
+      "file_modified_utc": "2026-07-12T08:55:20.122283+00:00",
+      "effective_date_caveat": "Example/template only; never evidence of a configured credential."
+    },
+    {
+      "worktree": "project-sentinel-buildtree",
+      "provider": "OpenRouter",
+      "credential_kind": "API key",
+      "variant_label": null,
+      "status": "no_credentials",
+      "source_relative_path": ".env.example",
+      "file_exists": true,
+      "file_modified_utc": "2026-07-12T08:55:20.122283+00:00",
+      "effective_date_caveat": "Example/template only; never evidence of a configured credential."
+    },
+    {
+      "worktree": "project-sentinel-buildtree",
+      "provider": "Twilio",
+      "credential_kind": "account credential bundle",
+      "variant_label": null,
+      "status": "placeholder",
+      "source_relative_path": ".env.example",
+      "file_exists": true,
+      "file_modified_utc": "2026-07-12T08:55:20.122283+00:00",
+      "effective_date_caveat": "Example/template only; never evidence of a configured credential."
+    },
+    {
+      "worktree": "project-sentinel-buildtree",
+      "provider": "Telegram API",
+      "credential_kind": "API credential bundle",
+      "variant_label": null,
+      "status": "placeholder",
+      "source_relative_path": ".env.example",
+      "file_exists": true,
+      "file_modified_utc": "2026-07-12T08:55:20.122283+00:00",
+      "effective_date_caveat": "Example/template only; never evidence of a configured credential."
+    },
+    {
+      "worktree": "project-sentinel-buildtree",
+      "provider": "Expo access",
+      "credential_kind": "access token",
+      "variant_label": null,
+      "status": "no_credentials",
+      "source_relative_path": ".env.example",
+      "file_exists": true,
+      "file_modified_utc": "2026-07-12T08:55:20.122283+00:00",
+      "effective_date_caveat": "Example/template only; never evidence of a configured credential."
+    },
+    {
+      "worktree": "project-sentinel-buildtree",
+      "provider": "Expo device",
+      "credential_kind": "device push token",
+      "variant_label": null,
+      "status": "no_credentials",
+      "source_relative_path": ".env.example",
+      "file_exists": true,
+      "file_modified_utc": "2026-07-12T08:55:20.122283+00:00",
+      "effective_date_caveat": "Example/template only; never evidence of a configured credential."
+    },
+    {
+      "worktree": "sentinel-mobile",
+      "provider": "Anthropic",
+      "credential_kind": "API key",
+      "variant_label": null,
+      "status": "placeholder",
+      "source_relative_path": ".env.example",
+      "file_exists": true,
+      "file_modified_utc": "2026-09-20T21:22:07.848659+00:00",
+      "effective_date_caveat": "Example/template only; never evidence of a configured credential."
+    },
+    {
+      "worktree": "sentinel-mobile",
+      "provider": "OpenAI",
+      "credential_kind": "API key",
+      "variant_label": null,
+      "status": "placeholder",
+      "source_relative_path": ".env.example",
+      "file_exists": true,
+      "file_modified_utc": "2026-09-20T21:22:07.848659+00:00",
+      "effective_date_caveat": "Example/template only; never evidence of a configured credential."
+    },
+    {
+      "worktree": "sentinel-mobile",
+      "provider": "OpenRouter",
+      "credential_kind": "API key",
+      "variant_label": null,
+      "status": "empty",
+      "source_relative_path": ".env.example",
+      "file_exists": true,
+      "file_modified_utc": "2026-09-20T21:22:07.848659+00:00",
+      "effective_date_caveat": "Example/template only; never evidence of a configured credential."
+    },
+    {
+      "worktree": "sentinel-mobile",
+      "provider": "Twilio",
+      "credential_kind": "account credential bundle",
+      "variant_label": null,
+      "status": "placeholder",
+      "source_relative_path": ".env.example",
+      "file_exists": true,
+      "file_modified_utc": "2026-09-20T21:22:07.848659+00:00",
+      "effective_date_caveat": "Example/template only; never evidence of a configured credential."
+    },
+    {
+      "worktree": "sentinel-mobile",
+      "provider": "Telegram API",
+      "credential_kind": "API credential bundle",
+      "variant_label": null,
+      "status": "placeholder",
+      "source_relative_path": ".env.example",
+      "file_exists": true,
+      "file_modified_utc": "2026-09-20T21:22:07.848659+00:00",
+      "effective_date_caveat": "Example/template only; never evidence of a configured credential."
+    },
+    {
+      "worktree": "sentinel-mobile",
+      "provider": "Expo access",
+      "credential_kind": "access token",
+      "variant_label": null,
+      "status": "no_credentials",
+      "source_relative_path": ".env.example",
+      "file_exists": true,
+      "file_modified_utc": "2026-09-20T21:22:07.848659+00:00",
+      "effective_date_caveat": "Example/template only; never evidence of a configured credential."
+    },
+    {
+      "worktree": "sentinel-mobile",
+      "provider": "Expo device",
+      "credential_kind": "device push token",
+      "variant_label": null,
+      "status": "no_credentials",
+      "source_relative_path": ".env.example",
+      "file_exists": true,
+      "file_modified_utc": "2026-09-20T21:22:07.848659+00:00",
+      "effective_date_caveat": "Example/template only; never evidence of a configured credential."
+    },
+    {
+      "worktree": "project-sentinel",
+      "provider": "Telegram API",
+      "credential_kind": "API credential bundle",
+      "variant_label": null,
+      "status": "unresolved_placeholder",
+      "source_relative_path": "config/config.yaml",
+      "file_exists": true,
+      "file_modified_utc": "2026-09-25T12:30:01.941325+00:00",
+      "effective_date_caveat": "Config substitution route only; successful resolution depends on runtime environment."
+    },
+    {
+      "worktree": "project-sentinel",
+      "provider": "Expo device",
+      "credential_kind": "device push token",
+      "variant_label": null,
+      "status": "unresolved_placeholder",
+      "source_relative_path": "config/config.yaml",
+      "file_exists": true,
+      "file_modified_utc": "2026-09-25T12:30:01.941325+00:00",
+      "effective_date_caveat": "Config file mtime is not device-token activation time; test configs are not the live runtime route."
+    },
+    {
+      "worktree": "project-sentinel",
+      "provider": "Telegram API",
+      "credential_kind": "API credential bundle",
+      "variant_label": null,
+      "status": "unresolved_placeholder",
+      "source_relative_path": "config/config.example.yaml",
+      "file_exists": true,
+      "file_modified_utc": "2026-09-20T21:06:49.331509+00:00",
+      "effective_date_caveat": "Config substitution route only; successful resolution depends on runtime environment."
+    },
+    {
+      "worktree": "project-sentinel-buildtree",
+      "provider": "Telegram API",
+      "credential_kind": "API credential bundle",
+      "variant_label": null,
+      "status": "unresolved_placeholder",
+      "source_relative_path": "config/config.yaml",
+      "file_exists": true,
+      "file_modified_utc": "2026-07-12T08:55:20.125578+00:00",
+      "effective_date_caveat": "Config substitution route only; successful resolution depends on runtime environment."
+    },
+    {
+      "worktree": "project-sentinel-buildtree",
+      "provider": "Telegram API",
+      "credential_kind": "API credential bundle",
+      "variant_label": null,
+      "status": "unresolved_placeholder",
+      "source_relative_path": "config/config.example.yaml",
+      "file_exists": true,
+      "file_modified_utc": "2026-07-12T08:55:20.122445+00:00",
+      "effective_date_caveat": "Config substitution route only; successful resolution depends on runtime environment."
+    },
+    {
+      "worktree": "sentinel-mobile",
+      "provider": "Telegram API",
+      "credential_kind": "API credential bundle",
+      "variant_label": null,
+      "status": "unresolved_placeholder",
+      "source_relative_path": "config/config.yaml",
+      "file_exists": true,
+      "file_modified_utc": "2026-09-20T21:22:07.848659+00:00",
+      "effective_date_caveat": "Config substitution route only; successful resolution depends on runtime environment."
+    },
+    {
+      "worktree": "sentinel-mobile",
+      "provider": "Expo device",
+      "credential_kind": "device push token",
+      "variant_label": null,
+      "status": "unresolved_placeholder",
+      "source_relative_path": "config/config.yaml",
+      "file_exists": true,
+      "file_modified_utc": "2026-09-20T21:22:07.848659+00:00",
+      "effective_date_caveat": "Config file mtime is not device-token activation time; test configs are not the live runtime route."
+    },
+    {
+      "worktree": "sentinel-mobile",
+      "provider": "Telegram API",
+      "credential_kind": "API credential bundle",
+      "variant_label": null,
+      "status": "unresolved_placeholder",
+      "source_relative_path": "config/config.example.yaml",
+      "file_exists": true,
+      "file_modified_utc": "2026-09-20T21:22:07.848659+00:00",
+      "effective_date_caveat": "Config substitution route only; successful resolution depends on runtime environment."
+    },
+    {
+      "worktree": "project-sentinel",
+      "provider": "Telegram API",
+      "credential_kind": "API credential bundle",
+      "variant_label": null,
+      "status": "unresolved_placeholder",
+      "source_relative_path": "data/_test_authcheck_config.yaml",
+      "file_exists": true,
+      "file_modified_utc": "2026-06-04T15:13:31.905786+00:00",
+      "effective_date_caveat": "Config substitution route only; successful resolution depends on runtime environment."
+    },
+    {
+      "worktree": "project-sentinel",
+      "provider": "Expo device",
+      "credential_kind": "device push token",
+      "variant_label": null,
+      "status": "placeholder",
+      "source_relative_path": "data/_test_authcheck_config.yaml",
+      "file_exists": true,
+      "file_modified_utc": "2026-06-04T15:13:31.905786+00:00",
+      "effective_date_caveat": "Config file mtime is not device-token activation time; test configs are not the live runtime route."
+    },
+    {
+      "worktree": "project-sentinel",
+      "provider": "Telegram API",
+      "credential_kind": "API credential bundle",
+      "variant_label": null,
+      "status": "unresolved_placeholder",
+      "source_relative_path": "data/_test_push_config.yaml",
+      "file_exists": true,
+      "file_modified_utc": "2026-06-04T14:06:33.982470+00:00",
+      "effective_date_caveat": "Config substitution route only; successful resolution depends on runtime environment."
+    },
+    {
+      "worktree": "project-sentinel",
+      "provider": "Expo device",
+      "credential_kind": "device push token",
+      "variant_label": "Expo device local variant A",
+      "status": "configured_value",
+      "source_relative_path": "data/_test_push_config.yaml",
+      "file_exists": true,
+      "file_modified_utc": "2026-06-04T14:06:33.982470+00:00",
+      "effective_date_caveat": "Config file mtime is not device-token activation time; test configs are not the live runtime route."
+    },
+    {
+      "worktree": "project-sentinel",
+      "provider": "Telegram session",
+      "credential_kind": "authenticated session database",
+      "variant_label": "Telegram session local variant A",
+      "status": "configured_value",
+      "source_relative_path": "sentinel_session.session",
+      "file_exists": true,
+      "file_modified_utc": "2026-03-28T09:14:26.632583+00:00",
+      "effective_date_caveat": "Existence and mtime only; file contents were not inspected and mtime is not authentication time."
+    }
+  ],
+  "local_variant_comparisons": [
+    {
+      "provider": "Anthropic",
+      "root_and_buildtree_configured_values_equal": true,
+      "interpretation": "No local rotation evidenced between these two surviving snapshots."
+    },
+    {
+      "provider": "Twilio",
+      "root_and_buildtree_configured_values_equal": true,
+      "interpretation": "No local rotation evidenced between these two surviving snapshots."
+    },
+    {
+      "provider": "Telegram API",
+      "root_and_buildtree_configured_values_equal": true,
+      "interpretation": "No local rotation evidenced between these two surviving snapshots."
+    }
+  ],
+  "tracked_git_history": {
+    "env_ignored_from_first_commit": true,
+    "session_files_ignored_from_sentinel_spec_commit": true,
+    "objects_scanned_for_allowed_routes": 2697,
+    "configured_values_found": 0,
+    "credential_rotations_found": 0,
+    "routes": [
+      {
+        "provider": "Anthropic",
+        "routes": [
+          {
+            "route_name": "ANTHROPIC_API_KEY",
+            "first_mention_commit": "0d378d71b8f21c23502d11d0e550f01df7c5899d",
+            "first_mention_date": "2026-03-21T03:36:19+01:00",
+            "first_mention_paths": [
+              ".env.example",
+              "docs/api-setup.md",
+              "docs/config-reference.md",
+              "docs/phase-4-classification.md"
+            ]
+          }
+        ],
+        "configured_value_variants_found_in_tracked_blobs": 0,
+        "tracked_blob_status": "placeholders_empty_or_unresolved_only",
+        "rotation_evidenced_in_git": false
+      },
+      {
+        "provider": "OpenAI",
+        "routes": [
+          {
+            "route_name": "OPENAI_API_KEY",
+            "first_mention_commit": "0cdb3cb7e5c2f2c0d5b4ee6ee63049793ad4a12a",
+            "first_mention_date": "2026-09-20T20:56:02+02:00",
+            "first_mention_paths": [
+              ".env.example",
+              "docs/how-to/api-setup.md",
+              "docs/reference/config-reference.md",
+              "sentinel/classification/openai_provider.py",
+              "tests/test_direct_openai.py"
+            ]
+          }
+        ],
+        "configured_value_variants_found_in_tracked_blobs": 0,
+        "tracked_blob_status": "placeholders_empty_or_unresolved_only",
+        "rotation_evidenced_in_git": false
+      },
+      {
+        "provider": "OpenRouter",
+        "routes": [
+          {
+            "route_name": "OPENROUTER_API_KEY",
+            "first_mention_commit": "380ae20ca73f8e7037198cc2975ff468f82d4769",
+            "first_mention_date": "2026-09-20T17:11:43+02:00",
+            "first_mention_paths": [
+              ".env.example",
+              "docs/how-to/model-comparison.md",
+              "docs/ideas/model-comparison-plan.md",
+              "sentinel/eval/compare_models.py"
+            ]
+          }
+        ],
+        "configured_value_variants_found_in_tracked_blobs": 0,
+        "tracked_blob_status": "placeholders_empty_or_unresolved_only",
+        "rotation_evidenced_in_git": false
+      },
+      {
+        "provider": "Twilio",
+        "routes": [
+          {
+            "route_name": "TWILIO_ACCOUNT_SID",
+            "first_mention_commit": "43dbbbdc9552226bb8a73689a3664baa6d864caa",
+            "first_mention_date": "2026-03-21T02:28:20+01:00",
+            "first_mention_paths": [
+              ".env.example",
+              "app.py"
+            ]
+          },
+          {
+            "route_name": "TWILIO_AUTH_TOKEN",
+            "first_mention_commit": "43dbbbdc9552226bb8a73689a3664baa6d864caa",
+            "first_mention_date": "2026-03-21T02:28:20+01:00",
+            "first_mention_paths": [
+              ".env.example",
+              "app.py"
+            ]
+          }
+        ],
+        "configured_value_variants_found_in_tracked_blobs": 0,
+        "tracked_blob_status": "placeholders_empty_or_unresolved_only",
+        "rotation_evidenced_in_git": false
+      },
+      {
+        "provider": "Telegram API",
+        "routes": [
+          {
+            "route_name": "TELEGRAM_API_ID",
+            "first_mention_commit": "0d378d71b8f21c23502d11d0e550f01df7c5899d",
+            "first_mention_date": "2026-03-21T03:36:19+01:00",
+            "first_mention_paths": [
+              ".env.example",
+              "docs/api-setup.md",
+              "docs/config-reference.md",
+              "docs/phase-1-infrastructure.md"
+            ]
+          },
+          {
+            "route_name": "TELEGRAM_API_HASH",
+            "first_mention_commit": "0d378d71b8f21c23502d11d0e550f01df7c5899d",
+            "first_mention_date": "2026-03-21T03:36:19+01:00",
+            "first_mention_paths": [
+              ".env.example",
+              "docs/api-setup.md",
+              "docs/config-reference.md",
+              "docs/phase-1-infrastructure.md"
+            ]
+          }
+        ],
+        "configured_value_variants_found_in_tracked_blobs": 0,
+        "tracked_blob_status": "placeholders_empty_or_unresolved_only",
+        "rotation_evidenced_in_git": false
+      },
+      {
+        "provider": "Expo access",
+        "routes": [
+          {
+            "route_name": "EXPO_ACCESS_TOKEN",
+            "first_mention_commit": "bd839db95d8219ce07a9ee37d0a5114cbe7accde",
+            "first_mention_date": "2026-05-27T20:51:40+02:00",
+            "first_mention_paths": [
+              "sentinel/alerts/push_client.py",
+              "tests/test_push_client.py"
+            ]
+          }
+        ],
+        "configured_value_variants_found_in_tracked_blobs": 0,
+        "tracked_blob_status": "placeholders_empty_or_unresolved_only",
+        "rotation_evidenced_in_git": false
+      },
+      {
+        "provider": "Expo device",
+        "routes": [
+          {
+            "route_name": "EXPO_PUSH_TOKEN",
+            "first_mention_commit": "bd839db95d8219ce07a9ee37d0a5114cbe7accde",
+            "first_mention_date": "2026-05-27T20:51:40+02:00",
+            "first_mention_paths": [
+              "config/config.example.yaml",
+              "sentinel.py"
+            ]
+          }
+        ],
+        "configured_value_variants_found_in_tracked_blobs": 0,
+        "tracked_blob_status": "placeholders_empty_or_unresolved_only",
+        "rotation_evidenced_in_git": false
+      }
+    ],
+    "note": "Programmatic blob scan found no actual values for the allowed credential routes. Realistic documentation examples were classified as placeholders."
+  },
+  "findings": [
+    "The current root .env contains configured local variants for Anthropic, OpenAI, OpenRouter, Twilio and Telegram API.",
+    "The July buildtree .env contains the same surviving Anthropic, Twilio and Telegram API variants; it has no OpenAI or OpenRouter value.",
+    "The detached sentinel-mobile checkout has no .env file.",
+    "No local .env contains Expo access or device tokens.",
+    "A configured Expo device-token variant survives only in a gitignored June test config; the current tracked config uses an unresolved environment placeholder instead.",
+    "A Telegram authenticated-session database survives in the root checkout; only existence and mtime were inspected.",
+    "Git history records credential routes and placeholders but no actual configured credential value or rotation."
+  ],
+  "effective_date_caveats": [
+    "File modification times are not activation, rotation or billing-effective dates.",
+    "Git first-mention dates establish when a route entered source history, not when a local or server credential became active.",
+    "Matching values in root and buildtree show equality of surviving snapshots only; they do not prove uninterrupted use.",
+    "The existing server key-history evidence cannot be cryptographically joined to local variants because neither output may retain comparison fingerprints."
+  ],
+  "coverage_gaps": [
+    "No surviving twilio-playground directory or historical .env versions; .env was ignored from the first commit.",
+    "Production Expo access/device credentials are outside the existing server key-history file and absent locally.",
+    "The local OpenAI and OpenRouter variants cannot be matched to server/provider billing keys from sanitized evidence alone.",
+    "Remote Expo/EAS/APNs credentials and any provider-console rotations are outside project directories.",
+    "Global shell environment and unrelated credential stores were intentionally excluded.",
+    "No activation timestamp exists for any local configured value; only current file mtime and Git route dates are available."
+  ],
+  "effective_period": {
+    "start": "2026-03-21",
+    "end": "2026-10-11",
+    "basis": "historical configuration routes and current credential-file metadata, not proven key lifetime"
+  }
+}
