@@ -1,0 +1,112 @@
+{
+  "recorded_at": "2026-10-11T11:37:50.627991+00:00",
+  "effective_period": {
+    "start": "2026-03-01",
+    "end": "2026-09-30",
+    "basis": "invoice service periods; not server creation date"
+  },
+  "evidence_category": "VerifiedInvoiceAndProviderCash",
+  "invoices": [
+    {
+      "anonymous_source": "provider-invoice-1",
+      "issue_date": "2026-04-04",
+      "service_periods": [
+        {
+          "month": "2026-03",
+          "amount_eur": "1.10"
+        }
+      ],
+      "gross_eur": "1.10",
+      "net_eur": "1.10",
+      "tax_eur": "0.00",
+      "payment_date": "2026-04-05",
+      "settled": true,
+      "project_marker": "Sentinel",
+      "allocation_fraction": "1.0"
+    },
+    {
+      "anonymous_source": "provider-invoice-2",
+      "issue_date": "2026-07-04",
+      "service_periods": [
+        {
+          "month": "2026-04",
+          "amount_eur": "4.49"
+        },
+        {
+          "month": "2026-05",
+          "amount_eur": "4.49"
+        },
+        {
+          "month": "2026-06",
+          "amount_eur": "4.49"
+        }
+      ],
+      "gross_eur": "13.47",
+      "net_eur": "13.47",
+      "tax_eur": "0.00",
+      "payment_date": "2026-07-05",
+      "settled": true,
+      "project_marker": "Sentinel",
+      "allocation_fraction": "1.0"
+    },
+    {
+      "anonymous_source": "provider-invoice-3",
+      "issue_date": "2026-10-01",
+      "service_periods": [
+        {
+          "month": "2026-07",
+          "amount_eur": "4.49"
+        },
+        {
+          "month": "2026-08",
+          "amount_eur": "4.49"
+        }
+      ],
+      "gross_eur": "8.98",
+      "net_eur": "8.98",
+      "tax_eur": "0.00",
+      "payment_date": "2026-10-02",
+      "settled": true,
+      "project_marker": "Sentinel",
+      "allocation_fraction": "1.0"
+    },
+    {
+      "anonymous_source": "provider-invoice-4",
+      "issue_date": "2026-10-04",
+      "service_periods": [
+        {
+          "month": "2026-09",
+          "amount_eur": "4.49"
+        }
+      ],
+      "gross_eur": "4.49",
+      "net_eur": "4.49",
+      "tax_eur": "0.00",
+      "payment_date": "2026-10-05",
+      "settled": true,
+      "project_marker": "Sentinel",
+      "allocation_fraction": "1.0"
+    }
+  ],
+  "invoice_total_eur": "28.04",
+  "provider_received_cash_eur": "28.04",
+  "balance_difference_for_observed_transactions_eur": "0.00",
+  "bank_settlement_currency_or_amount": null,
+  "cash_payment_basis": "Provider-reported Payment transactions matched by date/amount to unique invoices; not a bank-statement debit",
+  "double_count_rule": "Replace existing hosting estimates and upgrade existing invoices; do not add payments to the same invoiced consumption",
+  "transaction_coverage": {
+    "rendered_transactions": 8,
+    "rendered_payments": 4,
+    "rendered_invoice_balance_debits": 4,
+    "next_or_load_more_controls_found": false,
+    "source": "authenticated transaction page and UI Automation pagination check",
+    "invoices_rendered": 4
+  },
+  "allocation": "All observed invoice charge lines identify Sentinel and are allocated 100%. Whether the physical server hosts unrelated workloads outside the invoice allocation is unconfirmed.",
+  "caveats": [
+    "Current cloud extras, co-hosting allocation and exact server creation date still need separate confirmation.",
+    "Calendar invoice period start does not prove service activation on that date.",
+    "Bank debit currency/amount and bank fees are unknown; EUR payments are provider-reported."
+  ],
+  "private_identifiers_exported": false
+}

@@ -1,0 +1,369 @@
+{
+  "schema_version": 1,
+  "prepared_at_utc": "2026-10-11T11:37:50.627991+00:00",
+  "scope": "Independent arithmetic validation for the published sanitized provider evidence.",
+  "overall_result": {
+    "status": "ARITHMETIC_READY_FOR_IMPLEMENTATION",
+    "all_provider_goal": "INCOMPLETE",
+    "reason": "Hetzner invoice and provider-payment coverage is now reconciled for the observed four invoices, but USD provider funding/cash, credits, tax and other provider billing remain unresolved."
+  },
+  "accounting_method": {
+    "economic_cost": "Assign each invoice line to its stated service month and value EUR at the NBP EUR mid-rate from the invoice issue date, using the last available business-day rate on or before that date. Replace the prior hosting estimate for that service month; do not add the invoice on top of the estimate.",
+    "cash": "Record provider Payment transactions in the actual provider payment month and value the PLN equivalent at the NBP EUR mid-rate from the payment date, using the last available business-day rate on or before that date. This is provider-confirmed cash received, not the actual bank debit or settlement FX.",
+    "separation_rule": "Invoice/service-month economic cost and payment-date cash are two views of the same charge. Payment rows must not increase reconstructed economic cost.",
+    "rounding": "Retain exact Decimal arithmetic and ten decimal places in finance outputs. PLN values below are exact products of the saved four-decimal NBP rates and the provider EUR amounts.",
+    "unchanged_scope": "Preserve every non-Hetzner cost item and every USD monthly amount. Do not value unknown API top-ups, debts, credits, refunds or taxes."
+  },
+  "fx_table": [
+    {
+      "purpose": "Invoice issue economic valuation",
+      "event_date": "2026-04-04",
+      "nbp_rate_date": "2026-04-03",
+      "table": "065/A/NBP/2026",
+      "currency": "EUR",
+      "pln_per_eur": "4.2776",
+      "reason": "April 4 was not an NBP publication day; use the last available rate on or before the issue date."
+    },
+    {
+      "purpose": "Provider payment cash valuation",
+      "event_date": "2026-04-05",
+      "nbp_rate_date": "2026-04-03",
+      "table": "065/A/NBP/2026",
+      "currency": "EUR",
+      "pln_per_eur": "4.2776",
+      "reason": "April 5 was not an NBP publication day."
+    },
+    {
+      "purpose": "Invoice issue economic valuation",
+      "event_date": "2026-07-04",
+      "nbp_rate_date": "2026-07-03",
+      "table": "127/A/NBP/2026",
+      "currency": "EUR",
+      "pln_per_eur": "4.2857",
+      "reason": "July 4 was not an NBP publication day."
+    },
+    {
+      "purpose": "Provider payment cash valuation",
+      "event_date": "2026-07-05",
+      "nbp_rate_date": "2026-07-03",
+      "table": "127/A/NBP/2026",
+      "currency": "EUR",
+      "pln_per_eur": "4.2857",
+      "reason": "July 5 was not an NBP publication day."
+    },
+    {
+      "purpose": "Invoice issue economic valuation",
+      "event_date": "2026-10-01",
+      "nbp_rate_date": "2026-10-01",
+      "table": "191/A/NBP/2026",
+      "currency": "EUR",
+      "pln_per_eur": "4.3770",
+      "reason": "Same-day NBP rate exists."
+    },
+    {
+      "purpose": "Provider payment cash valuation",
+      "event_date": "2026-10-02",
+      "nbp_rate_date": "2026-10-02",
+      "table": "192/A/NBP/2026",
+      "currency": "EUR",
+      "pln_per_eur": "4.3745",
+      "reason": "Same-day NBP rate exists."
+    },
+    {
+      "purpose": "Invoice issue economic valuation",
+      "event_date": "2026-10-04",
+      "nbp_rate_date": "2026-10-02",
+      "table": "192/A/NBP/2026",
+      "currency": "EUR",
+      "pln_per_eur": "4.3745",
+      "reason": "October 4 was not an NBP publication day."
+    },
+    {
+      "purpose": "Provider payment cash valuation",
+      "event_date": "2026-10-05",
+      "nbp_rate_date": "2026-10-05",
+      "table": "193/A/NBP/2026",
+      "currency": "EUR",
+      "pln_per_eur": "4.3855",
+      "reason": "Same-day NBP rate exists."
+    },
+    {
+      "purpose": "Uninvoiced October hosting accrual valuation",
+      "event_date": "2026-10-11T11:05:17.463462+00:00",
+      "nbp_rate_date": "2026-10-09",
+      "table": "197/A/NBP/2026",
+      "currency": "EUR",
+      "pln_per_eur": "4.3775",
+      "reason": "Keep the existing as-of-date valuation for the uninvoiced October estimate."
+    }
+  ],
+  "revised_native_totals": {
+    "EUR": {
+      "verified_cost": "28.0400000000",
+      "estimated_additions": "1.8078349269",
+      "reconstructed_total": "29.8478349269",
+      "reconstructed_low": "29.8478349269",
+      "reconstructed_high": "29.8478349269",
+      "delta_from_prior_reconstructed_total": "-0.4552000000",
+      "explanation": "March estimate EUR 1.5552 is replaced by the EUR 1.10 invoice. April-June estimates become verified at the same EUR amounts. July-September were already verified. Only the October 1-11 11:05 accrual remains estimated."
+    },
+    "USD": {
+      "verified_cost": "3.2630141728",
+      "estimated_additions": "506.9716139914",
+      "reconstructed_total": "510.2346281642",
+      "reconstructed_low": "392.1773870093",
+      "reconstructed_high": "626.9792461648",
+      "delta_from_prior_reconstructed_total": "0.0000000000",
+      "cash_funding_total": null,
+      "explanation": "No USD economic cost or cash funding is changed by the Hetzner reconciliation."
+    }
+  },
+  "revised_monthly_economic_totals": [
+    {
+      "month": "2026-03",
+      "EUR": {
+        "verified": "1.1000000000",
+        "estimated": "0.0000000000",
+        "reconstructed": "1.1000000000"
+      },
+      "USD": {
+        "verified": "0.0000000000",
+        "estimated": "34.8890688571",
+        "reconstructed": "34.8890688571"
+      },
+      "PLN": {
+        "verified": "4.7053600000",
+        "estimated": "130.3303662468",
+        "reconstructed": "135.0357262468",
+        "low": "87.8224683364",
+        "high": "188.1328296676"
+      }
+    },
+    {
+      "month": "2026-04",
+      "EUR": {
+        "verified": "4.4900000000",
+        "estimated": "0.0000000000",
+        "reconstructed": "4.4900000000"
+      },
+      "USD": {
+        "verified": "0.0000000000",
+        "estimated": "57.9983600000",
+        "reconstructed": "57.9983600000"
+      },
+      "PLN": {
+        "verified": "19.2427930000",
+        "estimated": "211.1135267848",
+        "reconstructed": "230.3563197848",
+        "low": "159.6917682664",
+        "high": "286.5687017032"
+      }
+    },
+    {
+      "month": "2026-05",
+      "EUR": {
+        "verified": "4.4900000000",
+        "estimated": "0.0000000000",
+        "reconstructed": "4.4900000000"
+      },
+      "USD": {
+        "verified": "0.0000000000",
+        "estimated": "160.8701950000",
+        "reconstructed": "160.8701950000"
+      },
+      "PLN": {
+        "verified": "19.2427930000",
+        "estimated": "585.5742057380",
+        "reconstructed": "604.8169987380",
+        "low": "462.5892428380",
+        "high": "731.9410942380"
+      }
+    },
+    {
+      "month": "2026-06",
+      "EUR": {
+        "verified": "4.4900000000",
+        "estimated": "0.0000000000",
+        "reconstructed": "4.4900000000"
+      },
+      "USD": {
+        "verified": "0.0000000000",
+        "estimated": "144.0147320000",
+        "reconstructed": "144.0147320000"
+      },
+      "PLN": {
+        "verified": "19.2427930000",
+        "estimated": "528.9378375488",
+        "reconstructed": "548.1806305488",
+        "low": "478.6529727496",
+        "high": "685.0260059080"
+      }
+    },
+    {
+      "month": "2026-07",
+      "EUR": {
+        "verified": "4.4900000000",
+        "estimated": "0.0000000000",
+        "reconstructed": "4.4900000000"
+      },
+      "USD": {
+        "verified": "0.0000000000",
+        "estimated": "50.1700771417",
+        "reconstructed": "50.1700771417"
+      },
+      "PLN": {
+        "verified": "19.6527300000",
+        "estimated": "187.9455137027",
+        "reconstructed": "207.5982437027",
+        "low": "164.6624477538",
+        "high": "234.2483076515"
+      }
+    },
+    {
+      "month": "2026-08",
+      "EUR": {
+        "verified": "4.4900000000",
+        "estimated": "0.0000000000",
+        "reconstructed": "4.4900000000"
+      },
+      "USD": {
+        "verified": "0.0000000000",
+        "estimated": "28.5664400000",
+        "reconstructed": "28.5664400000"
+      },
+      "PLN": {
+        "verified": "19.6527300000",
+        "estimated": "105.9659356640",
+        "reconstructed": "125.6186656640",
+        "low": "83.6880472170",
+        "high": "152.4524845910"
+      }
+    },
+    {
+      "month": "2026-09",
+      "EUR": {
+        "verified": "4.4900000000",
+        "estimated": "0.0000000000",
+        "reconstructed": "4.4900000000"
+      },
+      "USD": {
+        "verified": "3.2630141728",
+        "estimated": "24.5381075426",
+        "reconstructed": "27.8011217154"
+      },
+      "PLN": {
+        "verified": "32.1703646493",
+        "estimated": "93.4811765334",
+        "reconstructed": "125.6515411827",
+        "low": "107.1297054229",
+        "high": "128.0501386328"
+      }
+    },
+    {
+      "month": "2026-10",
+      "EUR": {
+        "verified": "0.0000000000",
+        "estimated": "1.8078349269",
+        "reconstructed": "1.8078349269"
+      },
+      "USD": {
+        "verified": "0.0000000000",
+        "estimated": "5.9246334500",
+        "reconstructed": "5.9246334500"
+      },
+      "PLN": {
+        "verified": "0.0000000000",
+        "estimated": "31.0329020411",
+        "reconstructed": "31.0329020411",
+        "low": "28.2576542793",
+        "high": "31.0329020411"
+      },
+      "hosting_note": "The PLN estimated subtotal includes the unchanged October hosting accrual EUR 1.8078349269 \u00d7 4.3775 = PLN 7.9137973925 plus all unchanged nonhosting estimates."
+    }
+  ],
+  "revised_dated_pln_totals": {
+    "verified_cost": "133.9095636493",
+    "estimated_additions": "1874.3814642596",
+    "reconstructed_total": "2008.2910279089",
+    "reconstructed_low": "1572.4943068634",
+    "reconstructed_high": "2437.4524644332",
+    "changes_from_prior": {
+      "verified_cost": "+62.4337390000",
+      "estimated_additions": "-64.0863008800",
+      "reconstructed_total": "-1.6525618800",
+      "reconstructed_low": "+1.3122714000",
+      "reconstructed_high": "-2.3937702000"
+    },
+    "interpretation": "These are dated PLN economic equivalents, not cash debits. The PLN total changes by more than the native EUR quantity change alone because March-June invoice lines are revalued at their invoice issue-date rates instead of the former service-period estimate rates."
+  },
+  "cash_timeline": {
+    "basis": "Provider Payment transaction dates; not assigned to service months and not added to economic cost.",
+    "events": [
+      {
+        "cash_month": "2026-04",
+        "payment_date": "2026-04-05",
+        "provider_cash_eur": "1.1000000000",
+        "nbp_rate_date": "2026-04-03",
+        "nbp_table": "065/A/NBP/2026",
+        "pln_per_eur": "4.2776",
+        "cash_pln_equivalent": "4.7053600000"
+      },
+      {
+        "cash_month": "2026-07",
+        "payment_date": "2026-07-05",
+        "provider_cash_eur": "13.4700000000",
+        "nbp_rate_date": "2026-07-03",
+        "nbp_table": "127/A/NBP/2026",
+        "pln_per_eur": "4.2857",
+        "cash_pln_equivalent": "57.7283790000"
+      },
+      {
+        "cash_month": "2026-10",
+        "payment_date": "2026-10-02",
+        "provider_cash_eur": "8.9800000000",
+        "nbp_rate_date": "2026-10-02",
+        "nbp_table": "192/A/NBP/2026",
+        "pln_per_eur": "4.3745",
+        "cash_pln_equivalent": "39.2830100000"
+      },
+      {
+        "cash_month": "2026-10",
+        "payment_date": "2026-10-05",
+        "provider_cash_eur": "4.4900000000",
+        "nbp_rate_date": "2026-10-05",
+        "nbp_table": "193/A/NBP/2026",
+        "pln_per_eur": "4.3855",
+        "cash_pln_equivalent": "19.6908950000"
+      }
+    ],
+    "monthly": [
+      {
+        "month": "2026-04",
+        "provider_cash_eur": "1.1000000000",
+        "cash_pln_equivalent": "4.7053600000"
+      },
+      {
+        "month": "2026-07",
+        "provider_cash_eur": "13.4700000000",
+        "cash_pln_equivalent": "57.7283790000"
+      },
+      {
+        "month": "2026-10",
+        "provider_cash_eur": "13.4700000000",
+        "cash_pln_equivalent": "58.9739050000"
+      }
+    ],
+    "provider_confirmed_cash_eur": "28.0400000000",
+    "dated_cash_pln_equivalent": "121.4076440000",
+    "bank_verified_cash": null,
+    "bank_settlement_currency_or_amount": null,
+    "note": "The provider transaction balance for the observed payments is exact: invoices EUR 28.04, Payment movements EUR -28.04, observed balance difference EUR 0.00. Transaction-screen pagination remains a coverage caveat, so this proves these four settlements rather than every possible account transaction."
+  },
+  "remaining_limits": [
+    "Provider transactions prove receipt of these four payments, but actual bank debit currency, bank amount and bank FX remain unknown.",
+    "The March invoice service period does not establish the exact server activation timestamp; use the provider invoice amount as the economic charge for March without rewriting deployment history.",
+    "Current provider resources, add-ons and exact server creation date remain unverified.",
+    "No USD provider funding cash is established by this reconciliation. Do not assign values to API top-ups, credits, debts, refunds or taxes."
+  ],
+  "private_identifiers_exported": false
+}

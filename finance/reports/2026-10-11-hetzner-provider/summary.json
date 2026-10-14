@@ -1,0 +1,178 @@
+{
+  "schema_version": 2,
+  "recorded_at": "2026-10-11T11:37:50.627991+00:00",
+  "as_of_utc": "2026-10-11T11:05:17.463462+00:00",
+  "status": "PROVISIONAL_ALL_PROVIDER_RECONCILIATION_INCOMPLETE",
+  "historical_basis": "Economic cost by service/usage month. Hetzner March-September uses verified invoice lines valued at issue-date FX. Provider payments are a separate cash view and do not add cost.",
+  "historical": {
+    "EUR": {
+      "verified_cost": "28.0400000000",
+      "estimated_additions": "1.8078349269",
+      "reconstructed_total": "29.8478349269",
+      "reconstructed_low": "29.8478349269",
+      "reconstructed_high": "29.8478349269"
+    },
+    "USD": {
+      "verified_cost": "3.2630141728",
+      "estimated_additions": "506.9716139914",
+      "reconstructed_total": "510.2346281642",
+      "reconstructed_low": "392.1773870093",
+      "reconstructed_high": "626.9792461648"
+    },
+    "PLN": {
+      "verified_cost": "133.9095636493",
+      "estimated_additions": "1874.3814642596",
+      "reconstructed_total": "2008.2910279089",
+      "reconstructed_low": "1572.4943068634",
+      "reconstructed_high": "2437.4524644332"
+    }
+  },
+  "current_monthly_pln_equivalent": "134.0871134266",
+  "recommended_budget_pln": "200",
+  "current_native": {
+    "EUR": "4.4900000000",
+    "USD": "29.3250316300"
+  },
+  "provider_confirmed_cash": {
+    "currency": "EUR",
+    "amount": "28.0400000000",
+    "dated_pln_equivalent_not_bank_debit": "121.4076440000",
+    "bank_settlement_amount_or_currency": null,
+    "by_month": {
+      "2026-04": {
+        "provider_received_eur": "1.1000000000",
+        "dated_pln_equivalent": "4.7053600000"
+      },
+      "2026-07": {
+        "provider_received_eur": "13.4700000000",
+        "dated_pln_equivalent": "57.7283790000"
+      },
+      "2026-10": {
+        "provider_received_eur": "13.4700000000",
+        "dated_pln_equivalent": "58.9739050000"
+      }
+    }
+  },
+  "hetzner": {
+    "verified_invoice_eur": "28.0400000000",
+    "verified_service_period": "2026-03-01 through 2026-09-30",
+    "invoice_tax_eur": "0.0000000000",
+    "allocation_fraction": "1.0000000000",
+    "allocation_basis": "Every observed invoice charge line identifies Sentinel.",
+    "allocation_limit": "Physical co-hosting outside the invoice allocation is unconfirmed.",
+    "october_uninvoiced_accrual_eur": "1.8078349269"
+  },
+  "monthly_changes": [
+    {
+      "month": "2026-03",
+      "verified_cost": "4.7053600000",
+      "estimated_additions": "130.3303662468",
+      "reconstructed_total": "135.0357262468",
+      "reconstructed_low": "87.8224683364",
+      "reconstructed_high": "188.1328296676"
+    },
+    {
+      "month": "2026-04",
+      "verified_cost": "19.2427930000",
+      "estimated_additions": "211.1135267848",
+      "reconstructed_total": "230.3563197848",
+      "reconstructed_low": "159.6917682664",
+      "reconstructed_high": "286.5687017032"
+    },
+    {
+      "month": "2026-05",
+      "verified_cost": "19.2427930000",
+      "estimated_additions": "585.5742057380",
+      "reconstructed_total": "604.8169987380",
+      "reconstructed_low": "462.5892428380",
+      "reconstructed_high": "731.9410942380"
+    },
+    {
+      "month": "2026-06",
+      "verified_cost": "19.2427930000",
+      "estimated_additions": "528.9378375488",
+      "reconstructed_total": "548.1806305488",
+      "reconstructed_low": "478.6529727496",
+      "reconstructed_high": "685.0260059080"
+    },
+    {
+      "month": "2026-07",
+      "verified_cost": "19.6527300000",
+      "estimated_additions": "187.9455137027",
+      "reconstructed_total": "207.5982437027",
+      "reconstructed_low": "164.6624477538",
+      "reconstructed_high": "234.2483076515"
+    },
+    {
+      "month": "2026-08",
+      "verified_cost": "19.6527300000",
+      "estimated_additions": "105.9659356640",
+      "reconstructed_total": "125.6186656640",
+      "reconstructed_low": "83.6880472170",
+      "reconstructed_high": "152.4524845910"
+    },
+    {
+      "month": "2026-09",
+      "verified_cost": "32.1703646493",
+      "estimated_additions": "93.4811765334",
+      "reconstructed_total": "125.6515411827",
+      "reconstructed_low": "107.1297054229",
+      "reconstructed_high": "128.0501386328"
+    },
+    {
+      "month": "2026-10",
+      "verified_cost": "0.0000000000",
+      "estimated_additions": "31.0329020411",
+      "reconstructed_total": "31.0329020411",
+      "reconstructed_low": "28.2576542793",
+      "reconstructed_high": "31.0329020411"
+    }
+  ],
+  "unpriced_current_categories": [
+    "CI/builds",
+    "Domains and operational email",
+    "Ongoing testing",
+    "Cloud storage/backups or hosting add-ons",
+    "Managed email/monitoring or paid source add-ons"
+  ],
+  "renewals_and_gaps": [
+    "Apple purchase is 100% Sentinel; USD 99 is a list-price proxy because actual settlement amount, currency and date are unknown.",
+    "Twilio retained-number status, trial credit, rental and historical communications billing remain unresolved.",
+    "Hetzner current extras, resource inventory, exact creation date and physical co-hosting remain unverified.",
+    "API-provider account-wide funding, balances, credits, taxes, refunds and failed billing remain unresolved and unallocated.",
+    "CI, EAS, domains, operational email, managed monitoring and paid source add-ons remain Unknown unless project-level billing appears."
+  ],
+  "files": {
+    "billing_evidence": "evidence/billing.json",
+    "transaction_evidence": "evidence/transactions.json",
+    "pdf_financial_evidence": "evidence/pdf-financial-evidence.json",
+    "independent_arithmetic_plan": "evidence/reconciliation-plan.json",
+    "cash": "cash-payments.csv",
+    "ledger_snapshot": "ledger.csv",
+    "history": "history-monthly.csv",
+    "current": "current-monthly.csv",
+    "cost_items": "cost-items.csv",
+    "model_phase": "llm-by-model-phase.csv"
+  },
+  "validation": {
+    "underlying_invoice_lines_verified": true,
+    "underlying_transaction_amounts_and_dates_verified": true,
+    "source_fx_and_cost_records_recomputed": true,
+    "independent_plan_matches": true,
+    "target_native_and_pln_totals_match": true,
+    "cost_items": 130,
+    "cost_item_ids_unique": true,
+    "cost_item_pln_basis_is_explicit_and_quantized_once": true,
+    "openai_active_delta_period": {
+      "start": "2026-10-11T00:38:49+00:00",
+      "end": "2026-10-11T11:05:17.463462+00:00"
+    },
+    "ledger_rows": 42,
+    "ledger_transaction_ids_unique": true,
+    "cash_not_added_to_economic_cost": true,
+    "cash_not_allocated_to_service_months": true,
+    "prior_model_phase_costs_unchanged": true,
+    "production_as_of_unchanged": "2026-10-11T11:05:17.463462+00:00",
+    "all_provider_goal_complete": false
+  }
+}

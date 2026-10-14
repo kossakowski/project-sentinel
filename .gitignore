@@ -33,3 +33,6 @@ mobile/dev-qr.png
 
 # Playwright MCP browser logs (may contain session tokens)
 .playwright-mcp/
+
+# Private finance evidence (invoices, statements, full evidence refs); never commit
+finance/private/

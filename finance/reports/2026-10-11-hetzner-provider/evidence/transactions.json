@@ -1,0 +1,225 @@
+{
+  "recorded_at": "2026-10-11T11:35:49.104194+00:00",
+  "anonymous_source": "authenticated provider transaction table",
+  "financial_lines": [
+    {
+      "dates": [],
+      "labels": [
+        "Transactions"
+      ],
+      "amounts": [],
+      "line": 21
+    },
+    {
+      "dates": [],
+      "labels": [
+        "Payment"
+      ],
+      "amounts": [],
+      "line": 22
+    },
+    {
+      "dates": [],
+      "labels": [
+        "Credit"
+      ],
+      "amounts": [],
+      "line": 23
+    },
+    {
+      "dates": [],
+      "labels": [
+        "Transactions"
+      ],
+      "amounts": [],
+      "line": 32
+    },
+    {
+      "dates": [],
+      "labels": [
+        "Credit",
+        "Balance",
+        "Transactions"
+      ],
+      "amounts": [],
+      "line": 33
+    },
+    {
+      "dates": [],
+      "labels": [
+        "Date"
+      ],
+      "amounts": [],
+      "line": 35
+    },
+    {
+      "dates": [],
+      "labels": [
+        "Amount"
+      ],
+      "amounts": [],
+      "line": 38
+    },
+    {
+      "dates": [
+        "Oct 5, 2026"
+      ],
+      "labels": [],
+      "amounts": [],
+      "line": 40
+    },
+    {
+      "dates": [],
+      "labels": [
+        "Payment"
+      ],
+      "amounts": [],
+      "line": 42
+    },
+    {
+      "dates": [],
+      "labels": [],
+      "amounts": [
+        "\u20ac4.49"
+      ],
+      "line": 44
+    },
+    {
+      "dates": [
+        "Oct 4, 2026"
+      ],
+      "labels": [],
+      "amounts": [],
+      "line": 46
+    },
+    {
+      "dates": [],
+      "labels": [],
+      "amounts": [
+        "-\u20ac4.49"
+      ],
+      "line": 50
+    },
+    {
+      "dates": [
+        "Oct 2, 2026"
+      ],
+      "labels": [],
+      "amounts": [],
+      "line": 52
+    },
+    {
+      "dates": [],
+      "labels": [
+        "Payment"
+      ],
+      "amounts": [],
+      "line": 54
+    },
+    {
+      "dates": [],
+      "labels": [],
+      "amounts": [
+        "\u20ac8.98"
+      ],
+      "line": 56
+    },
+    {
+      "dates": [
+        "Oct 1, 2026"
+      ],
+      "labels": [],
+      "amounts": [],
+      "line": 58
+    },
+    {
+      "dates": [],
+      "labels": [],
+      "amounts": [
+        "-\u20ac8.98"
+      ],
+      "line": 62
+    },
+    {
+      "dates": [
+        "Jul 5, 2026"
+      ],
+      "labels": [],
+      "amounts": [],
+      "line": 64
+    },
+    {
+      "dates": [],
+      "labels": [
+        "Payment"
+      ],
+      "amounts": [],
+      "line": 66
+    },
+    {
+      "dates": [],
+      "labels": [],
+      "amounts": [
+        "\u20ac13.47"
+      ],
+      "line": 68
+    },
+    {
+      "dates": [
+        "Jul 4, 2026"
+      ],
+      "labels": [],
+      "amounts": [],
+      "line": 70
+    },
+    {
+      "dates": [],
+      "labels": [],
+      "amounts": [
+        "-\u20ac13.47"
+      ],
+      "line": 74
+    },
+    {
+      "dates": [
+        "Apr 5, 2026"
+      ],
+      "labels": [],
+      "amounts": [],
+      "line": 76
+    },
+    {
+      "dates": [],
+      "labels": [
+        "Payment"
+      ],
+      "amounts": [],
+      "line": 78
+    },
+    {
+      "dates": [],
+      "labels": [],
+      "amounts": [
+        "\u20ac1.10"
+      ],
+      "line": 80
+    },
+    {
+      "dates": [
+        "Apr 4, 2026"
+      ],
+      "labels": [],
+      "amounts": [],
+      "line": 82
+    },
+    {
+      "dates": [],
+      "labels": [],
+      "amounts": [
+        "-\u20ac1.10"
+      ],
+      "line": 86
+    }
+  ],
+  "private_identifiers_exported": false
+}

@@ -1,0 +1,94 @@
+row_type,month,provider,currency,amount_native,fx_date,fx_table,fx_rate_pln,amount_pln,lines,in_total,note
+provider_month,2026-03,Twilio,USD,57.2869,2026-03-31,062/A/NBP/2026,3.7408,214.29883552,5,true,
+provider_month,2026-03,Anthropic,USD,1.563434,2026-03-31,062/A/NBP/2026,3.7408,5.8484939072,1,true,
+provider_month,2026-03,OpenAI,USD,0,2026-03-31,062/A/NBP/2026,3.7408,0.0000,1,true,
+provider_month,2026-03,Apple,PLN,0,,,1,0,1,true,
+provider_month,2026-03,Hetzner,EUR,1.1,2026-03-31,062/A/NBP/2026,4.2894,4.71834,1,true,
+provider_month,2026-03,Expo,USD,0,2026-03-31,062/A/NBP/2026,3.7408,0.0000,1,true,
+provider_month,2026-03,GitHub,USD,0,2026-03-31,062/A/NBP/2026,3.7408,0.0000,1,true,
+provider_month,2026-03,Free news sources,USD,0,2026-03-31,062/A/NBP/2026,3.7408,0.0000,1,true,
+provider_month,2026-03,Backups (on the VPS disk),EUR,0,2026-03-31,062/A/NBP/2026,4.2894,0.0000,1,true,
+month_total,2026-03,ALL,PLN,,,,,224.8656694272,,true,sum of provider_month PLN
+provider_month,2026-04,Twilio,USD,47.5815,2026-04-30,083/A/NBP/2026,3.646,173.4821490,5,true,
+provider_month,2026-04,Anthropic,USD,8.414606,2026-04-30,083/A/NBP/2026,3.646,30.679653476,1,true,
+provider_month,2026-04,OpenAI,USD,0,2026-04-30,083/A/NBP/2026,3.646,0.000,1,true,
+provider_month,2026-04,Apple,PLN,0,,,1,0,1,true,
+provider_month,2026-04,Hetzner,EUR,4.49,2026-04-30,083/A/NBP/2026,4.2589,19.122461,1,true,
+provider_month,2026-04,Expo,USD,0,2026-04-30,083/A/NBP/2026,3.646,0.000,1,true,
+provider_month,2026-04,GitHub,USD,0,2026-04-30,083/A/NBP/2026,3.646,0.000,1,true,
+provider_month,2026-04,Free news sources,USD,0,2026-04-30,083/A/NBP/2026,3.646,0.000,1,true,
+provider_month,2026-04,Backups (on the VPS disk),EUR,0,2026-04-30,083/A/NBP/2026,4.2589,0.0000,1,true,
+month_total,2026-04,ALL,PLN,,,,,223.284263476,,true,sum of provider_month PLN
+provider_month,2026-05,Twilio,USD,146.0971,2026-05-29,103/A/NBP/2026,3.6395,531.72039545,5,true,
+provider_month,2026-05,Anthropic,USD,18.866039,2026-05-29,103/A/NBP/2026,3.6395,68.6629489405,1,true,
+provider_month,2026-05,OpenAI,USD,0,2026-05-29,103/A/NBP/2026,3.6395,0.0000,1,true,
+provider_month,2026-05,Apple,PLN,429,,,1,429,1,true,
+provider_month,2026-05,Hetzner,EUR,4.49,2026-05-29,103/A/NBP/2026,4.2322,19.002578,1,true,
+provider_month,2026-05,Expo,USD,0,2026-05-29,103/A/NBP/2026,3.6395,0.0000,1,true,
+provider_month,2026-05,GitHub,USD,0,2026-05-29,103/A/NBP/2026,3.6395,0.0000,1,true,
+provider_month,2026-05,Free news sources,USD,0,2026-05-29,103/A/NBP/2026,3.6395,0.0000,1,true,
+provider_month,2026-05,Backups (on the VPS disk),EUR,0,2026-05-29,103/A/NBP/2026,4.2322,0.0000,1,true,
+month_total,2026-05,ALL,PLN,,,,,1048.3859223905,,true,sum of provider_month PLN
+provider_month,2026-06,Twilio,USD,22.7124,2026-06-30,124/A/NBP/2026,3.7708,85.64391792,5,true,
+provider_month,2026-06,Anthropic,USD,19.893009,2026-06-30,124/A/NBP/2026,3.7708,75.0125583372,1,true,
+provider_month,2026-06,OpenAI,USD,0,2026-06-30,124/A/NBP/2026,3.7708,0.0000,1,true,
+provider_month,2026-06,Apple,PLN,0,,,1,0,1,true,
+provider_month,2026-06,Hetzner,EUR,4.49,2026-06-30,124/A/NBP/2026,4.2963,19.290387,1,true,
+provider_month,2026-06,Expo,USD,0,2026-06-30,124/A/NBP/2026,3.7708,0.0000,1,true,
+provider_month,2026-06,GitHub,USD,0,2026-06-30,124/A/NBP/2026,3.7708,0.0000,1,true,
+provider_month,2026-06,Free news sources,USD,0,2026-06-30,124/A/NBP/2026,3.7708,0.0000,1,true,
+provider_month,2026-06,Backups (on the VPS disk),EUR,0,2026-06-30,124/A/NBP/2026,4.2963,0.0000,1,true,
+month_total,2026-06,ALL,PLN,,,,,179.9468632572,,true,sum of provider_month PLN
+provider_month,2026-07,Twilio,USD,24.1543,2026-07-31,147/A/NBP/2026,3.7425,90.39746775,5,true,
+provider_month,2026-07,Anthropic,USD,21.962053,2026-07-31,147/A/NBP/2026,3.7425,82.1929833525,1,true,
+provider_month,2026-07,OpenAI,USD,0,2026-07-31,147/A/NBP/2026,3.7425,0.0000,1,true,
+provider_month,2026-07,Apple,PLN,0,,,1,0,1,true,
+provider_month,2026-07,Hetzner,EUR,4.49,2026-07-31,147/A/NBP/2026,4.3128,19.364472,1,true,
+provider_month,2026-07,Expo,USD,0,2026-07-31,147/A/NBP/2026,3.7425,0.0000,1,true,
+provider_month,2026-07,GitHub,USD,0,2026-07-31,147/A/NBP/2026,3.7425,0.0000,1,true,
+provider_month,2026-07,Free news sources,USD,0,2026-07-31,147/A/NBP/2026,3.7425,0.0000,1,true,
+provider_month,2026-07,Backups (on the VPS disk),EUR,0,2026-07-31,147/A/NBP/2026,4.3128,0.0000,1,true,
+month_total,2026-07,ALL,PLN,,,,,191.9549231025,,true,sum of provider_month PLN
+provider_month,2026-08,Twilio,USD,12.1302,2026-08-31,168/A/NBP/2026,3.7314,45.26262828,5,true,
+provider_month,2026-08,Anthropic,USD,21.674698,2026-08-31,168/A/NBP/2026,3.7314,80.8769681172,1,true,
+provider_month,2026-08,OpenAI,USD,0,2026-08-31,168/A/NBP/2026,3.7314,0.0000,1,true,
+provider_month,2026-08,Apple,PLN,0,,,1,0,1,true,
+provider_month,2026-08,Hetzner,EUR,4.49,2026-08-31,168/A/NBP/2026,4.3264,19.425536,1,true,
+provider_month,2026-08,OpenRouter,USD,0,2026-08-31,168/A/NBP/2026,3.7314,0.0000,1,true,
+provider_month,2026-08,Expo,USD,0,2026-08-31,168/A/NBP/2026,3.7314,0.0000,1,true,
+provider_month,2026-08,GitHub,USD,0,2026-08-31,168/A/NBP/2026,3.7314,0.0000,1,true,
+provider_month,2026-08,Free news sources,USD,0,2026-08-31,168/A/NBP/2026,3.7314,0.0000,1,true,
+provider_month,2026-08,Backups (on the VPS disk),EUR,0,2026-08-31,168/A/NBP/2026,4.3264,0.0000,1,true,
+month_total,2026-08,ALL,PLN,,,,,145.5651323972,,true,sum of provider_month PLN
+provider_month,2026-09,Twilio,USD,5.15,2026-09-30,190/A/NBP/2026,3.8449,19.801235,3,true,
+provider_month,2026-09,Anthropic,USD,16.512415,2026-09-30,190/A/NBP/2026,3.8449,63.4885844335,1,true,
+provider_month,2026-09,OpenAI,USD,5.821030655,2026-09-30,190/A/NBP/2026,3.8449,22.3812807654095,3,true,
+provider_month,2026-09,Apple,PLN,0,,,1,0,1,true,
+provider_month,2026-09,Hetzner,EUR,4.49,2026-09-30,190/A/NBP/2026,4.3672,19.608728,1,true,
+provider_month,2026-09,OpenRouter,USD,4.2353923963,2026-09-30,190/A/NBP/2026,3.8449,16.28466022453387,1,true,
+provider_month,2026-09,Expo,USD,0,2026-09-30,190/A/NBP/2026,3.8449,0.0000,1,true,
+provider_month,2026-09,GitHub,USD,0,2026-09-30,190/A/NBP/2026,3.8449,0.0000,1,true,
+provider_month,2026-09,Free news sources,USD,0,2026-09-30,190/A/NBP/2026,3.8449,0.0000,1,true,
+provider_month,2026-09,Backups (on the VPS disk),EUR,0,2026-09-30,190/A/NBP/2026,4.3672,0.0000,1,true,
+month_total,2026-09,ALL,PLN,,,,,141.56448842344337,,true,sum of provider_month PLN
+provider_month,2026-10,Twilio,USD,0,2026-10-14,200/A/NBP/2026,3.9042,0.0000,1,true,partial month (to the as-of time)
+provider_month,2026-10,Anthropic,USD,0,2026-10-14,200/A/NBP/2026,3.9042,0.0000,1,true,partial month (to the as-of time)
+provider_month,2026-10,OpenAI,USD,8.52725331,2026-10-14,200/A/NBP/2026,3.9042,33.292102372902,3,true,partial month (to the as-of time)
+provider_month,2026-10,Apple,PLN,0,,,1,0,1,true,partial month (to the as-of time)
+provider_month,2026-10,Hetzner,EUR,2.4192,2026-10-14,200/A/NBP/2026,4.3706,10.57335552,2,true,partial month (to the as-of time)
+provider_month,2026-10,OpenRouter,USD,0,2026-10-14,200/A/NBP/2026,3.9042,0.0000,1,true,partial month (to the as-of time)
+provider_month,2026-10,TypeSafe (Jev),USD,0,2026-10-14,200/A/NBP/2026,3.9042,0.0000,1,true,partial month (to the as-of time)
+provider_month,2026-10,Expo,USD,0,2026-10-14,200/A/NBP/2026,3.9042,0.0000,1,true,partial month (to the as-of time)
+provider_month,2026-10,GitHub,USD,0,2026-10-14,200/A/NBP/2026,3.9042,0.0000,1,true,partial month (to the as-of time)
+provider_month,2026-10,Free news sources,USD,0,2026-10-14,200/A/NBP/2026,3.9042,0.0000,1,true,partial month (to the as-of time)
+provider_month,2026-10,Backups (on the VPS disk),EUR,0,2026-10-14,200/A/NBP/2026,4.3706,0.0000,1,true,partial month (to the as-of time)
+month_total,2026-10,ALL,PLN,,,,,43.865457892902,,true,sum of provider_month PLN
+native_total,2026-03..2026-10,ALL,EUR,30.4592,,,,,,true,native subtotal of counted lines
+native_total,2026-03..2026-10,ALL,PLN,429,,,,,,true,native subtotal of counted lines
+native_total,2026-03..2026-10,ALL,USD,442.5823303613,,,,,,true,native subtotal of counted lines
+grand_total,2026-03..2026-10,ALL,PLN,,,,,2199.43272036694537,107,true,economic cost 2026-03-21 to 2026-10-14T23:59:59Z
+note_not_in_total,2026-09,TypeSafe (Jev),USD,0.074125296,2026-09-30,190/A/NBP/2026,3.8449,0.2850043505904,1,false,"ORT-2026-09-typesafe-jev-eval-free (free_credit, measured_usage_x_tariff)"
+note_not_in_total,2026-03,Twilio,USD,3.0686,2026-03-31,062/A/NBP/2026,3.7408,11.47901888,1,false,"twilio-2026-03-free-trial-credit (free_credit, provider_portal)"
+note_not_in_total,2026-07,Twilio,USD,3.87,2026-07-31,147/A/NBP/2026,3.7425,14.483475,1,false,"twilio-2026-07-calls-unbilled-exposure (usage, estimate)"
+note_not_in_total,2026-08,Twilio,USD,1.29,2026-08-31,168/A/NBP/2026,3.7314,4.813506,1,false,"twilio-2026-08-calls-unbilled-exposure (usage, estimate)"
+note_not_in_total,2026-10,Hetzner,EUR,4.49,2026-10-14,200/A/NBP/2026,4.3706,19.623994,1,false,"hetzner-vps-2026-10-fullmonth-projection (accrued_unpaid, estimate)"

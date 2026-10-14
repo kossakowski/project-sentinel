@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sentinel costs — provider-confirmed Hetzner reconciliation</title>
+<style>
+body{font:16px/1.55 system-ui,sans-serif;max-width:1100px;margin:auto;padding:24px;color:#17202a}
+h1,h2{line-height:1.2} .notice{background:#fff3cf;border-left:5px solid #d49b00;padding:16px}
+.ok{background:#eaf7ee;border-left:5px solid #2e7d32;padding:16px} .scroll{overflow:auto}
+table{border-collapse:collapse;width:100%;margin:12px 0 24px} th,td{padding:8px;text-align:left;border-bottom:1px solid #d8dde3;vertical-align:top}
+th{background:#f4f6f8} code{overflow-wrap:anywhere} a{overflow-wrap:anywhere}
+</style>
+</head>
+<body>
+<h1>Sentinel costs: provider-confirmed Hetzner reconciliation</h1>
+<p>Recorded at 2026-10-11T11:37:50.627991+00:00. Production usage and the October hosting accrual remain measured through 2026-10-11T11:05:17.463462+00:00. Earlier dated reports are preserved.</p>
+<p class="notice"><strong>The all-provider reconciliation remains incomplete.</strong> Historical totals are a mix of verified attributable costs and dated estimates. Verified invoice cost is not the same as bank-verified cash.</p>
+
+<h2>Current monthly planning cost</h2>
+<p>The quantified 30-day planning estimate remains <strong>PLN 134.09</strong>, with a <strong>PLN 200 monthly reserve</strong>. Unknown categories remain blank and sit outside this total.</p>
+<div class="scroll"><table><thead><tr><th>Service</th><th>Provider</th><th>Evidence</th><th>Currency</th><th>Monthly</th><th>PLN equivalent</th></tr></thead><tbody><tr><td>CX23 + IPv4</td><td>Hetzner</td><td>Estimated</td><td>EUR</td><td>4.4900000000</td><td>19.6549750000</td></tr><tr><td>Production classification + enrichment + summary translation</td><td>OpenAI</td><td>Estimated</td><td>USD</td><td>17.0750316300</td><td>66.6301884266</td></tr><tr><td>Retained Polish number</td><td>Twilio</td><td>Estimated</td><td>USD</td><td>4.0000000000</td><td>15.6088000000</td></tr><tr><td>Developer Program</td><td>Apple</td><td>Estimated</td><td>USD</td><td>8.2500000000</td><td>32.1931500000</td></tr><tr><td>Expo Push</td><td>Expo</td><td>Estimated</td><td>USD</td><td>0.0000000000</td><td>0.0000000000</td></tr><tr><td>Included disk + local backups</td><td>Hetzner</td><td>Estimated</td><td>USD</td><td>0.0000000000</td><td>0.0000000000</td></tr><tr><td>Health monitoring</td><td>Local cron</td><td>Estimated</td><td>USD</td><td>0.0000000000</td><td>0.0000000000</td></tr><tr><td>CI/builds</td><td>Local/GitHub/Expo</td><td>Unknown</td><td>USD</td><td>Unknown</td><td>Unknown</td></tr><tr><td>Domains and operational email</td><td>None evidenced</td><td>Unknown</td><td>USD</td><td>Unknown</td><td>Unknown</td></tr><tr><td>Source APIs</td><td>RSS/Telegram/Google News/GDELT</td><td>Estimated</td><td>USD</td><td>0.0000000000</td><td>0.0000000000</td></tr><tr><td>Ongoing testing</td><td>Model providers</td><td>Unknown</td><td>USD</td><td>Unknown</td><td>Unknown</td></tr><tr><td>Suspended outbound alerts</td><td>Twilio</td><td>Estimated</td><td>USD</td><td>0.0000000000</td><td>0.0000000000</td></tr><tr><td>Cloud storage/backups or hosting add-ons</td><td>Hetzner</td><td>Unknown</td><td>UNKNOWN</td><td>Unknown</td><td>Unknown</td></tr><tr><td>Managed email/monitoring or paid source add-ons</td><td>Unconfirmed</td><td>Unknown</td><td>UNKNOWN</td><td>Unknown</td><td>Unknown</td></tr></tbody></table></div>
+
+<h2>Historical economic cost</h2>
+<p class="ok">Hetzner invoices now replace the earlier March–June hosting estimates. They are not added on top of those estimates.</p>
+<div class="scroll"><table><thead><tr><th>Currency</th><th>Verified</th><th>Estimated</th><th>Reconstructed total</th></tr></thead><tbody><tr><td>EUR</td><td>28.0400</td><td>1.8078</td><td>29.8478</td></tr><tr><td>USD</td><td>3.2630</td><td>506.9716</td><td>510.2346</td></tr></tbody></table></div>
+<p>Dated PLN equivalent: <strong>2008.29 PLN</strong> = 133.91 verified + 1874.38 estimated. PLN values use issue-date FX for invoice cost and are not bank debits.</p>
+<p>The cost-item snapshot has 130 unique rows. Its final row records the local OpenAI production tariff delta from 00:38:49 to the unchanged 11:05:17 as-of time. It is an estimate with dated repository evidence, not an authoritative API bill. Each row publishes its PLN aggregation basis: verified rows use the unrounded amount × FX product, while previously recorded estimate scenarios retain their dated ten-decimal valuation. Explicit aggregation-adjustment columns disclose any canonical monthly rounding correction, each no larger than 0.0000000005 PLN. Subtotals are quantized once, avoiding hidden overrides and cumulative verified-row rounding drift.</p>
+
+<h2>Hetzner invoice coverage</h2>
+<p>Four settled invoices cover calendar service periods March–September. Every observed invoice charge line identifies Sentinel; allocation is therefore 100% for these invoice lines. Calendar month start does not prove activation on that date. Physical co-hosting outside the invoice allocation remains unconfirmed.</p>
+<div class="scroll"><table><thead><tr><th>Service months</th><th>Issue date</th><th>Net EUR</th><th>Tax EUR</th><th>Gross EUR</th><th>Provider payment date</th></tr></thead><tbody><tr><td>2026-03</td><td>2026-04-04</td><td>1.10</td><td>0.00</td><td>1.10</td><td>2026-04-05</td></tr><tr><td>2026-04, 2026-05, 2026-06</td><td>2026-07-04</td><td>13.47</td><td>0.00</td><td>13.47</td><td>2026-07-05</td></tr><tr><td>2026-07, 2026-08</td><td>2026-10-01</td><td>8.98</td><td>0.00</td><td>8.98</td><td>2026-10-02</td></tr><tr><td>2026-09</td><td>2026-10-04</td><td>4.49</td><td>0.00</td><td>4.49</td><td>2026-10-05</td></tr></tbody></table></div>
+<p>Invoice total: <strong>EUR 28.04</strong>. No separate backups, storage, traffic overage or other paid extras appear on the observed March–September invoices. Current cloud extras and the exact resource creation date remain unverified.</p>
+
+<h2>Provider-confirmed cash, kept separate</h2>
+<p>Hetzner reports receiving EUR 28.04. These payment events do not add to economic cost and are not assigned to service months. Their dated PLN equivalent is <strong>121.407644 PLN</strong>. Actual bank debit amount, settlement currency, bank FX and fees remain unknown.</p>
+<div class="scroll"><table><thead><tr><th>Payment date</th><th>Provider received</th><th>FX date</th><th>Dated PLN equivalent</th></tr></thead><tbody><tr><td>2026-04-05</td><td>1.10 EUR</td><td>2026-04-03</td><td>4.7054 PLN</td></tr><tr><td>2026-07-05</td><td>13.47 EUR</td><td>2026-07-03</td><td>57.7284 PLN</td></tr><tr><td>2026-10-02</td><td>8.98 EUR</td><td>2026-10-02</td><td>39.2830 PLN</td></tr><tr><td>2026-10-05</td><td>4.49 EUR</td><td>2026-10-05</td><td>19.6909 PLN</td></tr></tbody></table></div>
+<div class="scroll"><table><thead><tr><th>Cash month</th><th>Provider received</th><th>Dated PLN equivalent</th></tr></thead><tbody><tr><td>2026-04</td><td>1.10 EUR</td><td>4.7054 PLN</td></tr><tr><td>2026-07</td><td>13.47 EUR</td><td>57.7284 PLN</td></tr><tr><td>2026-10</td><td>13.47 EUR</td><td>58.9739 PLN</td></tr></tbody></table></div>
+
+<h2>Month-by-month economic cost</h2>
+<p>March includes a partial EUR 1.10 invoice for the calendar month, but this does not establish the activation date. April–June hosting is now verified. July–September was already invoice-verified. October remains an uninvoiced hosting accrual through the stated as-of time.</p>
+<div class="scroll"><table><thead><tr><th>Month</th><th>Verified PLN</th><th>Estimated PLN</th><th>Total PLN</th><th>Cumulative PLN</th></tr></thead><tbody><tr><td>2026-03</td><td>4.71</td><td>130.33</td><td>135.04</td><td>135.04</td></tr><tr><td>2026-04</td><td>19.24</td><td>211.11</td><td>230.36</td><td>365.39</td></tr><tr><td>2026-05</td><td>19.24</td><td>585.57</td><td>604.82</td><td>970.21</td></tr><tr><td>2026-06</td><td>19.24</td><td>528.94</td><td>548.18</td><td>1518.39</td></tr><tr><td>2026-07</td><td>19.65</td><td>187.95</td><td>207.60</td><td>1725.99</td></tr><tr><td>2026-08</td><td>19.65</td><td>105.97</td><td>125.62</td><td>1851.61</td></tr><tr><td>2026-09</td><td>32.17</td><td>93.48</td><td>125.65</td><td>1977.26</td></tr><tr><td>2026-10</td><td>0.00</td><td>31.03</td><td>31.03</td><td>2008.29</td></tr></tbody></table></div>
+<ul>
+<li>May remains dominated by reconstructed Twilio activity. Provider invoices, trial credits and retained-resource charges are unresolved.</li>
+<li>The Apple Developer purchase is confirmed as 100% Sentinel, while USD 99 remains a list-price proxy because the actual amount, currency and date are unknown.</li>
+<li>September includes the direct-provider migration and attributable testing. USD funding, credits, taxes and refunds remain unresolved.</li>
+<li>October recurring cost uses the unchanged production measurement window; cash receipts are not mixed into this service-month view.</li>
+</ul>
+
+<h2>Model and phase costs</h2>
+<p>This table is unchanged from the prior latest report and already contains the production delta. The new cost-item row makes the same delta explicit for reconciliation and is not added again here. The table reports attributable consumption or reconstruction, not provider funding cash.</p>
+<div class="scroll"><table><thead><tr><th>Provider</th><th>Model</th><th>Phase</th><th>Currency</th><th>Verified</th><th>Estimated</th><th>Total</th></tr></thead><tbody><tr><td>Anthropic</td><td>claude-haiku-4-5-20251001</td><td>production</td><td>USD</td><td>0.0000</td><td>98.1717</td><td>98.1717</td></tr><tr><td>Anthropic</td><td>claude-haiku-4-5-20251001</td><td>testing_evaluation</td><td>USD</td><td>0.0000</td><td>1.9810</td><td>1.9810</td></tr><tr><td>Anthropic</td><td>claude-haiku-4-5-20251001</td><td>unclassified_project_usage</td><td>USD</td><td>0.0000</td><td>1.1959</td><td>1.1959</td></tr><tr><td>OpenAI</td><td>gpt-5.6-luna</td><td>production</td><td>USD</td><td>0.0000</td><td>11.5149</td><td>11.5149</td></tr><tr><td>OpenAI</td><td>gpt-5.6-luna</td><td>testing_evaluation</td><td>USD</td><td>0.0000</td><td>0.2102</td><td>0.2102</td></tr><tr><td>OpenAI</td><td>gpt-6-luna</td><td>testing_evaluation</td><td>USD</td><td>0.0000</td><td>0.0551</td><td>0.0551</td></tr><tr><td>OpenRouter</td><td>anthropic/claude-haiku-4.5</td><td>testing_evaluation</td><td>USD</td><td>2.6687</td><td>0.0000</td><td>2.6687</td></tr><tr><td>OpenRouter</td><td>anthropic/claude-sonnet-5</td><td>testing_evaluation</td><td>USD</td><td>0.0566</td><td>0.0000</td><td>0.0566</td></tr><tr><td>OpenRouter</td><td>credit-purchase fee allocation</td><td>unclassified_project_usage</td><td>USD</td><td>0.0000</td><td>0.1795</td><td>0.1795</td></tr><tr><td>OpenRouter</td><td>deepseek/deepseek-v4-flash-0731</td><td>testing_evaluation</td><td>USD</td><td>0.0011</td><td>0.0000</td><td>0.0011</td></tr><tr><td>OpenRouter</td><td>deepseek/deepseek-v4.1-flash</td><td>testing_evaluation</td><td>USD</td><td>0.0565</td><td>0.0000</td><td>0.0565</td></tr><tr><td>OpenRouter</td><td>google/gemini-3.1-flash-lite</td><td>testing_evaluation</td><td>USD</td><td>0.0054</td><td>0.0000</td><td>0.0054</td></tr><tr><td>OpenRouter</td><td>mistralai/mistral-small-2603</td><td>testing_evaluation</td><td>USD</td><td>0.0004</td><td>0.0000</td><td>0.0004</td></tr><tr><td>OpenRouter</td><td>openai/gpt-5.6-luna</td><td>testing_evaluation</td><td>USD</td><td>0.3711</td><td>0.0000</td><td>0.3711</td></tr><tr><td>OpenRouter</td><td>openai/gpt-5.6-luna-pro</td><td>testing_evaluation</td><td>USD</td><td>0.0095</td><td>0.0000</td><td>0.0095</td></tr><tr><td>OpenRouter</td><td>openai/gpt-6-luna</td><td>testing_evaluation</td><td>USD</td><td>0.0327</td><td>0.0000</td><td>0.0327</td></tr><tr><td>OpenRouter</td><td>openai/gpt-6-sol</td><td>testing_evaluation</td><td>USD</td><td>0.0208</td><td>0.0000</td><td>0.0208</td></tr><tr><td>OpenRouter</td><td>qwen/qwen3.8-flash</td><td>testing_evaluation</td><td>USD</td><td>0.0374</td><td>0.0000</td><td>0.0374</td></tr><tr><td>OpenRouter</td><td>z-ai/glm-5.3-flash</td><td>testing_evaluation</td><td>USD</td><td>0.0027</td><td>0.0000</td><td>0.0027</td></tr><tr><td>TypeSafe</td><td>jev-1.13.0</td><td>testing_evaluation</td><td>USD</td><td>0.0000</td><td>0.0741</td><td>0.0741</td></tr></tbody></table></div>
+
+<h2>Renewals and remaining gaps</h2>
+<div class="scroll"><table><thead><tr><th>Item</th><th>Current treatment</th><th>What remains unknown</th></tr></thead><tbody>
+<tr><td>Hetzner hosting</td><td>EUR 4.49/month planning amount; March–September invoices verified</td><td>Current extras, resource inventory, exact creation date and physical co-hosting</td></tr>
+<tr><td>Apple Developer</td><td>Confirmed Sentinel purchase; USD 99 annual proxy and USD 8.25/month normalization</td><td>Actual settlement amount, currency, purchase date and renewal date</td></tr>
+<tr><td>Twilio retained number</td><td>USD 4/month estimate with zero lower bound</td><td>Retention status, trial credit, rental charges and historical communications bill</td></tr>
+<tr><td>Model providers</td><td>Attributable request cost or reconstruction</td><td>Account-wide funding, balances, credits, discounts, taxes, refunds and failed billing</td></tr>
+<tr><td>CI, EAS, domains, email and monitoring</td><td>Unknown amounts excluded from total</td><td>Provider billing and project allocation</td></tr>
+</tbody></table></div>
+<p>No whole-account provider charge is assigned to Sentinel without project-level evidence. A dashboard/news date is not used as a server creation date.</p>
+
+<h2>Files and checks</h2>
+<ul>
+<li><a href="history-monthly.csv">Historical monthly economic cost</a></li>
+<li><a href="current-monthly.csv">Current normalized monthly planning cost</a></li>
+<li><a href="cash-payments.csv">Provider-confirmed cash timeline</a></li>
+<li><a href="cost-items.csv">Cost items with hosting reconciliation</a></li>
+<li><a href="llm-by-model-phase.csv">Prior model and phase detail</a></li>
+<li><a href="ledger.csv">42-row ledger snapshot</a></li>
+<li><a href="summary.json">Machine-readable summary and validations</a></li>
+<li><a href="evidence/billing.json">Sanitized provider invoice and transaction evidence</a></li>
+<li><a href="evidence/transactions.json">Sanitized external transaction-table evidence</a></li>
+<li><a href="evidence/pdf-financial-evidence.json">Sanitized text-layer PDF financial evidence</a></li>
+<li><a href="evidence/reconciliation-plan.json">Sanitized independent arithmetic plan</a></li>
+<li><a href="../2026-10-11-reconciliation-update/report.html">Prior latest reconciliation</a></li>
+</ul>
+<p>Checked from published invoice lines, transaction amounts and dates, text-layer PDF evidence, saved FX series and 130 cost records; then matched to the independent reconciliation plan. Duplicate IDs, active-period dates, cash/consumption separation and all target totals are asserted by the generator. Rebuild and check prefer these published sanitized sources and do not require temporary capture files.</p>
+</body></html>

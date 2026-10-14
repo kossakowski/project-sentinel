@@ -31,6 +31,7 @@ When adding a new doc, decide which of these four needs it serves and place it i
 - [reference/config-reference.md](reference/config-reference.md) — every configurable parameter in `config/config.yaml`.
 - [reference/sources.md](reference/sources.md) — every monitored media source with URLs/RSS.
 - [reference/cli.md](reference/cli.md) — every command-line flag for `sentinel.py` and the dashboard CLI.
+- [reference/costs.md](reference/costs.md) — the living cost register: what Sentinel pays for, what is deliberately not its cost, and what to do when a new cost appears.
 
 ## Explanation
 

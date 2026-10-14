@@ -1,0 +1,594 @@
+<!doctype html><html lang="pl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Koszty Sentinela</title>
+<meta name="description" content="Pełny audyt kosztów Sentinela na dzień 14.10.2026">
+<style>
+:root{color-scheme:light;--bg:#fcfcfb;--card:#ffffff;--soft:#f4f3f0;--text:#0b0b0b;--text2:#52514e;
+--muted:#6f6e69;--line:#e4e2dc;--grid:#e9e8e4;--accent:#2a78d6;--crit:#b42727;--crit-bg:#fdeceb;
+--warn:#8a5a00;--warn-bg:#fff4dc;--info:#1c5cab;--info-bg:#eaf2fd;--ok:#0b6b0b;--ok-bg:#e8f5e8;
+--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;--s6:#008300}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#1a1a19;
+--card:#232322;--soft:#2a2a28;--text:#f0efec;--text2:#c3c2b7;--muted:#9b9a92;--line:#383835;--grid:#33332f;
+--accent:#3987e5;--crit:#f08a8a;--crit-bg:#3a2020;--warn:#f0c060;--warn-bg:#3a3018;--info:#86b6ef;
+--info-bg:#1c2a3d;--ok:#7fd07f;--ok-bg:#1d331d;--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;
+--s5:#d55181;--s6:#008300}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#1a1a19;--card:#232322;--soft:#2a2a28;--text:#f0efec;
+--text2:#c3c2b7;--muted:#9b9a92;--line:#383835;--grid:#33332f;--accent:#3987e5;--crit:#f08a8a;
+--crit-bg:#3a2020;--warn:#f0c060;--warn-bg:#3a3018;--info:#86b6ef;--info-bg:#1c2a3d;--ok:#7fd07f;
+--ok-bg:#1d331d;--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#d55181;--s6:#008300}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,
+"Helvetica Neue",Arial,sans-serif}
+main{max-width:880px;margin:0 auto;padding:24px 16px 72px}
+h1{font-size:26px;line-height:1.25;margin:0 0 6px}
+h2{font-size:21px;margin:44px 0 10px;padding-top:12px;border-top:1px solid var(--line)}
+h3{font-size:17px;margin:24px 0 6px}
+p{margin:8px 0}
+a{color:var(--accent)}
+.sub{color:var(--text2);margin:0 0 16px}
+.muted{color:var(--muted);font-size:14px}
+nav.toc{background:var(--soft);border-radius:10px;padding:12px 16px;margin:16px 0 8px;font-size:15px}
+nav.toc ol{margin:4px 0 0;padding-left:22px}
+.hero{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 18px 14px;margin:16px 0}
+.hero .label{color:var(--text2);font-size:15px}
+.hero .value{font-size:48px;font-weight:600;line-height:1.1;margin:4px 0;font-variant-numeric:proportional-nums}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:12px 0}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.tile .label{color:var(--text2);font-size:14px}
+.tile .value{font-size:26px;font-weight:600;margin:2px 0}
+.tile .note{color:var(--muted);font-size:13px}
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:10px 0}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{color:var(--text2);font-weight:600;font-size:13px}
+td.num,th.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+tr.total td{font-weight:600;border-top:2px solid var(--line)}
+td .small,.small{font-size:12px;color:var(--muted)}
+details{background:var(--soft);border-radius:10px;padding:8px 12px;margin:12px 0}
+details summary{cursor:pointer;font-weight:600}
+details.q{background:none;padding:0;margin:2px 0 0}
+details.q summary{font-weight:400;font-size:13px;color:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--text2);margin:10px 0 4px}
+.legend span.sw{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.chart{width:100%;height:auto;display:block}
+.chart .grid{stroke:var(--grid);stroke-width:1}
+.chart text{fill:var(--text2);font-size:12px;font-family:inherit}
+.chart{max-width:640px}
+.c1{fill:var(--s1)}.c2{fill:var(--s2)}.c3{fill:var(--s3)}.c4{fill:var(--s4)}.c5{fill:var(--s5)}.c6{fill:var(--s6)}
+.b1{background:var(--s1)}.b2{background:var(--s2)}.b3{background:var(--s3)}.b4{background:var(--s4)}
+.b5{background:var(--s5)}.b6{background:var(--s6)}
+.risk{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:12px 0;background:var(--card)}
+.risk h3{margin:6px 0}
+.badge{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:2px 10px}
+.badge.crit{background:var(--crit-bg);color:var(--crit)}
+.badge.warn{background:var(--warn-bg);color:var(--warn)}
+.badge.info{background:var(--info-bg);color:var(--info)}
+.badge.watch{background:var(--soft);color:var(--text2)}
+ul.plain{padding-left:20px}
+ul.plain li{margin:6px 0}
+footer{margin-top:48px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:12px}
+@media (max-width:520px){.hero .value{font-size:40px}h1{font-size:23px}th,td{padding:6px 5px}}
+</style></head><body><main>
+<h1>Ile kosztuje Sentinel</h1>
+<p class="sub">Pełny audyt kosztów od 21.03.2026 do 14.10.2026 (koniec dnia UTC). Liczy tylko Sentinela.</p>
+<nav class="toc"><strong>Spis treści</strong><ol type="a">
+<li><a href="#a">Najważniejsze liczby</a></li>
+<li><a href="#b">Koszty według dostawców</a></li>
+<li><a href="#c">Gotówka a koszt</a></li>
+<li><a href="#d">Czego nie liczę</a></li>
+<li><a href="#e">Ryzyka operacyjne</a></li>
+<li><a href="#q">Pytania i decyzje</a></li>
+<li><a href="#f">Pewność danych</a></li>
+<li><a href="#g">Co się zmieniło od audytu z 11.10.2026</a></li>
+<li><a href="#h">Metoda i kursy NBP</a></li>
+</ol></nav>
+<h2 id="a">Najważniejsze liczby</h2>
+<div class="hero">
+<div class="label">Łączny koszt Sentinela od 21.03.2026 do 14.10.2026</div>
+<div class="value">2 199,43 zł</div>
+<div class="muted">W walutach dostawców: 30,46 EUR + 429,00 zł + 442,58 USD.</div></div>
+<div class="tiles">
+<div class="tile"><div class="label">Obecny koszt miesięczny</div><div class="value">147,87 zł</div><div class="note">przedział 116,26 zł – 157,00 zł</div></div>
+<div class="tile"><div class="label">Zapłacona gotówka (część Sentinela)</div><div class="value">2 220,73 zł</div><div class="note">różnica wobec kosztu wyjaśniona w części c</div></div>
+<div class="tile"><div class="label">Oparte na fakturach i panelach dostawców</div><div class="value">80,4 %</div><div class="note">szacunki: 0,01 % kosztu</div></div>
+</div>
+<p>Najwięcej kosztował Twilio: 1 160,61 zł, czyli 52,8 % całości. Najdroższy miesiąc to maj 2026 (1 048,39 zł). Dziś co miesiąc płacisz za: GPT Luna: klasyfikator (72,39 zł); Apple Developer: opłata roczna podzielona na dwanaście (35,75 zł); Hetzner: serwer i adres IP (19,62 zł); Twilio: numer polski (narasta jako dług) (15,62 zł); Twilio: numer amerykański (narasta jako dług) (4,49 zł).</p>
+<h3>Koszt w każdym miesiącu</h3>
+<div class="legend" aria-hidden="true"><span><span class="sw b1"></span>Twilio</span><span><span class="sw b2"></span>Anthropic</span><span><span class="sw b3"></span>OpenAI</span><span><span class="sw b4"></span>Apple</span><span><span class="sw b5"></span>Hetzner</span><span><span class="sw b6"></span>Pozostałe</span></div>
+<svg class="chart" viewBox="0 0 480 280" role="img" aria-label="Wykres słupkowy: koszt w kolejnych miesiącach, w podziale na dostawców">
+<line class="grid" x1="44" x2="474" y1="246.0" y2="246.0"/>
+<text x="36" y="250.0" text-anchor="end">0</text>
+<line class="grid" x1="44" x2="474" y1="202.0" y2="202.0"/>
+<text x="36" y="206.0" text-anchor="end">250</text>
+<line class="grid" x1="44" x2="474" y1="158.0" y2="158.0"/>
+<text x="36" y="162.0" text-anchor="end">500</text>
+<line class="grid" x1="44" x2="474" y1="114.0" y2="114.0"/>
+<text x="36" y="118.0" text-anchor="end">750</text>
+<line class="grid" x1="44" x2="474" y1="70.0" y2="70.0"/>
+<text x="36" y="74.0" text-anchor="end">1 000</text>
+<line class="grid" x1="44" x2="474" y1="26.0" y2="26.0"/>
+<text x="36" y="30.0" text-anchor="end">1 250</text>
+<rect class="c1" x="58.9" y="210.3" width="24.0" height="35.7"><title>Twilio, marzec 2026: 214,30 zł</title></rect>
+<path class="c5" d="M58.9,207.3 V206.8 Q58.9,206.4 59.3,206.4 H82.5 Q82.9,206.4 82.9,206.8 V207.3 Z"><title>Hetzner, marzec 2026: 4,72 zł</title></path>
+<text x="70.9" y="200.4" text-anchor="middle">225</text>
+<text x="70.9" y="264" text-anchor="middle">mar</text>
+<rect class="c1" x="112.6" y="217.5" width="24.0" height="28.5"><title>Twilio, kwiecień 2026: 173,48 zł</title></rect>
+<rect class="c2" x="112.6" y="212.1" width="24.0" height="3.4"><title>Anthropic, kwiecień 2026: 30,68 zł</title></rect>
+<path class="c5" d="M112.6,210.1 V208.4 Q112.6,206.7 114.3,206.7 H134.9 Q136.6,206.7 136.6,208.4 V210.1 Z"><title>Hetzner, kwiecień 2026: 19,12 zł</title></path>
+<text x="124.6" y="200.7" text-anchor="middle">223</text>
+<text x="124.6" y="264" text-anchor="middle">kwi</text>
+<rect class="c1" x="166.4" y="154.4" width="24.0" height="91.6"><title>Twilio, maj 2026: 531,72 zł</title></rect>
+<rect class="c2" x="166.4" y="142.3" width="24.0" height="10.1"><title>Anthropic, maj 2026: 68,66 zł</title></rect>
+<rect class="c4" x="166.4" y="66.8" width="24.0" height="73.5"><title>Apple, maj 2026: 429,00 zł</title></rect>
+<path class="c5" d="M166.4,64.8 V63.2 Q166.4,61.5 168.0,61.5 H188.7 Q190.4,61.5 190.4,63.2 V64.8 Z"><title>Hetzner, maj 2026: 19,00 zł</title></path>
+<text x="178.4" y="55.5" text-anchor="middle">1 048</text>
+<text x="178.4" y="264" text-anchor="middle">maj</text>
+<rect class="c1" x="220.1" y="232.9" width="24.0" height="13.1"><title>Twilio, czerwiec 2026: 85,64 zł</title></rect>
+<rect class="c2" x="220.1" y="219.7" width="24.0" height="11.2"><title>Anthropic, czerwiec 2026: 75,01 zł</title></rect>
+<path class="c5" d="M220.1,217.7 V216.0 Q220.1,214.3 221.8,214.3 H242.4 Q244.1,214.3 244.1,216.0 V217.7 Z"><title>Hetzner, czerwiec 2026: 19,29 zł</title></path>
+<text x="232.1" y="208.3" text-anchor="middle">180</text>
+<text x="232.1" y="264" text-anchor="middle">cze</text>
+<rect class="c1" x="273.9" y="232.1" width="24.0" height="13.9"><title>Twilio, lipiec 2026: 90,40 zł</title></rect>
+<rect class="c2" x="273.9" y="217.6" width="24.0" height="12.5"><title>Anthropic, lipiec 2026: 82,19 zł</title></rect>
+<path class="c5" d="M273.9,215.6 V213.9 Q273.9,212.2 275.6,212.2 H296.2 Q297.9,212.2 297.9,213.9 V215.6 Z"><title>Hetzner, lipiec 2026: 19,36 zł</title></path>
+<text x="285.9" y="206.2" text-anchor="middle">192</text>
+<text x="285.9" y="264" text-anchor="middle">lip</text>
+<rect class="c1" x="327.6" y="240.0" width="24.0" height="6.0"><title>Twilio, sierpień 2026: 45,26 zł</title></rect>
+<rect class="c2" x="327.6" y="225.8" width="24.0" height="12.2"><title>Anthropic, sierpień 2026: 80,88 zł</title></rect>
+<path class="c5" d="M327.6,223.8 V222.1 Q327.6,220.4 329.3,220.4 H349.9 Q351.6,220.4 351.6,222.1 V223.8 Z"><title>Hetzner, sierpień 2026: 19,43 zł</title></path>
+<text x="339.6" y="214.4" text-anchor="middle">146</text>
+<text x="339.6" y="264" text-anchor="middle">sie</text>
+<rect class="c1" x="381.4" y="244.5" width="24.0" height="1.5"><title>Twilio, wrzesień 2026: 19,80 zł</title></rect>
+<rect class="c2" x="381.4" y="233.3" width="24.0" height="9.2"><title>Anthropic, wrzesień 2026: 63,49 zł</title></rect>
+<rect class="c3" x="381.4" y="229.4" width="24.0" height="1.9"><title>OpenAI, wrzesień 2026: 22,38 zł</title></rect>
+<rect class="c5" x="381.4" y="226.0" width="24.0" height="1.5"><title>Hetzner, wrzesień 2026: 19,61 zł</title></rect>
+<path class="c6" d="M381.4,224.0 V222.5 Q381.4,221.1 382.8,221.1 H403.9 Q405.4,221.1 405.4,222.5 V224.0 Z"><title>Pozostałe, wrzesień 2026: 16,28 zł</title></path>
+<text x="393.4" y="215.1" text-anchor="middle">142</text>
+<text x="393.4" y="264" text-anchor="middle">wrz</text>
+<rect class="c3" x="435.1" y="242.1" width="24.0" height="3.9"><title>OpenAI, październik 2026: 33,29 zł</title></rect>
+<path class="c5" d="M435.1,240.1 V239.2 Q435.1,238.3 436.1,238.3 H458.2 Q459.1,238.3 459.1,239.2 V240.1 Z"><title>Hetzner, październik 2026: 10,57 zł</title></path>
+<text x="447.1" y="232.3" text-anchor="middle">44</text>
+<text x="447.1" y="264" text-anchor="middle">paź*</text>
+<text x="36" y="14" text-anchor="end">zł</text>
+</svg>
+<div class="table-wrap"><table><thead><tr><th>Miesiąc</th><th class="num">Koszt</th><th>Największe pozycje</th></tr></thead><tbody>
+<tr><td>marzec 2026</td><td class="num">224,87 zł</td><td>Twilio 214 zł, Anthropic 6 zł, Hetzner 5 zł</td></tr>
+<tr><td>kwiecień 2026</td><td class="num">223,28 zł</td><td>Twilio 173 zł, Anthropic 31 zł, Hetzner 19 zł</td></tr>
+<tr><td>maj 2026</td><td class="num">1 048,39 zł</td><td>Twilio 532 zł, Apple 429 zł, Anthropic 69 zł</td></tr>
+<tr><td>czerwiec 2026</td><td class="num">179,95 zł</td><td>Twilio 86 zł, Anthropic 75 zł, Hetzner 19 zł</td></tr>
+<tr><td>lipiec 2026</td><td class="num">191,95 zł</td><td>Twilio 90 zł, Anthropic 82 zł, Hetzner 19 zł</td></tr>
+<tr><td>sierpień 2026</td><td class="num">145,57 zł</td><td>Anthropic 81 zł, Twilio 45 zł, Hetzner 19 zł</td></tr>
+<tr><td>wrzesień 2026</td><td class="num">141,56 zł</td><td>Anthropic 63 zł, OpenAI 22 zł, Twilio 20 zł</td></tr>
+<tr><td>październik 2026 *</td><td class="num">43,87 zł</td><td>OpenAI 33 zł, Hetzner 11 zł</td></tr>
+<tr class="total"><td>Razem</td><td class="num">2 199,43 zł</td><td></td></tr>
+</tbody></table></div>
+<p class="muted">* Październik do końca dnia 14.10.2026. Darmowe kredyty, prognozy i ryzyka doliczenia są poza sumą (część c).</p>
+<h2 id="b">Koszty według dostawców</h2>
+<div class="table-wrap"><table><thead><tr><th>Dostawca i za co płacisz</th><th class="num">Łącznie (udział)</th><th class="num">Teraz / mies.</th></tr></thead><tbody>
+<tr><td><strong>Twilio</strong><br><span class="small">Połączenia telefoniczne i SMS-y z alertami na Twój telefon oraz dzierżawa dwóch numerów. Konto jest zawieszone, więc dziś narastają tylko opłaty za numery (jako dług).</span></td><td class="num">1 160,61 zł<br><span class="small">315,11 USD<br>52,8 %</span></td><td class="num">20,11 zł</td></tr>
+<tr><td><strong>Apple</strong><br><span class="small">Roczne członkostwo w programie deweloperów Apple; bez niego nie działa aplikacja na iPhone&#x27;a z powiadomieniami.</span></td><td class="num">429,00 zł<br><span class="small">429,00 zł<br>19,5 %</span></td><td class="num">35,75 zł</td></tr>
+<tr><td><strong>Anthropic</strong><br><span class="small">Model Claude Haiku, który do września oceniał każdy artykuł (klasyfikator). Dziś nieużywany, zostaje jako zapas na wypadek powrotu.</span></td><td class="num">406,76 zł<br><span class="small">108,89 USD<br>18,5 %</span></td><td class="num">0,00 zł</td></tr>
+<tr><td><strong>Hetzner</strong><br><span class="small">Serwer w chmurze, na którym działa cały Sentinel, razem z adresem IP.</span></td><td class="num">131,11 zł<br><span class="small">30,46 EUR<br>6,0 %</span></td><td class="num">19,62 zł</td></tr>
+<tr><td><strong>OpenAI</strong><br><span class="small">Model GPT Luna, który dziś ocenia każdy artykuł, sprawdza jakość streszczeń i tłumaczy je na polski.</span></td><td class="num">55,67 zł<br><span class="small">14,35 USD<br>2,5 %</span></td><td class="num">72,39 zł</td></tr>
+<tr><td><strong>OpenRouter</strong><br><span class="small">Jednorazowe testy porównawcze modeli we wrześniu, przez pośrednika OpenRouter; z zapłaconym VAT i opłatą za zakup kredytów.</span></td><td class="num">16,28 zł<br><span class="small">4,24 USD<br>0,74 %</span></td><td class="num">0,00 zł</td></tr>
+<tr><td><strong>TypeSafe (Jev)</strong><br><span class="small">Eksperyment z modelem Jev we wrześniu, opłacony darmowym kredytem, więc zero złotych.</span></td><td class="num">0,00 zł<br><span class="small">0,00 USD<br>0,00 %</span></td><td class="num">0,00 zł</td></tr>
+<tr><td><strong>Expo</strong><br><span class="small">Wysyłka powiadomień push i budowanie aplikacji na iPhone&#x27;a; darmowy plan.</span></td><td class="num">0,00 zł<br><span class="small">0,00 USD<br>0,00 %</span></td><td class="num">0,00 zł</td></tr>
+<tr><td><strong>GitHub</strong><br><span class="small">Przechowywanie kodu w publicznym repozytorium; darmowe.</span></td><td class="num">0,00 zł<br><span class="small">0,00 USD<br>0,00 %</span></td><td class="num">0,00 zł</td></tr>
+<tr><td><strong>Źródła wiadomości</strong><br><span class="small">Kanały RSS, Google News i Telegram; darmowe.</span></td><td class="num">0,00 zł<br><span class="small">0,00 USD<br>0,00 %</span></td><td class="num">0,00 zł</td></tr>
+<tr><td><strong>Kopie zapasowe</strong><br><span class="small">Kopie bazy danych na dysku serwera; wliczone w cenę serwera.</span></td><td class="num">0,00 zł<br><span class="small">0,00 EUR<br>0,00 %</span></td><td class="num">0,00 zł</td></tr>
+<tr class="total"><td>Razem</td><td class="num">2 199,43 zł</td><td class="num">147,87 zł</td></tr></tbody></table></div>
+<details><summary>Pełna tabela: miesiąc × dostawca (zł)</summary><div class="table-wrap"><table>
+<thead><tr><th>Miesiąc</th><th class="num">Twilio</th><th class="num">Apple</th><th class="num">Anthropic</th><th class="num">Hetzner</th><th class="num">OpenAI</th><th class="num">OpenRouter</th><th class="num">TypeSafe (Jev)</th><th class="num">Expo</th><th class="num">GitHub</th><th class="num">Źródła wiadomości</th><th class="num">Kopie zapasowe</th><th class="num">Razem</th></tr></thead><tbody>
+<tr><td>mar</td><td class="num">214,30</td><td class="num">0,00</td><td class="num">5,85</td><td class="num">4,72</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">224,87</td></tr>
+<tr><td>kwi</td><td class="num">173,48</td><td class="num">0,00</td><td class="num">30,68</td><td class="num">19,12</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">223,28</td></tr>
+<tr><td>maj</td><td class="num">531,72</td><td class="num">429,00</td><td class="num">68,66</td><td class="num">19,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">1 048,39</td></tr>
+<tr><td>cze</td><td class="num">85,64</td><td class="num">0,00</td><td class="num">75,01</td><td class="num">19,29</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">179,95</td></tr>
+<tr><td>lip</td><td class="num">90,40</td><td class="num">0,00</td><td class="num">82,19</td><td class="num">19,36</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">191,95</td></tr>
+<tr><td>sie</td><td class="num">45,26</td><td class="num">0,00</td><td class="num">80,88</td><td class="num">19,43</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">145,57</td></tr>
+<tr><td>wrz</td><td class="num">19,80</td><td class="num">0,00</td><td class="num">63,49</td><td class="num">19,61</td><td class="num">22,38</td><td class="num">16,28</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">141,56</td></tr>
+<tr><td>paź</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">10,57</td><td class="num">33,29</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">43,87</td></tr>
+</tbody></table></div></details>
+<h3>Z czego składa się obecny koszt miesięczny</h3>
+<div class="table-wrap"><table><thead><tr><th>Pozycja</th><th class="num">Miesięcznie</th></tr></thead><tbody>
+<tr><td>GPT Luna: klasyfikator<br><span class="small">przedział 60,89 zł – 81,52 zł</span></td><td class="num">72,39 zł<br><span class="small">18,54 USD</span></td></tr>
+<tr><td>Apple Developer: opłata roczna podzielona na dwanaście<br><span class="small">przedział 35,75 zł – 35,75 zł</span></td><td class="num">35,75 zł<br><span class="small">35,75 zł</span></td></tr>
+<tr><td>Hetzner: serwer i adres IP<br><span class="small">przedział 19,62 zł – 19,62 zł</span></td><td class="num">19,62 zł<br><span class="small">4,49 EUR</span></td></tr>
+<tr><td>Twilio: numer polski (narasta jako dług)<br><span class="small">przedział 0,00 zł – 15,62 zł</span></td><td class="num">15,62 zł<br><span class="small">4,00 USD</span></td></tr>
+<tr><td>Twilio: numer amerykański (narasta jako dług)<br><span class="small">przedział 0,00 zł – 4,49 zł</span></td><td class="num">4,49 zł<br><span class="small">1,15 USD</span></td></tr>
+<tr><td>Bez kosztu (darmowe albo nieużywane)<br><span class="small">Claude Haiku (nieużywany); Ewaluacje nowszych modeli GPT; OpenRouter: klucz testowy Sentinela; TypeSafe: użycie przez Sentinel; Twilio: połączenia i SMS-y (konto zawieszone); Expo: darmowy plan; GitHub: darmowy plan; Źródła wiadomości: darmowe; Kopie zapasowe: w cenie serwera</span></td><td class="num">0,00 zł</td></tr>
+<tr class="total"><td>Razem<br><span class="small">przedział 116,26 zł – 157,00 zł</span></td><td class="num">147,87 zł</td></tr></tbody></table></div>
+<p class="muted">Kurs NBP z 14.10.2026. Numery Twilio narastają jako dług, dopóki konto jest zawieszone.</p>
+<h3>Scenariusze (poza sumą)</h3>
+<div class="table-wrap"><table><thead><tr><th>Co, jeśli…</th><th class="num">Miesięcznie</th></tr></thead><tbody>
+<tr><td><strong>Scenariusz: powrót do Claude Haiku</strong><br><span class="small">Gdyby klasyfikator wrócił do Claude Haiku przy dzisiejszej liczbie artykułów.</span></td><td class="num">401,29 zł<br><span class="small">102,78 USD<br>przedział 347,59 zł – 599,05 zł</span></td></tr>
+<tr><td><strong>Scenariusz: limit projektu w OpenAI bez zmian (już nieaktualny)</strong><br><span class="small">Już nieaktualny: limit podniesiono wieczorem w dniu audytu. Przy starym limicie rachunek nie przekroczyłby limitu, ale klasyfikacja stawałaby w drugiej połowie każdego miesiąca. To awaria, nie oszczędność.</span></td><td class="num">39,04 zł<br><span class="small">10,00 USD<br></span></td></tr>
+<tr><td><strong>Scenariusz: darmowe tokeny OpenAI za udostępnianie danych</strong><br><span class="small">Włączyłeś udostępnianie danych OpenAI. Jeśli darmowe dzienne tokeny obejmują model Sentinela, płatna będzie tylko nadwyżka ponad dzienny limit, a spokojniejsze dni będą darmowe. Lista modeli w ustawieniach go nie wymienia, więc potwierdzi to dopiero panel zużycia. Gdyby model nie był objęty, koszt zostaje bez zmian (górna granica).</span></td><td class="num">7,07 zł<br><span class="small">1,81 USD<br>przedział 0,00 zł – 72,39 zł</span></td></tr>
+<tr><td><strong>Scenariusz: powtórka wrześniowych testów modeli</strong><br><span class="small">Jednorazowo, nie co miesiąc; zapłacona z salda, które już jest na koncie OpenRouter.</span></td><td class="num">16,54 zł<br><span class="small">4,24 USD<br>przedział 11,16 zł – 16,54 zł</span></td></tr>
+<tr><td><strong>Scenariusz A: doładowanie Twilio przy obecnych zasadach</strong><br><span class="small">Telefon i SMS z kodem tylko przy najwyższej pilności. Liczone od liczby takich zdarzeń w październiku, nie od odrzuconych prób, które na zawieszonym koncie wielokrotnie się powtarzają. Górna granica to tempo od połowy września do dnia audytu, z doliczonymi połączeniami. Numery są już ujęte w sumie powyżej.</span></td><td class="num">70,40 zł<br><span class="small">18,03 USD<br>przedział 65,70 zł – 126,00 zł</span></td></tr>
+<tr><td><strong>Scenariusz B: doładowanie i SMS-y także dla niższych poziomów pilności</strong><br><span class="small">Tak było do czerwca. Zastępuje scenariusz A, nie dodaje się do niego.</span></td><td class="num">357,97 zł<br><span class="small">91,69 USD<br>przedział 165,66 zł – 550,29 zł</span></td></tr>
+</tbody></table></div>
+<h2 id="c">Gotówka a koszt</h2>
+<p>Koszt to wartość tego, co Sentinel zużył: 2 199,43 zł. Gotówka to część Twoich płatności przypisana Sentinelowi, według dnia płatności: 2 220,73 zł. Różnica wynosi −21,30 zł.</p>
+<p class="muted">Gotówka obejmuje płatności do końca dnia 14.10.2026 (UTC), także Twoje doładowanie OpenAI z 14.10.2026, 20:15 UTC. Pocztę z rachunkami sprawdziłem ostatnio 14.10.2026, 21:38 UTC; płatność zrobiona później tego dnia nie jest ujęta.</p>
+<ul class="plain">
+<li>Kredyty kupowane z góry (Anthropic, OpenAI, OpenRouter): koszt liczę, gdy kredyt zostanie zużyty, a gotówkę, gdy zapłaciłeś. Niezużyta reszta leży na koncie.</li>
+<li>Darmowe kredyty (próbny kredyt Twilio, kredyt powitalny TypeSafe): zużycie pokazuję osobno, ale nie liczę go ani do kosztu, ani do gotówki.</li>
+<li>Opłata roczna Apple: w całości w miesiącu zakupu; w koszcie miesięcznym podzielona na dwanaście.</li>
+<li>Dług w Twilio: numery naliczają opłaty mimo zawieszenia konta. To koszt, ale jeszcze nie zapłacony.</li>
+<li>Hetzner: październik jest naliczony, faktura przyjdzie w listopadzie.</li>
+<li>Kursy: koszt przeliczam po kursie z końca miesiąca zużycia, gotówkę po kursie z dnia przed płatnością, więc nawet przy tej samej kwocie w dolarach złotówki trochę się różnią.</li>
+</ul>
+<div class="table-wrap"><table><thead><tr><th>Dostawca i dlaczego się różni</th><th class="num">Koszt / gotówka</th></tr></thead><tbody>
+<tr><td><strong>Twilio</strong><br><span class="small">Do zapłaty zostaje 9,49 USD: numery naliczane w czasie zawieszenia i drobne przekroczenie salda. Darmowy kredyt próbny (3,07 USD) jest poza sumą.</span></td><td class="num">koszt 1 160,61 zł<br>gotówka 1 119,33 zł<br><span class="small">różnica +41,28 zł</span></td></tr>
+<tr><td><strong>Anthropic</strong><br><span class="small">Kredyty kupowane z góry na konto wspólne z innymi projektami. Sentinelowi przypisano tylko część, którą sam zużył (najstarszy kredyt idzie pierwszy). Pozostałe 18,77 USD na koncie zużywają inne projekty.</span></td><td class="num">koszt 406,76 zł<br>gotówka 399,83 zł<br><span class="small">różnica +6,93 zł</span></td></tr>
+<tr><td><strong>OpenAI</strong><br><span class="small">Kupiono 35,00 USD kredytu, a do końca dnia audytu zużyto 14,35 USD. Reszta, około 20,65 USD, czeka na koncie i stanie się kosztem dopiero po zużyciu.</span></td><td class="num">koszt 55,67 zł<br>gotówka 135,59 zł<br><span class="small">różnica −79,92 zł</span></td></tr>
+<tr><td><strong>Apple</strong><br><span class="small">Opłatę roczną liczymy w całości w miesiącu zakupu, tak samo w koszcie i w gotówce. W koszcie miesięcznym rozkładamy ją na dwanaście miesięcy (35,75 zł miesięcznie).</span></td><td class="num">koszt 429,00 zł<br>gotówka 429,00 zł<br><span class="small">różnica 0,00 zł</span></td></tr>
+<tr><td><strong>Hetzner</strong><br><span class="small">Październik (2,42 EUR) jest naliczony, ale faktura przyjdzie dopiero w listopadzie.</span></td><td class="num">koszt 131,11 zł<br>gotówka 121,38 zł<br><span class="small">różnica +9,73 zł</span></td></tr>
+<tr><td><strong>OpenRouter</strong><br><span class="small">Gotówka to część zakupu odpowiadająca temu, co zużył Sentinel. Reszta salda (60,78 USD) nie jest kosztem Sentinela.</span></td><td class="num">koszt 16,28 zł<br>gotówka 15,60 zł<br><span class="small">różnica +0,68 zł</span></td></tr>
+<tr><td><strong>TypeSafe (Jev)</strong><br><span class="small">Eksperyment opłacono darmowym kredytem wartym 0,07 USD. Nie wchodzi ani do kosztu, ani do gotówki.</span></td><td class="num">koszt 0,00 zł<br>gotówka 0,00 zł<br><span class="small">różnica 0,00 zł</span></td></tr>
+<tr class="total"><td>Razem</td><td class="num">koszt 2 199,43 zł<br>gotówka 2 220,73 zł<br><span class="small">różnica −21,30 zł</span></td></tr>
+</tbody></table></div>
+<h3>Notatki poza sumą</h3>
+<div class="table-wrap"><table><thead><tr><th>Pozycja</th><th>Miesiąc</th><th class="num">Kwota</th><th>Rodzaj dowodu</th></tr></thead><tbody>
+<tr><td>TypeSafe (Jev): Eksperyment Jev: darmowy kredyt</td><td>wrzesień 2026</td><td class="num">0,07 USD</td><td>odczyt zużycia × cennik</td></tr>
+<tr><td>Twilio: Darmowy kredyt próbny Twilio</td><td>marzec 2026</td><td class="num">3,07 USD</td><td>panel dostawcy</td></tr>
+<tr><td>Twilio: Połączenia nierozliczone przez Twilio (ryzyko doliczenia)</td><td>lipiec 2026</td><td class="num">3,87 USD</td><td>szacunek</td></tr>
+<tr><td>Twilio: Połączenia nierozliczone przez Twilio (ryzyko doliczenia)</td><td>sierpień 2026</td><td class="num">1,29 USD</td><td>szacunek</td></tr>
+<tr><td>Hetzner: Serwer: prognoza pełnego października</td><td>październik 2026</td><td class="num">4,49 EUR</td><td>szacunek</td></tr>
+</tbody></table></div>
+<details><summary>Wszystkie płatności i próby płatności</summary><div class="table-wrap"><table><thead><tr><th>Data i dostawca</th><th class="num">Kwota</th><th class="num">Część Sentinela</th></tr></thead><tbody>
+<tr><td>21.03.2026<br><span class="small">Twilio, zakup kredytu</span></td><td class="num">20,00 USD</td><td class="num">74,06 zł<br><span class="small">20,00 USD<br>kurs 3,7032 z 20.03.2026</span></td></tr>
+<tr><td>21.03.2026<br><span class="small">Twilio, automatyczne doładowanie</span></td><td class="num">10,22 USD</td><td class="num">37,85 zł<br><span class="small">10,22 USD<br>kurs 3,7032 z 20.03.2026</span></td></tr>
+<tr><td>21.03.2026<br><span class="small">Anthropic, zakup kredytu</span></td><td class="num">25,00 USD</td><td class="num">62,23 zł<br><span class="small">16,80 USD<br>kurs 3,7032 z 20.03.2026</span></td></tr>
+<tr><td>23.03.2026<br><span class="small">Twilio, automatyczne doładowanie</span></td><td class="num">10,17 USD</td><td class="num">37,66 zł<br><span class="small">10,17 USD<br>kurs 3,7032 z 20.03.2026</span></td></tr>
+<tr><td>24.03.2026<br><span class="small">Twilio, automatyczne doładowanie</span></td><td class="num">10,33 USD</td><td class="num">38,52 zł<br><span class="small">10,33 USD<br>kurs 3,7292 z 23.03.2026</span></td></tr>
+<tr><td>28.03.2026<br><span class="small">Twilio, automatyczne doładowanie</span></td><td class="num">13,71 USD</td><td class="num">51,01 zł<br><span class="small">13,71 USD<br>kurs 3,7206 z 27.03.2026</span></td></tr>
+<tr><td>31.03.2026<br><span class="small">Twilio, automatyczne doładowanie</span></td><td class="num">10,40 USD</td><td class="num">38,75 zł<br><span class="small">10,40 USD<br>kurs 3,7257 z 30.03.2026</span></td></tr>
+<tr><td>05.04.2026<br><span class="small">Hetzner, zapłata faktury</span></td><td class="num">1,10 EUR</td><td class="num">4,71 zł<br><span class="small">1,10 EUR<br>kurs 4,2776 z 03.04.2026</span></td></tr>
+<tr><td>06.04.2026<br><span class="small">Twilio, automatyczne doładowanie</span></td><td class="num">10,37 USD</td><td class="num">38,43 zł<br><span class="small">10,37 USD<br>kurs 3,7058 z 03.04.2026</span></td></tr>
+<tr><td>10.04.2026<br><span class="small">Twilio, automatyczne doładowanie</span></td><td class="num">10,42 USD</td><td class="num">38,04 zł<br><span class="small">10,42 USD<br>kurs 3,6506 z 09.04.2026</span></td></tr>
+<tr><td>17.04.2026<br><span class="small">Twilio, nieudana, bez obciążenia</span></td><td class="num">0,00 USD</td><td class="num">—<br><span class="small">0,00 USD<br>kurs 3,5983 z 16.04.2026</span></td></tr>
+<tr><td>20.04.2026<br><span class="small">Twilio, nieudana, bez obciążenia</span></td><td class="num">0,00 USD</td><td class="num">—<br><span class="small">0,00 USD<br>kurs 3,5912 z 17.04.2026</span></td></tr>
+<tr><td>25.04.2026<br><span class="small">Twilio, zakup kredytu</span></td><td class="num">50,00 USD</td><td class="num">181,47 zł<br><span class="small">50,00 USD<br>kurs 3,6294 z 24.04.2026</span></td></tr>
+<tr><td>17.05.2026<br><span class="small">Twilio, zakup kredytu</span></td><td class="num">50,00 USD</td><td class="num">182,63 zł<br><span class="small">50,00 USD<br>kurs 3,6525 z 15.05.2026</span></td></tr>
+<tr><td>20.05.2026<br><span class="small">Anthropic, zakup kredytu</span></td><td class="num">150,00 USD</td><td class="num">259,36 zł<br><span class="small">71,12 USD<br>kurs 3,6467 z 19.05.2026</span></td></tr>
+<tr><td>20.05.2026<br><span class="small">Anthropic, nieudana, bez obciążenia</span></td><td class="num">100,00 USD</td><td class="num">—<br><span class="small">0,00 USD<br>kurs 3,6467 z 19.05.2026</span></td></tr>
+<tr><td>20.05.2026<br><span class="small">Anthropic, nieudana, bez obciążenia</span></td><td class="num">100,00 USD</td><td class="num">—<br><span class="small">0,00 USD<br>kurs 3,6467 z 19.05.2026</span></td></tr>
+<tr><td>20.05.2026<br><span class="small">Anthropic, nieudana, bez obciążenia</span></td><td class="num">150,00 USD</td><td class="num">—<br><span class="small">0,00 USD<br>kurs 3,6467 z 19.05.2026</span></td></tr>
+<tr><td>22.05.2026<br><span class="small">Twilio, zakup kredytu</span></td><td class="num">20,00 USD</td><td class="num">73,06 zł<br><span class="small">20,00 USD<br>kurs 3,6529 z 21.05.2026</span></td></tr>
+<tr><td>25.05.2026<br><span class="small">Twilio, zakup kredytu</span></td><td class="num">20,00 USD</td><td class="num">73,14 zł<br><span class="small">20,00 USD<br>kurs 3,6571 z 22.05.2026</span></td></tr>
+<tr><td>27.05.2026<br><span class="small">Apple, opłata roczna</span></td><td class="num">429,00 zł</td><td class="num">429,00 zł<br><span class="small">429,00 zł<br></span></td></tr>
+<tr><td>29.05.2026<br><span class="small">Twilio, zakup kredytu</span></td><td class="num">20,00 USD</td><td class="num">72,93 zł<br><span class="small">20,00 USD<br>kurs 3,6463 z 28.05.2026</span></td></tr>
+<tr><td>03.06.2026<br><span class="small">Twilio, zakup kredytu</span></td><td class="num">50,00 USD</td><td class="num">181,79 zł<br><span class="small">50,00 USD<br>kurs 3,6358 z 02.06.2026</span></td></tr>
+<tr><td>05.07.2026<br><span class="small">Hetzner, zapłata faktury</span></td><td class="num">13,47 EUR</td><td class="num">57,73 zł<br><span class="small">13,47 EUR<br>kurs 4,2857 z 03.07.2026</span></td></tr>
+<tr><td>18.08.2026<br><span class="small">Anthropic, nieudana, bez obciążenia</span></td><td class="num">10,00 USD</td><td class="num">—<br><span class="small">0,00 USD<br>kurs 3,7137 z 17.08.2026</span></td></tr>
+<tr><td>19.08.2026<br><span class="small">Anthropic, automatyczne doładowanie</span></td><td class="num">10,86 USD</td><td class="num">37,94 zł<br><span class="small">10,17 USD<br>kurs 3,7307 z 18.08.2026</span></td></tr>
+<tr><td>22.08.2026<br><span class="small">OpenRouter, zakup kredytu</span></td><td class="num">32,45 USD</td><td class="num">15,60 zł<br><span class="small">4,24 USD<br>kurs 3,6839 z 21.08.2026</span></td></tr>
+<tr><td>01.09.2026<br><span class="small">Anthropic, automatyczne doładowanie</span></td><td class="num">10,00 USD</td><td class="num">36,94 zł<br><span class="small">9,90 USD<br>kurs 3,7314 z 31.08.2026</span></td></tr>
+<tr><td>13.09.2026<br><span class="small">Anthropic, nieudana, bez obciążenia</span></td><td class="num">10,00 USD</td><td class="num">—<br><span class="small">0,00 USD<br>kurs 3,7267 z 11.09.2026</span></td></tr>
+<tr><td>19.09.2026<br><span class="small">Anthropic, zakup kredytu</span></td><td class="num">20,00 USD</td><td class="num">3,36 zł<br><span class="small">0,88 USD<br>kurs 3,7998 z 18.09.2026</span></td></tr>
+<tr><td>19.09.2026<br><span class="small">Anthropic, nieudana, bez obciążenia</span></td><td class="num">20,00 USD</td><td class="num">—<br><span class="small">0,00 USD<br>kurs 3,7998 z 18.09.2026</span></td></tr>
+<tr><td>20.09.2026<br><span class="small">OpenAI, zakup kredytu</span></td><td class="num">10,00 USD</td><td class="num">38,00 zł<br><span class="small">10,00 USD<br>kurs 3,7998 z 18.09.2026</span></td></tr>
+<tr><td>23.09.2026<br><span class="small">OpenRouter, zakup kredytu</span></td><td class="num">51,91 USD</td><td class="num">0,00 zł<br><span class="small">0,00 USD<br>kurs 3,7934 z 22.09.2026</span></td></tr>
+<tr><td>29.09.2026<br><span class="small">OpenAI, automatyczne doładowanie</span></td><td class="num">5,00 USD</td><td class="num">19,24 zł<br><span class="small">5,00 USD<br>kurs 3,8478 z 28.09.2026</span></td></tr>
+<tr><td>01.10.2026<br><span class="small">TypeSafe (Jev), zakup kredytu</span></td><td class="num">kwota nieznana</td><td class="num">0,00 zł<br><span class="small">0,00 USD<br>kurs 3,8449 z 30.09.2026</span></td></tr>
+<tr><td>02.10.2026<br><span class="small">Hetzner, zapłata faktury</span></td><td class="num">8,98 EUR</td><td class="num">39,31 zł<br><span class="small">8,98 EUR<br>kurs 4,3770 z 01.10.2026</span></td></tr>
+<tr><td>05.10.2026<br><span class="small">Hetzner, zapłata faktury</span></td><td class="num">4,49 EUR</td><td class="num">19,64 zł<br><span class="small">4,49 EUR<br>kurs 4,3745 z 02.10.2026</span></td></tr>
+<tr><td>08.10.2026<br><span class="small">OpenAI, nieudana, bez obciążenia</span></td><td class="num">kwota nieznana</td><td class="num">—<br><span class="small">kwota nieznana<br>kurs 3,9111 z 07.10.2026</span></td></tr>
+<tr><td>14.10.2026<br><span class="small">OpenAI, zakup kredytu</span></td><td class="num">20,00 USD</td><td class="num">78,35 zł<br><span class="small">20,00 USD<br>kurs 3,9177 z 13.10.2026</span></td></tr>
+<tr class="total"><td colspan="2">Razem gotówka Sentinela</td><td class="num">2 220,73 zł</td></tr></tbody></table></div></details>
+<h2 id="d">Czego nie liczę</h2>
+<p>Te wydatki znalazłem w poczcie i w panelach dostawców, ale nie są kosztem Sentinela. Nie wchodzą do żadnej sumy. Kwoty są w walucie dokumentu; wpisów zdublowanych w różnych częściach audytu połączyłem 34.</p>
+<h3>Subskrypcje asystentów AI</h3>
+<p class="muted">Subskrypcje Claude, ChatGPT i Google służą całej Twojej pracy, nie samemu Sentinelowi. Tak ustaliliśmy.</p>
+<div class="table-wrap"><table><thead><tr><th>Pozycja</th><th class="num">Kwota</th></tr></thead><tbody>
+<tr><td>Oferta kredytów API w planie Max (nieaktywowana)<br><span class="small">Anthropic · październik 2026</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>Plan Claude Max, Twoje konto (odnowienie marcowe)<br><span class="small">Anthropic (claude.ai) · 03.03.2026 – 04.04.2026</span></td><td class="num">180,00 EUR</td></tr>
+<tr><td>Plan Claude Max, Twoje konto (odnowienie kwietniowe)<br><span class="small">Anthropic (claude.ai) · 04.04.2026 – 04.05.2026</span></td><td class="num">221,40 EUR</td></tr>
+<tr><td>Dodatkowe użycie Claude (przedpłata)<br><span class="small">Anthropic (claude.ai) · 15.04.2026</span></td><td class="num">209,10 EUR</td></tr>
+<tr><td>Plan Claude Max: pozostałe odnowienia<br><span class="small">Anthropic (claude.ai) · luty 2026 – październik 2026</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>Plan Claude Max, Twoje konto (odnowienie październikowe)<br><span class="small">Anthropic (claude.ai) · 04.10.2026 – 03.11.2026</span></td><td class="num">180,00 EUR</td></tr>
+<tr><td>Drugi plan Claude Max (osobna organizacja)<br><span class="small">Anthropic Ireland (claude.ai) · 20.08.2026 – 20.09.2026</span></td><td class="num">180,00 EUR</td></tr>
+<tr><td>Drugi plan Claude Max: odnowienie wrześniowe<br><span class="small">Anthropic Ireland (claude.ai) · 20.09.2026 – 19.10.2026</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>Sesje Claude Code, w których powstał Sentinel<br><span class="small">Anthropic (Claude Code) · 21.03.2026 – 14.10.2026</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>ChatGPT Pro<br><span class="small">OpenAI (ChatGPT) · 24.03.2026 – 24.04.2026</span></td><td class="num">246,00 USD</td></tr>
+<tr><td>ChatGPT Business dla kancelarii<br><span class="small">OpenAI (ChatGPT) · 13.09.2026 – 13.10.2026</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>Google AI Ultra (marzec)<br><span class="small">Google One · 08.03.2026 – 07.04.2026</span></td><td class="num">1 229,99 zł</td></tr>
+<tr><td>Google AI Ultra (kwiecień)<br><span class="small">Google One · 08.04.2026 – 07.05.2026</span></td><td class="num">1 229,99 zł</td></tr>
+<tr><td>Google AI Ultra (maj–wrzesień)<br><span class="small">Google One · maj 2026 – wrzesień 2026</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>Google AI Plus<br><span class="small">Google One · 11.10.2026</span></td><td class="num">46,99 zł</td></tr>
+</tbody></table></div>
+<h3>Narzędzia do programowania</h3>
+<p class="muted">Narzędzia do pisania kodu i badań, używane we wszystkich projektach.</p>
+<div class="table-wrap"><table><thead><tr><th>Pozycja</th><th class="num">Kwota</th></tr></thead><tbody>
+<tr><td>OpenCode przez OpenRouter (sierpień)<br><span class="small">OpenRouter · sierpień 2026</span></td><td class="num">0,67 USD</td></tr>
+<tr><td>OpenCode przez OpenRouter (październik)<br><span class="small">OpenRouter · październik 2026</span></td><td class="num">0,28 USD</td></tr>
+<tr><td>Codex i inne narzędzia na loginie ChatGPT<br><span class="small">OpenAI (ChatGPT) · styczeń 2026 – październik 2026</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>Firecrawl (narzędzie badawcze w sesjach kodowania)<br><span class="small">Firecrawl · 17.05.2026 – 14.10.2026</span></td><td class="num">0,00 USD</td></tr>
+<tr><td>Exa i Context7 (narzędzia w sesjach kodowania)<br><span class="small">Exa and Context7 · marzec 2026 – październik 2026</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>Edytor Cursor<br><span class="small">Cursor · luty 2026 – październik 2026</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>Wispr Flow (dyktowanie)<br><span class="small">Wispr Flow · 09.03.2026</span></td><td class="num">kwota nieznana</td></tr>
+</tbody></table></div>
+<h3>msigalert / InfoCentral</h3>
+<p class="muted">Twój drugi produkt ma własne konta i własne rozliczenie.</p>
+<div class="table-wrap"><table><thead><tr><th>Pozycja</th><th class="num">Kwota</th></tr></thead><tbody>
+<tr><td>Klucze API weryfikatora msigalert (Claude)<br><span class="small">Anthropic · 30.07.2026 – 14.10.2026</span></td><td class="num">1,75 USD</td></tr>
+<tr><td>Pusty projekt msigalert w Hetzner<br><span class="small">Hetzner · marzec 2026 – październik 2026</span></td><td class="num">0,00 EUR</td></tr>
+<tr><td>Serwer VPS msigalert (Netcup)<br><span class="small">Netcup · 05.06.2026 – 05.12.2026</span></td><td class="num">24,60 EUR</td></tr>
+<tr><td>Domena wysyłkowa msigalert (.xyz)<br><span class="small">Porkbun · 05.06.2026 – 05.06.2027</span></td><td class="num">1,24 USD</td></tr>
+<tr><td>Domena infocentral.pl<br><span class="small">Viperhost · 29.07.2026 – 29.07.2027</span></td><td class="num">18,31 zł</td></tr>
+<tr><td>Domena infocentrala.pl<br><span class="small">Viperhost · 29.07.2026 – 29.07.2027</span></td><td class="num">18,31 zł</td></tr>
+<tr><td>Analityka OpenPanel dla msigalert<br><span class="small">OpenPanel (via Polar) · 30.08.2026 – 30.08.2027</span></td><td class="num">25,00 USD</td></tr>
+<tr><td>Monitoring Better Stack dla msigalert<br><span class="small">Better Stack · 03.08.2026 – 14.10.2026</span></td><td class="num">0,00 USD</td></tr>
+<tr><td>Poczta Resend dla msigalert<br><span class="small">Resend · 04.06.2026 – 14.10.2026</span></td><td class="num">0,00 USD</td></tr>
+<tr><td>Strefy DNS Cloudflare dla msigalert<br><span class="small">Cloudflare · lipiec 2026 – 14.10.2026</span></td><td class="num">0,00 USD</td></tr>
+<tr><td>Backblaze, Tailscale i Slack (darmowe)<br><span class="small">Backblaze B2, Tailscale, Slack · czerwiec 2026 – październik 2026</span></td><td class="num">0,00 USD</td></tr>
+</tbody></table></div>
+<h3>Inne projekty</h3>
+<p class="muted">Kancelaria, narzędzia osobiste i inne eksperymenty.</p>
+<div class="table-wrap"><table><thead><tr><th>Pozycja</th><th class="num">Kwota</th></tr></thead><tbody>
+<tr><td>TypeSafe: porządkowanie skrzynki pocztowej<br><span class="small">TypeSafe (Jev) · październik 2026</span></td><td class="num">4,36 USD</td></tr>
+<tr><td>TypeSafe: testy narzędzia jev<br><span class="small">TypeSafe (Jev) · październik 2026</span></td><td class="num">0,00 USD</td></tr>
+<tr><td>Cloudflare: inne domeny<br><span class="small">Cloudflare · 10.05.2026 – 14.10.2026</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>Klucz MemSearchBacklog (zasilenie pamięci rozmów)<br><span class="small">Anthropic API · 20.05.2026 – 21.05.2026</span></td><td class="num">86,47 USD</td></tr>
+<tr><td>Google Cloud: projekt gtasks-cli (płatność wrześniowa)<br><span class="small">Google Cloud · 04.09.2026</span></td><td class="num">57,72 zł</td></tr>
+<tr><td>Google Cloud: projekt gtasks-cli (płatność październikowa)<br><span class="small">Google Cloud · 01.10.2026</span></td><td class="num">19,69 zł</td></tr>
+<tr><td>Google Cloud i Gemini: powiadomienia bez opłat<br><span class="small">Google Cloud / Gemini API · 23.04.2026 – 23.07.2026</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>Google Cloud Vision (OCR dla innych narzędzi)<br><span class="small">Google Cloud Vision · listopad 2025 – październik 2026</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>Voyage AI (projekt legal-rag)<br><span class="small">Voyage AI · maj 2026 – sierpień 2026</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>Domena konsumencka.ai<br><span class="small">Porkbun · 28.05.2026 – 28.05.2028</span></td><td class="num">165,40 USD</td></tr>
+<tr><td>Domena strony kancelarii<br><span class="small">Viperhost · 08.05.2026 – 08.05.2027</span></td><td class="num">18,31 zł</td></tr>
+<tr><td>Google Workspace dla kancelarii<br><span class="small">Google Workspace · 29.09.2026 – 30.09.2026</span></td><td class="num">4,03 zł</td></tr>
+<tr><td>Amazon SES dla formularzy kancelarii<br><span class="small">Amazon Web Services (SES) · wrzesień 2026 – październik 2026</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>Bazy prawnicze i księgowość kancelarii<br><span class="small">Legal databases and bookkeeping · styczeń 2026 – październik 2026</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>Koszty biurowe kancelarii<br><span class="small">Law-practice office costs · maj 2026 – sierpień 2026</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>KartotekaOnline.pl: zakup o nieznanym celu<br><span class="small">KartotekaOnline.pl · 03.09.2026</span></td><td class="num">329,67 zł</td></tr>
+</tbody></table></div>
+<h3>Wydatki osobiste</h3>
+<p class="muted">Wydatki prywatne, niezwiązane z Sentinelem.</p>
+<div class="table-wrap"><table><thead><tr><th>Pozycja</th><th class="num">Kwota</th></tr></thead><tbody>
+<tr><td>Aplikacja do skanowania dokumentów (iScanner)<br><span class="small">Apple (App Store) · 07.05.2026 – 02.07.2026</span></td><td class="num">269,91 zł</td></tr>
+<tr><td>Menedżer haseł 1Password<br><span class="small">1Password · 12.08.2026 – 12.08.2027</span></td><td class="num">58,89 USD</td></tr>
+<tr><td>Twój abonament komórkowy<br><span class="small">Mobile operator · marzec 2026 – październik 2026</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>Wydatki osobiste i domowe<br><span class="small">Various · styczeń 2026 – październik 2026</span></td><td class="num">kwota nieznana</td></tr>
+</tbody></table></div>
+<details><summary>Sprzed startu projektu</summary>
+<p class="muted">Zakupy sprzed powstania Sentinela.</p>
+<div class="table-wrap"><table><thead><tr><th>Pozycja</th><th class="num">Kwota</th></tr></thead><tbody>
+<tr><td>Stare faktury konsoli Anthropic sprzed projektu<br><span class="small">Anthropic · kwiecień 2024 – lipiec 2024</span></td><td class="num">0,00 USD</td></tr>
+<tr><td>Zakup kredytów API OpenAI sprzed projektu<br><span class="small">OpenAI · 17.02.2024</span></td><td class="num">10,00 USD</td></tr>
+<tr><td>Boot.dev (nauka)<br><span class="small">Boot.dev · 23.12.2025</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>Prompt Genie<br><span class="small">Prompt Genie · 12.01.2026</span></td><td class="num">kwota nieznana</td></tr>
+</tbody></table></div>
+</details>
+<details><summary>Nieudane płatności</summary>
+<p class="muted">Próby płatności, które się nie udały. Pieniądze nie wypłynęły.</p>
+<div class="table-wrap"><table><thead><tr><th>Pozycja</th><th class="num">Kwota</th></tr></thead><tbody>
+<tr><td>Nieudane zakupy kredytów API Anthropic<br><span class="small">Anthropic · 20.05.2026 – 19.09.2026</span></td><td class="num">390,00 USD</td></tr>
+<tr><td>Nieudane obciążenia subskrypcji Claude (ponowione)<br><span class="small">Anthropic · marzec 2026 – październik 2026</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>Nieudane automatyczne doładowanie OpenAI<br><span class="small">OpenAI · 08.10.2026</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>Nieudane automatyczne doładowanie Twilio<br><span class="small">Twilio · 17.04.2026</span></td><td class="num">10,23 USD</td></tr>
+<tr><td>Nieudane automatyczne doładowanie Twilio<br><span class="small">Twilio · 20.04.2026</span></td><td class="num">20,17 USD</td></tr>
+<tr><td>Odrzucone połączenia i SMS-y w zawieszeniu (bez opłat)<br><span class="small">Twilio · 23.08.2026 – 14.10.2026</span></td><td class="num">0,00 USD</td></tr>
+<tr><td>Odrzucona płatność Google Cloud<br><span class="small">Google Cloud · 01.09.2026</span></td><td class="num">kwota nieznana</td></tr>
+</tbody></table></div>
+</details>
+<details><summary>Zapisy zdublowane lub zastąpione</summary>
+<p class="muted">Te same pieniądze zapisane drugi raz albo stare szacunki zastąpione lepszymi danymi. Pominięte, żeby nic nie policzyć dwa razy.</p>
+<div class="table-wrap"><table><thead><tr><th>Pozycja</th><th class="num">Kwota</th></tr></thead><tbody>
+<tr><td>Modele OpenAI przez OpenRouter (policzone w OpenRouter)<br><span class="small">OpenAI · 20.09.2026 – 24.09.2026</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>Własny dziennik kosztów aplikacji (tylko do kontroli)<br><span class="small">OpenAI · 20.09.2026 – 14.10.2026</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>Szacunki testów z repozytorium i z poprzedniego audytu<br><span class="small">OpenAI · 20.09.2026 – 11.10.2026</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>Ponownie wystawione faktury za te same, już zapłacone zakupy<br><span class="small">OpenRouter · 14.10.2026</span></td><td class="num">84,36 USD</td></tr>
+<tr><td>Usunięte maile z tymi samymi paragonami OpenRouter<br><span class="small">OpenRouter · sierpień 2026</span></td><td class="num">84,36 USD</td></tr>
+<tr><td>Część OpenAI eksperymentu Jev i Luna (policzona w OpenAI)<br><span class="small">OpenAI (recorded in the Jev experiment ledger) · wrzesień 2026</span></td><td class="num">0,11 USD</td></tr>
+<tr><td>Odnowienia numerów po dniu audytu (ujęte w koszcie miesięcznym)<br><span class="small">Twilio · 21.10.2026 – 27.11.2026</span></td><td class="num">5,15 USD</td></tr>
+<tr><td>Podsumowanie zużycia z panelu za marzec<br><span class="small">Twilio · marzec 2026</span></td><td class="num">60,36 USD</td></tr>
+<tr><td>Twoje przybliżone kwoty (potwierdzone wyciągami)<br><span class="small">Twilio · marzec 2026 – maj 2026</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>Domniemane doładowania z maili (zastąpione)<br><span class="small">Twilio · marzec 2026 – czerwiec 2026</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>Wyciągi Twilio w danych panelu (zużycie, nie płatności)<br><span class="small">Twilio · marzec 2026 – wrzesień 2026</span></td><td class="num">305,96 USD</td></tr>
+<tr><td>Szacunek Twilio z poprzedniego audytu (zastąpiony)<br><span class="small">Twilio · marzec 2026 – wrzesień 2026</span></td><td class="num">294,59 USD</td></tr>
+<tr><td>Płatności kartą za faktury Hetzner (tylko w widoku gotówki)<br><span class="small">Hetzner · 05.04.2026 – 05.10.2026</span></td><td class="num">28,04 EUR</td></tr>
+<tr><td>Kopie tych samych faktur Hetzner<br><span class="small">Hetzner · marzec 2026 – wrzesień 2026</span></td><td class="num">28,04 EUR</td></tr>
+<tr><td>Usunięte maile Hetzner o fakturach<br><span class="small">Hetzner · kwiecień 2026 – październik 2026</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>Szacunek października z poprzedniego audytu (zastąpiony)<br><span class="small">Hetzner · 01.10.2026 – 11.10.2026</span></td><td class="num">1,81 EUR</td></tr>
+<tr><td>Faktura Apple do tego samego zamówienia<br><span class="small">Apple · 27.05.2026</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>Powiadomienia Apple bez opłat<br><span class="small">Apple · 30.05.2026 – 14.10.2026</span></td><td class="num">0,00 zł</td></tr>
+<tr><td>Wpisy Apple z poprzedniego audytu (zastąpione)<br><span class="small">Apple · 01.06.2026</span></td><td class="num">99,00 USD</td></tr>
+<tr><td>Wiersz o budowaniu aplikacji z poprzedniego audytu<br><span class="small">Expo / GitHub / Local · 11.10.2026</span></td><td class="num">kwota nieznana</td></tr>
+<tr><td>Spłata karty kredytowej (dublowałaby zakupy)<br><span class="small">Bank · 07.10.2026</span></td><td class="num">kwota nieznana</td></tr>
+</tbody></table></div>
+</details>
+<h2 id="e">Ryzyka operacyjne</h2>
+<p>Kredyty i salda kończyły się już po cichu i wyłączały alerty. Dziś działa tylko kanał push. Poniżej najpierw to, co wymaga działania teraz.</p>
+<div class="risk"><span class="badge crit">⚠ Pilne</span><h3>Twilio: telefon przy najpilniejszym alercie dziś nie zadzwoni</h3><p>Od 23.08.2026, 17:21 UTC konto Twilio jest zawieszone z braku środków i dziś celowo niedoładowane. Żadne połączenie ani SMS nie wychodzi; od 15.09.2026 dziennik pokazuje 290 odrzuconych połączeń i tyle samo SMS-ów. Dotyczyły one tylko 48 zdarzeń najwyższej pilności: na zawieszonym koncie żadne zdarzenie nie zostaje potwierdzone, a odrzucone połączenie nie zostawia śladu, więc system ponawia próby wielokrotnie. Dług na koncie wynosi 9,49 USD i rośnie o 5,15 USD miesięcznie za dwa numery: do 10,64 USD po odnowieniu 21.10.2026 i do 14,64 USD po odnowieniu 28.10.2026. Doładowanie najpierw spłaci dług. Przy obecnych zasadach wysyłki zużycie po doładowaniu, liczone od liczby zdarzeń, a nie prób, to około 18,03 USD miesięcznie (przedział 16,83 USD – 32,27 USD) plus numery.</p></div>
+<div class="risk"><span class="badge warn">▲ Ważne</span><h3>OpenAI: limit podniesiony, doładowanie włączone, karta niesprawdzona</h3><p>Wieczorem 14.10.2026 podniosłeś twardy limit miesięczny projektu Sentinel w OpenAI z 10,00 USD do 30,00 USD; panel pokazywał wtedy 8,48 USD z 30,00 USD (14.10.2026, 22:00 UTC). Nowy limit jest wyższy niż bieżące tempo 18,54 USD miesięcznie i jego górna granica 20,88 USD, więc przy zwykłej liczbie artykułów klasyfikacja nie stanie już w połowie miesiąca. Październik zamknie się na około 18,88 USD przy średnim tempie (0,61 USD dziennie) i na około 23,49 USD przy najwyższym dziennym zużyciu (0,88 USD). Powiadomienie o wydatkach przy 10,00 USD zostało jako wczesne ostrzeżenie. Limit równa się teraz własnemu budżetowi aplikacji, więc prawdziwy kryzys z wielokrotnie większą liczbą artykułów nadal może go wyczerpać. Saldo po doładowaniu z 14.10.2026, 20:15 UTC (20,00 USD) wynosiło 20,70 USD (14.10.2026, 21:00 UTC). Automatyczne doładowanie jest znowu włączone: gdy saldo spadnie do 5,00 USD, OpenAI doładuje je do 20,00 USD, bez miesięcznego limitu doładowań. Karta nie przeszła jednak jeszcze automatycznego obciążenia od nieudanej płatności 08.10.2026. Gdyby znów została odrzucona, OpenAI wyłączy doładowanie przy saldzie 5,00 USD, a to starczy na około 8,2 dnia przy średnim tempie i 5,7 dnia przy najwyższym zużyciu.</p></div>
+<div class="risk"><span class="badge warn">▲ Ważne</span><h3>Apple: termin na nową umowę i wyłączone odnowienie</h3><p>Do 13.11.2026 trzeba zaakceptować nową umowę licencyjną Apple Developer. Do tego czasu nie da się zbudować nowej wersji aplikacji na iPhone&#x27;a. Automatyczne odnowienie członkostwa jest wyłączone: członkostwo wygasa 01.06.2027. Bez ręcznego odnowienia powiadomienia push na iPhone&#x27;a prawdopodobnie przestaną działać.</p></div>
+<div class="risk"><span class="badge warn">▲ Ważne</span><h3>Push to dziś jedyny działający kanał alertów</h3><p>Telefony i SMS-y nie działają, więc wszystkie alerty idą tylko jako powiadomienia push przez Expo i Apple. Utrata konta Apple Developer albo Expo wyciszyłaby wszystkie alerty. Push nie budzi w nocy tak jak telefon.</p></div>
+<div class="risk"><span class="badge info">◆ Lekcja z przeszłości</span><h3>Anthropic: kredyty skończyły się po cichu i Sentinel był ślepy</h3><p>Od 17.09.2026, 10:07 UTC do 19.09.2026, 23:19 UTC (około 61 godzin) skończył się przedpłacony kredyt w Anthropic i każde wywołanie klasyfikatora kończyło się błędem. W tym czasie żaden alert nie mógł zostać wysłany. Przyczyna: automatyczne doładowania nie przeszły (18.08.2026 i 13.09.2026, za drugim razem karta została odrzucona). Dziś Sentinel nie korzysta z Anthropic (od 20.09.2026), ale powrót do Claude Haiku zacząłby się od wspólnego salda 18,77 USD.</p></div>
+<div class="risk"><span class="badge warn">▲ Ważne</span><h3>Ostrzeżenia o płatnościach giną w poczcie</h3><p>Porządkowanie poczty (02.10.2026) usunęło maile rozliczeniowe, w tym ostrzeżenia o niskim saldzie i wyłączeniu dostępu. Przyszłe ostrzeżenia od OpenAI, Twilio czy Hetznera mogą zniknąć, zanim je zobaczysz. Ta sama karta była odrzucana u kilku dostawców.</p></div>
+<div class="risk"><span class="badge watch">● Do obserwacji</span><h3>Jeden serwer i brak zewnętrznego monitoringu</h3><p>Cały Sentinel działa na jednym serwerze Hetzner. Kopie bazy leżą na tym samym dysku, a kopie zapasowe Hetznera są wyłączone. Nic z zewnątrz nie sprawdza, czy Sentinel działa: awaria byłaby widoczna tylko jako brak powiadomień. Własny budżet aplikacji na OpenAI to 30,00 USD miesięcznie; prawdziwy kryzys z dużą liczbą artykułów może go wyczerpać.</p></div>
+<h2 id="q">Pytania i decyzje</h2>
+<p>Wszystkie otwarte pytania z audytu (36), w trzech grupach. W każdej grupie najpierw to, co pilne. Pod każdym pytaniem są szczegóły po angielsku.</p>
+<h3>Do decyzji (11)</h3><ul class="plain">
+<li>Pytanie podatkowe: Twilio, Anthropic, OpenAI i Hetzner wystawiają faktury bez VAT (odwrotne obciążenie na Twój NIP), więc sumy w raporcie nie zawierają tego VAT. Jeśli naliczonego VAT nie odliczasz, prawdziwy koszt tych dostawców rośnie o VAT (23 %): o około 403,45 zł od początku projektu i o około 25,79 zł miesięcznie. VAT w OpenRouter i w cenie Apple jest już w koszcie. Sumy zostawiam bez zmian, zgodnie z przyjętą zasadą.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">VAT on reverse-charged invoices: Twilio, Anthropic, OpenAI and Hetzner invoice Sentinel&#x27;s services at 0% under the EU reverse charge on the owner&#x27;s PL VAT number, and the totals exclude that VAT by the agreed convention. If the self-assessed 23% Polish VAT is not deductible, it is a real cost missing from all 4 providers: about PLN 403.45 to date (23% of PLN 1754.15) and about PLN 25.79 a month at the current run-rate (23% of PLN 112.12). OpenRouter&#x27;s VAT and Apple&#x27;s gross price are already inside the cost. This is a tax question for the owner and his accountant, not an owner switch, so it has no run-rate line and the totals stay as they are; summary.reverse_charge_vat has the per-provider split.</p></details></li>
+<li>Propozycja (w CLAUDE.md niczego nie zmieniłem): agenci czytają plik CLAUDE.md automatycznie, ale nie ma w nim odnośnika do rejestru kosztów. Zasada „agent, który zauważy nowy koszt, najpierw pyta Ciebie” jest tylko w docs/reference/costs.md. Czy dopisać w sekcji Docs pliku CLAUDE.md jedną linię: „Cost register and new-cost rule → docs/reference/costs.md”?<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">Proposal, not applied: CLAUDE.md, which agents load automatically, does not point to the cost register. The new-cost rule (&#x27;an agent that notices a new cost must ask the owner&#x27;) lives only in docs/reference/costs.md, which only docs/README.md links. Proposed one-line addition to the Docs section of CLAUDE.md: &#x27;Cost register and new-cost rule → [docs/reference/costs.md](docs/reference/costs.md)&#x27;. CLAUDE.md changes need the owner&#x27;s approval first, so nothing was edited. finance/maintenance-policy.html (October 11 proposal, never adopted) is marked as superseded by costs.md.</p></details></li>
+<li>Czy w widoku gotówki przypisać Sentinelowi cały wrześniowy zakup kredytu Anthropic, który ratował go po awarii? Domyślnie liczę tylko część, którą Sentinel z niego zużył.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">Owner decision: the Sep 19 $20 purchase was the manual fix for Sentinel&#x27;s outage. Should the cash view attribute the whole $20 to Sentinel because it triggered the purchase? The default here is FIFO consumption share: $0.88 of it consumed by Sentinel, and $18.76 still unconsumed.</p></details></li>
+<li>Czy automatyczne doładowanie w Anthropic ma zostać włączone, skoro konta używa już tylko msigalert? Czy powiadomienie o progu wydatków usunięto celowo?<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">Billing settings history: the Console now reads &#x27;below $10, top up to $20&#x27;, but the Aug 19 and Sep 1 recharges were about $10 each, made when the balance was about $4-6. That fits a different setting at the time. Was it changed after the outage? Should auto-reload stay on now that only msigalert uses the org? Also, a $100 monthly spend-threshold notification existed on 2026-05-27, and none is set today: was it removed on purpose?</p></details></li>
+<li>Wycofać wciąż aktywny klucz API Sentinela w Anthropic czy zostawić go na wypadek powrotu do Claude Haiku? Jeśli zostaje, dodaj powiadomienie o wydatkach i kontrolę salda w monitoringu Sentinela.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">Should the still-active Project Sentinel API key be revoked, or kept deliberately for a Haiku rollback? If kept, add a Console spend notification and a balance check to Sentinel&#x27;s health monitoring.</p></details></li>
+<li>Czy ograniczyć udostępnianie danych OpenAI do samego projektu Sentinel? Dziś konto obsługuje tylko Sentinela, ale zmiana chroni przyszłe projekty na tym koncie.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">Should data sharing be limited to Project Sentinel only (&#x27;Enabled for selected projects&#x27;) instead of all projects, so that any future project in this OpenAI org is not shared for training?</p></details></li>
+<li>Wrześniowe doładowanie OpenRouter kupiono przy testach Sentinela, ale nic z niego jeszcze nie zużyto, więc według zasady FIFO udział Sentinela to zero. Jeśli wolisz przypisywać zakupy według ich celu, daj znać.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">Informational, not a blocker: FIFO gives the 2026-09-23 $40 top-up a 0% Sentinel share, although it was bought during and for the Sentinel eval round. It was prompted by reading the key&#x27;s $4.17 remaining limit as if it were money, while the account held about $23.39; the chosen ~$35 budget would still have needed a top-up. If the owner later prefers attribution by purchase intent, Sentinel&#x27;s cash would rise by $51.91, and the $40 would become Sentinel prepaid credit that is not yet consumed. Under the agreed convention nothing changes.</p></details></li>
+<li>Numery Twilio: zostawić oba (dług rośnie co miesiąc), zwolnić nieużywany numer amerykański czy zwolnić oba? Warto też ustalić, jak długo Twilio odnawia numery na zawieszonym koncie.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">Owner decision: keep both numbers accruing USD 5.15 a month as debt, release the apparently unused US number (USD 1.15), or release both? How long will Twilio keep renewing numbers on a suspended account before releasing them?</p></details></li>
+<li>Czy odnowisz ręcznie członkostwo Apple Developer przed jego wygaśnięciem? Automatyczne odnowienie jest wyłączone.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">Apple renewal: does the owner intend to renew by hand before 2027-06-01, given that auto-renew is off? This decides whether the 35.75 PLN/month run-rate continues after May 2027.</p></details></li>
+<li>Czy przeszukać czwartą skrzynkę Gmail, której audyt nie przeszukał (konto Expo założone logowaniem Google oraz konto Claude Code), pod kątem rachunków Expo lub Apple?<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">Fourth mailbox: the Expo account was created through Google SSO with an unknown Google address, and the Claude Code account uses another Gmail address that was never searched. Should that mailbox be searched for Expo or Apple bills?</p></details></li>
+<li>Co kupiono w KartotekaOnline.pl? Domyślnie nie jest to koszt Sentinela; potwierdź.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">KartotekaOnline.pl, PLN 329.67 on 2026-09-03: what was bought? Sentinel&#x27;s code and config reference no such service, so it is excluded by default. The owner should confirm.</p></details></li>
+</ul>
+<h3>Do zrobienia: dokument lub sprawdzenie (17)</h3><ul class="plain">
+<li><span class="badge crit">⚠ Pilne</span> Pobierz fakturę i paragon za dzisiejsze doładowanie OpenAI. Automatyczne doładowanie jest już znowu włączone; zostaje sprawdzić, czy karta przyjmie następne automatyczne obciążenie.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">The 2026-10-14 top-up is recorded from OpenAI&#x27;s funding email: $20.00 charged to the card at 20:15 UTC, booked as a cash event (100% Sentinel) on that date. Download its invoice and receipt from the billing history to confirm the tax line (expected 0% reverse charge, as on the 2026 invoices) and the credit amount, and say whether auto-reload was switched back on with a working card. Update 2026-10-14 ~21:00 UTC: auto-reload is ON ($5 -&gt; $20); whether the card accepts the next automatic charge is still unproven.</p></details></li>
+<li><span class="badge crit">⚠ Pilne</span> Skoro panel OpenAI jest otwarty: zapisz eksport kosztów według projektu za miesiące przed wrześniowym zakupem kredytu (powinien być pusty) oraz zrzuty ekranu historii płatności, przyznanych kredytów i limitów projektu Sentinel.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">While the owner has the portal open for the top-up: save a cost-by-project export for 2026-03-01..2026-09-19 (expected empty), plus screenshots of the billing history, the credit grants and the Project Sentinel limits page. The zero months, the grant balances and the $10 cap would then rest on saved files instead of UI readings.</p></details></li>
+<li>Pobierz ponownie z konsoli Anthropic miesięczne eksporty kosztów dla klucza Sentinela; część z nich przepisano ze strony zamiast pobrać plik.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">Evidence quality: only the September cost CSV and the PDFs are byte-exact downloads. The other monthly CSVs and token summaries were transcribed from the Console page. Every month&#x27;s token-times-list-price result matches the Console&#x27;s displayed total to the cent, so the risk is low. Re-downloading the per-key exports would remove it.</p></details></li>
+<li>Ustal, dlaczego karta została odrzucona przy automatycznym doładowaniu OpenAI (wcześniej także w Anthropic): ważność, limit, blokada w banku czy weryfikacja płatności.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">Why did the 2026-10-08 auto-recharge fail: card expiry, limit, bank block or 3-D Secure? The same card question applies to the failed Anthropic charges.</p></details></li>
+<li>Po północy UTC wyeksportuj z panelu OpenAI koszty października według projektu i pozycji; dokładna kwota zastąpi pomiar i szacunek ostatnich godzin dnia audytu.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">After 2026-10-15 00:00 UTC, re-export the OpenAI cost by project and by line item for 2026-10-01..2026-10-15. The exact 2026-10-14 figure then replaces the partial export line, the ledger-measured 18:06-20:39 line and the 20:39-24:00 estimate. The Oct 1-14 run-rate can then be recomputed on fully billed data.</p></details></li>
+<li>Po 15.10.2026 sprawdzić w panelu OpenAI (Usage, grupowanie po „service tier”), czy darmowe tokeny za udostępnianie danych obejmują model Sentinela. Jeśli tak, koszt OpenAI spadnie z ok. 18,54 USD do ok. 1,81 USD miesięcznie.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">After 2026-10-15 00:00 UTC, check the OpenAI usage dashboard grouped by service tier for &#x27;data sharing incentive tier&#x27; tokens on gpt-5.6-luna; if present, replace the OpenAI run-rate with the measured billed amount.</p></details></li>
+<li>Otwórz panel TypeSafe (rozliczenia i zużycie). Potwierdzi darmowy kredyt, wrześniowe zużycie Jev, kwotę październikowego zakupu i brak innych zakupów.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">The TypeSafe console (console.typesafe.ai, Billing and Usage) was NOT read. It would confirm five things: (a) the $5.00 signup grant; (b) the 2026-09-22/23 Jev usage, measured at $0.074125296 for 162 requests; (c) the amount of the 2026-10-01 credit purchase, implied to be $15.00, which matters for the cash table only as a 0%-Sentinel event; (d) whether the 3 &#x27;reserved&#x27; mail-cleanup calls ($0.008064) were charged; (e) that no other purchases exist. Gmail returns &#x27;not found&#x27; for the deleted receipt, so the console is the source.</p></details></li>
+<li>Sprawdź w regulaminie OpenRouter, czy niewykorzystane kredyty wygasają. Ewentualna strata dotyczyłaby wspólnego salda, nie kosztu Sentinela.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">OpenRouter credit expiry: check OpenRouter&#x27;s terms on whether unspent credits expire after a period. The $20.78 left of the 2026-08-22 lot is the oldest credit at risk. A lapse would be a write-off of shared prepaid credit, not a Sentinel cost.</p></details></li>
+<li>Wyeksportuj z Twilio zużycie połączeń głosowych za czerwiec, lipiec i sierpień. Rozstrzygnie, czy Twilio doliczy nierozliczone połączenia z lipca i sierpnia.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">Why do the July and August statements have no Calls charge although production logged 57 and 18 accepted, completed calls and the same statements bill Polly TTS? One call detail shows cost 0.00 USD and the balance trajectory agrees with the statements. If Twilio later bills them at June&#x27;s rate (about USD 0.0717/min), USD 3.87 (July) and USD 1.29 (August) would appear; they are shown as out-of-total exposure lines. A Twilio usage-records export for Programmable Voice in Jun-Aug would settle it.</p></details></li>
+<li>Październikowy wyciąg Twilio albo eksport transakcji oczekujących potwierdzi opłaty za numery naliczone w czasie zawieszenia.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">The USD 9.15 of accrued renewals is derived from a console-only balance reading. Does the October statement (or a console export of pending transactions) list the 08-28, 09-21 and 09-28 renewals? Either would turn the derivation into documentary evidence. The console notes that the balance excludes pending transactions.</p></details></li>
+<li>Wyciągi z kart pokażą dokładne kwoty w złotych za płatności Twilio, razem z prowizją za przewalutowanie.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">In which currency were the three cards debited, and what were the exact PLN amounts (including any card FX fee)? The bank or card statements (the owner&#x27;s bank and card statements) would replace the NBP-rate approximation of the USD 305.62 cash.</p></details></li>
+<li>Otwórz w konsoli Twilio podsumowania zużycia od kwietnia do lipca i potwierdź, że od lipca nie było żadnych płatności.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">Usage summaries for April-July were not opened in the console (statements cover these months, and August-October summaries match their statements). Receipts were saved only for March-June; &#x27;no payments July-October&#x27; rests on the console reading.</p></details></li>
+<li>Gdy Hetzner wystawi fakturę za październik, zastąpi ona naliczenie z tego audytu.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">The October 2026 invoice: when Hetzner issues it (expected around 2026-11-04, or later if it batches with November), confirm EUR 4.49 net. Replace the month-to-date and end-of-day tail lines with it; do not add them together.</p></details></li>
+<li>Wyciąg z karty pokaże rzeczywisty koszt płatności Hetzner w złotych i ewentualne prowizje.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">Actual PLN cost of the four card payments (EUR 1.10, 13.47, 8.98, 4.49) and any card FX or foreign-transaction fee: only the card statement shows this (the mail sweep found a bank credit card as a lead). Until then, the cash table converts provider EUR amounts at the NBP rate.</p></details></li>
+<li>Pobierz fakturę Apple za majowe członkostwo w Developer Program (status zamówienia albo zakładka Membership). Potwierdzi kwotę, VAT i kartę.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">Apple invoice: can the owner download the Apple invoice for the 27 May 2026 Developer Program web order? The order and invoice numbers are in the private evidence refs of line apple-devprog-2026-05. The invoice is available from the Apple Store order status page or the developer account Membership page. It would upgrade the evidence from a deleted-mail snippet to a provider invoice and confirm the 429.00 PLN gross, the VAT split (expected 348.78 net + 80.22 VAT at 23%) and the card used.</p></details></li>
+<li>Wyciąg z karty pokaże dokładną datę i kwotę obciążenia za członkostwo Apple.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">Apple charge: does a card or bank statement show the 429 PLN Apple debit between 2026-05-27 and 2026-06-02? It would give the exact debit date, the currency and any FX fee. The cash event is dated by the order and invoice date until then.</p></details></li>
+<li>Zapisz zrzuty stron rozliczeń i paragonów w expo.dev i sprawdź, czy jest tam zapisana karta.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">Expo evidence: the Free plan, the empty receipts page and the $0.00 upcoming bill were read on the portal, but no capture was saved; only the build CSV is on disk. Saving captures of the expo.dev Billing and Receipts pages, and checking &#x27;Manage billing information&#x27; for a card on file, would make the $0 fully file-backed. Every Expo line carries this caveat until then.</p></details></li>
+</ul>
+<h3>Do wiadomości (8)</h3><ul class="plain">
+<li>Brakujące numery faktur w konsoli Anthropic pasują do nieudanych płatności. Saldo się zgadza, więc nie ma ukrytych zakupów; potwierdzenie ma niski priorytet.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">Invoice numbers 0006-0008 and 0010 are missing from the Console list. They fit exactly the three failed May 20 attempts and the failed Aug 18 auto-reload, which were probably voided. The Sep 13 failed auto-reload also left no listed invoice. The balance reconciles to within $0.02, which rules out any material hidden paid credit. The owner may confirm, but it is low priority.</p></details></li>
+<li>Kwota rachunku za Claude Haiku zapisana w repozytorium nie pasuje do żadnego miesiąca; to prawdopodobnie widok z ostatnich trzydziestu dni. Nie zmienia żadnej kwoty.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">The repo note of an &#x27;observed $22.18 Haiku bill&#x27; (docs/ideas/model-comparison-v2-run-record.md, committed 2026-09-20 17:34 UTC) matches no calendar-month figure. A verifier proposed the Console&#x27;s 30-day org view for Aug 25-Sep 23; that cannot be the source, because that window ends three days after the note was committed. Cent-rounded Sentinel-only 30-day windows Jul 22-Aug 20 and Aug 4-Sep 2 also sum to 22.18. So it was probably a trailing 30-day Console view, but which one cannot be told from the evidence. It changes no booked amount and needs no action unless the owner remembers its period.</p></details></li>
+<li>Rozwiązane 14.10.2026: limit projektu Sentinel w OpenAI podniesiony z 10,00 USD do 30,00 USD (potwierdzone w panelu).<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">Will the owner raise the Project Sentinel hard spend limit from $10 to at least $25-30? Without that, classification stops around 2026-10-16/17 until 1 November, whatever the credit balance. Resolved 2026-10-14: raised to $30.</p></details></li>
+<li>Niewykorzystana reszta darmowego kredytu próbnego Twilio przepadła przy przejściu na konto płatne; Twilio nigdzie tego nie pokazuje.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">Trial credit: the welcome email says USD 15; only USD 3.0686 of March usage was not invoiced, and the first USD 20 payment left the balance at exactly USD 20.00. This supports &#x27;the rest was forfeited at upgrade&#x27;, but Twilio shows no trial-credit line anywhere.</p></details></li>
+<li>Drugi serwer w marcu działał tylko kilka godzin w projekcie Sentinel; wpływ na koszt jest pomijalny.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">Second CX23 in March 2026 (product count 2, 197 hours combined): the invoice&#x27;s &#x27;detailed usage&#x27; link would show its identity and hours. The effect is immaterial (about 1-3 hours, under EUR 0.02), and it ran inside project &#x27;sentinel&#x27; either way.</p></details></li>
+<li>Możesz potwierdzić w ustawieniach rozliczeń GitHub, że konto jest na darmowym planie; koszt Sentinela i tak wynosi zero.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">GitHub plan (no longer blocking): can the owner confirm at github.com/settings/billing that the account is on the Free plan? Sentinel&#x27;s GitHub cost is booked at $0 regardless, because the repository is public with no workflows, and a paid plan or Copilot would be an excluded coding tool. The confirmation would only tidy the record.</p></details></li>
+<li>Konto rozliczeniowe Google Cloud (projekt gtasks-cli) nie dotyczy Sentinela; podgląd projektów i faktur w konsoli Google Cloud by to potwierdził.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">Google Cloud billing account (gtasks-cli; PLN 57.72 paid 2026-09-04 and PLN 19.69 paid 2026-10-01): a look at its projects and invoices in the Google Cloud console would confirm the billing periods and that no project relates to Sentinel. Sentinel has no Google Cloud SDK, key or config entry, so it is excluded.</p></details></li>
+<li>Bez wpływu na koszty: w Hetznerze nie ma żadnej zapory sieciowej, choć dokumentacja opisuje zaporę dla Sentinela.<details class="q"><summary>Szczegóły</summary><p class="small" lang="en">Side note with no cost impact: the Hetzner console shows 0 Cloud Firewalls, although docs/how-to/security/vps-hardening.md describes a &#x27;sentinel-fw&#x27; firewall. TODO.md already says it may not be applied.</p></details></li>
+</ul>
+<h2 id="f">Pewność danych</h2>
+<p>Każda pozycja ma rodzaj dowodu. 80,4 % kosztu opiera się na fakturach, wyciągach i panelach dostawców; szacunki to 0,01 %.</p>
+<div class="table-wrap"><table><thead><tr><th>Rodzaj dowodu</th><th class="num">Kwota</th><th class="num">Udział</th><th class="num">Pozycji z kwotą</th></tr></thead><tbody>
+<tr><td>faktura lub wyciąg dostawcy</td><td class="num">1 246,41 zł</td><td class="num">56,7 %</td><td class="num">34</td></tr>
+<tr><td>panel dostawcy</td><td class="num">522,66 zł</td><td class="num">23,8 %</td><td class="num">15</td></tr>
+<tr><td>odczyt zużycia × cennik</td><td class="num">1,08 zł</td><td class="num">0,05 %</td><td class="num">2</td></tr>
+<tr><td>e-mail odtworzony po usunięciu</td><td class="num">429,00 zł</td><td class="num">19,5 %</td><td class="num">1</td></tr>
+<tr><td>szacunek</td><td class="num">0,28 zł</td><td class="num">0,01 %</td><td class="num">2</td></tr>
+</tbody></table></div>
+<h3>Co pozostaje otwarte</h3>
+<p class="muted">Najważniejsze niepewności co do kwot. Pełna lista pytań i decyzji jest w części <a href="#q">Pytania i decyzje</a>.</p><ul class="plain">
+<li>Twilio nie rozliczyło połączeń alarmowych z lipca i sierpnia. Gdyby je doliczyło, doszłoby około 5,16 USD (poza sumą). Zaległe opłaty za numery (9,15 USD) wyliczono z salda w panelu; potwierdzi je październikowy wyciąg.</li>
+<li>Wieczór dnia audytu w OpenAI to pomiar z dziennika aplikacji (0,08 USD) i szacunek ostatnich godzin (0,04 USD). Eksport z panelu po północy zastąpi je dokładną kwotą.</li>
+<li>Do decyzji: zakup 20,00 USD w Anthropic z 19.09.2026 ratował Sentinela po awarii, ale według zasady FIFO Sentinel zużył z niego tylko 0,88 USD. Czy w widoku gotówki przypisać Sentinelowi cały zakup?</li>
+<li>Do decyzji: doładowanie OpenRouter za 51,91 USD z 23.09.2026 kupiono w trakcie testów Sentinela, ale nic z niego jeszcze nie zużyto, więc udział Sentinela wynosi zero.</li>
+<li>Panelu TypeSafe nie odczytano. Kwota zakupu z 01.10.2026 jest nieznana; nie dotyczy Sentinela.</li>
+<li>Kwota Apple (429,00 zł) opiera się na odtworzonym mailu z zamówieniem i Twojej kopii. Faktura Apple nie została pobrana, a data obciążenia karty jest niepotwierdzona.</li>
+<li>Październikowej faktury Hetznera jeszcze nie ma; do tego czasu październik to naliczenie (2,42 EUR).</li>
+<li>Darmowy plan Expo odczytano w panelu, ale bez zrzutu ekranu.</li>
+<li>Zakup w KartotekaOnline.pl (329,67 zł, 03.09.2026) ma nieznany cel. Domyślnie nie jest kosztem Sentinela; potwierdź.</li>
+<li>Przy płatnościach w obcej walucie rzeczywisty koszt w złotych zależy od kursu i prowizji Twojego banku. Raport używa kursów NBP; wyciągi z karty dałyby dokładne kwoty.</li>
+</ul>
+<details><summary>Wszystkie pozycje z kwotą i ich dowody</summary><div class="table-wrap"><table><thead><tr><th>Pozycja</th><th class="num">Kwota</th></tr></thead><tbody>
+<tr><td>Twilio: Wykrywanie poczty głosowej (tylko testy)<br><span class="small">marzec 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">0,52 zł<br><span class="small">0,14 USD</span></td></tr>
+<tr><td>Twilio: Połączenia alarmowe<br><span class="small">marzec 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">45,19 zł<br><span class="small">12,08 USD</span></td></tr>
+<tr><td>Twilio: SMS-y i wiadomości<br><span class="small">marzec 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">152,95 zł<br><span class="small">40,89 USD</span></td></tr>
+<tr><td>Twilio: Dzierżawa numeru polskiego<br><span class="small">marzec 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">14,96 zł<br><span class="small">4,00 USD</span></td></tr>
+<tr><td>Twilio: Synteza mowy w połączeniach<br><span class="small">marzec 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">0,67 zł<br><span class="small">0,18 USD</span></td></tr>
+<tr><td>Anthropic: Claude Haiku: klasyfikator artykułów<br><span class="small">marzec 2026 · panel dostawcy</span></td><td class="num">5,85 zł<br><span class="small">1,56 USD</span></td></tr>
+<tr><td>Hetzner: Serwer w chmurze i adres IP<br><span class="small">marzec 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">4,72 zł<br><span class="small">1,10 EUR</span></td></tr>
+<tr><td>Twilio: Połączenia alarmowe<br><span class="small">kwiecień 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">1,06 zł<br><span class="small">0,29 USD</span></td></tr>
+<tr><td>Twilio: SMS-y i wiadomości<br><span class="small">kwiecień 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">153,61 zł<br><span class="small">42,13 USD</span></td></tr>
+<tr><td>Twilio: Dzierżawa numeru polskiego<br><span class="small">kwiecień 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">14,58 zł<br><span class="small">4,00 USD</span></td></tr>
+<tr><td>Twilio: Dzierżawa numeru amerykańskiego<br><span class="small">kwiecień 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">4,19 zł<br><span class="small">1,15 USD</span></td></tr>
+<tr><td>Twilio: Synteza mowy w połączeniach<br><span class="small">kwiecień 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">0,04 zł<br><span class="small">0,01 USD</span></td></tr>
+<tr><td>Anthropic: Claude Haiku: klasyfikator artykułów<br><span class="small">kwiecień 2026 · panel dostawcy</span></td><td class="num">30,68 zł<br><span class="small">8,41 USD</span></td></tr>
+<tr><td>Hetzner: Serwer w chmurze i adres IP<br><span class="small">kwiecień 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">19,12 zł<br><span class="small">4,49 EUR</span></td></tr>
+<tr><td>Twilio: Połączenia alarmowe<br><span class="small">maj 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">8,08 zł<br><span class="small">2,22 USD</span></td></tr>
+<tr><td>Twilio: SMS-y i wiadomości<br><span class="small">maj 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">504,50 zł<br><span class="small">138,62 USD</span></td></tr>
+<tr><td>Twilio: Dzierżawa numeru polskiego<br><span class="small">maj 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">14,56 zł<br><span class="small">4,00 USD</span></td></tr>
+<tr><td>Twilio: Dzierżawa numeru amerykańskiego<br><span class="small">maj 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">4,19 zł<br><span class="small">1,15 USD</span></td></tr>
+<tr><td>Twilio: Synteza mowy w połączeniach<br><span class="small">maj 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">0,40 zł<br><span class="small">0,11 USD</span></td></tr>
+<tr><td>Anthropic: Claude Haiku: klasyfikator artykułów<br><span class="small">maj 2026 · panel dostawcy</span></td><td class="num">68,66 zł<br><span class="small">18,87 USD</span></td></tr>
+<tr><td>Apple: Członkostwo Apple Developer<br><span class="small">maj 2026 · e-mail odtworzony po usunięciu</span></td><td class="num">429,00 zł<br><span class="small">429,00 zł</span></td></tr>
+<tr><td>Hetzner: Serwer w chmurze i adres IP<br><span class="small">maj 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">19,00 zł<br><span class="small">4,49 EUR</span></td></tr>
+<tr><td>Twilio: Połączenia alarmowe<br><span class="small">czerwiec 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">6,49 zł<br><span class="small">1,72 USD</span></td></tr>
+<tr><td>Twilio: SMS-y i wiadomości<br><span class="small">czerwiec 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">59,40 zł<br><span class="small">15,75 USD</span></td></tr>
+<tr><td>Twilio: Dzierżawa numeru polskiego<br><span class="small">czerwiec 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">15,08 zł<br><span class="small">4,00 USD</span></td></tr>
+<tr><td>Twilio: Dzierżawa numeru amerykańskiego<br><span class="small">czerwiec 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">4,34 zł<br><span class="small">1,15 USD</span></td></tr>
+<tr><td>Twilio: Synteza mowy w połączeniach<br><span class="small">czerwiec 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">0,34 zł<br><span class="small">0,09 USD</span></td></tr>
+<tr><td>Anthropic: Claude Haiku: klasyfikator artykułów<br><span class="small">czerwiec 2026 · panel dostawcy</span></td><td class="num">75,01 zł<br><span class="small">19,89 USD</span></td></tr>
+<tr><td>Hetzner: Serwer w chmurze i adres IP<br><span class="small">czerwiec 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">19,29 zł<br><span class="small">4,49 EUR</span></td></tr>
+<tr><td>Twilio: SMS-y i wiadomości<br><span class="small">lipiec 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">70,90 zł<br><span class="small">18,94 USD</span></td></tr>
+<tr><td>Twilio: Dzierżawa numeru polskiego<br><span class="small">lipiec 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">14,97 zł<br><span class="small">4,00 USD</span></td></tr>
+<tr><td>Twilio: Dzierżawa numeru amerykańskiego<br><span class="small">lipiec 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">4,30 zł<br><span class="small">1,15 USD</span></td></tr>
+<tr><td>Twilio: Synteza mowy w połączeniach<br><span class="small">lipiec 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">0,22 zł<br><span class="small">0,06 USD</span></td></tr>
+<tr><td>Anthropic: Claude Haiku: klasyfikator artykułów<br><span class="small">lipiec 2026 · panel dostawcy</span></td><td class="num">82,19 zł<br><span class="small">21,96 USD</span></td></tr>
+<tr><td>Hetzner: Serwer w chmurze i adres IP<br><span class="small">lipiec 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">19,36 zł<br><span class="small">4,49 EUR</span></td></tr>
+<tr><td>Twilio: SMS-y i wiadomości<br><span class="small">sierpień 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">25,82 zł<br><span class="small">6,92 USD</span></td></tr>
+<tr><td>Twilio: Numer polski: naliczony w zawieszeniu, niezapłacony<br><span class="small">sierpień 2026 · panel dostawcy</span></td><td class="num">14,93 zł<br><span class="small">4,00 USD</span></td></tr>
+<tr><td>Twilio: Dzierżawa numeru amerykańskiego<br><span class="small">sierpień 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">4,29 zł<br><span class="small">1,15 USD</span></td></tr>
+<tr><td>Twilio: Synteza mowy w połączeniach<br><span class="small">sierpień 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">0,22 zł<br><span class="small">0,06 USD</span></td></tr>
+<tr><td>Anthropic: Claude Haiku: klasyfikator artykułów<br><span class="small">sierpień 2026 · panel dostawcy</span></td><td class="num">80,88 zł<br><span class="small">21,67 USD</span></td></tr>
+<tr><td>Hetzner: Serwer w chmurze i adres IP<br><span class="small">sierpień 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">19,43 zł<br><span class="small">4,49 EUR</span></td></tr>
+<tr><td>Twilio: Numer polski: naliczony w zawieszeniu, niezapłacony<br><span class="small">wrzesień 2026 · panel dostawcy</span></td><td class="num">15,38 zł<br><span class="small">4,00 USD</span></td></tr>
+<tr><td>Twilio: Numer amerykański: naliczony w zawieszeniu, niezapłacony<br><span class="small">wrzesień 2026 · panel dostawcy</span></td><td class="num">4,42 zł<br><span class="small">1,15 USD</span></td></tr>
+<tr><td>Anthropic: Claude Haiku: klasyfikator artykułów<br><span class="small">wrzesień 2026 · panel dostawcy</span></td><td class="num">63,49 zł<br><span class="small">16,51 USD</span></td></tr>
+<tr><td>OpenAI: GPT Luna: klasyfikator produkcyjny<br><span class="small">wrzesień 2026 · panel dostawcy</span></td><td class="num">21,39 zł<br><span class="small">5,56 USD</span></td></tr>
+<tr><td>OpenAI: GPT Luna: testy i sprawdzenie wdrożenia<br><span class="small">wrzesień 2026 · odczyt zużycia × cennik</span></td><td class="num">0,79 zł<br><span class="small">0,20 USD</span></td></tr>
+<tr><td>OpenAI: Ewaluacja nowszych modeli GPT (nieprzyjęta)<br><span class="small">wrzesień 2026 · panel dostawcy</span></td><td class="num">0,21 zł<br><span class="small">0,05 USD</span></td></tr>
+<tr><td>Hetzner: Serwer w chmurze i adres IP<br><span class="small">wrzesień 2026 · faktura lub wyciąg dostawcy</span></td><td class="num">19,61 zł<br><span class="small">4,49 EUR</span></td></tr>
+<tr><td>OpenRouter: Testy porównawcze modeli (z VAT i opłatą)<br><span class="small">wrzesień 2026 · panel dostawcy</span></td><td class="num">16,28 zł<br><span class="small">4,24 USD</span></td></tr>
+<tr><td>OpenAI: GPT Luna: klasyfikator produkcyjny<br><span class="small">październik 2026 · panel dostawcy</span></td><td class="num">32,84 zł<br><span class="small">8,41 USD</span></td></tr>
+<tr><td>OpenAI: GPT Luna: wieczór dnia audytu (pomiar z dziennika aplikacji)<br><span class="small">październik 2026 · odczyt zużycia × cennik</span></td><td class="num">0,30 zł<br><span class="small">0,08 USD</span></td></tr>
+<tr><td>OpenAI: GPT Luna: ostatnie godziny dnia audytu (szacunek)<br><span class="small">październik 2026 · szacunek</span></td><td class="num">0,15 zł<br><span class="small">0,04 USD</span></td></tr>
+<tr><td>Hetzner: Serwer: ostatnie godziny dnia audytu (szacunek)<br><span class="small">październik 2026 · szacunek</span></td><td class="num">0,13 zł<br><span class="small">0,03 EUR</span></td></tr>
+<tr><td>Hetzner: Serwer: październik do wieczora (odczyt panelu)<br><span class="small">październik 2026 · panel dostawcy</span></td><td class="num">10,45 zł<br><span class="small">2,39 EUR</span></td></tr>
+</tbody></table></div></details>
+<h2 id="g">Co się zmieniło od audytu z 11.10.2026</h2>
+<p>Poprzedni audyt opierał się głównie na szacunkach z liczby wywołań i tokenów: szacunki stanowiły 93,3 % jego kwoty. Teraz 80,4 % kosztu pochodzi z faktur, wyciągów i paneli dostawców, a szacunki to 0,01 %.</p>
+<div class="table-wrap"><table><thead><tr><th>Wielkość</th><th class="num">Wtedy</th><th class="num">Teraz</th><th class="num">Zmiana</th></tr></thead><tbody>
+<tr><td>Łączny koszt<br><span class="small">wtedy przedział 1 572,49 zł – 2 437,45 zł</span></td><td class="num">2 008,29 zł</td><td class="num">2 199,43 zł</td><td class="num">+191,14 zł</td></tr>
+<tr><td>Obecny koszt miesięczny</td><td class="num">134,09 zł</td><td class="num">147,87 zł</td><td class="num">+13,78 zł</td></tr>
+</tbody></table></div>
+<h3>Według dostawców</h3>
+<div class="table-wrap"><table><thead><tr><th>Dostawca i co się zmieniło</th><th class="num">Wtedy</th><th class="num">Teraz</th><th class="num">Zmiana</th></tr></thead><tbody>
+<tr><td><strong>Twilio</strong><br><span class="small">Zamiast odtworzenia z liczby SMS-ów i połączeń: miesięczne wyciągi Twilio. Doszły zaległe opłaty za numery naliczane w czasie zawieszenia.</span></td><td class="num">1 083,19 zł</td><td class="num">1 160,61 zł</td><td class="num">+77,42 zł</td></tr>
+<tr><td><strong>Anthropic</strong><br><span class="small">Zamiast szacunku z tokenów w bazie: dane z panelu Anthropic dla klucza Sentinela. Panel pokazuje więcej, bo obejmuje też wywołania, których baza nie zapisywała.</span></td><td class="num">377,12 zł</td><td class="num">406,76 zł</td><td class="num">+29,64 zł</td></tr>
+<tr><td><strong>OpenAI</strong><br><span class="small">Zamiast szacunku z dziennika aplikacji: eksporty kosztów z panelu OpenAI, policzone do końca dnia audytu.</span></td><td class="num">45,63 zł</td><td class="num">55,67 zł</td><td class="num">+10,05 zł</td></tr>
+<tr><td><strong>Apple</strong><br><span class="small">Zamiast ceny katalogowej w dolarach: rzeczywista cena 429,00 zł z zamówienia.</span></td><td class="num">359,56 zł</td><td class="num">429,00 zł</td><td class="num">+69,44 zł</td></tr>
+<tr><td><strong>Hetzner</strong><br><span class="small">Faktury bez zmian; październik naliczony do końca dnia audytu. Kursy liczone teraz na koniec miesiąca zamiast na dzień faktury.</span></td><td class="num">129,29 zł</td><td class="num">131,11 zł</td><td class="num">+1,81 zł</td></tr>
+<tr><td><strong>OpenRouter</strong><br><span class="small">Doliczono VAT i opłatę za zakup kredytów, które faktycznie zapłaciłeś.</span></td><td class="num">13,22 zł</td><td class="num">16,28 zł</td><td class="num">+3,06 zł</td></tr>
+</tbody></table></div>
+<h3>Według miesięcy</h3>
+<div class="table-wrap"><table><thead><tr><th>Miesiąc</th><th class="num">Wtedy</th><th class="num">Teraz</th><th class="num">Zmiana</th></tr></thead><tbody>
+<tr><td>marzec 2026</td><td class="num">135,04 zł</td><td class="num">224,87 zł</td><td class="num">+89,83 zł</td></tr>
+<tr><td>kwiecień 2026</td><td class="num">230,36 zł</td><td class="num">223,28 zł</td><td class="num">−7,07 zł</td></tr>
+<tr><td>maj 2026</td><td class="num">604,82 zł</td><td class="num">1 048,39 zł</td><td class="num">+443,57 zł</td></tr>
+<tr><td>czerwiec 2026</td><td class="num">548,18 zł</td><td class="num">179,95 zł</td><td class="num">−368,23 zł</td></tr>
+<tr><td>lipiec 2026</td><td class="num">207,60 zł</td><td class="num">191,95 zł</td><td class="num">−15,64 zł</td></tr>
+<tr><td>sierpień 2026</td><td class="num">125,62 zł</td><td class="num">145,57 zł</td><td class="num">+19,95 zł</td></tr>
+<tr><td>wrzesień 2026</td><td class="num">125,65 zł</td><td class="num">141,56 zł</td><td class="num">+15,91 zł</td></tr>
+<tr><td>październik 2026</td><td class="num">31,03 zł</td><td class="num">43,87 zł</td><td class="num">+12,83 zł</td></tr>
+</tbody></table></div>
+<p>Poprzedni audyt zostawił 5 kategorii bez kwoty (budowanie aplikacji, domeny i poczta, testy, kopie zapasowe, monitoring i płatne źródła). Teraz każda jest sprawdzona: koszt zero albo kwota ujęta u właściwego dostawcy.</p>
+<p class="muted">Poprzedni audyt policzył październik tylko do 11.10.2026; ten liczy do końca dnia 14.10.2026.</p>
+<h2 id="h">Metoda i kursy NBP</h2><ul class="plain">
+<li>Koszt liczę według miesiąca zużycia. Usługi płatne za zużycie trafiają do miesiąca zużycia, faktury do miesiąca, którego dotyczą, a opłaty jednorazowe i roczne do miesiąca zakupu.</li>
+<li>Kredyty kupione z góry liczę dopiero wtedy, gdy zostaną zużyte. Na kontach wspólnych z innymi projektami (Anthropic, OpenRouter, TypeSafe) Sentinel dostaje tylko swoją część; najstarszy kredyt zużywa się pierwszy.</li>
+<li>VAT pomijam tam, gdzie rozlicza się go odwrotnie (zero na fakturze: Twilio, Anthropic, OpenAI i Hetzner). Tam, gdzie VAT i opłaty faktycznie zapłaciłeś (OpenRouter, Apple), są w koszcie. Czy pominięty VAT możesz odliczyć, to otwarte pytanie podatkowe w części „Pytania i decyzje”.</li>
+<li>Darmowe kredyty pokazuję jako notatkę bez gotówki, poza sumą. Opłaty naliczone, ale niezapłacone (numery Twilio w czasie zawieszenia), są kosztem miesiąca, w którym je naliczono.</li>
+<li>Nie zgaduję kwot. Każdy szacunek jest oznaczony i ma opisaną metodę oraz przedział.</li>
+<li>Koszt miesięczny teraz: usługi za zużycie to średnia dzienna od 01.10.2026 do 14.10.2026 razy 30,44 (przeciętna liczba dni w miesiącu); opłaty stałe po cenie miesięcznej; opłaty roczne podzielone na dwanaście; usługi już nieużywane to zero.</li>
+<li>Kursy: średnie kursy NBP (tabela A). Koszt przeliczam po kursie z ostatniego dnia roboczego miesiąca zużycia, a dla niepełnego października po najnowszym kursie (14.10.2026). Gotówkę przeliczam po kursie z dnia roboczego przed płatnością. Koszt miesięczny teraz: kurs z 14.10.2026.</li>
+<li>Kwoty w plikach CSV mają pełną precyzję. W raporcie zaokrąglam je do grosza, więc suma wierszy może się różnić od sumy całości o grosz.</li>
+</ul>
+<h3>Kursy użyte dla kosztu (koniec miesiąca)</h3>
+<div class="table-wrap"><table><thead><tr><th>Miesiąc</th><th>Dzień kursu</th><th class="num">USD</th><th class="num">EUR</th><th>Tabela NBP</th></tr></thead><tbody>
+<tr><td>marzec 2026</td><td>31.03.2026</td><td class="num">3,7408</td><td class="num">4,2894</td><td>062/A/NBP/2026</td></tr>
+<tr><td>kwiecień 2026</td><td>30.04.2026</td><td class="num">3,6460</td><td class="num">4,2589</td><td>083/A/NBP/2026</td></tr>
+<tr><td>maj 2026</td><td>29.05.2026</td><td class="num">3,6395</td><td class="num">4,2322</td><td>103/A/NBP/2026</td></tr>
+<tr><td>czerwiec 2026</td><td>30.06.2026</td><td class="num">3,7708</td><td class="num">4,2963</td><td>124/A/NBP/2026</td></tr>
+<tr><td>lipiec 2026</td><td>31.07.2026</td><td class="num">3,7425</td><td class="num">4,3128</td><td>147/A/NBP/2026</td></tr>
+<tr><td>sierpień 2026</td><td>31.08.2026</td><td class="num">3,7314</td><td class="num">4,3264</td><td>168/A/NBP/2026</td></tr>
+<tr><td>wrzesień 2026</td><td>30.09.2026</td><td class="num">3,8449</td><td class="num">4,3672</td><td>190/A/NBP/2026</td></tr>
+<tr><td>październik 2026</td><td>14.10.2026</td><td class="num">3,9042</td><td class="num">4,3706</td><td>200/A/NBP/2026</td></tr>
+</tbody></table></div>
+<p class="muted">Kursy dla każdej płatności są w tabeli płatności (część c) i w pliku cash.csv.</p>
+<h3>Pliki</h3><ul class="plain">
+<li><a href="summary.json">summary.json</a>: wszystkie sumy i wartości z tego raportu</li>
+<li><a href="ledger.csv">ledger.csv</a>: każda pozycja kosztu z kursem i kwotą w złotych</li>
+<li><a href="monthly.csv">monthly.csv</a>: miesiąc × dostawca, sumy miesięcy i całości</li>
+<li><a href="cash.csv">cash.csv</a>: płatności według dnia zapłaty</li>
+<li><a href="current-monthly.csv">current-monthly.csv</a>: obecny koszt miesięczny i scenariusze</li>
+<li><a href="excluded.csv">excluded.csv</a>: czego nie liczę i dlaczego</li>
+<li><a href="input/lines.json">input/lines.json</a>: dane wejściowe: uzgodnione pozycje wszystkich dostawców</li>
+</ul>
+<footer>Każda liczba w tym raporcie pochodzi z pliku summary.json, który skrypt finance/build_full_audit_20261014.py liczy z plików wejściowych. Polecenie z opcją --check sprawdza, czy pliki zgadzają się z wejściem.</footer>
+</main></body></html>
