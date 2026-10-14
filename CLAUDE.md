@@ -9,9 +9,11 @@ Live alert routing (per tier in `alerts.urgency_levels` in `config/config.yaml`)
 - Urgency 9–10: a Twilio phone call, a confirmation-code SMS and an additive Expo push.
 - Urgency 5–8: Expo push to the companion iPhone app only (`channel: push`). The owner switched SMS
   off for these tiers on purpose.
-- The owner keeps the Twilio account unfunded on purpose. Since 2026-09-21 every Twilio call and SMS
-  fails with HTTP 401 (account not active). This is a known state, not an outage or a bug. Phone
-  calls stay configured and return when the owner recharges the account.
+- The owner keeps the Twilio account unfunded on purpose. Since 2026-08-23 the account has been
+  suspended for low balance, so every Twilio call and SMS fails with HTTP 401 (account not active).
+  The server log shows these errors only from 2026-09-21 because older log lines are not kept. This
+  is a known state, not an outage or a bug. Phone calls stay configured and return when the owner
+  recharges the account.
 
 A separate read-only Article Dashboard (`dashboard/`) is local-only and not part of the monitoring
 runtime. Its rules live in [`dashboard/CLAUDE.md`](dashboard/CLAUDE.md) and load when you work in
@@ -74,6 +76,9 @@ that subtree. Mobile app rules: [`mobile/AGENTS.md`](mobile/AGENTS.md).
 - Config params → [docs/reference/config-reference.md](docs/reference/config-reference.md) · Sources → [docs/reference/sources.md](docs/reference/sources.md) · CLI → [docs/reference/cli.md](docs/reference/cli.md) · Luna deployment and rollback record → [docs/reference/luna-deployment-20260920.md](docs/reference/luna-deployment-20260920.md)
 - Local setup → [docs/tutorials/getting-started.md](docs/tutorials/getting-started.md) · API setup → [docs/how-to/api-setup.md](docs/how-to/api-setup.md) · Testing → [docs/how-to/testing.md](docs/how-to/testing.md) · Model comparison (eval only) → [docs/how-to/model-comparison.md](docs/how-to/model-comparison.md) · Mobile push verification → [docs/how-to/mobile-push-setup.md](docs/how-to/mobile-push-setup.md) · Mobile inbox verification → [docs/how-to/mobile-inbox-verification.md](docs/how-to/mobile-inbox-verification.md) · VPS hardening → [docs/how-to/security/vps-hardening.md](docs/how-to/security/vps-hardening.md)
 - Dashboard spec (living) → [SPEC.md](SPEC.md) · Backlog → [TODO.md](TODO.md) · Design notes and plans → [docs/ideas/](docs/ideas/) · Historic specs → [docs/archive/](docs/archive/README.md)
+- Costs: everything Sentinel pays for is in [docs/reference/costs.md](docs/reference/costs.md). When you
+  notice a new paid service, plan, model, top-up, price change or renewal (in code, config, mail or
+  chat), ask the owner whether to add it. Only on yes, update the register and `finance/ledger.csv`.
 
 ## Gotcha: project rename history
 Renamed twice (`twilio-playground` → `sentinel` → `project-sentinel`). If imports fail with old
