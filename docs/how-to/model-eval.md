@@ -67,6 +67,19 @@ the substitute-cost table (average, busy and peak month against the $10 cap), a
 quality-vs-price chart, chain behaviour and per-language/input slices. Refresh production
 volume with `sentinel.eval.suite.price.snapshot_production` when it is stale.
 
+**Include provider promotions in every cost comparison (owner rule, 2026-10-15).** List prices
+are not the real price when a provider gives free tokens. Since 2026-10-14 the OpenAI org shares
+its API traffic with OpenAI and is enrolled for complimentary daily tokens. The free allowance
+depends on the model's group, not its age. On the Build tier the small-model group (which
+includes `gpt-5.6-luna`) gets 2.5M free tokens a day, and the large-model group (which includes
+`gpt-6-luna`) gets only 250k. At October 2026 volume (about 2.77M tokens a day) that makes
+`gpt-5.6-luna` cost about $1.8 a month against about $8 for `gpt-6-luna`, although its list price
+is twice as high. So for every candidate, check the provider's current promotion terms and the
+model's group (OpenAI help article "Sharing feedback, evaluation and fine-tuning data, and API
+inputs and outputs with OpenAI"), and project the monthly cost both with and without the free
+allowance. The current state of promotions is in the cost register,
+[docs/reference/costs.md](../reference/costs.md).
+
 ## The pre-registered decision rule (strict variant, chosen 2026-09-24)
 
 A candidate may replace the baseline only on the locked pool, with every item labelled,

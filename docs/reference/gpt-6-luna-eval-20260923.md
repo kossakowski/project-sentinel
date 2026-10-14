@@ -3,6 +3,15 @@
 Evaluation only. Production config, prompts and server files are unchanged; production
 still runs `gpt-5.6-luna` with `reasoning: none`.
 
+> **Update 2026-10-15: the price advantage has reversed.** Since 2026-10-14 the OpenAI org is
+> enrolled for complimentary daily tokens on shared traffic. `gpt-5.6-luna` is in the group with
+> 2.5M free tokens a day and `gpt-6-luna` in the group with 250k, so at October volume
+> `gpt-5.6-luna` costs about $1.8 a month against about $8 (to be confirmed on the usage
+> dashboard). OpenAI's catalogue lists no `gpt-6.1-luna` and no dated `gpt-6-luna` snapshot. The
+> owner's decision: stay on `gpt-5.6-luna` until the full eval suite has run. Future cost
+> comparisons must include such promotions; see
+> [docs/how-to/model-eval.md](../how-to/model-eval.md#4-score-price-and-report-offline).
+
 ## Verdict
 
 **Do not switch yet.** GPT-6 Luna costs about 45% of GPT-5.6 Luna for the same work
