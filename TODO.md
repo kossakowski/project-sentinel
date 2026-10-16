@@ -14,6 +14,7 @@ This is the project backlog. Each open item has a stable title (a `###` heading 
 - [5. Pipeline analysis & classifier refinement](#5-pipeline-analysis--classifier-refinement)
 - [6. Codebase refactoring, config/code defects, dashboard, production host](#6-codebase-refactoring-plan)
 - [7. Findings from the 2026-09-23 model-eval work](#7-findings-from-the-2026-09-23-model-eval-work-not-yet-fixed)
+- [8. Findings from the 2026-10-16 refactor audit (owner decisions)](#8-findings-from-the-2026-10-16-refactor-audit-owner-decisions)
 - [Commentary: priority & sequencing (2026-05-24, partly superseded)](#commentary-priority--sequencing-claudes-assessment-2026-05-24)
 - [Completed debt](#completed-debt-reference) · [Documentation reorganization](#documentation-reorganization-2026-05-30)
 
@@ -381,6 +382,27 @@ Surfaced while building the eval suite (`docs/how-to/model-eval.md`). Code was n
 6. **Reproducible `gpt-5.6-luna` rule violations on the synthetic hold-out:** reads past-tense narration of an unresolved precaution as `resolved`; treats an explicitly ended alarm as an active `official_warning`; ignores the worked example that a civilian object found in a monitored country populates `affected_countries`.
 7. **Google News decoder can stall the whole cycle.** `ArticleEnricher._fetch_body` calls `_resolve_url` → `googlenewsdecoder.new_decoderv1` synchronously on the event loop; that library calls `requests.get`/`requests.post` with no timeout (0.1.7, lines 49, 71, 126). A hung Google request would freeze the cycle, including phone calls. Fix: run it on a small dedicated thread pool under a deadline (see `specs/fulltext-second-read/PRODUCTION_NOTES.md`, pitfall 1). Found 2026-09-24 during spec verification.
 8. **The pre-registered decision rule still names the $10 cap.** The rule in `docs/how-to/model-eval.md` gates a candidate on "projected busy-month cost within the $10 monthly cap", and the report prices against $10. The app allowance has been 30 USD since 2026-09-24. The owner sets the gate value before the locked-pool run; changing it after seeing locked-pool results would break the pre-registration. Found 2026-10-03.
+
+## 8. Findings from the 2026-10-16 refactor audit (owner decisions)
+
+Ten read-only audits of the whole repo are in [`docs/ideas/refactor-audit-2026-10-16/`](docs/ideas/refactor-audit-2026-10-16/). The refactor build ([`SPEC_REFACTOR.md`](SPEC_REFACTOR.md)) fixes the error paths, the classification failures and the ingestion bugs. The items below change who gets alerted, or when, so they wait for the owner. The tag `[01:A4]` means audit file `01-*.md`, finding `A4`.
+
+- **Acknowledgement almost never works.** The SMS reply is read only during the call round, which ends seconds after the call. A reply sent after hanging up is never counted, and the code changes every round. Fix together with the retry sweep and the stale-call max age in section 0. `[01:A4]`
+- **A call record stuck in `initiated` mutes the event forever**, including pushes for new revisions. `[01:A6]`
+- **Uncorroborated 9–10 falls back to `sms`**, which is silent under the live config. This matters only if critical corroboration is raised to 2 sources. `[01:A10]`
+- **Delivery writes extend incident memory.** `update_event` resets `last_updated_at` on every call or SMS status write. `[01:A11]` `[03:F02]` `[06:F08]`
+- **Fresh critical articles wait behind the backlog.** The queue drains oldest first, 100 per cycle, with no attempt cap, no quick retry and no circuit breaker. `[02:C-02]` `[02:C-04]` `[04:F2]` `[06:F09]`
+- **19 keywords from the March audit never reached the live lists**, for example `atak na Polskę`, `rakiet`, `Szahed`, `дрон`. The owner reviews the list first. `[06:F01]`
+- **`podejrzane manewry` is cancelled by the exclude keyword `manewry`** even with whole-word matching. `[05:F01]`
+- **Telegram and Google News can never add an independent source**, because every article shares the `t.me` or `news.google.com` domain. This is a prerequisite for two-source corroboration. `[03:F09]` `[05:F06]`
+- **The Anthropic rollback is the code default** and is not equivalent to the live OpenAI path. `[02:C-06]`
+- **`--test-alert` writes a synthetic urgency-10 event** that incident memory can later offer as a match for real articles. `[04:F9]` `[01:A20]`
+- **Call rounds run inside the cycle lock**, so fetching stops while a call rings. `[01:A21]`
+- **Expo receipts are never read**, so a push that APNs rejected is never retried. `[01:A23]`
+- **The health watchdog cannot alert anyone** (Twilio-only, unfunded). Decide on a push channel. `[10:D2]`
+- **Dependency lock**: seed `requirements.lock` from the server's `pip freeze` (read-only on the server). `[10:D4]`
+- **`/deploy` step 6a drift check** should move into a tested script. This changes the deploy skill, so the owner reviews it first. `[10:D5]`
+- **Eval fidelity**: stack A sends a different JSON schema than production, and the eval validator is looser. Fix both before the locked-pool run. `[07:E-01]` `[07:E-05]`
 
 ---
 

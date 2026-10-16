@@ -1,0 +1,261 @@
+{
+  "spec_file": "SPEC_REFACTOR.md",
+  "mode": "interactive",
+  "skill": "workflow-code-refiner",
+  "phases": [
+    {
+      "id": 1,
+      "title": "Safety net and lint baseline",
+      "depends_on": [],
+      "owned_files": [
+        "pyproject.toml",
+        "sentinel.py",
+        "sentinel/alerts/state_machine.py",
+        "sentinel/config.py",
+        "tests/conftest.py",
+        "tests/test_ack_path.py",
+        "tests/test_cli.py",
+        "tests/test_known_alert_bugs.py",
+        "tests/test_live_config.py",
+        "tests/test_safety_net_golden.py"
+      ],
+      "parallelizable_with": [],
+      "requirement_count": 13
+    },
+    {
+      "id": 2,
+      "title": "Never lose a 9–10 alert (error-path safety)",
+      "depends_on": [
+        1
+      ],
+      "owned_files": [
+        "config/config.example.yaml",
+        "config/config.yaml",
+        "sentinel/alerts/dispatcher.py",
+        "sentinel/alerts/push_client.py",
+        "sentinel/alerts/state_machine.py",
+        "sentinel/alerts/twilio_client.py",
+        "sentinel/classification/incident_memory.py",
+        "sentinel/config.py",
+        "sentinel/processing/enricher.py",
+        "sentinel/scheduler.py",
+        "sentinel/utils/html.py",
+        "tests/conftest.py",
+        "tests/test_alert_error_isolation.py",
+        "tests/test_config.py",
+        "tests/test_config_validation.py",
+        "tests/test_error_paths.py",
+        "tests/test_known_alert_bugs.py",
+        "tests/test_state_machine.py"
+      ],
+      "parallelizable_with": [],
+      "requirement_count": 13
+    },
+    {
+      "id": 3,
+      "title": "Classification and ingestion bug fixes",
+      "depends_on": [
+        2
+      ],
+      "owned_files": [
+        "sentinel/classification/classifier.py",
+        "sentinel/classification/openai_provider.py",
+        "sentinel/config.py",
+        "sentinel/fetchers/telegram.py",
+        "sentinel/processing/enricher.py",
+        "sentinel/processing/fulltext.py",
+        "sentinel/processing/keyword_filter.py",
+        "tests/test_budget_release.py",
+        "tests/test_direct_openai.py",
+        "tests/test_ingestion_fixes.py",
+        "tests/test_keyword_config_lint.py",
+        "tests/test_keyword_match_modes.py",
+        "tests/test_telegram.py"
+      ],
+      "parallelizable_with": [],
+      "requirement_count": 7
+    },
+    {
+      "id": 4,
+      "title": "Structure: alerting and classification",
+      "depends_on": [
+        3
+      ],
+      "owned_files": [
+        "sentinel/alerts/call_round.py",
+        "sentinel/alerts/dispatcher.py",
+        "sentinel/alerts/formatting.py",
+        "sentinel/alerts/ledger.py",
+        "sentinel/alerts/routing.py",
+        "sentinel/alerts/state_machine.py",
+        "sentinel/alerts/twilio_client.py",
+        "sentinel/classification/classifier.py",
+        "sentinel/classification/incident_memory.py",
+        "sentinel/classification/legacy_anthropic.py",
+        "sentinel/models.py",
+        "tests/test_alert_routing_table.py"
+      ],
+      "parallelizable_with": [],
+      "requirement_count": 7
+    },
+    {
+      "id": 5,
+      "title": "Structure: pipeline, clock and grouping",
+      "depends_on": [
+        4
+      ],
+      "owned_files": [
+        "sentinel/classification/corroborator.py",
+        "sentinel/classification/grouping.py",
+        "sentinel/classification/safety.py",
+        "sentinel/database.py",
+        "sentinel/scheduler.py",
+        "sentinel/utils/clock.py",
+        "tests/conftest.py",
+        "tests/factories.py",
+        "tests/test_classification_queue.py",
+        "tests/test_cli_bridges.py",
+        "tests/test_clock_injection.py",
+        "tests/test_grouping_outcome.py",
+        "tests/test_incident_memory.py",
+        "tests/test_integration.py",
+        "tests/test_pipeline_factory.py",
+        "tests/test_scheduler.py"
+      ],
+      "parallelizable_with": [],
+      "requirement_count": 7
+    },
+    {
+      "id": 6,
+      "title": "Structure: ingestion, health and persistence",
+      "depends_on": [
+        5
+      ],
+      "owned_files": [
+        "sentinel/database.py",
+        "sentinel/fetchers/base.py",
+        "sentinel/fetchers/feeds.py",
+        "sentinel/fetchers/gdelt.py",
+        "sentinel/fetchers/google_news.py",
+        "sentinel/fetchers/http.py",
+        "sentinel/fetchers/rss.py",
+        "sentinel/fetchers/telegram.py",
+        "sentinel/processing/article_page.py",
+        "sentinel/processing/enricher.py",
+        "sentinel/processing/fulltext.py",
+        "sentinel/scheduler.py",
+        "tests/test_db_time_windows.py",
+        "tests/test_fetch_result_health.py",
+        "tests/test_http_helpers.py"
+      ],
+      "parallelizable_with": [],
+      "requirement_count": 7
+    },
+    {
+      "id": 7,
+      "title": "Tooling, deploy files and repo hygiene",
+      "depends_on": [
+        6
+      ],
+      "owned_files": [
+        "config/config.example.yaml",
+        "config/config.yaml",
+        "deploy/02-deploy-app.sh",
+        "deploy/03-setup-services.sh",
+        "deploy/configs/sentinel.service",
+        "deploy/configs/sentinel.service.d/20-openai.conf",
+        "deploy/scripts/check-health.sh",
+        "pyproject.toml",
+        "requirements.txt",
+        "sentinel.py",
+        "tests/test_cli_small_fixes.py",
+        "tests/test_deploy_files.py",
+        "tests/test_repo_hygiene.py"
+      ],
+      "parallelizable_with": [],
+      "requirement_count": 7
+    },
+    {
+      "id": 8,
+      "title": "Dashboard",
+      "depends_on": [
+        7
+      ],
+      "owned_files": [
+        "dashboard/api/articles.py",
+        "dashboard/db.py",
+        "dashboard/frontend/src/components/AnnotationPanel.tsx",
+        "dashboard/sync.py",
+        "tests/dashboard/__init__.py",
+        "tests/dashboard/conftest.py"
+      ],
+      "parallelizable_with": [],
+      "requirement_count": 7
+    },
+    {
+      "id": 9,
+      "title": "Mobile app",
+      "depends_on": [
+        8
+      ],
+      "owned_files": [
+        "mobile/src/messages/__fixtures__/push_payload_contract.json",
+        "mobile/src/messages/__tests__/contract.test.ts",
+        "mobile/src/messages/__tests__/store.test.ts",
+        "mobile/src/messages/store.ts",
+        "tests/test_push_payload_contract.py"
+      ],
+      "parallelizable_with": [],
+      "requirement_count": 2
+    }
+  ],
+  "gate_criteria": {
+    "1": [
+      "/home/kossa/code/project-sentinel/.venv/bin/python -m ruff check sentinel tests dashboard sentinel.py",
+      "/home/kossa/code/project-sentinel/.venv/bin/python -m ruff format --check sentinel tests dashboard sentinel.py",
+      "/home/kossa/code/project-sentinel/.venv/bin/python -m pytest tests/test_live_config.py tests/test_safety_net_golden.py tests/test_ack_path.py tests/test_known_alert_bugs.py -q -p no:cacheprovider",
+      "/home/kossa/code/project-sentinel/.venv/bin/python -m pytest tests/ -q -p no:cacheprovider -m \"not slow\""
+    ],
+    "2": [
+      "/home/kossa/code/project-sentinel/.venv/bin/python -m ruff check sentinel tests dashboard sentinel.py",
+      "/home/kossa/code/project-sentinel/.venv/bin/python -m pytest tests/test_known_alert_bugs.py tests/test_alert_error_isolation.py tests/test_config_validation.py tests/test_error_paths.py tests/test_live_config.py tests/test_safety_net_golden.py -q -p no:cacheprovider",
+      "/home/kossa/code/project-sentinel/.venv/bin/python -m pytest tests/ -q -p no:cacheprovider -m \"not slow\""
+    ],
+    "3": [
+      "/home/kossa/code/project-sentinel/.venv/bin/python -m ruff check sentinel tests dashboard sentinel.py",
+      "/home/kossa/code/project-sentinel/.venv/bin/python -m pytest tests/test_budget_release.py tests/test_keyword_match_modes.py tests/test_keyword_config_lint.py tests/test_ingestion_fixes.py tests/test_telegram.py tests/test_direct_openai.py tests/test_safety_net_golden.py -q -p no:cacheprovider",
+      "/home/kossa/code/project-sentinel/.venv/bin/python -m pytest tests/ -q -p no:cacheprovider -m \"not slow\""
+    ],
+    "4": [
+      "/home/kossa/code/project-sentinel/.venv/bin/python -m ruff check sentinel tests dashboard sentinel.py",
+      "/home/kossa/code/project-sentinel/.venv/bin/python -m pytest tests/test_alert_routing_table.py tests/test_safety_net_golden.py tests/test_ack_path.py tests/test_state_machine.py tests/test_classifier.py -q -p no:cacheprovider",
+      "/home/kossa/code/project-sentinel/.venv/bin/python -m pytest tests/ -q -p no:cacheprovider -m \"not slow\""
+    ],
+    "5": [
+      "/home/kossa/code/project-sentinel/.venv/bin/python -m ruff check sentinel tests dashboard sentinel.py",
+      "/home/kossa/code/project-sentinel/.venv/bin/python -m pytest tests/test_clock_injection.py tests/test_pipeline_factory.py tests/test_grouping_outcome.py tests/test_corroborator.py tests/test_incident_memory.py tests/test_safety_net_golden.py -q -p no:cacheprovider",
+      "/home/kossa/code/project-sentinel/.venv/bin/python -m pytest tests/ -q -p no:cacheprovider -m \"not slow\""
+    ],
+    "6": [
+      "/home/kossa/code/project-sentinel/.venv/bin/python -m ruff check sentinel tests dashboard sentinel.py",
+      "/home/kossa/code/project-sentinel/.venv/bin/python -m pytest tests/test_fetch_result_health.py tests/test_http_helpers.py tests/test_db_time_windows.py tests/test_rss.py tests/test_google_news.py tests/test_gdelt.py tests/test_telegram.py tests/test_enricher.py tests/test_fulltext.py tests/test_scheduler.py tests/test_safety_net_golden.py -q -p no:cacheprovider",
+      "/home/kossa/code/project-sentinel/.venv/bin/python -m pytest tests/ -q -p no:cacheprovider -m \"not slow\""
+    ],
+    "7": [
+      "/home/kossa/code/project-sentinel/.venv/bin/python -m ruff check sentinel tests dashboard sentinel.py",
+      "bash -n deploy/02-deploy-app.sh deploy/03-setup-services.sh deploy/scripts/check-health.sh",
+      "/home/kossa/code/project-sentinel/.venv/bin/python -m pip install --dry-run --no-deps -q -r requirements.txt",
+      "/home/kossa/code/project-sentinel/.venv/bin/python -m pytest tests/test_repo_hygiene.py tests/test_deploy_files.py tests/test_cli_small_fixes.py -q -p no:cacheprovider",
+      "/home/kossa/code/project-sentinel/.venv/bin/python -m pytest tests/ -q -p no:cacheprovider -m \"not slow\""
+    ],
+    "8": [
+      "/home/kossa/code/project-sentinel/.venv/bin/python -m ruff check sentinel tests dashboard sentinel.py",
+      "/home/kossa/code/project-sentinel/.venv/bin/python -m pytest tests/dashboard -q -p no:cacheprovider",
+      "cd dashboard/frontend && npm ci --no-audit --no-fund && npx vitest run && npx tsc -b"
+    ],
+    "9": [
+      "/home/kossa/code/project-sentinel/.venv/bin/python -m pytest tests/test_push_payload_contract.py tests/test_safety_net_golden.py -q -p no:cacheprovider",
+      "cd mobile && npm ci --no-audit --no-fund && npx jest src/messages --ci && npx tsc --noEmit"
+    ]
+  }
+}
