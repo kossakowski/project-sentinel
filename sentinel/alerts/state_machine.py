@@ -44,13 +44,6 @@ SMS_MAX_CHARS = 1500
 # prompted for "1-2 zdania" upstream but is not capped anywhere.
 SMS_SUMMARY_MAX_CHARS = 600
 
-# Bound the summary spoken in the phone call the same way. The call script is
-# embedded twice in the TwiML, and Twilio rejects TwiML over 4000 characters,
-# so an unbounded summary would make the call fail to initiate. With this cap
-# the TwiML of the live template stays far below the limit; TwilioClient
-# guarantees the limit for any template.
-CALL_SUMMARY_MAX_CHARS = 600
-
 # Reserve room for the "- …i N więcej" trailer when trimming sources.
 _SOURCES_TRAILER_RESERVE = 40
 
@@ -81,15 +74,14 @@ PUSH_DATA_MAX_BYTES = 3500
 PUSH_BODY_SUMMARY_MAX_CHARS = 80
 
 
-def _cap_summary(summary_pl: str, max_chars: int = SMS_SUMMARY_MAX_CHARS) -> str:
-    """Bound the classifier summary to ``max_chars`` characters.
+def _cap_sms_summary(summary_pl: str) -> str:
+    """Bound the classifier summary to ``SMS_SUMMARY_MAX_CHARS`` characters.
 
-    The summary is truncated, never the rendered message, so the template text
-    after it (the detection time, the confirmation code, the source count or
-    the urgency) is always sent. A summary within the bound is returned as is.
+    The summary is truncated, never the rendered body, so the template text
+    after it (the detection time, or the confirmation code) is always sent.
     """
-    if len(summary_pl) > max_chars:
-        return summary_pl[: max_chars - 1].rstrip() + "…"
+    if len(summary_pl) > SMS_SUMMARY_MAX_CHARS:
+        return summary_pl[: SMS_SUMMARY_MAX_CHARS - 1].rstrip() + "…"
     return summary_pl
 
 
@@ -166,7 +158,7 @@ def _format_call_message(event: Event, config: SentinelConfig) -> str:
     template = config.alerts.templates.call
     return template.format(
         event_type_pl=event_type_pl,
-        summary_pl=_cap_summary(event.summary_pl, CALL_SUMMARY_MAX_CHARS),
+        summary_pl=event.summary_pl,
         source_count=event.source_count,
         urgency_score=event.urgency_score,
     )
@@ -186,7 +178,7 @@ def _format_sms_message(event: Event, db: Database, config: SentinelConfig) -> s
     # can never alone exceed the budget and re-trigger Twilio's 1600-char
     # rejection. Truncating the summary -- not the rendered body -- preserves
     # trailing template fields like "Wykryto: {first_seen_at_local}".
-    summary_pl = _cap_summary(event.summary_pl)
+    summary_pl = _cap_sms_summary(event.summary_pl)
 
     fields = {
         "event_type_pl": event_type_pl,
@@ -219,9 +211,7 @@ def _format_update_sms(event: Event, db: Database, config: SentinelConfig) -> st
     return template.format(
         event_type_pl=event_type_pl,
         new_source_name=new_source_name,
-        # Capped like the alert SMS, so the source count and urgency after the
-        # summary survive the SMS length limit.
-        summary_pl=_cap_summary(event.summary_pl),
+        summary_pl=event.summary_pl,
         source_count=event.source_count,
         urgency_score=event.urgency_score,
     )
@@ -428,9 +418,19 @@ class AlertStateMachine:
 
         The caller can hold an event snapshot from before an incident-memory
         merge or escalation.  Prefer the row just persisted by that workflow so
-        delivery decisions always use its current notification revision.
+        delivery decisions always use its current notification revision.  When
+        that row cannot be read, the snapshot is alerted instead, so a broken
+        row never costs the event its call.
         """
-        persisted_event = self.db.get_event_by_id(event.id)
+        try:
+            persisted_event = self.db.get_event_by_id(event.id)
+        except Exception:
+            self.logger.error(
+                "Could not re-read event %s; alerting from the in-memory snapshot",
+                event.id,
+                exc_info=True,
+            )
+            persisted_event = None
         if persisted_event is not None:
             event = persisted_event
         existing_alerts = self.db.get_alert_records(event.id)
@@ -723,12 +723,16 @@ class AlertStateMachine:
         phone_number = self.config.alerts.phone_number
         event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
 
+        # Forget the previous confirmation SMS, so a send that fails leaves no
+        # SID behind and the delivery check reports it as failed.
+        self._confirmation_sms_sid = None
+
         # Generate the confirmation code and store it for verification
         self._confirmation_code = self._code_factory()
 
         message = (
             f"PROJECT SENTINEL: {event_type_pl}\n\n"
-            f"{_cap_summary(event.summary_pl)}\n\n"
+            f"{_cap_sms_summary(event.summary_pl)}\n\n"
             f"Odpowiedz kodem aby potwierdzic odbior alertu: {self._confirmation_code}\n\n"
             f"Telefon bedzie dzwonil dopoki nie potwierdzisz."
         )
@@ -778,11 +782,13 @@ class AlertStateMachine:
     async def _check_confirmation_sms_delivered(self) -> bool | None:
         """Check if the confirmation SMS was delivered.
 
-        Returns True if delivered, False if failed/undelivered, None if still pending.
+        Returns True if delivered, None if still pending, and False if it
+        failed, was undelivered, or was never accepted by Twilio (no SID).
         """
         sid = getattr(self, "_confirmation_sms_sid", None)
         if not sid:
-            return None
+            self.logger.warning("Confirmation SMS was not sent; no message to check")
+            return False
         try:
             msg = await asyncio.to_thread(lambda: self.twilio.client.messages(sid).fetch())
             if msg.status == "delivered":

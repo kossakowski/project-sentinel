@@ -22,7 +22,6 @@ import sentinel.alerts.twilio_client as twilio_client_module
 from sentinel.alerts.dispatcher import AlertDispatcher
 from sentinel.alerts.push_client import ExpoPushClient
 from sentinel.alerts.state_machine import (
-    CALL_SUMMARY_MAX_CHARS,
     SMS_SUMMARY_MAX_CHARS,
     AlertStateMachine,
     _format_update_sms,
@@ -228,6 +227,32 @@ async def test_confirmation_sms_error_inside_state_machine_does_not_block_call(
     assert "confirmation SMS failed" in caplog.text
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("earlier_event", [False, True], ids=["first-event", "after-delivered-sms"])
+async def test_unsent_confirmation_sms_is_resent_after_first_call(
+    prod_config, prod_db, store_critical_event, twilio_sdk, expo_send_push, instant_alert_sleep, earlier_event
+):
+    """A confirmation SMS Twilio did not accept is resent, even after an earlier event's SMS was delivered."""
+    state_machine = _state_machine(prod_config, prod_db)
+    if earlier_event:
+        await state_machine.process_event(store_critical_event(title="Atak zbrojny na Polskę pod Białymstokiem"))
+    sms_before = twilio_sdk.messages.create.call_count
+    event = store_critical_event(title="Uderzenie rakietowe na Rzeszów")
+    twilio_sdk.messages.create.side_effect = [
+        requests.ConnectionError("Connection reset by peer"),
+        SimpleNamespace(sid="SM-resent"),
+    ]
+
+    await state_machine.process_event(event)
+
+    assert twilio_sdk.messages.create.call_count == sms_before + 2
+    assert CODE in _sms_bodies(twilio_sdk)[-1]
+    sms_records = [record for record in prod_db.get_alert_records(event.id) if record.alert_type == "sms"]
+    assert [record.twilio_sid for record in sms_records] == ["SM-resent"]
+    calls_per_event = prod_config.alerts.acknowledgment.max_call_retries
+    assert twilio_sdk.calls.create.call_count == (2 if earlier_event else 1) * calls_per_event
+
+
 # ---------------------------------------------------------------------------
 # 2.3: one failing event never skips the rest of the batch
 # ---------------------------------------------------------------------------
@@ -275,16 +300,25 @@ async def test_dispatch_logs_failed_event_and_processes_the_rest(config, caplog)
 
 
 @pytest.mark.asyncio
-async def test_dispatch_uses_snapshot_when_event_cannot_be_reread(config):
-    event = _event(10)
-    state_machine = MagicMock(spec=AlertStateMachine)
-    state_machine.db = MagicMock()
-    state_machine.db.get_event_by_id.side_effect = ValueError("Invalid isoformat string: 'garbage'")
-    state_machine.process_event = AsyncMock()
+async def test_dispatch_uses_snapshot_when_event_cannot_be_reread(
+    prod_config, prod_db, store_critical_event, twilio_sdk, expo_send_push, instant_alert_sleep, monkeypatch, caplog
+):
+    """An event row that cannot be read is alerted from the snapshot: the call is still placed."""
+    event = store_critical_event()
 
-    await AlertDispatcher(state_machine, config).dispatch([event])
+    def unreadable_row(event_id):
+        raise ValueError("Invalid isoformat string: 'garbage'")
 
-    state_machine.process_event.assert_awaited_once_with(event)
+    monkeypatch.setattr(prod_db, "get_event_by_id", unreadable_row)
+
+    with caplog.at_level(logging.ERROR):
+        await AlertDispatcher(_state_machine(prod_config, prod_db), prod_config).dispatch([event])
+
+    assert twilio_sdk.calls.create.call_count == prod_config.alerts.acknowledgment.max_call_retries
+    assert twilio_sdk.messages.create.call_count == 1
+    assert "Alerting failed" not in caplog.text
+    assert "in-memory snapshot" in caplog.text
+    assert "phone_call" in [record.alert_type for record in prod_db.get_alert_records(event.id)]
 
 
 @pytest.mark.asyncio
@@ -354,10 +388,11 @@ async def test_confirmation_sms_short_summary_unchanged(prod_config, prod_db, tw
 
 
 # ---------------------------------------------------------------------------
-# A long summary cannot push the call or the update SMS over Twilio's limits
+# A long summary cannot push the call over Twilio's TwiML limit
 # ---------------------------------------------------------------------------
 
 _LONG_SUMMARY = "Rosyjskie wojska atakują. " * 80  # about 2000 characters
+_MEDIUM_SUMMARY = "Rosyjskie wojska atakują. " * 35  # about 900 characters, above the SMS cap
 
 
 def _twiml_sent(twilio_sdk) -> list[str]:
@@ -377,9 +412,22 @@ async def test_call_with_long_summary_fits_twiml_limit(
     assert len(twiml) == prod_config.alerts.acknowledgment.max_call_retries
     for document in twiml:
         assert len(document.encode("utf-8")) <= TWIML_MAX_CHARS
-        # The summary is capped, not the script: the source count and urgency are still spoken twice.
-        assert document.count("Źródła potwierdzające: 1. Pilność: 10 na 10.") == 2
-        assert document.count(_LONG_SUMMARY[: CALL_SUMMARY_MAX_CHARS - 1].rstrip() + "…") == 2
+        # The script is shortened at its tail: its head and the start of the summary are still spoken twice.
+        assert document.count("Inwazja wykryte. Rosyjskie wojska atakują. Rosyjskie wojska atakują.") == 2
+
+
+@pytest.mark.asyncio
+async def test_call_speaks_summary_beyond_sms_cap_in_full(
+    prod_config, prod_db, store_critical_event, twilio_sdk, expo_send_push, instant_alert_sleep
+):
+    assert len(_MEDIUM_SUMMARY) > SMS_SUMMARY_MAX_CHARS
+    event = store_critical_event()
+    prod_db.update_event(event.id, summary_pl=_MEDIUM_SUMMARY)
+
+    await _state_machine(prod_config, prod_db).process_event(event)
+
+    for document in _twiml_sent(twilio_sdk):
+        assert document.count(f"{_MEDIUM_SUMMARY}. Źródła potwierdzające: 1. Pilność: 10 na 10.") == 2
 
 
 @pytest.mark.parametrize(
@@ -410,15 +458,14 @@ def test_twilio_call_message_within_limit_is_unchanged(prod_config, twilio_sdk):
     assert record.message_body == message
 
 
-def test_update_sms_keeps_source_count_and_urgency_with_long_summary(prod_config, prod_db):
+def test_update_sms_carries_summary_beyond_sms_cap_in_full(prod_config, prod_db):
     event = _event(10)
-    event.summary_pl = _LONG_SUMMARY
+    event.summary_pl = _MEDIUM_SUMMARY
     event.source_count = 3
 
     body = _format_update_sms(event, prod_db, prod_config)
 
-    assert len(body) <= 1600
-    assert _LONG_SUMMARY[: SMS_SUMMARY_MAX_CHARS - 1].rstrip() + "…" in body
+    assert f"\n{_MEDIUM_SUMMARY}\n" in body
     assert "Łącznie źródeł: 3" in body
     assert body.endswith("Pilność: 10/10")
 
