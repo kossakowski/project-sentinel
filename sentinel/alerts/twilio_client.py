@@ -4,15 +4,28 @@ from datetime import UTC, datetime
 from uuid import uuid4
 from xml.sax.saxutils import escape as xml_escape
 
-from twilio.base.exceptions import TwilioRestException
+import requests
+from twilio.base.exceptions import TwilioException
+from twilio.http.http_client import TwilioHttpClient
 from twilio.rest import Client
 
 from sentinel.config import SentinelConfig
 from sentinel.models import AlertRecord
 
+# Errors of a Twilio request: API errors (TwilioRestException is a
+# TwilioException) and transport errors, which the SDK raises as ``requests``
+# exceptions (connection reset, timeout, DNS failure).
+_TWILIO_REQUEST_ERRORS = (TwilioException, requests.RequestException)
+
 
 class TwilioClient:
-    """Wraps the Twilio SDK for outbound calls and SMS."""
+    """Wraps the Twilio SDK for outbound calls and SMS.
+
+    The call, SMS and call-status methods never raise: every failure is logged
+    and reported as ``None``, so a Twilio problem with one message cannot stop
+    the rest of the alert path (for example, the call after a failed
+    confirmation SMS).
+    """
 
     def __init__(self, config: SentinelConfig) -> None:
         self.logger = logging.getLogger("sentinel.alerts.twilio_client")
@@ -22,13 +35,16 @@ class TwilioClient:
         auth_token = os.environ.get("TWILIO_AUTH_TOKEN", "")
         self.twilio_phone = os.environ.get("TWILIO_PHONE_NUMBER", "")
 
-        self.client = Client(account_sid, auth_token)
+        # The SDK default is no HTTP timeout, so a half-open connection would
+        # block the worker thread, and with it the pipeline cycle, for good.
+        http_client = TwilioHttpClient(timeout=config.alerts.twilio.http_timeout_seconds)
+        self.client = Client(account_sid, auth_token, http_client=http_client)
 
     def make_alert_call(self, phone_number: str, message_pl: str, event_id: str) -> AlertRecord | None:
         """Place an outbound call with Polish TTS message.
 
         The message is spoken twice (for waking the user).
-        Returns an AlertRecord on success, None on Twilio error.
+        Returns an AlertRecord on success, None on any error.
         """
         safe_message = xml_escape(message_pl)
 
@@ -57,8 +73,11 @@ class TwilioClient:
                 to=phone_number,
                 twiml=twiml,
             )
-        except TwilioRestException as exc:
+        except _TWILIO_REQUEST_ERRORS as exc:
             self.logger.error("Twilio call failed for event %s: %s", event_id, exc)
+            return None
+        except Exception:
+            self.logger.exception("Twilio call failed for event %s with an unexpected error", event_id)
             return None
 
         record = AlertRecord(
@@ -79,7 +98,7 @@ class TwilioClient:
         """Send an SMS alert.
 
         Truncates to 1600 chars if needed.
-        Returns an AlertRecord on success, None on Twilio error.
+        Returns an AlertRecord on success, None on any error.
         """
         if len(message) > 1600:
             message = message[:1597] + "..."
@@ -90,8 +109,11 @@ class TwilioClient:
                 to=phone_number,
                 body=message,
             )
-        except TwilioRestException as exc:
+        except _TWILIO_REQUEST_ERRORS as exc:
             self.logger.error("Twilio SMS failed for event %s: %s", event_id, exc)
+            return None
+        except Exception:
+            self.logger.exception("Twilio SMS failed for event %s with an unexpected error", event_id)
             return None
 
         record = AlertRecord(
@@ -120,10 +142,13 @@ class TwilioClient:
                 "duration": int(call.duration) if call.duration else 0,
                 "answered_by": getattr(call, "answered_by", None),
             }
-        except TwilioRestException as exc:
+        except _TWILIO_REQUEST_ERRORS as exc:
             self.logger.error(
                 "Twilio call status fetch failed for SID %s: %s",
                 twilio_sid,
                 exc,
             )
+            return None
+        except Exception:
+            self.logger.exception("Twilio call status fetch failed for SID %s with an unexpected error", twilio_sid)
             return None

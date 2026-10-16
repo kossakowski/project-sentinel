@@ -1,5 +1,6 @@
 """Bounded incident context and strict validation; no additional model requests."""
 
+import logging
 import math
 import re
 
@@ -7,7 +8,18 @@ from rapidfuzz import fuzz
 
 from sentinel.config import SentinelConfig
 from sentinel.database import Database
-from sentinel.models import Article, ClassificationResult
+from sentinel.models import Article, ClassificationResult, Event
+
+logger = logging.getLogger("sentinel.classification.incident_memory")
+
+# The candidate query of ``Database.get_memory_events``. It is used only to
+# re-read the rows one by one after that method failed to decode one of them.
+_MEMORY_EVENT_ROWS_SQL = (
+    "SELECT * FROM events "
+    "WHERE julianday(last_updated_at) >= julianday('now') - (? / 24.0) "
+    "ORDER BY julianday(last_updated_at) DESC, id DESC "
+    "LIMIT ?"
+)
 
 MEMORY_INSTRUCTIONS = """
 INCIDENT MEMORY:
@@ -62,28 +74,19 @@ class IncidentMemory:
         )
 
     def candidates(self, article: Article) -> list[dict]:
-        """Always retain the newest incident, plus the most relevant bounded history."""
-        events = self.db.get_memory_events(self.config.lookback_hours, self.config.candidate_pool_size)
+        """Always retain the newest incident, plus the most relevant bounded history.
+
+        A malformed event row is skipped with a warning; it never blocks the
+        memory of the other incidents.
+        """
         contexts = []
         query = f"{article.title} {article.summary}".casefold()
-        cap = self.config.max_text_chars
-        for event in events:
-            evidence = self.db.get_event_evidence(event.id, self.config.evidence_per_event)
-            context = {
-                "id": event.id,
-                "first_seen_at": event.first_seen_at.isoformat(),
-                "last_updated_at": event.last_updated_at.isoformat(),
-                "event_type": event.event_type,
-                "countries": event.affected_countries,
-                "urgency": event.urgency_score,
-                "summary_pl": event.summary_pl[:cap],
-                "notification_revision": event.notification_revision,
-                "evidence": [
-                    {key: str(row.get(key, ""))[:cap] for key in ("title", "summary_pl", "published_at")}
-                    for row in evidence
-                ],
-            }
-            text = " ".join([event.summary_pl, *(str(row.get("title", "")) for row in evidence)])
+        for event in self._memory_events():
+            try:
+                context, text = self._context(event)
+            except Exception as exc:
+                logger.warning("Skipping malformed incident %s in incident memory: %r", event.id, exc)
+                continue
             contexts.append((fuzz.WRatio(query, text.casefold()), context))
         if not contexts:
             return []
@@ -92,6 +95,42 @@ class IncidentMemory:
         newest = contexts[0][1]
         ranked = sorted(contexts[1:], key=lambda item: item[0], reverse=True)
         return [newest, *(context for _, context in ranked[: self.config.max_candidates - 1])]
+
+    def _memory_events(self) -> list[Event]:
+        """Recent incidents for memory, newest first, without rows that cannot be decoded."""
+        hours, limit = self.config.lookback_hours, self.config.candidate_pool_size
+        try:
+            return self.db.get_memory_events(hours, limit)
+        except Exception as exc:
+            logger.warning("Incident memory could not decode every event row (%r); reading them one by one", exc)
+        events = []
+        for row in self.db.conn.execute(_MEMORY_EVENT_ROWS_SQL, (hours, limit)).fetchall():
+            try:
+                events.append(Event.from_row(row))
+            except Exception as exc:
+                logger.warning("Skipping malformed event row %s in incident memory: %r", row["id"], exc)
+        return events
+
+    def _context(self, event: Event) -> tuple[dict, str]:
+        """The candidate context of one incident and the text used to rank it."""
+        cap = self.config.max_text_chars
+        evidence = self.db.get_event_evidence(event.id, self.config.evidence_per_event)
+        context = {
+            "id": event.id,
+            "first_seen_at": event.first_seen_at.isoformat(),
+            "last_updated_at": event.last_updated_at.isoformat(),
+            "event_type": event.event_type,
+            "countries": event.affected_countries,
+            "urgency": event.urgency_score,
+            "summary_pl": event.summary_pl[:cap],
+            "notification_revision": event.notification_revision,
+            "evidence": [
+                {key: str(row.get(key, ""))[:cap] for key in ("title", "summary_pl", "published_at")}
+                for row in evidence
+            ],
+        }
+        text = " ".join([event.summary_pl, *(str(row.get("title", "")) for row in evidence)])
+        return context, text
 
     def _time_markers(self, text: str) -> tuple[set[str], set[str]]:
         """Conservative conflict guard over explicit source text, not model guesses."""

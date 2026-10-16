@@ -15,7 +15,7 @@ This page mirrors `sentinel/config.py` key by key. It names three different sour
 - [`sources`](#sources--sourcesconfig-sentinelconfigpy) — RSS, GDELT, Google News, Telegram
 - [`monitoring`](#monitoring--monitoringconfig)
 - [`classification`](#classification--classificationconfig) — provider, budget, policy, summary language, incident memory
-- [`alerts`](#alerts--alertsconfig) — urgency levels, acknowledgment, templates, push
+- [`alerts`](#alerts--alertsconfig) — urgency levels, acknowledgment, templates, push, Twilio
 - [`scheduler`](#scheduler--schedulerconfig)
 - [`processing`](#processing--processingconfig--processingdedup)
 - [`database`](#database--databaseconfig)
@@ -31,6 +31,7 @@ This page mirrors `sentinel/config.py` key by key. It names three different sour
 | Loader | `sentinel/config.py:load_config()` → returns `SentinelConfig` |
 | `.env` | Loaded via `python-dotenv` before substitution, only if the package is installed; it does not override variables already set |
 | Top-level model | `SentinelConfig` (wraps all sections below) |
+| Unknown keys | Rejected. Every model forbids extra keys, so a misspelled key (for example `max_call_retires`) fails loading with `ConfigError` instead of silently falling back to the code default. |
 
 Env-var substitution rules (`sentinel/config.py:_substitute_env_vars`):
 
@@ -89,7 +90,7 @@ GDELT is disabled in production (`enabled: false`) due to IP-level 429 throttlin
 | `lookback_minutes` | int | (omitted → `60`) | `60` | `TIMESPAN` window (minutes) for the GDELT DOC 2.0 query. Sent as `TIMESPAN={lookback_minutes}min`. Must be ≥ ~30 — the API rejects shorter spans with `200 OK` + plain-text body `"Timespan is too short."` (logged as an ERROR). |
 | `themes` | list[str] | `[ARMEDCONFLICT, WB_2462_POLITICAL_VIOLENCE_AND_WAR, CRISISLEX_C03_WELLBEING_HEALTH, TAX_FNCACT_MILITARY]` | required | GKG theme codes. Query shape: `(theme:A OR theme:B …) (sourcecountry:X OR sourcecountry:Y …)`, where the two groups are ANDed. The `sourcecountry` codes are the FIPS codes of `monitoring.target_countries`; `sourcecountry` filters by the publishing outlet's country, not by the attacked country. |
 
-> Stale key in live config: `config/config.yaml` contains `sources.gdelt.update_interval_minutes: 15`. There is no such Pydantic field. Pydantic ignores unknown keys, so it is a silent no-op. The real field is `lookback_minutes`, which the live config omits, so GDELT would use the `60` default if re-enabled. TODO.md tracks this stale key.
+> The live config omits `lookback_minutes`, so GDELT uses the `60` default if re-enabled. The former key `update_interval_minutes` was never read and has been removed; strict loading now rejects it.
 
 ### `sources.google_news` — `GoogleNewsConfig`
 
@@ -328,7 +329,7 @@ Live values:
 | `medium` | 5 | `sms` | `push` | 1 | (omitted → 0, not read) | (omitted → 5, not read) | — |
 | `low` | 1 | `log_only` | (ignored) | (omitted → 1) | (omitted → 0, not read) | (omitted → 5, not read) | — |
 
-`action` values: `phone_call`, `sms`, `log_only`. Pydantic defaults: `corroboration_required` `1`, `retry_attempts` `0`, `retry_interval_minutes` `5`, `fallback` `None`, `channel` `both`.
+`action` values: `phone_call`, `sms`, `log_only`; any other value fails loading. Loading also fails when no level has `action: phone_call` or when two levels share a `min_score`. Pydantic defaults: `corroboration_required` `1`, `retry_attempts` `0`, `retry_interval_minutes` `5`, `fallback` `None`, `channel` `both`.
 
 The per-level `retry_attempts`, `retry_interval_minutes` and `fallback` are defined but not read (no effect). Call spacing comes only from `alerts.acknowledgment.retry_interval_minutes`. When a 9–10 event has fewer sources than `critical.corroboration_required`, `AlertStateMachine._determine_action` returns a hard-coded `sms` action instead of `fallback`; that path sends SMS only, with no push and no channel lookup. With the live value `1`, one source triggers a phone call today. TODO.md tracks the unread keys.
 
@@ -361,7 +362,7 @@ Acknowledgment is by an SMS reply with a 6-digit code. The code SMS is sent befo
 | YAML key | Type | Live value | Pydantic default | Description |
 |---|---|---|---|---|
 | `call_duration_threshold_seconds` | int | `15` | `15` | Defined but not read (no effect); superseded by SMS-code confirmation |
-| `max_call_retries` | int | `1` | `3` | Calls placed per round (per dispatch), not a lifetime total. Capped at `1` since 2026-07-30 because event fragmentation multiplied calls. Template: `5`. |
+| `max_call_retries` | int ≥ 1 | `1` | `3` | Calls placed per round (per dispatch), not a lifetime total. `0` fails loading. Capped at `1` since 2026-07-30 because event fragmentation multiplied calls. Template: `5`. |
 | `retry_interval_minutes` | int | `5` | `5` | Minimum wait after the last call before a new round starts |
 | `cooldown_hours` | int | `6` | `6` | Defined but not read (no effect) |
 | `call_poll_timeout_seconds` | int | (omitted → `90`) | `90` | Max seconds to wait for a placed call to finish (and for an SMS reply) before moving to the next attempt; read by `_wait_for_call_and_check_sms`. Template: `90`. |
@@ -373,6 +374,8 @@ A round that ends without acknowledgment sets the event to `retry_pending`. A ne
 ### `alerts.templates` — `AlertTemplates`
 
 Python format strings. Override in config to customize; Pydantic provides defaults. The live config sets the same text as the defaults.
+
+Each template is rendered once at load time with the placeholders listed below (`ALERT_TEMPLATE_FIELDS` in `sentinel/config.py`). An unknown placeholder, a placeholder of another template, a positional `{0}` or broken braces fail loading with `ConfigError`, so a template edit cannot break an alert at send time.
 
 | Key | Placeholders | Description |
 |---|---|---|
@@ -400,6 +403,16 @@ The push is sent before any Twilio dispatch. It runs after the acknowledged gate
 | `tokens` | list[str] | `["${EXPO_PUSH_TOKEN}"]` | `[]` | Expo push tokens, referenced from the env. Surfaced by the `mobile/` companion app. Template: `[]`. |
 
 `EXPO_ACCESS_TOKEN` — when set, `ExpoPushClient` sends it as a bearer token to `https://exp.host/--/api/v2/push/send`. It is optional in code but required in production: the Expo project has Enhanced Security for Push Notifications enabled, so sends without it are rejected. If the robot token leaks, it is rotated in the Expo dashboard and updated in `/etc/sentinel/sentinel.env`.
+
+### `alerts.twilio` — `TwilioConfig`
+
+Consumed by: `sentinel/alerts/twilio_client.py` (`TwilioClient`).
+
+| YAML key | Type | Live value | Pydantic default | Description |
+|---|---|---|---|---|
+| `http_timeout_seconds` | float > 0 | `30` | `30` | Timeout of every Twilio HTTP request: call, SMS, call status and inbound-SMS checks. The Twilio SDK has no timeout by default, so a half-open connection could block the alert path and the pipeline cycle. Template: `30`. |
+
+`TwilioClient.make_alert_call`, `send_sms` and `get_call_status` never raise. A Twilio API error, a network error or a timeout is logged and returned as `None`, so a failed confirmation SMS does not stop the call that follows it.
 
 ---
 

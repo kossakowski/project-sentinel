@@ -394,7 +394,6 @@ sources:
     priority: 2
   gdelt:
     enabled: false
-    update_interval_minutes: 15
     themes:
     - ARMEDCONFLICT
     - WB_2462_POLITICAL_VIOLENCE_AND_WAR
@@ -654,6 +653,11 @@ alerts:
     # it here — this is a PUBLIC repo and Expo's push API is unauthenticated.
     tokens:
       - "${EXPO_PUSH_TOKEN}"
+  twilio:
+    # Timeout (seconds) of every Twilio HTTP request: calls, SMS, call status
+    # and inbound-SMS checks. Without it a half-open connection could block the
+    # alert path and the whole cycle.
+    http_timeout_seconds: 30
 scheduler:
   fast_interval_minutes: 3
   interval_minutes: 15

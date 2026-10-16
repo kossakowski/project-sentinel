@@ -1,13 +1,12 @@
-"""Known ways a 9-10 phone call is lost on master (audit 01: A1, A2, A3).
+"""Three ways a 9-10 phone call used to be lost (audit 01: A1, A2, A3).
 
-Each test asserts the behaviour the alert path must have, and is marked
-``xfail(strict=True)`` with the exception that breaks it today. If a bug is
-fixed, its test passes, strict xfail turns that into a failure, and the mark
-must be removed; a failure with any other exception is reported as a real
-failure. The real ``AlertStateMachine`` and ``TwilioClient`` run on the live
-config; at the delivery edges only the Twilio SDK and ``ExpoPushClient.send_push``
-are faked. The A3 test also injects a database fault inside the system: it
-replaces the state machine's ``process_event`` so the first event raises.
+Each test asserts the behaviour the alert path must have: a push error, a
+network error on the confirmation SMS, or a fault in one event of a batch
+must not cost a 9-10 event its call. The real ``AlertStateMachine`` and
+``TwilioClient`` run on the live config; at the delivery edges only the Twilio
+SDK and ``ExpoPushClient.send_push`` are faked. The A3 test also injects a
+database fault inside the system: it replaces the state machine's
+``process_event`` so the first event raises.
 """
 
 import sqlite3
@@ -32,12 +31,6 @@ def _state_machine(config, db) -> AlertStateMachine:
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AttributeError,
-    reason="[01:A1] the additive push runs before the call without a guard in the state machine; "
-    "an exception raised by send_push aborts process_event and the call is never placed",
-)
 @pytest.mark.asyncio
 async def test_push_error_does_not_block_call(
     prod_config, prod_db, store_critical_event, twilio_sdk, instant_alert_sleep, monkeypatch
@@ -59,12 +52,6 @@ async def test_push_error_does_not_block_call(
     assert twilio_sdk.calls.create.call_count == prod_config.alerts.acknowledgment.max_call_retries
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=requests.exceptions.ConnectionError,
-    reason="[01:A2] TwilioClient.send_sms catches only TwilioRestException; a network error on the "
-    "confirmation SMS escapes before the first call",
-)
 @pytest.mark.asyncio
 async def test_sms_network_error_does_not_block_call(
     prod_config, prod_db, store_critical_event, twilio_sdk, expo_send_push, instant_alert_sleep
@@ -77,12 +64,6 @@ async def test_sms_network_error_does_not_block_call(
     assert twilio_sdk.calls.create.call_count == prod_config.alerts.acknowledgment.max_call_retries
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=sqlite3.OperationalError,
-    reason="[01:A3] AlertDispatcher.dispatch has no per-event isolation; one failing event aborts "
-    "every later event of the batch",
-)
 @pytest.mark.asyncio
 async def test_one_failing_event_does_not_skip_rest(
     prod_config, prod_db, store_critical_event, twilio_sdk, expo_send_push, instant_alert_sleep, monkeypatch

@@ -670,6 +670,12 @@ alerts:
     tokens: []
       # - "${EXPO_PUSH_TOKEN}"
 
+  # Timeout (seconds) of every Twilio HTTP request: calls, SMS, call status and
+  # inbound-SMS checks. Without it a half-open connection could block the alert
+  # path and the whole cycle.
+  twilio:
+    http_timeout_seconds: 30
+
 # -----------------------------------------------------------------------------
 # SCHEDULER
 # -----------------------------------------------------------------------------

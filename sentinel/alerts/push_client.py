@@ -63,15 +63,38 @@ class ExpoPushClient:
         try:
             response = httpx.post(EXPO_PUSH_URL, json=payload, headers=headers, timeout=15.0)
             response.raise_for_status()
-            tickets = response.json().get("data", [])
+            response_body = response.json()
         except (httpx.HTTPError, ValueError) as exc:
             self.logger.error("Expo push failed for event %s: %s", event_id, exc)
             return None
+
+        # Expo answers with a JSON object; anything else (a list, a string, null)
+        # is an unexpected reply and counts as a failed send.
+        if not isinstance(response_body, dict):
+            self.logger.error(
+                "Expo push for event %s: unexpected response body of type %s",
+                event_id,
+                type(response_body).__name__,
+            )
+            return None
+        tickets = response_body.get("data", [])
 
         # The Expo API returns a single ticket dict for one recipient, or a list
         # of tickets (one per token) when `to` is an array.
         if isinstance(tickets, dict):
             tickets = [tickets]
+        if not isinstance(tickets, list):
+            self.logger.error(
+                "Expo push for event %s: unexpected ticket data of type %s",
+                event_id,
+                type(tickets).__name__,
+            )
+            return None
+        # A ticket that is not an object is treated as a rejected ticket.
+        tickets = [
+            ticket if isinstance(ticket, dict) else {"status": "error", "message": f"malformed ticket {ticket!r:.200}"}
+            for ticket in tickets
+        ]
 
         ok_ids = [t.get("id", "") for t in tickets if t.get("status") == "ok"]
         for err in (t for t in tickets if t.get("status") != "ok"):

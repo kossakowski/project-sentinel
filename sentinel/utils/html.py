@@ -6,7 +6,6 @@ class _HTMLStripper(html.parser.HTMLParser):
 
     def __init__(self):
         super().__init__()
-        self.reset()
         self._pieces: list[str] = []
 
     def handle_data(self, data: str) -> None:
@@ -17,10 +16,17 @@ class _HTMLStripper(html.parser.HTMLParser):
 
 
 def strip_html(text: str) -> str:
-    """Remove HTML tags from text, returning plain text."""
+    """Remove HTML tags from text, returning plain text.
+
+    ``close()`` flushes the text the parser holds back while it waits for the
+    end of a possible entity. Without it, a summary cut off after ``&`` (for
+    example ``"… Więcej &raquo"``) lost its text after the last tag, or all of
+    it when it had no tag.
+    """
     stripper = _HTMLStripper()
     try:
         stripper.feed(text)
+        stripper.close()
         return stripper.get_text()
     except Exception:
         return text

@@ -265,11 +265,24 @@ class ArticleEnricher:
         heuristic_count = len(to_enrich)
 
         for article in passed:
-            needs = (
-                await self._check_vagueness_direct(article)
-                if self.config.classification.provider == "openai"
-                else self._check_vagueness_llm(article)
-            )
+            try:
+                needs = (
+                    await self._check_vagueness_direct(article)
+                    if self.config.classification.provider == "openai"
+                    else self._check_vagueness_llm(article)
+                )
+            except Exception as exc:
+                # The gate only improves the classifier's input. Its failure
+                # (refusal, timeout, rate limit, invalid output) must not fail
+                # or delay the article: it is classified without enrichment.
+                self.logger.warning(
+                    "Enrichment gate failed for '%s'; classifying without enrichment: %r",
+                    article.title[:60],
+                    exc,
+                    exc_info=True,
+                )
+                article.raw_metadata["enrichment"] = {"method": "gate_error", "error": type(exc).__name__}
+                continue
             if needs:
                 article.raw_metadata["enrichment"] = {
                     "method": "llm",

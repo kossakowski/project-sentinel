@@ -251,7 +251,7 @@ class SentinelPipeline:
                 for article in relevant:
                     try:
                         await self.enricher.enrich_batch([article])
-                        candidates = self.incident_memory.candidates(article)
+                        candidates = self._memory_candidates(article)
                         result = await self.classifier.classify(article, incident_context=candidates)
                     except Exception as e:
                         self.logger.error("Classification failed for %s: %s", article.id, e)
@@ -305,8 +305,10 @@ class SentinelPipeline:
                 # Step 7: Dispatch alerts
                 await self.dispatcher.dispatch(alertable_events)
 
-                # Step 8: Check pending call statuses from previous cycles
-                await self.state_machine.check_pending_calls()
+                # Step 8: Check pending call statuses from previous cycles. A dry
+                # run sends nothing, so it does not poll Twilio either.
+                if not self.config.testing.dry_run:
+                    await self.state_machine.check_pending_calls()
 
             # Build diagnostic data if requested (after corroboration so we capture events)
             if diagnostic:
@@ -352,6 +354,21 @@ class SentinelPipeline:
             )
 
             return result
+
+    def _memory_candidates(self, article: Article) -> list[dict]:
+        """Incident-memory candidates for ``article``, or none when they cannot be built.
+
+        Memory only decides grouping. Without it the article is classified as
+        on an empty memory and becomes its own event with its own alert, so a
+        memory failure must never fail the article.
+        """
+        try:
+            return self.incident_memory.candidates(article)
+        except Exception:
+            self.logger.exception(
+                "Incident memory unavailable for article %s; classifying it without memory", article.id
+            )
+            return []
 
     def _build_diagnostic_data(
         self,

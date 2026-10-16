@@ -74,6 +74,17 @@ PUSH_DATA_MAX_BYTES = 3500
 PUSH_BODY_SUMMARY_MAX_CHARS = 80
 
 
+def _cap_sms_summary(summary_pl: str) -> str:
+    """Bound the classifier summary to ``SMS_SUMMARY_MAX_CHARS`` characters.
+
+    The summary is truncated, never the rendered body, so the template text
+    after it (the detection time, or the confirmation code) is always sent.
+    """
+    if len(summary_pl) > SMS_SUMMARY_MAX_CHARS:
+        return summary_pl[: SMS_SUMMARY_MAX_CHARS - 1].rstrip() + "…"
+    return summary_pl
+
+
 def _build_sources_list(event: Event, db: Database, max_chars: int | None = None) -> str:
     """Build a formatted source list from event article_ids.
 
@@ -167,9 +178,7 @@ def _format_sms_message(event: Event, db: Database, config: SentinelConfig) -> s
     # can never alone exceed the budget and re-trigger Twilio's 1600-char
     # rejection. Truncating the summary -- not the rendered body -- preserves
     # trailing template fields like "Wykryto: {first_seen_at_local}".
-    summary_pl = event.summary_pl
-    if len(summary_pl) > SMS_SUMMARY_MAX_CHARS:
-        summary_pl = summary_pl[: SMS_SUMMARY_MAX_CHARS - 1].rstrip() + "…"
+    summary_pl = _cap_sms_summary(event.summary_pl)
 
     fields = {
         "event_type_pl": event_type_pl,
@@ -464,9 +473,18 @@ class AlertStateMachine:
 
         # Push reaches the phone immediately and self-dedups on a successful
         # push for this revision (so call-retry/re-corroboration cycles do not
-        # re-push, while failed pushes remain retryable).
+        # re-push, while failed pushes remain retryable). It goes first, but an
+        # error while it is built or sent must never stop the 9-10 call or the
+        # SMS that follow it.
         if send_push:
-            await self._maybe_send_push(event, existing_alerts)
+            try:
+                await self._maybe_send_push(event, existing_alerts)
+            except Exception:
+                self.logger.exception(
+                    "Event %s: push failed; continuing with the remaining channels (action=%s)",
+                    event.id,
+                    action,
+                )
 
         if action == "phone_call":
             await self._execute_phone_call(event, existing_alerts)
@@ -593,8 +611,9 @@ class AlertStateMachine:
         total_attempts = len(call_records)
         call_placed_at = datetime.now(UTC)
 
-        # Send SMS confirmation code — this is the ONLY confirmation mechanism
-        await self._send_confirmation_sms(event)
+        # Send SMS confirmation code — this is the ONLY confirmation mechanism.
+        # A failure here must not stop the call: the call is the alarm.
+        await self._send_confirmation_sms_guarded(event)
 
         retry_pause = self.config.alerts.acknowledgment.call_retry_pause_seconds
 
@@ -640,7 +659,7 @@ class AlertStateMachine:
                         "Event %s: confirmation SMS failed to deliver, resending",
                         event.id[:8],
                     )
-                    await self._send_confirmation_sms(event)
+                    await self._send_confirmation_sms_guarded(event)
 
             # Brief pause between retries
             if attempt < max_per_round:
@@ -674,8 +693,23 @@ class AlertStateMachine:
         )
         await self._send_followup_sms(event.id)
 
+    async def _send_confirmation_sms_guarded(self, event: Event) -> None:
+        """Send the confirmation SMS; log any error instead of raising it.
+
+        The call round goes on without the SMS: the call is the alarm, and an
+        error in its confirmation message must never prevent it.
+        """
+        try:
+            await self._send_confirmation_sms(event)
+        except Exception:
+            self.logger.exception("Event %s: confirmation SMS failed; placing the call anyway", event.id[:8])
+
     async def _send_confirmation_sms(self, event: Event) -> None:
-        """Send an SMS with a fresh confirmation code from ``code_factory``."""
+        """Send an SMS with a fresh confirmation code from ``code_factory``.
+
+        The summary is capped like the alert SMS, so a long summary can never
+        push the code out of the transport's length limit.
+        """
         phone_number = self.config.alerts.phone_number
         event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
 
@@ -684,7 +718,7 @@ class AlertStateMachine:
 
         message = (
             f"PROJECT SENTINEL: {event_type_pl}\n\n"
-            f"{event.summary_pl}\n\n"
+            f"{_cap_sms_summary(event.summary_pl)}\n\n"
             f"Odpowiedz kodem aby potwierdzic odbior alertu: {self._confirmation_code}\n\n"
             f"Telefon bedzie dzwonil dopoki nie potwierdzisz."
         )
@@ -820,8 +854,17 @@ class AlertStateMachine:
                     call_status,
                     duration,
                 )
+            # An SMS-code reply can arrive while the call is still running; the
+            # event is then already acknowledged and keeps that label.
+            event = self.db.get_event_by_id(record.event_id)
+            if event is not None and event.acknowledged_at is not None:
+                self.logger.debug(
+                    "Event %s is acknowledged; keeping its alert_status after call result %s",
+                    record.event_id,
+                    call_status,
+                )
+                return
             # Retry logic is handled by process_event on next cycle
-            # The alert_status remains "call_placed" so it will be retried
             self.db.update_event(record.event_id, alert_status="retry_pending")
         # If still in-progress/queued/ringing, leave as-is
 

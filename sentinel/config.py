@@ -3,11 +3,23 @@ import re
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 
 
 class ConfigError(Exception):
     pass
+
+
+class _StrictModel(BaseModel):
+    """Base of every config model: an unknown or misspelled key fails loading.
+
+    Pydantic ignores unknown keys by default. A typo such as
+    ``max_call_retires`` would then load cleanly and fall back to the code
+    default, which for several life-safety keys is the value the owner moved
+    away from on purpose.
+    """
+
+    model_config = ConfigDict(extra="forbid")
 
 
 # ---------------------------------------------------------------------------
@@ -15,7 +27,7 @@ class ConfigError(Exception):
 # ---------------------------------------------------------------------------
 
 
-class RSSSource(BaseModel):
+class RSSSource(_StrictModel):
     name: str
     url: HttpUrl
     language: str
@@ -24,23 +36,23 @@ class RSSSource(BaseModel):
     keyword_bypass: bool = False
 
 
-class GDELTConfig(BaseModel):
+class GDELTConfig(_StrictModel):
     enabled: bool = True
     lookback_minutes: int = 60
     themes: list[str]
 
 
-class GoogleNewsQuery(BaseModel):
+class GoogleNewsQuery(_StrictModel):
     query: str
     language: str
 
 
-class GoogleNewsConfig(BaseModel):
+class GoogleNewsConfig(_StrictModel):
     enabled: bool = True
     queries: list[GoogleNewsQuery]
 
 
-class TelegramChannel(BaseModel):
+class TelegramChannel(_StrictModel):
     name: str
     channel_id: str
     language: str
@@ -48,7 +60,7 @@ class TelegramChannel(BaseModel):
     keyword_bypass: bool = False
 
 
-class TelegramConfig(BaseModel):
+class TelegramConfig(_StrictModel):
     enabled: bool = True
     api_id: int | None = None
     api_hash: str | None = None
@@ -62,7 +74,7 @@ class TelegramConfig(BaseModel):
         return self
 
 
-class SourcesConfig(BaseModel):
+class SourcesConfig(_StrictModel):
     rss: list[RSSSource]
     gdelt: GDELTConfig
     google_news: GoogleNewsConfig
@@ -74,12 +86,12 @@ class SourcesConfig(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class KeywordSet(BaseModel):
+class KeywordSet(_StrictModel):
     critical: list[str] = []
     high: list[str] = []
 
 
-class MonitoringConfig(BaseModel):
+class MonitoringConfig(_StrictModel):
     target_countries: list[dict]
     aggressor_countries: list[dict]
     keywords: dict[str, KeywordSet]
@@ -91,9 +103,11 @@ class MonitoringConfig(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class UrgencyLevel(BaseModel):
+class UrgencyLevel(_StrictModel):
     min_score: int
-    action: str
+    # A misspelled action used to load and then deliver nothing at all, so the
+    # allowed values are checked at load time.
+    action: Literal["phone_call", "sms", "log_only"]
     corroboration_required: int = 1
     retry_attempts: int = 0
     retry_interval_minutes: int = 5
@@ -113,9 +127,10 @@ class UrgencyLevel(BaseModel):
         return v
 
 
-class AcknowledgmentConfig(BaseModel):
+class AcknowledgmentConfig(_StrictModel):
     call_duration_threshold_seconds: int = 15
-    max_call_retries: int = 3
+    # Calls per round. Zero would place no call at all for a 9-10 event.
+    max_call_retries: int = Field(default=3, ge=1)
     retry_interval_minutes: int = 5
     cooldown_hours: int = 6
     call_poll_timeout_seconds: int = 90
@@ -123,7 +138,41 @@ class AcknowledgmentConfig(BaseModel):
     call_retry_pause_seconds: int = 10
 
 
-class AlertTemplates(BaseModel):
+# The fields that the alert formatters in ``sentinel/alerts/state_machine.py``
+# pass to each template in ``alerts.templates``, each with a sample value of the
+# type the formatter passes. Every template is rendered once with these values
+# when the config loads, so an unknown placeholder fails loading instead of the
+# alert itself (a broken SMS template used to abort the 9-10 path before the
+# call). The set lives here because this module cannot import the state machine;
+# tests/test_config_validation.py checks that the formatters accept every field.
+ALERT_TEMPLATE_FIELDS: dict[str, dict[str, object]] = {
+    "call": {
+        "event_type_pl": "Inwazja",
+        "summary_pl": "Opis zdarzenia.",
+        "source_count": 1,
+        "urgency_score": 10,
+    },
+    "sms": {
+        "event_type_pl": "Inwazja",
+        "urgency_score": 10,
+        "affected_countries_str": "PL",
+        "aggressor": "RU",
+        "summary_pl": "Opis zdarzenia.",
+        "source_count": 1,
+        "sources_list": "- Źródło: Tytuł\n  https://example.com/artykul",
+        "first_seen_at_local": "2026-01-01 12:00 CET",
+    },
+    "sms_update": {
+        "event_type_pl": "Inwazja",
+        "new_source_name": "Źródło",
+        "summary_pl": "Opis zdarzenia.",
+        "source_count": 2,
+        "urgency_score": 10,
+    },
+}
+
+
+class AlertTemplates(_StrictModel):
     call: str = (
         "{event_type_pl} wykryte. {summary_pl}. Źródła potwierdzające: {source_count}. Pilność: {urgency_score} na 10."
     )
@@ -149,19 +198,53 @@ class AlertTemplates(BaseModel):
         "Pilność: {urgency_score}/10"
     )
 
+    @model_validator(mode="after")
+    def _render_with_known_fields(self) -> "AlertTemplates":
+        for name, fields in ALERT_TEMPLATE_FIELDS.items():
+            try:
+                getattr(self, name).format(**fields)
+            except (KeyError, IndexError, AttributeError, TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"alerts.templates.{name} cannot be rendered ({type(exc).__name__}: {exc}); "
+                    f"allowed placeholders: {sorted(fields)}"
+                ) from exc
+        return self
 
-class PushConfig(BaseModel):
+
+class PushConfig(_StrictModel):
     enabled: bool = False
     tokens: list[str] = []
 
 
-class AlertsConfig(BaseModel):
+class TwilioConfig(_StrictModel):
+    # Timeout, in seconds, of every Twilio HTTP request (call, SMS, call status
+    # and inbound-SMS checks). The SDK default is no timeout, so one half-open
+    # connection could block the alert path and the pipeline cycle for good.
+    http_timeout_seconds: float = Field(default=30, gt=0, allow_inf_nan=False)
+
+
+class AlertsConfig(_StrictModel):
     phone_number: str
     language: str = "pl"
     urgency_levels: dict[str, UrgencyLevel]
     acknowledgment: AcknowledgmentConfig
     templates: AlertTemplates = AlertTemplates()
     push: PushConfig = PushConfig()
+    twilio: TwilioConfig = Field(default_factory=TwilioConfig)
+
+    @model_validator(mode="after")
+    def _check_urgency_levels(self) -> "AlertsConfig":
+        levels = self.urgency_levels
+        if not any(level.action == "phone_call" for level in levels.values()):
+            raise ValueError("alerts.urgency_levels needs a level with action 'phone_call', or 9-10 is never called")
+        names_by_score: dict[int, list[str]] = {}
+        for name, level in levels.items():
+            names_by_score.setdefault(level.min_score, []).append(name)
+        shared = {score: names for score, names in names_by_score.items() if len(names) > 1}
+        if shared:
+            details = "; ".join(f"min_score {score}: {', '.join(names)}" for score, names in sorted(shared.items()))
+            raise ValueError(f"alerts.urgency_levels must not share a min_score ({details})")
+        return self
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +252,7 @@ class AlertsConfig(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class IncidentMemoryConfig(BaseModel):
+class IncidentMemoryConfig(_StrictModel):
     enabled: bool = False
     lookback_hours: int = Field(default=168, ge=1, le=2160)
     candidate_pool_size: int = Field(default=100, ge=1, le=1000)
@@ -190,7 +273,7 @@ class IncidentMemoryConfig(BaseModel):
         return self
 
 
-class ModelBudgetConfig(BaseModel):
+class ModelBudgetConfig(_StrictModel):
     ledger_path: str = "data/model-usage.db"
     monthly_usd: float = Field(default=10, gt=0, le=50, allow_inf_nan=False)
     input_per_million: float = Field(default=0.20, gt=0, allow_inf_nan=False)
@@ -199,7 +282,7 @@ class ModelBudgetConfig(BaseModel):
     cache_write_multiplier: float = Field(default=1.25, ge=1, allow_inf_nan=False)
 
 
-class SummaryLanguageConfig(BaseModel):
+class SummaryLanguageConfig(_StrictModel):
     detector_languages: list[str] = Field(
         default_factory=lambda: ["pl", "en", "uk", "ru", "de", "cs", "sk", "lt", "lv", "et"]
     )
@@ -227,7 +310,7 @@ class SummaryLanguageConfig(BaseModel):
         return self
 
 
-class ClassificationConfig(BaseModel):
+class ClassificationConfig(_StrictModel):
     # Omitted provider preserves existing installations until explicit migration.
     provider: Literal["anthropic", "openai"] = "anthropic"
     api_base_url: Literal["https://api.openai.com/v1"] = "https://api.openai.com/v1"
@@ -289,37 +372,37 @@ class ClassificationConfig(BaseModel):
         return v
 
 
-class SchedulerConfig(BaseModel):
+class SchedulerConfig(_StrictModel):
     interval_minutes: int = 15
     fast_interval_minutes: int = 3
     jitter_seconds: int = 30
 
 
-class DatabaseConfig(BaseModel):
+class DatabaseConfig(_StrictModel):
     path: str = "data/sentinel.db"
     article_retention_days: int = 30
     event_retention_days: int = 90
 
 
-class LoggingConfig(BaseModel):
+class LoggingConfig(_StrictModel):
     level: str = "INFO"
     file: str = "logs/sentinel.log"
     max_size_mb: int = 50
     backup_count: int = 5
 
 
-class TestingConfig(BaseModel):
+class TestingConfig(_StrictModel):
     dry_run: bool = False
     eval_set_file: str = "tests/fixtures/eval_set.yaml"
 
 
-class ProcessingDedup(BaseModel):
+class ProcessingDedup(_StrictModel):
     same_source_title_threshold: int = 85
     cross_source_title_threshold: int = 95
     lookback_minutes: int = 60
 
 
-class ProcessingConfig(BaseModel):
+class ProcessingConfig(_StrictModel):
     dedup: ProcessingDedup
 
 
@@ -328,7 +411,7 @@ class ProcessingConfig(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class SentinelConfig(BaseModel):
+class SentinelConfig(_StrictModel):
     monitoring: MonitoringConfig
     sources: SourcesConfig
     classification: ClassificationConfig
