@@ -1,0 +1,22 @@
+{
+  "message_id": "<message_id>",
+  "event_id": "<event_id>",
+  "kind": "event",
+  "event_type": "invasion",
+  "event_type_pl": "Inwazja",
+  "urgency_score": 10,
+  "affected_countries": [
+    "PL"
+  ],
+  "aggressor": "RU",
+  "summary_pl": "Rosyjskie wojska przekroczyły granicę Polski od strony Białorusi i atakują pozycje Wojska Polskiego na Podlasiu. Władze wzywają mieszkańców regionu do pozostania w schronach.",
+  "sources": [
+    {
+      "name": "PAP",
+      "title": "Atak zbrojny na Polskę: rosyjskie wojska przekroczyły granicę pod Białymstokiem",
+      "url": "https://pap.pl/aktualnosci/sentinel-golden-critical"
+    }
+  ],
+  "sms_body": "🚨 PROJECT SENTINEL: Inwazja\nPilność: 10/10\nKraje: PL\nAgresor: RU\n\nRosyjskie wojska przekroczyły granicę Polski od strony Białorusi i atakują pozycje Wojska Polskiego na Podlasiu. Władze wzywają mieszkańców regionu do pozostania w schronach.\n\nŹródła (1):\n- PAP: Atak zbrojny na Polskę: rosyjskie wojska przekroczyły granicę pod Białymstokiem\n  https://pap.pl/aktualnosci/sentinel-golden-critical\n\nWykryto: 2026-10-16 14:00",
+  "first_seen_at": "<first_seen_at>"
+}

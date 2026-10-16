@@ -1,6 +1,11 @@
 [tool.pytest.ini_options]
+# --strict-markers turns an unregistered (for example misspelled) marker into a
+# collection error instead of a silently ignored no-op.
+addopts = "--strict-markers"
 markers = [
     "integration: marks tests that require network/API access",
+    "slow: subprocess smoke tests and other slow tests; deselect with -m \"not slow\"",
+    "network: tests that need real network access; the conftest socket guard refuses every non-loopback connection",
 ]
 testpaths = ["tests"]
 

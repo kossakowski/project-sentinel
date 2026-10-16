@@ -373,13 +373,13 @@ def _substitute_env_vars(data: Any) -> Any:
 
 
 def load_config(config_path: str) -> SentinelConfig:
-    try:
-        from dotenv import load_dotenv
+    """Load, substitute and validate the YAML config at ``config_path``.
 
-        load_dotenv()
-    except ImportError:
-        pass
-
+    ``${VAR}`` placeholders resolve from the current process environment only.
+    This function never reads a ``.env`` file; the CLI entry point
+    (``sentinel.py main()``) loads ``.env`` before it calls this, so tests and
+    other callers see exactly the environment they were given.
+    """
     try:
         with open(config_path, encoding="utf-8") as f:
             raw = yaml.safe_load(f)

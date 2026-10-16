@@ -1,8 +1,9 @@
 import asyncio
 import json
 import logging
-import random
+import secrets
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 from sentinel.alerts.push_client import ExpoPushClient
@@ -372,6 +373,14 @@ def _build_push_data(event: Event, db: Database, config: SentinelConfig, is_upda
     return data
 
 
+def generate_confirmation_code() -> str:
+    """Return a random 6-digit SMS confirmation code (100000-999999).
+
+    Uses ``secrets`` so the code is not predictable from other random output.
+    """
+    return str(100000 + secrets.randbelow(900000))
+
+
 class AlertStateMachine:
     """Manages the lifecycle of event alerts."""
 
@@ -381,11 +390,18 @@ class AlertStateMachine:
         twilio_client: TwilioClient,
         config: SentinelConfig,
         push_client: ExpoPushClient | None = None,
+        code_factory: Callable[[], str] = generate_confirmation_code,
     ) -> None:
+        """Create the state machine.
+
+        ``code_factory`` makes the confirmation code that each call round sends
+        by SMS and then waits for in the owner's reply. Tests pass a constant.
+        """
         self.db = db
         self.twilio = twilio_client
         self.config = config
         self.push = push_client or ExpoPushClient(config)
+        self._code_factory = code_factory
         self.logger = logging.getLogger("sentinel.alerts.state_machine")
 
     async def process_event(self, event: Event) -> None:
@@ -659,12 +675,12 @@ class AlertStateMachine:
         await self._send_followup_sms(event.id)
 
     async def _send_confirmation_sms(self, event: Event) -> None:
-        """Send an SMS with a random 6-digit confirmation code."""
+        """Send an SMS with a fresh confirmation code from ``code_factory``."""
         phone_number = self.config.alerts.phone_number
         event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
 
-        # Generate random 6-digit code, store it for verification
-        self._confirmation_code = f"{random.randint(100000, 999999)}"
+        # Generate the confirmation code and store it for verification
+        self._confirmation_code = self._code_factory()
 
         message = (
             f"PROJECT SENTINEL: {event_type_pl}\n\n"

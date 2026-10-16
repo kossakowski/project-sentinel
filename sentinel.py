@@ -184,9 +184,27 @@ async def run_continuous(config) -> None:
         print("\nProject Sentinel stopped.")
 
 
+def _load_dotenv() -> None:
+    """Fill missing environment variables from a local ``.env`` file, if any.
+
+    Only the CLI process reads ``.env``; ``load_config()`` itself does not. The
+    file is found the same way as before this lived here: python-dotenv walks up
+    from this script's directory, and variables already set (for example by the
+    systemd ``EnvironmentFile``) are not overridden.
+    """
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    load_dotenv()
+
+
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
+
+    # Environment first, so ${VAR} placeholders in the config can resolve.
+    _load_dotenv()
 
     # Load and validate config
     try:
