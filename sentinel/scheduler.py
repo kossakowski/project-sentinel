@@ -574,10 +574,13 @@ class SentinelScheduler:
             if result.alert_failures:
                 # The cycle finished, but alerting raised for some events or
                 # pending calls (each one logged at CRITICAL). Report it like
-                # a failed cycle so health.json does not read green.
+                # a failed cycle so health.json does not read green. An event
+                # can raise after its call or message went out, so the count
+                # does not mean that nothing was sent.
                 error = (
                     f"Alerting failed for {result.alert_failures} event(s) or pending call(s); "
-                    "see the CRITICAL log entries."
+                    "some may have been called or messaged before the error. "
+                    "See the CRITICAL log entries."
                 )
                 self._update_health(healthy=False, result=result, error=error)
                 self._check_pipeline_health()
@@ -622,7 +625,9 @@ class SentinelScheduler:
         classification_status = self.pipeline.db.classification_health()
         if classification_status["degraded"]:
             healthy = False
-            error = error or "Classification unavailable: failed articles remain pending; check provider/budget logs."
+            degraded = "Classification unavailable: failed articles remain pending; check provider/budget logs."
+            # Keep an earlier cycle or alerting error next to this one.
+            error = f"{error.rstrip('.')}; {degraded}" if error else degraded
         health = HealthStatus(
             is_healthy=healthy,
             classification_status=classification_status,

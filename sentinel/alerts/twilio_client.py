@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from datetime import UTC, datetime
 from uuid import uuid4
 from xml.sax.saxutils import escape as xml_escape
@@ -53,6 +54,17 @@ def _alert_twiml(safe_message: str) -> str:
 
 _CUT_MARK = "…"
 
+# Characters that XML 1.0 does not allow in a document at all, even escaped:
+# C0 controls other than tab, newline and carriage return, lone surrogates,
+# U+FFFE and U+FFFF. ``xml_escape`` passes them through, so one of them in the
+# summary would make the call TwiML invalid.
+_XML_ILLEGAL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
+
+
+def _strip_xml_illegal(text: str) -> str:
+    """Remove the characters that cannot appear in an XML document."""
+    return _XML_ILLEGAL_CHARS.sub("", text)
+
 
 def _fit_call_message(message_pl: str) -> str:
     """Shorten ``message_pl`` only as far as needed for its TwiML to fit ``TWIML_MAX_CHARS``.
@@ -102,16 +114,18 @@ class TwilioClient:
     def make_alert_call(self, phone_number: str, message_pl: str, event_id: str) -> AlertRecord | None:
         """Place an outbound call with Polish TTS message.
 
-        The message is spoken twice (for waking the user). A message too long
-        for Twilio's TwiML limit is shortened, so the call is still placed.
+        The message is spoken twice (for waking the user). Characters that XML
+        does not allow are removed, and a message too long for Twilio's TwiML
+        limit is shortened, so the call is still placed.
         Returns an AlertRecord on success, None on any error.
         """
-        spoken = _fit_call_message(message_pl)
-        if spoken != message_pl:
+        speakable = _strip_xml_illegal(message_pl)
+        spoken = _fit_call_message(speakable)
+        if spoken != speakable:
             self.logger.warning(
                 "Call message for event %s shortened from %d to %d characters to fit the TwiML limit",
                 event_id,
-                len(message_pl),
+                len(speakable),
                 len(spoken),
             )
         twiml = _alert_twiml(xml_escape(spoken))

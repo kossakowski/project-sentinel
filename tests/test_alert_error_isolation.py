@@ -8,10 +8,12 @@ at the edges, as in ``test_known_alert_bugs.py``.
 
 import json
 import logging
-from datetime import UTC, datetime
+import sqlite3
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, create_autospec, patch
 from uuid import uuid4
+from xml.etree import ElementTree
 from xml.sax.saxutils import escape as xml_escape
 
 import httpx
@@ -255,6 +257,52 @@ async def test_unsent_confirmation_sms_is_resent_after_first_call(
     assert twilio_sdk.calls.create.call_count == (2 if earlier_event else 1) * calls_per_event
 
 
+@pytest.mark.asyncio
+async def test_confirmation_sms_resend_repeats_the_round_code(
+    prod_config, prod_db, store_critical_event, twilio_sdk, expo_send_push, instant_alert_sleep
+):
+    """A send that timed out can still reach the owner, so the resend carries the same code."""
+    codes = iter(["111111", "222222"])
+    state_machine = AlertStateMachine(
+        prod_db,
+        TwilioClient(prod_config),
+        prod_config,
+        push_client=ExpoPushClient(prod_config),
+        code_factory=lambda: next(codes),
+    )
+    twilio_sdk.messages.create.side_effect = [requests.Timeout("read timed out"), SimpleNamespace(sid="SM-resent")]
+
+    await state_machine.process_event(store_critical_event())
+
+    first, resent = _sms_bodies(twilio_sdk)
+    assert "111111" in first
+    assert "111111" in resent
+    assert "222222" not in resent
+
+
+@pytest.mark.asyncio
+async def test_unrecorded_push_is_named_and_call_still_placed(
+    prod_config, prod_db, store_critical_event, twilio_sdk, expo_send_push, instant_alert_sleep, monkeypatch, caplog
+):
+    """A push that went out but could not be recorded is logged as such; the call still follows."""
+    event = store_critical_event()
+    insert = prod_db.insert_alert_record
+
+    def insert_failing_for_push(record):
+        if record.alert_type == "push":
+            raise sqlite3.OperationalError("database is locked")
+        insert(record)
+
+    monkeypatch.setattr(prod_db, "insert_alert_record", insert_failing_for_push)
+
+    with caplog.at_level(logging.ERROR, logger="sentinel.alerts.state_machine"):
+        await _state_machine(prod_config, prod_db).process_event(event)
+
+    assert expo_send_push.call_count == 1
+    assert twilio_sdk.calls.create.call_count == prod_config.alerts.acknowledgment.max_call_retries
+    assert "push was sent but its record could not be saved" in caplog.text
+
+
 # ---------------------------------------------------------------------------
 # 2.3: one failing event never skips the rest of the batch
 # ---------------------------------------------------------------------------
@@ -457,6 +505,46 @@ async def test_cycle_with_alert_failures_reads_unhealthy(config, tmp_path):
         await pipeline.shutdown()
 
 
+@pytest.mark.asyncio
+async def test_real_cycle_alert_failure_reaches_health_json(config, tmp_path, monkeypatch):
+    """A real run_cycle whose event alert raised writes an unhealthy health.json, next to a degraded classifier."""
+    config.database.path = str(tmp_path / "sentinel.db")
+    with (
+        patch.object(SentinelPipeline, "_init_fetchers", return_value=[]),
+        patch("sentinel.scheduler.Classifier"),
+        patch("sentinel.scheduler.TwilioClient"),
+    ):
+        pipeline = SentinelPipeline(config)
+    pipeline.classifier.aclose = AsyncMock()
+    try:
+        pipeline.corroborator.process_classifications = MagicMock(return_value=[_event(10)])
+        pipeline.state_machine.process_event = AsyncMock(side_effect=RuntimeError("database is locked"))
+        pipeline.state_machine.check_pending_calls = AsyncMock(return_value=[])
+        pipeline._send_system_sms = MagicMock()
+        scheduler = SentinelScheduler(pipeline, config)
+        health_path = tmp_path / "health.json"
+
+        await scheduler._run_with_error_handling()
+
+        health = json.loads(health_path.read_text())
+        assert health["is_healthy"] is False
+        assert health["last_error"].startswith("Alerting failed for 1 event(s) or pending call(s)")
+        assert health["consecutive_failures"] == 1
+        assert health["last_cycle_alerts_sent"] == 0
+
+        # A degraded classifier in the same cycle is reported next to the alerting failure.
+        classification_health = pipeline.db.classification_health
+        monkeypatch.setattr(pipeline.db, "classification_health", lambda: {**classification_health(), "degraded": True})
+
+        await scheduler._run_with_error_handling()
+
+        health = json.loads(health_path.read_text())
+        assert "Alerting failed for 1" in health["last_error"]
+        assert "Classification unavailable" in health["last_error"]
+    finally:
+        await pipeline.shutdown()
+
+
 # ---------------------------------------------------------------------------
 # 2.7: the confirmation SMS always carries the code
 # ---------------------------------------------------------------------------
@@ -585,6 +673,18 @@ def test_twilio_call_message_within_limit_is_unchanged(prod_config, twilio_sdk):
     (twiml,) = _twiml_sent(twilio_sdk)
     assert twiml.count("Rosyjskie wojska &amp; czołgi &lt;PL&gt;. Pilność: 10 na 10.") == 2
     assert record.message_body == message
+
+
+def test_twilio_call_message_drops_xml_illegal_characters(prod_config, twilio_sdk):
+    """Control characters in the summary are removed, so the call TwiML stays valid XML."""
+    message = "Inwazja wykryte.\x00 Rosyjskie\x08 wojska\x1f & czołgi.\x0b Pilność: 10 na 10."
+
+    record = TwilioClient(prod_config).make_alert_call("+48500100200", message, "evt-1")
+
+    (twiml,) = _twiml_sent(twilio_sdk)
+    ElementTree.fromstring(twiml)
+    assert twiml.count("Inwazja wykryte. Rosyjskie wojska &amp; czołgi. Pilność: 10 na 10.") == 2
+    assert record.message_body == "Inwazja wykryte. Rosyjskie wojska & czołgi. Pilność: 10 na 10."
 
 
 def test_update_sms_carries_summary_beyond_sms_cap_in_full(prod_config, prod_db):
@@ -786,3 +886,143 @@ async def test_unreadable_alert_record_does_not_cost_the_call(
     assert event.id in failures[0].getMessage()
     assert record.id in failures[0].getMessage()
     assert failures[0].exc_info is not None
+
+
+@pytest.mark.asyncio
+async def test_pending_call_read_error_without_unreadable_rows_is_not_critical(
+    prod_config, prod_db, store_critical_event, monkeypatch, caplog
+):
+    """A read error that the row-by-row re-read does not reproduce is an error, not a skipped record."""
+    call = _pending_call(prod_db, store_critical_event().id)
+
+    def locked():
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(prod_db, "get_pending_call_records", locked)
+    twilio = create_autospec(TwilioClient, instance=True)
+    twilio.get_call_status.return_value = {"status": "no-answer", "duration": 0}
+    state_machine = AlertStateMachine(prod_db, twilio, prod_config, push_client=ExpoPushClient(prod_config))
+
+    with caplog.at_level(logging.WARNING, logger="sentinel.alerts.state_machine"):
+        failed = await state_machine.check_pending_calls()
+
+    assert failed == []
+    twilio.get_call_status.assert_called_once_with(call.twilio_sid)
+    assert [entry for entry in caplog.records if entry.levelno == logging.CRITICAL] == []
+    errors = [entry for entry in caplog.records if entry.levelno == logging.ERROR]
+    assert len(errors) == 1
+    assert isinstance(errors[0].exc_info[1], sqlite3.OperationalError)
+
+
+@pytest.mark.asyncio
+async def test_failed_reread_of_pending_calls_is_logged_before_it_raises(prod_config, prod_db, monkeypatch, caplog):
+    """When the row-by-row re-read raises as well, the failed read is already in the log."""
+
+    def locked(*args):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(prod_db, "get_pending_call_records", locked)
+    twilio = create_autospec(TwilioClient, instance=True)
+    state_machine = AlertStateMachine(prod_db, twilio, prod_config, push_client=ExpoPushClient(prod_config))
+    monkeypatch.setattr(state_machine, "_parse_alert_record_rows", locked)
+
+    with (
+        caplog.at_level(logging.WARNING, logger="sentinel.alerts.state_machine"),
+        pytest.raises(sqlite3.OperationalError),
+    ):
+        await state_machine.check_pending_calls()
+
+    assert "Pending call check: alert records could not be read together" in caplog.text
+    twilio.get_call_status.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("minutes_ago", "call_expected"),
+    [(60, True), (1, False)],
+    ids=["interval-elapsed", "within-interval"],
+)
+async def test_call_time_without_time_zone_is_read_as_utc(
+    prod_config,
+    prod_db,
+    store_critical_event,
+    twilio_sdk,
+    expo_send_push,
+    instant_alert_sleep,
+    minutes_ago,
+    call_expected,
+):
+    """A stored call time without a time zone counts as UTC for the retry interval instead of raising."""
+    event = store_critical_event()
+    sent_at = datetime.now(UTC) - timedelta(minutes=minutes_ago)
+    record = AlertRecord(
+        event_id=event.id,
+        alert_type="phone_call",
+        twilio_sid=f"CA{uuid4().hex}",
+        status="no-answer",
+        attempt_number=1,
+        sent_at=sent_at,
+        message_body="Alarm",
+    )
+    prod_db.insert_alert_record(record)
+    prod_db.conn.execute(
+        "UPDATE alert_records SET sent_at = ? WHERE id = ?", (sent_at.replace(tzinfo=None).isoformat(), record.id)
+    )
+    prod_db.conn.commit()
+
+    await _state_machine(prod_config, prod_db).process_event(event)
+
+    calls = prod_config.alerts.acknowledgment.max_call_retries if call_expected else 0
+    assert twilio_sdk.calls.create.call_count == calls
+
+
+@pytest.mark.asyncio
+async def test_direct_call_reads_the_event_alert_records(
+    prod_config, prod_db, store_critical_event, twilio_sdk, instant_alert_sleep
+):
+    """Called without records (the ``--test-alert`` path), the call reads them and keeps the retry interval."""
+    event = store_critical_event()
+    prod_db.insert_alert_record(
+        AlertRecord(
+            event_id=event.id,
+            alert_type="phone_call",
+            twilio_sid=f"CA{uuid4().hex}",
+            status="no-answer",
+            attempt_number=1,
+            sent_at=datetime.now(UTC),
+            message_body="Alarm",
+        )
+    )
+
+    await _state_machine(prod_config, prod_db)._execute_phone_call(event)
+
+    assert twilio_sdk.calls.create.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_followup_sms_uses_snapshot_when_event_cannot_be_reread(
+    prod_config, prod_db, store_critical_event, twilio_sdk, expo_send_push, instant_alert_sleep, monkeypatch, caplog
+):
+    """An acknowledged round still sends its follow-up SMS when the event row cannot be read."""
+    event = store_critical_event()
+
+    def inbound_replies(**kwargs):
+        if twilio_sdk.calls.create.call_count == 0:
+            return []
+        return [SimpleNamespace(body=CODE)]
+
+    def unreadable_row(event_id):
+        raise ValueError("Invalid isoformat string: 'garbage'")
+
+    twilio_sdk.messages.list.side_effect = inbound_replies
+    monkeypatch.setattr(prod_db, "get_event_by_id", unreadable_row)
+
+    with caplog.at_level(logging.ERROR, logger="sentinel.alerts.state_machine"):
+        await _state_machine(prod_config, prod_db).process_event(event)
+
+    confirmation, followup = _sms_bodies(twilio_sdk)
+    assert CODE in confirmation
+    assert event.summary_pl in followup
+    assert "follow-up SMS from the in-memory snapshot" in caplog.text
+    (acknowledged_at,) = prod_db.conn.execute("SELECT acknowledged_at FROM events WHERE id = ?", (event.id,)).fetchone()
+    assert acknowledged_at is not None

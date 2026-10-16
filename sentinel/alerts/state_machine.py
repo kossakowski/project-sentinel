@@ -84,6 +84,11 @@ PUSH_DATA_MAX_BYTES = 3500
 PUSH_BODY_SUMMARY_MAX_CHARS = 80
 
 
+def _as_utc(value: datetime) -> datetime:
+    """Read a timestamp without a time zone as UTC, the zone every writer stores."""
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
 def _cap_sms_summary(summary_pl: str) -> str:
     """Bound the classifier summary to ``SMS_SUMMARY_MAX_CHARS`` characters.
 
@@ -532,13 +537,8 @@ class AlertStateMachine:
         try:
             pending_calls = self.db.get_pending_call_records()
         except Exception:
-            pending_calls, unreadable = self._parse_alert_record_rows(_PENDING_CALL_RECORDS_SQL, ())
-            self.logger.critical(
-                "Pending call records could not be read together; checking the readable ones and skipping "
-                "%d unreadable record(s): %s",
-                len(unreadable),
-                ", ".join(unreadable) or "none",
-                exc_info=True,
+            pending_calls, unreadable = self._reread_alert_records(
+                _PENDING_CALL_RECORDS_SQL, (), "Pending call check", "checking the readable ones"
             )
             failed_record_ids.extend(unreadable)
         for record in pending_calls:
@@ -636,23 +636,56 @@ class AlertStateMachine:
         A single unreadable row must not cost a 9-10 event its call.  When the
         normal read raises, the rows are parsed one by one and the unreadable
         ones are named in one critical log line.  They then take no part in the
-        delivery decisions: an unreadable pending call no longer holds the
-        event back, and an unreadable delivered SMS or push no longer
-        suppresses a resend.
+        delivery decisions, which has these effects until the rows are
+        repaired:
+
+        - An unreadable pending call no longer holds the event back.
+        - An unreadable delivered SMS or push no longer suppresses a resend.
+        - An unreadable call no longer counts for the retry interval or the
+          attempt number, so the next round can start sooner than
+          ``retry_interval_minutes`` allows.
+        - On an acknowledged event, an escalation update is sent only when a
+          readable record shows an earlier delivered revision.  When every
+          delivered record is unreadable, no update SMS or push goes out.
         """
         try:
             return self.db.get_alert_records(event_id)
         except Exception:
-            records, unreadable = self._parse_alert_record_rows(_EVENT_ALERT_RECORDS_SQL, (event_id,))
-            self.logger.critical(
-                "Event %s: alert records could not be read together; deciding delivery without "
-                "%d unreadable record(s): %s",
-                event_id,
-                len(unreadable),
-                ", ".join(unreadable) or "none",
-                exc_info=True,
+            records, _ = self._reread_alert_records(
+                _EVENT_ALERT_RECORDS_SQL, (event_id,), f"Event {event_id}", "deciding delivery without them"
             )
             return records
+
+    def _reread_alert_records(
+        self, sql: str, params: tuple, context: str, consequence: str
+    ) -> tuple[list[AlertRecord], list[str]]:
+        """Re-read alert records row by row after the normal read raised.
+
+        Call it inside the ``except`` block of that read, so its traceback is
+        logged.  A warning is written before the re-read, so the failure is on
+        record even when the re-read raises too.  Unreadable rows are named in
+        one critical line.  When every row is readable the first read failed
+        for another reason (for example a locked database), which is logged as
+        an error.  Returns the readable records and the unreadable row ids.
+        """
+        self.logger.warning("%s: alert records could not be read together; re-reading them row by row", context)
+        records, unreadable = self._parse_alert_record_rows(sql, params)
+        if unreadable:
+            self.logger.critical(
+                "%s: %d alert record(s) cannot be read, %s: %s",
+                context,
+                len(unreadable),
+                consequence,
+                ", ".join(unreadable),
+                exc_info=True,
+            )
+        else:
+            self.logger.error(
+                "%s: the alert records could not be read together, but every row was readable on its own",
+                context,
+                exc_info=True,
+            )
+        return records, unreadable
 
     def _parse_alert_record_rows(self, sql: str, params: tuple) -> tuple[list[AlertRecord], list[str]]:
         """Run ``sql`` on alert_records and parse each row on its own.
@@ -688,7 +721,7 @@ class AlertStateMachine:
         # cycle, check that enough time has elapsed
         call_records = [a for a in existing_alerts if a.alert_type == "phone_call"]
         if call_records:
-            last_call_time = max(a.sent_at for a in call_records)
+            last_call_time = max(_as_utc(a.sent_at) for a in call_records)
             retry_interval = timedelta(minutes=self.config.alerts.acknowledgment.retry_interval_minutes)
             if datetime.now(UTC) < last_call_time + retry_interval:
                 self.logger.debug(
@@ -751,7 +784,7 @@ class AlertStateMachine:
                         "Event %s: confirmation SMS failed to deliver, resending",
                         event.id[:8],
                     )
-                    await self._send_confirmation_sms_guarded(event)
+                    await self._send_confirmation_sms_guarded(event, new_code=False)
 
             # Brief pause between retries
             if attempt < max_per_round:
@@ -783,24 +816,27 @@ class AlertStateMachine:
             event.id[:8],
             total_attempts,
         )
-        await self._send_followup_sms(event.id)
+        await self._send_followup_sms(event)
 
-    async def _send_confirmation_sms_guarded(self, event: Event) -> None:
+    async def _send_confirmation_sms_guarded(self, event: Event, *, new_code: bool = True) -> None:
         """Send the confirmation SMS; log any error instead of raising it.
 
         The call round goes on without the SMS: the call is the alarm, and an
         error in its confirmation message must never prevent it.
         """
         try:
-            await self._send_confirmation_sms(event)
+            await self._send_confirmation_sms(event, new_code=new_code)
         except Exception:
             self.logger.exception("Event %s: confirmation SMS failed; placing the call anyway", event.id[:8])
 
-    async def _send_confirmation_sms(self, event: Event) -> None:
-        """Send an SMS with a fresh confirmation code from ``code_factory``.
+    async def _send_confirmation_sms(self, event: Event, *, new_code: bool = True) -> None:
+        """Send an SMS with the round's confirmation code.
 
-        The summary is capped like the alert SMS, so a long summary can never
-        push the code out of the transport's length limit.
+        A round draws a fresh code from ``code_factory``.  A resend within the
+        round (``new_code=False``) repeats that code: a send that timed out can
+        still have reached the owner, who may already reply with it.  The
+        summary is capped like the alert SMS, so a long summary can never push
+        the code out of the transport's length limit.
         """
         phone_number = self.config.alerts.phone_number
         event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
@@ -810,7 +846,8 @@ class AlertStateMachine:
         self._confirmation_sms_sid = None
 
         # Generate the confirmation code and store it for verification
-        self._confirmation_code = self._code_factory()
+        if new_code or not getattr(self, "_confirmation_code", None):
+            self._confirmation_code = self._code_factory()
 
         message = (
             f"PROJECT SENTINEL: {event_type_pl}\n\n"
@@ -968,15 +1005,28 @@ class AlertStateMachine:
             self.db.update_event(record.event_id, alert_status="retry_pending")
         # If still in-progress/queued/ringing, leave as-is
 
-    async def _send_followup_sms(self, event_id: str) -> None:
-        """Send a follow-up SMS after a call is acknowledged."""
-        event = self.db.get_event_by_id(event_id)
-        if event is None:
+    async def _send_followup_sms(self, event: Event) -> None:
+        """Send a follow-up SMS after a call is acknowledged.
+
+        The SMS is built from the stored event row.  When that row cannot be
+        read, it is built from the snapshot the call round alerted from.
+        """
+        try:
+            stored = self.db.get_event_by_id(event.id)
+        except Exception:
+            self.logger.error(
+                "Could not re-read event %s; sending the follow-up SMS from the in-memory snapshot",
+                event.id,
+                exc_info=True,
+            )
+            stored = event
+        if stored is None:
             return
+        event = stored
 
         phone_number = self.config.alerts.phone_number
         message = _format_sms_message(event, self.db, self.config)
-        record = await asyncio.to_thread(self.twilio.send_sms, phone_number, message, event_id)
+        record = await asyncio.to_thread(self.twilio.send_sms, phone_number, message, event.id)
         if record is not None:
             self._record_alert(record, event)
 
@@ -1021,7 +1071,15 @@ class AlertStateMachine:
             data,
         )
         if record is not None:
-            self._record_alert(record, event)
+            try:
+                self._record_alert(record, event)
+            except Exception:
+                # The phone already has this push; only its record is missing.
+                self.logger.error(
+                    "Event %s: push was sent but its record could not be saved; the next dispatch may send it again",
+                    event.id,
+                )
+                raise
             self.logger.info("Push alert recorded for event %s", event.id[:8])
 
     def _record_alert(self, record: AlertRecord, event: Event) -> None:

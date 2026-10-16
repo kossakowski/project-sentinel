@@ -31,7 +31,7 @@ This page mirrors `sentinel/config.py` key by key. It names three different sour
 | Loader | `sentinel/config.py:load_config()` → returns `SentinelConfig` |
 | `.env` | Loaded via `python-dotenv` before substitution, only if the package is installed; it does not override variables already set |
 | Top-level model | `SentinelConfig` (wraps all sections below) |
-| Unknown keys | Rejected. Every model forbids extra keys, so a misspelled key (for example `max_call_retires`) fails loading with `ConfigError` instead of silently falling back to the code default. |
+| Unknown keys | Rejected. Every model forbids extra keys, so a misspelled key (for example `max_call_retires`) fails loading with `ConfigError` instead of silently falling back to the code default. Free-form fields are the exception: the entries of `monitoring.target_countries` and `monitoring.aggressor_countries`, `classification.policy` and `classification.incident_memory.weekday_aliases` are plain dictionaries, so a misspelled key inside them still loads. |
 
 Env-var substitution rules (`sentinel/config.py:_substitute_env_vars`):
 
@@ -39,6 +39,8 @@ Env-var substitution rules (`sentinel/config.py:_substitute_env_vars`):
 - There is no default syntax. `${A:-b}` looks up a variable literally named `A:-b`.
 - The live config references `ALERT_PHONE_NUMBER`, `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` and `EXPO_PUSH_TOKEN`, so all four must be set for it to load.
 - In production the variables come from `/etc/sentinel/sentinel.env`, the systemd `EnvironmentFile`.
+
+Strict loading and deploys: code that rejects unknown keys also rejects an older config that still carries a key removed from the models (for example `sources.gdelt.update_interval_minutes`, which the tracked configs no longer carry). The deploy checks out the new code before it syncs `config/config.yaml` to `/etc/sentinel/config.yaml`, and the service restarts on failure. A restart in that window, or new code restored together with an older backup config, therefore fails at startup with `ConfigError` until the matching config is in place. Roll code and config back together.
 
 ---
 
@@ -366,7 +368,7 @@ Acknowledgment is by an SMS reply with a 6-digit code. The code SMS is sent befo
 | `retry_interval_minutes` | int | `5` | `5` | Minimum wait after the last call before a new round starts |
 | `cooldown_hours` | int | `6` | `6` | Defined but not read (no effect) |
 | `call_poll_timeout_seconds` | int | (omitted → `90`) | `90` | Max seconds to wait for a placed call to finish (and for an SMS reply) before moving to the next attempt; read by `_wait_for_call_and_check_sms`. Template: `90`. |
-| `call_poll_interval_seconds` | int | (omitted → `5`) | `5` | Seconds between Twilio call-status / inbound-SMS polls during the wait loop. Template: `5`. |
+| `call_poll_interval_seconds` | int > 0 | (omitted → `5`) | `5` | Seconds between Twilio call-status / inbound-SMS polls during the wait loop. `0` or less fails loading, because the wait loop would never end. Template: `5`. |
 | `call_retry_pause_seconds` | int | (omitted → `10`) | `10` | Seconds to pause between call attempts within a single round. Template: `10`. |
 
 A round that ends without acknowledgment sets the event to `retry_pending`. A new round starts only when the event is dispatched again (a new article joins it in a later cycle) and `retry_interval_minutes` has passed. No idle-cycle sweep re-dispatches `retry_pending` events.

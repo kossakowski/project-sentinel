@@ -134,7 +134,8 @@ class AcknowledgmentConfig(_StrictModel):
     retry_interval_minutes: int = 5
     cooldown_hours: int = 6
     call_poll_timeout_seconds: int = 90
-    call_poll_interval_seconds: int = 5
+    # Zero or less never advances the call-wait loop, so it would never end.
+    call_poll_interval_seconds: int = Field(default=5, gt=0)
     call_retry_pause_seconds: int = 10
 
 

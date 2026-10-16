@@ -227,3 +227,14 @@ def test_twilio_timeout_must_be_positive(load_with, timeout):
 
     with pytest.raises(ConfigError, match="http_timeout_seconds"):
         load_with(edit)
+
+
+@pytest.mark.parametrize("interval", [0, -1])
+def test_call_poll_interval_must_be_positive(load_with, interval):
+    """A poll interval of zero or less would keep the call-wait loop from ever ending."""
+
+    def edit(cfg):
+        cfg["alerts"]["acknowledgment"]["call_poll_interval_seconds"] = interval
+
+    with pytest.raises(ConfigError, match="call_poll_interval_seconds"):
+        load_with(edit)
