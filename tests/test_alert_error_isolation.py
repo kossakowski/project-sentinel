@@ -705,3 +705,84 @@ async def test_unreadable_event_row_does_not_stop_pending_call_check(
     assert len(failures) == 1
     assert broken.id in failures[0].getMessage()
     assert failures[0].exc_info is not None
+
+
+def _corrupt_sent_at(db, record_id: str) -> None:
+    """Make one stored alert record unparseable (its sent_at is no longer an ISO timestamp)."""
+    db.conn.execute("UPDATE alert_records SET sent_at = 'garbage' WHERE id = ?", (record_id,))
+    db.conn.commit()
+
+
+@pytest.mark.asyncio
+async def test_unreadable_call_record_does_not_stop_pending_call_check(
+    prod_config, prod_db, store_critical_event, caplog
+):
+    """A pending call record that cannot be parsed is named and skipped; the other calls are still checked."""
+    broken, healthy = store_critical_event(), store_critical_event()
+    broken_call = _pending_call(prod_db, broken.id)
+    healthy_call = _pending_call(prod_db, healthy.id)
+    _corrupt_sent_at(prod_db, broken_call.id)
+    twilio = create_autospec(TwilioClient, instance=True)
+    twilio.get_call_status.return_value = {"status": "no-answer", "duration": 0}
+    state_machine = AlertStateMachine(prod_db, twilio, prod_config, push_client=ExpoPushClient(prod_config))
+
+    with caplog.at_level(logging.CRITICAL, logger="sentinel.alerts.state_machine"):
+        failed = await state_machine.check_pending_calls()
+
+    assert failed == [broken_call.id]
+    twilio.get_call_status.assert_called_once_with(healthy_call.twilio_sid)
+    assert [record.status for record in prod_db.get_alert_records(healthy.id)] == ["no-answer"]
+    assert prod_db.get_event_by_id(healthy.id).alert_status == "retry_pending"
+    failures = [record for record in caplog.records if record.levelno == logging.CRITICAL]
+    assert len(failures) == 1
+    assert broken_call.id in failures[0].getMessage()
+    assert failures[0].exc_info is not None
+
+    # The next cycle reports the unreadable record again instead of raising.
+    assert await state_machine.check_pending_calls() == [broken_call.id]
+    assert twilio.get_call_status.call_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("alert_type", "status"),
+    [("phone_call", "initiated"), ("push", "sent")],
+    ids=["pending-call", "delivered-push"],
+)
+async def test_unreadable_alert_record_does_not_cost_the_call(
+    prod_config,
+    prod_db,
+    store_critical_event,
+    twilio_sdk,
+    expo_send_push,
+    instant_alert_sleep,
+    caplog,
+    alert_type,
+    status,
+):
+    """An alert record of the event that cannot be parsed is left out; the 9-10 event still gets push, SMS and call."""
+    event = store_critical_event()
+    record = AlertRecord(
+        event_id=event.id,
+        alert_type=alert_type,
+        twilio_sid=f"X{uuid4().hex}",
+        status=status,
+        attempt_number=1,
+        sent_at=datetime.now(UTC),
+        message_body="Alarm",
+    )
+    prod_db.insert_alert_record(record)
+    _corrupt_sent_at(prod_db, record.id)
+
+    with caplog.at_level(logging.CRITICAL, logger="sentinel.alerts.state_machine"):
+        await _state_machine(prod_config, prod_db).process_event(event)
+
+    assert expo_send_push.call_count == 1
+    assert twilio_sdk.messages.create.call_count == 1
+    assert CODE in _sms_bodies(twilio_sdk)[0]
+    assert twilio_sdk.calls.create.call_count == prod_config.alerts.acknowledgment.max_call_retries
+    failures = [entry for entry in caplog.records if entry.levelno == logging.CRITICAL]
+    assert len(failures) == 1
+    assert event.id in failures[0].getMessage()
+    assert record.id in failures[0].getMessage()
+    assert failures[0].exc_info is not None

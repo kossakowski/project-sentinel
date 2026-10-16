@@ -44,6 +44,16 @@ SMS_MAX_CHARS = 1500
 # prompted for "1-2 zdania" upstream but is not capped anywhere.
 SMS_SUMMARY_MAX_CHARS = 600
 
+# Row-by-row reads of alert_records. Database.get_alert_records and
+# get_pending_call_records parse every row in one go, so a single row whose
+# stored values cannot be parsed (for example a malformed sent_at) makes the
+# whole read raise. When that happens the alert path runs the same query again
+# and parses each row on its own, so only the unreadable rows are left out.
+_EVENT_ALERT_RECORDS_SQL = "SELECT * FROM alert_records WHERE event_id = ? ORDER BY sent_at"
+_PENDING_CALL_RECORDS_SQL = (
+    "SELECT * FROM alert_records WHERE alert_type = 'phone_call' AND status IN ('initiated', 'ringing')"
+)
+
 # Reserve room for the "- …i N więcej" trailer when trimming sources.
 _SOURCES_TRAILER_RESERVE = 40
 
@@ -420,7 +430,9 @@ class AlertStateMachine:
         merge or escalation.  Prefer the row just persisted by that workflow so
         delivery decisions always use its current notification revision.  When
         that row cannot be read, the snapshot is alerted instead, so a broken
-        row never costs the event its call.
+        row never costs the event its call.  The same holds for the event's
+        alert records: an unreadable record is left out of the delivery
+        decisions instead of stopping them (see ``_read_alert_records``).
         """
         try:
             persisted_event = self.db.get_event_by_id(event.id)
@@ -433,7 +445,7 @@ class AlertStateMachine:
             persisted_event = None
         if persisted_event is not None:
             event = persisted_event
-        existing_alerts = self.db.get_alert_records(event.id)
+        existing_alerts = self._read_alert_records(event.id)
 
         if self._is_acknowledged(existing_alerts) or event.acknowledged_at is not None:
             # An acknowledgement stops further calls, but it must not hide a
@@ -508,13 +520,27 @@ class AlertStateMachine:
         Called on each scheduler cycle. Records are isolated from each other:
         an exception while one record is checked (for example, its event row
         cannot be read) is logged with its traceback and the remaining records
-        are still checked, so the caller's cleanup still runs.
+        are still checked, so the caller's cleanup still runs.  A pending
+        record that cannot even be parsed is skipped the same way and logged
+        on every cycle until the row is repaired.
 
-        Returns the ids of the alert records whose check raised, so the caller
-        can count them and report the cycle as unhealthy.
+        Returns the ids of the alert records whose check raised or that could
+        not be parsed, so the caller can count them and report the cycle as
+        unhealthy.
         """
         failed_record_ids: list[str] = []
-        pending_calls = self.db.get_pending_call_records()
+        try:
+            pending_calls = self.db.get_pending_call_records()
+        except Exception:
+            pending_calls, unreadable = self._parse_alert_record_rows(_PENDING_CALL_RECORDS_SQL, ())
+            self.logger.critical(
+                "Pending call records could not be read together; checking the readable ones and skipping "
+                "%d unreadable record(s): %s",
+                len(unreadable),
+                ", ".join(unreadable) or "none",
+                exc_info=True,
+            )
+            failed_record_ids.extend(unreadable)
         for record in pending_calls:
             try:
                 status = await asyncio.to_thread(self.twilio.get_call_status, record.twilio_sid)
@@ -604,6 +630,45 @@ class AlertStateMachine:
             for alert in alerts
         )
 
+    def _read_alert_records(self, event_id: str) -> list[AlertRecord]:
+        """Return the alert records of ``event_id``, leaving out rows that cannot be parsed.
+
+        A single unreadable row must not cost a 9-10 event its call.  When the
+        normal read raises, the rows are parsed one by one and the unreadable
+        ones are named in one critical log line.  They then take no part in the
+        delivery decisions: an unreadable pending call no longer holds the
+        event back, and an unreadable delivered SMS or push no longer
+        suppresses a resend.
+        """
+        try:
+            return self.db.get_alert_records(event_id)
+        except Exception:
+            records, unreadable = self._parse_alert_record_rows(_EVENT_ALERT_RECORDS_SQL, (event_id,))
+            self.logger.critical(
+                "Event %s: alert records could not be read together; deciding delivery without "
+                "%d unreadable record(s): %s",
+                event_id,
+                len(unreadable),
+                ", ".join(unreadable) or "none",
+                exc_info=True,
+            )
+            return records
+
+    def _parse_alert_record_rows(self, sql: str, params: tuple) -> tuple[list[AlertRecord], list[str]]:
+        """Run ``sql`` on alert_records and parse each row on its own.
+
+        Returns the readable records in query order and the ids of the rows
+        that could not be parsed.
+        """
+        records: list[AlertRecord] = []
+        unreadable: list[str] = []
+        for row in self.db.conn.execute(sql, params).fetchall():
+            try:
+                records.append(AlertRecord.from_row(row))
+            except Exception:
+                unreadable.append(str(row["id"]))
+        return records, unreadable
+
     def _is_acknowledged(self, alerts: list[AlertRecord]) -> bool:
         """Check if any alert for this event was acknowledged."""
         return any(a.status == "acknowledged" for a in alerts)
@@ -617,7 +682,7 @@ class AlertStateMachine:
         triggers another round. Never stops until acknowledged.
         """
         if existing_alerts is None:
-            existing_alerts = self.db.get_alert_records(event.id)
+            existing_alerts = self._read_alert_records(event.id)
 
         # Enforce retry interval: if there was a previous call from a prior
         # cycle, check that enough time has elapsed
