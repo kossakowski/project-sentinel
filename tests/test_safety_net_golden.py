@@ -18,7 +18,8 @@ The urgency-10 scenario writes nothing: it compares the exact push ``data``,
 SMS bodies and TwiML against the files in ``tests/golden/``. Run pytest with
 ``--update-golden`` to rewrite them after an intended change, and review the
 diff. The routing table golden pins ``_determine_action`` over urgency 0-10 and
-1-3 sources on the live tiers.
+1-3 sources on the live tiers; it is frozen, and ``--update-golden`` does not
+rewrite it.
 """
 
 import csv
@@ -148,12 +149,13 @@ LOW_URGENCY = Scenario(
         "Polscy politycy krytykują wypowiedź rosyjskiego ambasadora o rzekomym ataku militarnym. "
         "Resort dyplomacji wezwał ambasadora na rozmowę, a wojsko nie odnotowało żadnego incydentu."
     ),
+    # Military, so only the urgency (below the corroborator's _MIN_EVENT_URGENCY)
+    # keeps this article from becoming an event.
     answer=_answer(
-        event_type="none",
+        event_type="other",
         urgency=3,
         countries=[],
         summary_pl="Polscy politycy krytykują wypowiedź rosyjskiego ambasadora; nie doszło do żadnego ataku.",
-        is_military=False,
     ),
 )
 
@@ -442,8 +444,9 @@ def _routing_table_csv(config) -> str:
     return buffer.getvalue()
 
 
-def test_routing_table_golden_matches_current_routing(prod_config, update_golden):
-    _assert_golden("routing_table.csv", _routing_table_csv(prod_config), update_golden)
+def test_routing_table_golden_matches_current_routing(prod_config):
+    # 1.10: the table was generated once and is frozen, so --update-golden never rewrites it.
+    _assert_golden("routing_table.csv", _routing_table_csv(prod_config), update=False)
 
 
 # ---------------------------------------------------------------------------
@@ -465,12 +468,18 @@ def test_network_guard_blocks_outbound():
     try:
         with pytest.raises(OSError, match="blocked during tests"):
             datagram.sendto(b"probe", ("1.1.1.1", 53))
+        with pytest.raises(OSError, match="blocked during tests"):
+            datagram.sendmsg([b"probe"], [], 0, ("1.1.1.1", 53))
     finally:
         datagram.close()
 
     # A hostname is refused before any DNS query leaves the machine.
     with pytest.raises(OSError, match="blocked during tests"):
         socket.create_connection(("example.com", 443), timeout=1)
+    with pytest.raises(OSError, match="blocked during tests"):
+        socket.gethostbyname("example.com")
+    with pytest.raises(OSError, match="blocked during tests"):
+        socket.gethostbyname_ex("example.com")
     with pytest.raises(httpx.ConnectError, match="blocked during tests"):
         httpx.get("https://example.com/", timeout=1)
 

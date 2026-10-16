@@ -58,7 +58,10 @@ class NetworkAccessBlocked(OSError):
 _REAL_SOCKET_CONNECT = socket.socket.connect
 _REAL_SOCKET_CONNECT_EX = socket.socket.connect_ex
 _REAL_SOCKET_SENDTO = socket.socket.sendto
+_REAL_SOCKET_SENDMSG = socket.socket.sendmsg
 _REAL_GETADDRINFO = socket.getaddrinfo
+_REAL_GETHOSTBYNAME = socket.gethostbyname
+_REAL_GETHOSTBYNAME_EX = socket.gethostbyname_ex
 _LOCAL_HOSTNAMES = frozenset({"localhost", "localhost.localdomain", "ip6-localhost", "ip6-loopback"})
 
 
@@ -102,7 +105,15 @@ def _guarded_sendto(self, data, *flags_and_address):
     return _REAL_SOCKET_SENDTO(self, data, *flags_and_address)
 
 
-def _guarded_getaddrinfo(host, *args, **kwargs):
+def _guarded_sendmsg(self, buffers, *rest):
+    # sendmsg(buffers[, ancdata[, flags[, address]]]): only an explicit address
+    # needs checking; a connected socket already passed connect().
+    if len(rest) >= 3 and rest[2] is not None and not _is_local_target(self, rest[2]):
+        raise NetworkAccessBlocked(rest[2])
+    return _REAL_SOCKET_SENDMSG(self, buffers, *rest)
+
+
+def _refuse_hostname_lookup(host: object) -> None:
     # None (passive bind) and numeric addresses resolve locally without DNS;
     # a numeric non-loopback address is still refused at connect().
     if host is not None and not _is_local_host(host):
@@ -110,16 +121,39 @@ def _guarded_getaddrinfo(host, *args, **kwargs):
             ipaddress.ip_address(host.decode() if isinstance(host, bytes) else host)
         except ValueError:
             raise NetworkAccessBlocked(host) from None
+
+
+def _guarded_getaddrinfo(host, *args, **kwargs):
+    _refuse_hostname_lookup(host)
     return _REAL_GETADDRINFO(host, *args, **kwargs)
+
+
+def _guarded_gethostbyname(hostname):
+    _refuse_hostname_lookup(hostname)
+    return _REAL_GETHOSTBYNAME(hostname)
+
+
+def _guarded_gethostbyname_ex(hostname):
+    _refuse_hostname_lookup(hostname)
+    return _REAL_GETHOSTBYNAME_EX(hostname)
 
 
 @pytest.fixture(autouse=True)
 def _block_network(monkeypatch):
-    """Refuse every non-loopback socket connection or datagram and every DNS lookup of a real hostname."""
+    """Refuse non-loopback traffic and forward DNS lookups of real hostnames.
+
+    Covered: ``socket.connect``, ``connect_ex``, ``sendto`` and ``sendmsg`` to a
+    non-loopback address, and ``getaddrinfo``, ``gethostbyname`` and
+    ``gethostbyname_ex`` for a hostname other than localhost. Reverse lookups
+    (``gethostbyaddr``, ``getnameinfo``) are not intercepted.
+    """
     monkeypatch.setattr(socket.socket, "connect", _guarded_connect)
     monkeypatch.setattr(socket.socket, "connect_ex", _guarded_connect_ex)
     monkeypatch.setattr(socket.socket, "sendto", _guarded_sendto)
+    monkeypatch.setattr(socket.socket, "sendmsg", _guarded_sendmsg)
     monkeypatch.setattr(socket, "getaddrinfo", _guarded_getaddrinfo)
+    monkeypatch.setattr(socket, "gethostbyname", _guarded_gethostbyname)
+    monkeypatch.setattr(socket, "gethostbyname_ex", _guarded_gethostbyname_ex)
 
 
 # ---------------------------------------------------------------------------
@@ -188,14 +222,15 @@ class _FrozenDatetime(datetime):
 _SQL_TIME_FUNCTIONS = ("datetime", "date", "julianday", "unixepoch")
 
 
-def _install_frozen_sql_clock(conn: sqlite3.Connection) -> None:
+def _install_frozen_sql_clock(conn: sqlite3.Connection) -> sqlite3.Connection:
     """Make SQLite's own 'now' equal ``FROZEN_NOW`` on this connection.
 
     ``Database`` compares some windows against SQLite's ``datetime('now', …)``
     (the end-of-cycle retention cleanup among them). Without this, rows stamped
     at the frozen instant would age against the real wall clock. The overrides
     replace a 'now' (or missing) time value with the frozen instant and let
-    SQLite's built-in function, on a private connection, do the rest.
+    SQLite's built-in function, on a private connection, do the rest. Returns
+    that private connection so the caller can close it with ``conn``.
     """
     builtin = sqlite3.connect(":memory:", check_same_thread=False)
     frozen_sql_now = FROZEN_NOW.strftime("%Y-%m-%d %H:%M:%S")
@@ -212,6 +247,20 @@ def _install_frozen_sql_clock(conn: sqlite3.Connection) -> None:
 
     for function_name in _SQL_TIME_FUNCTIONS:
         conn.create_function(function_name, -1, make(function_name))
+    return builtin
+
+
+class _FrozenClockConnection(sqlite3.Connection):
+    """A connection whose ``close()`` also closes the private frozen-clock connection."""
+
+    _frozen_clock_builtin: sqlite3.Connection | None = None
+
+    def close(self) -> None:
+        try:
+            super().close()
+        finally:
+            if self._frozen_clock_builtin is not None:
+                self._frozen_clock_builtin.close()
 
 
 class _FrozenClockSqlite3:
@@ -222,8 +271,11 @@ class _FrozenClockSqlite3:
 
     @staticmethod
     def connect(*args, **kwargs):
+        kwargs.setdefault("factory", _FrozenClockConnection)
         conn = sqlite3.connect(*args, **kwargs)
-        _install_frozen_sql_clock(conn)
+        builtin = _install_frozen_sql_clock(conn)
+        if isinstance(conn, _FrozenClockConnection):
+            conn._frozen_clock_builtin = builtin
         return conn
 
 

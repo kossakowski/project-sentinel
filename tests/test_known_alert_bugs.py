@@ -5,7 +5,9 @@ Each test asserts the behaviour the alert path must have, and is marked
 fixed, its test passes, strict xfail turns that into a failure, and the mark
 must be removed; a failure with any other exception is reported as a real
 failure. The real ``AlertStateMachine`` and ``TwilioClient`` run on the live
-config; only the Twilio SDK and ``ExpoPushClient.send_push`` are faked.
+config; at the delivery edges only the Twilio SDK and ``ExpoPushClient.send_push``
+are faked. The A3 test also injects a database fault inside the system: it
+replaces the state machine's ``process_event`` so the first event raises.
 """
 
 import sqlite3
