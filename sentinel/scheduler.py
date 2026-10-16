@@ -54,6 +54,10 @@ class CycleResult:
     articles_classified: int
     events_created: int
     alerts_sent: int
+    # Events whose alerting raised plus pending-call records whose check raised.
+    # Each one is logged and isolated, so the cycle completes; a cycle with any
+    # of them is still reported as a failure in stats and health.json.
+    alert_failures: int = 0
 
 
 @dataclass
@@ -91,12 +95,20 @@ class PipelineStats:
         self._daily_alerts: int = 0
 
     def record_cycle(self, result: CycleResult) -> None:
-        """Record a successful cycle."""
+        """Record a completed cycle.
+
+        A cycle in which alerting failed for any event or pending call counts
+        as a failure: it extends the consecutive-failure streak instead of
+        resetting it.
+        """
         self.total_cycles += 1
         self.total_articles_fetched += result.articles_fetched
         self.total_events_detected += result.events_created
         self.total_alerts_sent += result.alerts_sent
-        self.consecutive_failures = 0
+        if result.alert_failures:
+            self.consecutive_failures += 1
+        else:
+            self.consecutive_failures = 0
 
         # Daily tracking
         today = datetime.now(UTC).strftime("%Y-%m-%d")
@@ -301,14 +313,16 @@ class SentinelPipeline:
             alertable_events = [e for e in events if e.alert_status != "pending"]
             self.logger.info("Events needing alerts: %d", len(alertable_events))
 
+            failed_event_ids: list[str] = []
+            failed_call_record_ids: list[str] = []
             if not diagnostic:
                 # Step 7: Dispatch alerts
-                await self.dispatcher.dispatch(alertable_events)
+                failed_event_ids = await self.dispatcher.dispatch(alertable_events)
 
                 # Step 8: Check pending call statuses from previous cycles. A dry
                 # run sends nothing, so it does not poll Twilio either.
                 if not self.config.testing.dry_run:
-                    await self.state_machine.check_pending_calls()
+                    failed_call_record_ids = await self.state_machine.check_pending_calls()
 
             # Build diagnostic data if requested (after corroboration so we capture events)
             if diagnostic:
@@ -335,7 +349,8 @@ class SentinelPipeline:
                 articles_relevant=len(relevant),
                 articles_classified=len(classifications),
                 events_created=len(events),
-                alerts_sent=len(alertable_events),
+                alerts_sent=len(alertable_events) - len(failed_event_ids),
+                alert_failures=len(failed_event_ids) + len(failed_call_record_ids),
             )
 
             self.stats.record_cycle(result)
@@ -343,7 +358,7 @@ class SentinelPipeline:
             self.logger.info(
                 "=== Cycle complete in %.1fs: "
                 "fetched=%d, unique=%d, relevant=%d, classified=%d, "
-                "events=%d, alerts=%d ===",
+                "events=%d, alerts=%d, alert_failures=%d ===",
                 cycle_duration,
                 result.articles_fetched,
                 result.articles_unique,
@@ -351,6 +366,7 @@ class SentinelPipeline:
                 result.articles_classified,
                 result.events_created,
                 result.alerts_sent,
+                result.alert_failures,
             )
 
             return result
@@ -555,7 +571,18 @@ class SentinelScheduler:
         """Run the pipeline with top-level error handling."""
         try:
             result = await self.pipeline.run_cycle(fast_only=fast_only)
-            self._update_health(healthy=True, result=result)
+            if result.alert_failures:
+                # The cycle finished, but alerting raised for some events or
+                # pending calls (each one logged at CRITICAL). Report it like
+                # a failed cycle so health.json does not read green.
+                error = (
+                    f"Alerting failed for {result.alert_failures} event(s) or pending call(s); "
+                    "see the CRITICAL log entries."
+                )
+                self._update_health(healthy=False, result=result, error=error)
+                self._check_pipeline_health()
+            else:
+                self._update_health(healthy=True, result=result)
             self._maybe_log_daily_summary()
         except Exception as e:
             lane = "fast" if fast_only else "slow"

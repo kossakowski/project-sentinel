@@ -15,7 +15,7 @@ class AlertDispatcher:
         self.dry_run = config.testing.dry_run
         self.logger = logging.getLogger("sentinel.alerts.dispatcher")
 
-    async def dispatch(self, events: list[Event]) -> None:
+    async def dispatch(self, events: list[Event]) -> list[str]:
         """Process all events that need alerting.
 
         Events are sorted by urgency (highest first) and processed
@@ -29,6 +29,9 @@ class AlertDispatcher:
         fault in one incident can never cost another incident its call. The
         method itself does not raise, so the caller's pending-call check and
         cleanup still run.
+
+        Returns the ids of the events whose alerting raised, so the caller can
+        count them and report the cycle as unhealthy.
         """
         # Classification can emit the same incident more than once in a batch
         # (for example, after sequential corroboration).  Alerting is an
@@ -46,6 +49,7 @@ class AlertDispatcher:
 
         sorted_events = sorted(current_events, key=lambda e: e.urgency_score, reverse=True)
 
+        failed_event_ids: list[str] = []
         for event in sorted_events:
             try:
                 if self.dry_run:
@@ -59,6 +63,8 @@ class AlertDispatcher:
                     event.urgency_score,
                     exc_info=True,
                 )
+                failed_event_ids.append(event.id)
+        return failed_event_ids
 
     def _persisted_or_snapshot(self, db: Database | None, event: Event) -> Event:
         """Return the persisted row of ``event``, or the snapshot when it cannot be read."""

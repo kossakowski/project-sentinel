@@ -6,11 +6,13 @@ on the live config; only the Twilio SDK ``Client`` and the Expo push are faked
 at the edges, as in ``test_known_alert_bugs.py``.
 """
 
+import json
 import logging
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, create_autospec, patch
 from uuid import uuid4
+from xml.sax.saxutils import escape as xml_escape
 
 import httpx
 import pytest
@@ -28,7 +30,7 @@ from sentinel.alerts.state_machine import (
 )
 from sentinel.alerts.twilio_client import TWIML_MAX_CHARS, TwilioClient
 from sentinel.models import AlertRecord, Event
-from sentinel.scheduler import SentinelPipeline
+from sentinel.scheduler import CycleResult, PipelineStats, SentinelPipeline, SentinelScheduler
 
 CODE = "135246"
 
@@ -290,9 +292,10 @@ async def test_dispatch_logs_failed_event_and_processes_the_rest(config, caplog)
     state_machine.process_event = AsyncMock(side_effect=process_event)
 
     with caplog.at_level(logging.CRITICAL, logger="sentinel.alerts.dispatcher"):
-        await AlertDispatcher(state_machine, config).dispatch([first, second, third])
+        failed = await AlertDispatcher(state_machine, config).dispatch([first, second, third])
 
     assert processed == [first.id, second.id, third.id]
+    assert failed == [first.id]
     failures = [record for record in caplog.records if record.levelno == logging.CRITICAL]
     assert len(failures) == 1
     assert first.id in failures[0].getMessage()
@@ -343,14 +346,113 @@ async def test_pending_call_check_and_cleanup_run_after_an_event_fails(config, t
 
         pipeline.corroborator.process_classifications = MagicMock(return_value=[failing, second])
         pipeline.state_machine.process_event = AsyncMock(side_effect=process_event)
-        pipeline.state_machine.check_pending_calls = AsyncMock()
+        pipeline.state_machine.check_pending_calls = AsyncMock(return_value=[])
         pipeline.db.cleanup_old_records = MagicMock(return_value=0)
 
-        await pipeline.run_cycle()
+        result = await pipeline.run_cycle()
 
         assert processed == [failing.id, second.id]
         pipeline.state_machine.check_pending_calls.assert_awaited_once()
         pipeline.db.cleanup_old_records.assert_called_once()
+        # Only the event that went through counts as alerted; the other is counted as a failure.
+        assert result.alerts_sent == 1
+        assert result.alert_failures == 1
+        assert pipeline.stats.consecutive_failures == 1
+    finally:
+        await pipeline.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_run_cycle_counts_failed_pending_call_checks(config, tmp_path):
+    config.database.path = str(tmp_path / "sentinel.db")
+    with (
+        patch.object(SentinelPipeline, "_init_fetchers", return_value=[]),
+        patch("sentinel.scheduler.Classifier"),
+        patch("sentinel.scheduler.TwilioClient"),
+    ):
+        pipeline = SentinelPipeline(config)
+    pipeline.classifier.aclose = AsyncMock()
+    try:
+        pipeline.corroborator.process_classifications = MagicMock(return_value=[])
+        pipeline.state_machine.check_pending_calls = AsyncMock(return_value=["record-1", "record-2"])
+        pipeline.db.cleanup_old_records = MagicMock(return_value=0)
+
+        result = await pipeline.run_cycle()
+
+        assert result.alert_failures == 2
+        pipeline.db.cleanup_old_records.assert_called_once()
+    finally:
+        await pipeline.shutdown()
+
+
+def _cycle_result(*, alert_failures: int) -> CycleResult:
+    return CycleResult(
+        cycle_start=datetime.now(UTC),
+        duration_seconds=1.0,
+        articles_fetched=1,
+        articles_unique=1,
+        articles_relevant=1,
+        articles_classified=1,
+        events_created=2,
+        alerts_sent=1,
+        alert_failures=alert_failures,
+    )
+
+
+def test_alert_failures_extend_the_failure_streak():
+    stats = PipelineStats()
+
+    stats.record_cycle(_cycle_result(alert_failures=1))
+    stats.record_cycle(_cycle_result(alert_failures=2))
+    assert stats.consecutive_failures == 2
+    assert stats.total_cycles == 2
+
+    stats.record_cycle(_cycle_result(alert_failures=0))
+    assert stats.consecutive_failures == 0
+
+
+@pytest.mark.asyncio
+async def test_cycle_with_alert_failures_reads_unhealthy(config, tmp_path):
+    """A cycle that finished but failed to alert an event is not reported as healthy."""
+    config.database.path = str(tmp_path / "sentinel.db")
+    with (
+        patch.object(SentinelPipeline, "_init_fetchers", return_value=[]),
+        patch("sentinel.scheduler.Classifier"),
+        patch("sentinel.scheduler.TwilioClient"),
+    ):
+        pipeline = SentinelPipeline(config)
+    pipeline.classifier.aclose = AsyncMock()
+    try:
+        outcome = {"alert_failures": 1}
+
+        async def run_cycle(fast_only=False):
+            result = _cycle_result(alert_failures=outcome["alert_failures"])
+            pipeline.stats.record_cycle(result)
+            return result
+
+        pipeline.run_cycle = run_cycle
+        pipeline._send_system_sms = MagicMock()
+        scheduler = SentinelScheduler(pipeline, config)
+        health_path = tmp_path / "health.json"
+
+        for _ in range(3):
+            await scheduler._run_with_error_handling()
+
+        health = json.loads(health_path.read_text())
+        assert health["is_healthy"] is False
+        assert "Alerting failed for 1" in health["last_error"]
+        assert health["consecutive_failures"] == 3
+        assert health["last_cycle_alerts_sent"] == 1
+        # The third failed cycle in a row sends the system SMS, as a crashed cycle does.
+        pipeline._send_system_sms.assert_called_once()
+
+        outcome["alert_failures"] = 0
+        await scheduler._run_with_error_handling()
+
+        health = json.loads(health_path.read_text())
+        assert health["is_healthy"] is True
+        assert health["last_error"] is None
+        assert health["consecutive_failures"] == 0
     finally:
         await pipeline.shutdown()
 
@@ -430,10 +532,35 @@ async def test_call_speaks_summary_beyond_sms_cap_in_full(
         assert document.count(f"{_MEDIUM_SUMMARY}. Źródła potwierdzające: 1. Pilność: 10 na 10.") == 2
 
 
+def _twiml_bytes(message: str) -> int:
+    return len(twilio_client_module._alert_twiml(xml_escape(message)).encode("utf-8"))
+
+
+def _longest_fitting_head(message: str) -> str:
+    """The longest head of ``message`` whose call TwiML, cut mark included, fits the limit.
+
+    Found by bisection over the head length, independently of the client's own
+    character-by-character scan.
+    """
+    low, high = 0, len(message)
+    while low < high:
+        middle = (low + high + 1) // 2
+        if _twiml_bytes(message[:middle] + "…") <= TWIML_MAX_CHARS:
+            low = middle
+        else:
+            high = middle - 1
+    return message[:low]
+
+
 @pytest.mark.parametrize(
     "message",
-    ["&" * 3000, "Atak 🚨 na Polskę <PL> & Litwę. " * 200],
-    ids=["escape-heavy", "emoji-and-markup"],
+    [
+        "&" * 3000,
+        "Atak 🚨 na Polskę <PL> & Litwę. " * 200,
+        "Российские войска атакуют Польшу. " * 150,
+        "Żółte śmigłowce ćwiczą nad Łodzią. " * 150,
+    ],
+    ids=["escape-heavy", "emoji-and-markup", "cyrillic", "polish-diacritics"],
 )
 def test_twilio_call_message_is_shortened_to_twiml_limit(prod_config, twilio_sdk, message, caplog):
     with caplog.at_level(logging.WARNING, logger="sentinel.alerts.twilio_client"):
@@ -443,8 +570,10 @@ def test_twilio_call_message_is_shortened_to_twiml_limit(prod_config, twilio_sdk
     (twiml,) = _twiml_sent(twilio_sdk)
     assert len(twiml.encode("utf-8")) <= TWIML_MAX_CHARS
     assert twiml.endswith("Potwierdź odbiór alertu. Odpisz na SMS kodem, który otrzymałeś.</Say></Response>")
-    assert record.message_body.endswith("…")
-    assert message.startswith(record.message_body[:-1])
+    # The message keeps the longest head that fits, not a shorter one.
+    head = _longest_fitting_head(message)
+    assert len(head) > 300
+    assert record.message_body == head.rstrip() + "…"
     assert "shortened" in caplog.text
 
 
@@ -530,3 +659,49 @@ async def test_unacknowledged_call_result_still_sets_retry_pending(prod_config, 
 
     assert prod_db.get_event_by_id(event.id).alert_status == "retry_pending"
     assert [record.status for record in prod_db.get_alert_records(event.id)] == ["no-answer"]
+
+
+def _pending_call(db, event_id: str) -> AlertRecord:
+    record = AlertRecord(
+        event_id=event_id,
+        alert_type="phone_call",
+        twilio_sid=f"CA{uuid4().hex}",
+        status="initiated",
+        attempt_number=1,
+        sent_at=datetime.now(UTC),
+        message_body="Alarm",
+    )
+    db.insert_alert_record(record)
+    return record
+
+
+@pytest.mark.asyncio
+async def test_unreadable_event_row_does_not_stop_pending_call_check(
+    prod_config, prod_db, store_critical_event, caplog
+):
+    """A call whose event row cannot be read is logged; the other pending calls are still checked."""
+    broken, healthy = store_critical_event(), store_critical_event()
+    broken_call = _pending_call(prod_db, broken.id)
+    _pending_call(prod_db, healthy.id)
+    prod_db.conn.execute("UPDATE events SET first_seen_at = 'garbage' WHERE id = ?", (broken.id,))
+    prod_db.conn.commit()
+    twilio = create_autospec(TwilioClient, instance=True)
+    twilio.get_call_status.return_value = {"status": "no-answer", "duration": 0}
+    state_machine = AlertStateMachine(prod_db, twilio, prod_config, push_client=ExpoPushClient(prod_config))
+
+    with caplog.at_level(logging.CRITICAL, logger="sentinel.alerts.state_machine"):
+        failed = await state_machine.check_pending_calls()
+
+    assert failed == [broken_call.id]
+    assert twilio.get_call_status.call_count == 2
+    # The other call is resolved and its event marked for retry.
+    assert [record.status for record in prod_db.get_alert_records(healthy.id)] == ["no-answer"]
+    assert prod_db.get_event_by_id(healthy.id).alert_status == "retry_pending"
+    # The unreadable event keeps its label; its call record is resolved and not checked again.
+    (label,) = prod_db.conn.execute("SELECT alert_status FROM events WHERE id = ?", (broken.id,)).fetchone()
+    assert label == "phone_call"
+    assert [record.id for record in prod_db.get_pending_call_records()] == []
+    failures = [record for record in caplog.records if record.levelno == logging.CRITICAL]
+    assert len(failures) == 1
+    assert broken.id in failures[0].getMessage()
+    assert failures[0].exc_info is not None

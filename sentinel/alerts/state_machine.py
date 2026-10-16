@@ -502,16 +502,33 @@ class AlertStateMachine:
             await self._execute_sms(event)
         # push-only / suppressed-SMS / log_only -> no Twilio SMS
 
-    async def check_pending_calls(self) -> None:
+    async def check_pending_calls(self) -> list[str]:
         """Check status of calls that were placed but not yet confirmed.
 
-        Called on each scheduler cycle.
+        Called on each scheduler cycle. Records are isolated from each other:
+        an exception while one record is checked (for example, its event row
+        cannot be read) is logged with its traceback and the remaining records
+        are still checked, so the caller's cleanup still runs.
+
+        Returns the ids of the alert records whose check raised, so the caller
+        can count them and report the cycle as unhealthy.
         """
+        failed_record_ids: list[str] = []
         pending_calls = self.db.get_pending_call_records()
         for record in pending_calls:
-            status = await asyncio.to_thread(self.twilio.get_call_status, record.twilio_sid)
-            if status is not None:
-                await self._handle_call_result(record, status)
+            try:
+                status = await asyncio.to_thread(self.twilio.get_call_status, record.twilio_sid)
+                if status is not None:
+                    await self._handle_call_result(record, status)
+            except Exception:
+                self.logger.critical(
+                    "Pending-call check failed for alert record %s (event %s); continuing with the remaining records",
+                    record.id,
+                    record.event_id,
+                    exc_info=True,
+                )
+                failed_record_ids.append(record.id)
+        return failed_record_ids
 
     def _determine_action(self, event: Event) -> str:
         """Resolve the delivery action for an event from the urgency tiers.
@@ -871,7 +888,9 @@ class AlertStateMachine:
                     duration,
                 )
             # An SMS-code reply can arrive while the call is still running; the
-            # event is then already acknowledged and keeps that label.
+            # event is then already acknowledged and keeps that label. A row that
+            # cannot be read raises before the label is written, so the label is
+            # kept; check_pending_calls logs it and checks the remaining records.
             event = self.db.get_event_by_id(record.event_id)
             if event is not None and event.acknowledged_at is not None:
                 self.logger.debug(

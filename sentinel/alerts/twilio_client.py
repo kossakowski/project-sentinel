@@ -51,24 +51,30 @@ def _alert_twiml(safe_message: str) -> str:
     )
 
 
+_CUT_MARK = "…"
+
+
 def _fit_call_message(message_pl: str) -> str:
     """Shorten ``message_pl`` only as far as needed for its TwiML to fit ``TWIML_MAX_CHARS``.
 
-    A message that fits is returned unchanged. Otherwise its tail is cut and
-    marked with "…". Every character takes at least one byte after XML
-    escaping, so cutting the excess from the raw text converges in a few steps.
+    A message that fits is returned unchanged. Otherwise the longest head of the
+    message that still fits together with the cut mark "…" is kept. XML
+    escaping and UTF-8 encoding both work one character at a time, so each
+    character is charged exactly what it takes on the wire: one byte for a
+    plain letter, two for a Polish or Cyrillic letter, four for an emoji and
+    five for an escaped "&".
     """
     budget = (TWIML_MAX_CHARS - _wire_len(_alert_twiml(""))) // 2
     if _wire_len(xml_escape(message_pl)) <= budget:
         return message_pl
-    keep = budget
-    while keep > 0:
-        shortened = message_pl[:keep].rstrip() + "…"
-        excess = _wire_len(xml_escape(shortened)) - budget
-        if excess <= 0:
-            return shortened
-        keep -= excess
-    return "…"
+    room = budget - _wire_len(_CUT_MARK)
+    keep = 0
+    for char in message_pl:
+        room -= _wire_len(xml_escape(char))
+        if room < 0:
+            break
+        keep += 1
+    return message_pl[:keep].rstrip() + _CUT_MARK
 
 
 class TwilioClient:
