@@ -5,16 +5,15 @@ Each test asserts the behaviour the alert path must have, and is marked
 fixed, its test passes, strict xfail turns that into a failure, and the mark
 must be removed; a failure with any other exception is reported as a real
 failure. The real ``AlertStateMachine`` and ``TwilioClient`` run on the live
-config; only the Twilio SDK and the Expo HTTP edge are faked.
+config; only the Twilio SDK and ``ExpoPushClient.send_push`` are faked.
 """
 
 import sqlite3
+from unittest.mock import create_autospec
 
-import httpx
 import pytest
 import requests
 
-from sentinel.alerts import push_client as push_client_module
 from sentinel.alerts.dispatcher import AlertDispatcher
 from sentinel.alerts.push_client import ExpoPushClient
 from sentinel.alerts.state_machine import AlertStateMachine
@@ -34,25 +33,27 @@ def _state_machine(config, db) -> AlertStateMachine:
 @pytest.mark.xfail(
     strict=True,
     raises=AttributeError,
-    reason="[01:A1] the additive push runs before the call without a guard; a non-dict Expo body "
-    "raises AttributeError in push_client and the call is never placed",
+    reason="[01:A1] the additive push runs before the call without a guard in the state machine; "
+    "an exception raised by send_push aborts process_event and the call is never placed",
 )
 @pytest.mark.asyncio
 async def test_push_error_does_not_block_call(
     prod_config, prod_db, store_critical_event, twilio_sdk, instant_alert_sleep, monkeypatch
 ):
     event = store_critical_event()
-    posted: list[dict] = []
-
-    def expo_answers_with_a_list(url, **kwargs):
-        posted.append(kwargs["json"])
-        return httpx.Response(200, json=[{"status": "ok", "id": "ticket-1"}], request=httpx.Request("POST", url))
-
-    monkeypatch.setattr(push_client_module.httpx, "post", expo_answers_with_a_list)
+    # The exception is raised at the send_push boundary, as an unexpected Expo
+    # body does today ("'list' object has no attribute 'get'"). Hardening
+    # push_client alone therefore cannot make this test pass; only a guard
+    # around the additive push in the state machine can.
+    failing_send_push = create_autospec(
+        ExpoPushClient.send_push,
+        side_effect=AttributeError("'list' object has no attribute 'get'"),
+    )
+    monkeypatch.setattr(ExpoPushClient, "send_push", failing_send_push)
 
     await _state_machine(prod_config, prod_db).process_event(event)
 
-    assert len(posted) == 1
+    assert failing_send_push.call_count == 1
     assert twilio_sdk.calls.create.call_count == prod_config.alerts.acknowledgment.max_call_retries
 
 
