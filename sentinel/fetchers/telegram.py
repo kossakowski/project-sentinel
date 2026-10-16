@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 
-from sentinel.config import SentinelConfig
+from sentinel.config import SentinelConfig, TelegramChannel
 from sentinel.fetchers.base import BaseFetcher
 from sentinel.models import Article
+
+_NUMERIC_CHANNEL_ID = re.compile(r"-?\d+")
 
 
 class TelegramFetcher(BaseFetcher):
@@ -21,6 +24,8 @@ class TelegramFetcher(BaseFetcher):
         self.buffer: list[Article] = []
         self.client = None  # TelegramClient, set in start()
         self._running = False
+        # Numeric peer id (as in ``message.chat_id``) -> channel config, resolved in start().
+        self.channels_by_peer: dict[int, TelegramChannel] = {}
 
     @property
     def name(self) -> str:
@@ -50,11 +55,13 @@ class TelegramFetcher(BaseFetcher):
         )
         await self.client.start()
 
-        # Build a map of channel_id -> channel config for fast lookup
-        channel_ids = [ch.channel_id for ch in tg_config.channels]
-        channel_map = {ch.channel_id: ch for ch in tg_config.channels}
+        channel_map = await self._resolve_channels(tg_config.channels)
+        self.channels_by_peer = channel_map
+        if not channel_map:
+            self.logger.error("No Telegram channel could be resolved; the listener is not started")
+            return
 
-        @self.client.on(events.NewMessage(chats=channel_ids))
+        @self.client.on(events.NewMessage(chats=list(channel_map)))
         async def handler(event):
             article = self._message_to_article(event.message, channel_map)
             if article:
@@ -62,9 +69,38 @@ class TelegramFetcher(BaseFetcher):
 
         self._running = True
         self.logger.info(
-            "Telegram fetcher started, monitoring %d channels",
-            len(channel_ids),
+            "Telegram fetcher started, monitoring %d of %d channels",
+            len(channel_map),
+            len(tg_config.channels),
         )
+
+    async def _resolve_channels(self, channels: list[TelegramChannel]) -> dict[int, TelegramChannel]:
+        """Map each channel's numeric peer id (the value of ``message.chat_id``) to its config.
+
+        A channel that cannot be resolved is logged and left out, so its messages are dropped.
+        """
+        channel_map: dict[int, TelegramChannel] = {}
+        for channel in channels:
+            # A numeric channel_id is a peer id already; a string of digits would be
+            # read as a phone number.
+            target = (
+                int(channel.channel_id) if _NUMERIC_CHANNEL_ID.fullmatch(channel.channel_id) else channel.channel_id
+            )
+            try:
+                peer_id = await self.client.get_peer_id(target)
+            except Exception as exc:
+                self.logger.error("Cannot resolve Telegram channel %s (%s): %s", channel.name, channel.channel_id, exc)
+                continue
+            if peer_id in channel_map:
+                self.logger.error(
+                    "Telegram channels %s and %s resolve to the same peer id; keeping %s",
+                    channel_map[peer_id].name,
+                    channel.name,
+                    channel_map[peer_id].name,
+                )
+                continue
+            channel_map[peer_id] = channel
+        return channel_map
 
     async def fetch(self) -> list[Article]:
         """Return buffered messages and clear buffer."""
@@ -84,28 +120,23 @@ class TelegramFetcher(BaseFetcher):
                 self.logger.error("Error disconnecting Telegram client: %s", exc)
         self._running = False
 
-    def _message_to_article(self, message, channel_map: dict) -> Article | None:
-        """Convert a Telegram message to an Article."""
+    def _message_to_article(self, message, channel_map: dict[int, TelegramChannel]) -> Article | None:
+        """Convert a Telegram message to an Article of the channel it was posted in.
+
+        ``channel_map`` is keyed by numeric peer id (see ``_resolve_channels``). A
+        message from any other chat is logged and dropped, never attributed to
+        another channel.
+        """
         try:
             text = message.text or ""
             if not text.strip():
                 return None
 
-            # Find the channel config for this message
-            chat_id = str(message.chat_id)
-            channel_config = None
-
-            for ch_id, ch_cfg in channel_map.items():
-                # Match by channel_id (could be @username or numeric ID)
-                if str(ch_id) == chat_id or ch_cfg.channel_id == chat_id:
-                    channel_config = ch_cfg
-                    break
-
-            # Fallback: use first channel if we can't match
+            channel_config = channel_map.get(message.chat_id)
             if channel_config is None:
-                channel_config = next(iter(channel_map.values()), None)
-
-            if channel_config is None:
+                self.logger.warning(
+                    "Dropping Telegram message %s from unmonitored chat %s", message.id, message.chat_id
+                )
                 return None
 
             # Title: first 200 chars

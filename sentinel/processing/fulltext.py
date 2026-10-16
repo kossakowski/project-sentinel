@@ -12,8 +12,9 @@ from dataclasses import dataclass
 import httpx
 import trafilatura
 
+from sentinel.config import DEFAULT_URL_DECODE_TIMEOUT_SECONDS
 from sentinel.models import Article
-from sentinel.processing.enricher import ArticleEnricher
+from sentinel.processing.enricher import resolve_article_url
 
 MAX_CHARS = 8000  # ~2,000 tokens: bounds cost and latency of a second read
 USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
@@ -40,11 +41,20 @@ def extract_text(html: str, url: str) -> str | None:
 
 
 async def fetch_full_text(
-    article: Article, *, timeout: float = 10.0, client: httpx.AsyncClient | None = None
+    article: Article,
+    *,
+    timeout: float = 10.0,
+    client: httpx.AsyncClient | None = None,
+    decode_timeout: float = DEFAULT_URL_DECODE_TIMEOUT_SECONDS,
 ) -> FullText:
+    """Fetch and extract ``article``'s page.
+
+    ``decode_timeout`` is the Google News URL decoding deadline; pass
+    ``processing.url_decode_timeout_seconds`` when a config is loaded.
+    """
     url = article.source_url
     try:
-        url = ArticleEnricher._resolve_url(article)
+        url = await resolve_article_url(article, decode_timeout)
         owns = client is None
         http = client or httpx.AsyncClient(follow_redirects=True, timeout=timeout, headers={"User-Agent": USER_AGENT})
         try:

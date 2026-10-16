@@ -161,7 +161,11 @@ async def test_api_errors_are_safe_no_retry(direct_config, sample_article, monke
             await classifier.classify(sample_article)
         assert "secret_must_not_escape" not in str(exc.value)
         assert len(calls) == 1
-        assert classifier.provider.ledger.total() > 0
+        if status in (401, 403, 429):
+            # Rejected with a response before any model work: the reservation is released at 0.
+            assert classifier.provider.ledger.total() == 0
+        else:
+            assert classifier.provider.ledger.total() > 0
     finally:
         await classifier.aclose()
 

@@ -9,7 +9,10 @@ Then fetches article body for all flagged articles.
 import asyncio
 import json
 import logging
+import queue
 import re
+import threading
+from concurrent.futures import Future
 from difflib import SequenceMatcher
 
 import anthropic
@@ -60,6 +63,83 @@ _OUTLET_SUFFIXES_RE = re.compile(
     r"|\s+[A-ZÀ-Ž][\w\s.'']{2,}$",
     re.UNICODE,
 )
+
+# Source types whose article already carries the full text (a Telegram message).
+# A page fetch for them can only replace that text with something else.
+_FULL_TEXT_SOURCE_TYPES = frozenset({"telegram"})
+
+_GOOGLE_NEWS_ARTICLE_PATH = "news.google.com/rss/articles/"
+# Worker threads for the Google News decoder. A call that passed its deadline keeps
+# its worker until the decoder returns, so this also bounds the threads that a
+# stalled Google News can hold.
+_DECODER_WORKERS = 4
+
+_logger = logging.getLogger("sentinel.enricher")
+
+
+class _DecoderPool:
+    """A few daemon threads that run the synchronous Google News decoder.
+
+    ``new_decoderv1`` makes HTTP requests with no timeout. The threads are daemons
+    (unlike ``ThreadPoolExecutor`` workers, which are joined at exit), so a decoder
+    stuck on a network read never holds up process exit. A queued job whose caller
+    already gave up is cancelled and never runs.
+    """
+
+    def __init__(self, workers: int) -> None:
+        self._jobs: queue.SimpleQueue[tuple[str, Future]] = queue.SimpleQueue()
+        self._workers = workers
+        self._started = 0
+        self._lock = threading.Lock()
+
+    def submit(self, url: str) -> Future:
+        job: Future = Future()
+        with self._lock:
+            while self._started < self._workers:
+                threading.Thread(target=self._work, name="google-news-decoder", daemon=True).start()
+                self._started += 1
+        self._jobs.put((url, job))
+        return job
+
+    def _work(self) -> None:
+        while True:
+            url, job = self._jobs.get()
+            if not job.set_running_or_notify_cancel():
+                continue
+            try:
+                job.set_result(new_decoderv1(url))
+            except Exception as exc:
+                job.set_exception(exc)
+
+
+_decoder_pool = _DecoderPool(_DECODER_WORKERS)
+
+
+async def resolve_article_url(article: Article, timeout_seconds: float) -> str:
+    """Return the publisher URL behind a Google News redirect, or the article's own URL.
+
+    The decoder runs off the event loop, and the caller waits at most
+    ``timeout_seconds`` (queueing included). When the deadline passes or the decoder
+    fails, the original URL is used. Never raises.
+    """
+    url = article.source_url
+    if _GOOGLE_NEWS_ARTICLE_PATH not in url:
+        return url
+    try:
+        result = await asyncio.wait_for(asyncio.wrap_future(_decoder_pool.submit(url)), timeout_seconds)
+    except TimeoutError:
+        _logger.warning(
+            "Google News URL decoding passed its %.1f s deadline; using the original URL for '%s'",
+            timeout_seconds,
+            article.title[:60],
+        )
+        return url
+    except Exception as exc:
+        _logger.debug("Google News URL decoding failed for '%s': %r", article.title[:60], exc)
+        return url
+    if isinstance(result, dict) and result.get("decoded_url"):
+        return result["decoded_url"]
+    return url
 
 
 class ArticleEnricher:
@@ -177,19 +257,6 @@ class ArticleEnricher:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _resolve_url(article: Article) -> str:
-        """Resolve the real article URL. Decodes Google News redirect URLs locally."""
-        url = article.source_url
-        if "news.google.com/rss/articles/" in url:
-            try:
-                result = new_decoderv1(url)
-                if result and result.get("decoded_url"):
-                    return result["decoded_url"]
-            except Exception:
-                pass
-        return url
-
-    @staticmethod
     def _extract_og_description(html_content: str) -> str | None:
         """Try to extract og:description from raw HTML."""
         for pattern in [
@@ -205,7 +272,7 @@ class ArticleEnricher:
 
     async def _fetch_body(self, article: Article) -> str | None:
         """Fetch article body text via og:description extraction."""
-        real_url = self._resolve_url(article)
+        real_url = await resolve_article_url(article, self.config.processing.url_decode_timeout_seconds)
         try:
             async with httpx.AsyncClient(
                 follow_redirects=True,
@@ -241,6 +308,8 @@ class ArticleEnricher:
     async def enrich_batch(self, articles: list[Article]) -> list[Article]:
         """Enrich articles with insufficient summaries before classification.
 
+        Full-text sources (Telegram) skip both gates and are never fetched.
+
         1. Heuristic gate: detect summary ≈ title
         2. LLM gate: for articles passing heuristic, check if title is vague
         3. Fetch body for all flagged articles in parallel
@@ -253,6 +322,9 @@ class ArticleEnricher:
         passed: list[Article] = []
 
         for article in articles:
+            if article.source_type in _FULL_TEXT_SOURCE_TYPES:
+                article.raw_metadata["enrichment"] = {"method": "none", "reason": "full_text_source"}
+                continue
             if self.is_garbage_summary(article):
                 article.raw_metadata["enrichment"] = {
                     "method": "heuristic",

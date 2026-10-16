@@ -403,8 +403,17 @@ class ProcessingDedup(_StrictModel):
     lookback_minutes: int = 60
 
 
+# Code default of ``processing.url_decode_timeout_seconds``; also the default of
+# callers that run without a loaded config (the eval full-text snapshot).
+DEFAULT_URL_DECODE_TIMEOUT_SECONDS = 10.0
+
+
 class ProcessingConfig(_StrictModel):
     dedup: ProcessingDedup
+    # Deadline, in seconds, for decoding one Google News redirect URL. The decoder
+    # is synchronous and has no timeout of its own, so it runs off the event loop;
+    # when the deadline passes, the original URL is used.
+    url_decode_timeout_seconds: float = Field(default=DEFAULT_URL_DECODE_TIMEOUT_SECONDS, gt=0, allow_inf_nan=False)
 
 
 # ---------------------------------------------------------------------------

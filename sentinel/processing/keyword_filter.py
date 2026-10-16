@@ -2,12 +2,24 @@
 
 import logging
 import re
+from functools import lru_cache
 
 from sentinel.config import SentinelConfig
 from sentinel.models import Article
 
-# Languages that use substring matching (Slavic inflected languages)
+# Languages whose critical and high keywords use substring matching (inflected
+# Slavic languages). Exclude keywords always match whole words.
 _SLAVIC_LANGUAGES = frozenset({"pl", "uk", "ru"})
+
+# High keywords that match only as a whole word in this exact case, checked
+# against the original-case text: the acronym GRU would otherwise match inside
+# ordinary words such as "grupa", "grudnia" or "группа".
+_CASE_SENSITIVE_HIGH_KEYWORDS = frozenset({"GRU", "ГРУ"})
+
+
+@lru_cache(maxsize=2048)
+def _whole_word(keyword: str) -> re.Pattern[str]:
+    return re.compile(r"\b" + re.escape(keyword) + r"\b")
 
 
 class KeywordFilter:
@@ -35,43 +47,19 @@ class KeywordFilter:
 
         Returns match info dict if matched, None if not matched.
         """
-        lang = article.language
-        keywords_cfg = self.config.monitoring.keywords
+        evaluation = self._evaluate(article)
+        if evaluation is None:
+            return None
+        lang, critical_matches, high_matches, excluded_by = evaluation
 
-        # Determine which keyword sets to check
-        if lang in keywords_cfg:
-            keyword_set = keywords_cfg[lang]
-        else:
-            # Fallback to English for unknown languages
-            keyword_set = keywords_cfg.get("en")
-            if keyword_set is None:
-                return None
-            lang = "en"
-
-        searchable = f"{article.title} {article.summary}".lower()
-
-        # Check critical keywords
-        critical_matches = self._find_matches(searchable, keyword_set.critical, lang)
-
-        # Check high keywords
-        high_matches = self._find_matches(searchable, keyword_set.high, lang)
-
-        # Check exclude keywords (only if no critical match)
-        if not critical_matches:
-            exclude_lists = self.config.monitoring.exclude_keywords
-            exclude_kws = exclude_lists.get(lang, [])
-            # Also check English excludes for non-English articles
-            if lang != "en":
-                exclude_kws = exclude_kws + exclude_lists.get("en", [])
-
-            has_exclude = self._find_matches(searchable, exclude_kws, lang)
-            if has_exclude:
-                self.logger.debug(
-                    "Excluded by keyword: %s (matched: %s)",
-                    article.title[:60],
-                    has_exclude,
-                )
-                return None
+        # Exclude keywords apply only when there is no critical match
+        if excluded_by:
+            self.logger.debug(
+                "Excluded by keyword: %s (matched: %s)",
+                article.title[:60],
+                excluded_by,
+            )
+            return None
 
         if critical_matches:
             return {
@@ -125,34 +113,15 @@ class KeywordFilter:
                 "bypass": True,
             }
 
-        lang = article.language
-        keywords_cfg = self.config.monitoring.keywords
-
-        if lang in keywords_cfg:
-            keyword_set = keywords_cfg[lang]
-        else:
-            keyword_set = keywords_cfg.get("en")
-            if keyword_set is None:
-                return {
-                    "passed": False,
-                    "critical": [],
-                    "high": [],
-                    "excluded_by": [],
-                }
-            lang = "en"
-
-        searchable = f"{article.title} {article.summary}".lower()
-
-        critical = self._find_matches(searchable, keyword_set.critical, lang)
-        high = self._find_matches(searchable, keyword_set.high, lang)
-
-        excluded_by: list[str] = []
-        if not critical:
-            exclude_lists = self.config.monitoring.exclude_keywords
-            exclude_kws = exclude_lists.get(lang, [])
-            if lang != "en":
-                exclude_kws = exclude_kws + exclude_lists.get("en", [])
-            excluded_by = self._find_matches(searchable, exclude_kws, lang)
+        evaluation = self._evaluate(article)
+        if evaluation is None:
+            return {
+                "passed": False,
+                "critical": [],
+                "high": [],
+                "excluded_by": [],
+            }
+        _, critical, high, excluded_by = evaluation
 
         passed = bool(critical or (high and not excluded_by))
 
@@ -167,23 +136,72 @@ class KeywordFilter:
     # Private helpers
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _find_matches(text: str, keywords: list[str], language: str) -> list[str]:
-        """Find all matching keywords in text.
+    def _evaluate(self, article: Article) -> tuple[str, list[str], list[str], list[str]] | None:
+        """Match ``article`` against its language's keyword lists.
 
-        Uses substring matching for Slavic languages and word-boundary
-        matching for English and other languages.
+        Returns ``(language, critical, high, excluded_by)``, or None when neither the
+        article's language nor English has keywords. Exclude keywords are checked
+        only when no critical keyword matched (``excluded_by`` is empty otherwise).
+        """
+        lang = article.language
+        keywords_cfg = self.config.monitoring.keywords
+
+        if lang in keywords_cfg:
+            keyword_set = keywords_cfg[lang]
+        else:
+            # Fallback to English for unknown languages
+            keyword_set = keywords_cfg.get("en")
+            if keyword_set is None:
+                return None
+            lang = "en"
+
+        original = f"{article.title} {article.summary}"
+        searchable = original.lower()
+
+        critical = self._find_matches(searchable, keyword_set.critical, lang)
+        high = self._find_matches(searchable, keyword_set.high, lang, original_text=original)
+
+        excluded_by: list[str] = []
+        if not critical:
+            exclude_lists = self.config.monitoring.exclude_keywords
+            exclude_kws = exclude_lists.get(lang, [])
+            # Also check English excludes for non-English articles
+            if lang != "en":
+                exclude_kws = exclude_kws + exclude_lists.get("en", [])
+            excluded_by = self._find_exclude_matches(searchable, exclude_kws)
+
+        return lang, critical, high, excluded_by
+
+    @staticmethod
+    def _find_matches(text: str, keywords: list[str], language: str, *, original_text: str | None = None) -> list[str]:
+        """Find the critical or high keywords that occur in ``text`` (lowercased).
+
+        Uses substring matching for Slavic languages and word-boundary matching
+        for English and other languages. When ``original_text`` is given (high
+        keywords), a keyword in ``_CASE_SENSITIVE_HIGH_KEYWORDS`` matches only as
+        a whole word in its exact case in ``original_text``.
         """
         matched: list[str] = []
         for keyword in keywords:
+            if original_text is not None and keyword in _CASE_SENSITIVE_HIGH_KEYWORDS:
+                if _whole_word(keyword).search(original_text):
+                    matched.append(keyword)
+                continue
             kw_lower = keyword.lower()
             if language in _SLAVIC_LANGUAGES:
                 # Substring match for inflected Slavic languages
                 if kw_lower in text:
                     matched.append(keyword)
-            else:
+            elif _whole_word(kw_lower).search(text):
                 # Word-boundary match for English and other languages
-                pattern = r"\b" + re.escape(kw_lower) + r"\b"
-                if re.search(pattern, text):
-                    matched.append(keyword)
+                matched.append(keyword)
         return matched
+
+    @staticmethod
+    def _find_exclude_matches(text: str, keywords: list[str]) -> list[str]:
+        """Find the exclude keywords that occur in ``text`` (lowercased) as whole words, in every language.
+
+        A substring match would let a short exclude such as ``gra`` drop articles
+        about ``granicy`` or ``Kaliningrad``.
+        """
+        return [keyword for keyword in keywords if _whole_word(keyword.lower()).search(text)]

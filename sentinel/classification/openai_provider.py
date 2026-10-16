@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+import httpx
 import jsonschema
 import openai
 
@@ -29,8 +30,10 @@ class BudgetExceeded(ClassificationError):
 class UsageLedger:
     """Reservations survive crashes; BEGIN IMMEDIATE serializes independent callers.
 
-    Unknown charges keep their entire reservation. Estimates use configured rates;
-    this cannot cap spending by other applications or guarantee provider billing.
+    Unknown charges keep their entire reservation. A request the provider certainly
+    did not bill is released: settled at 0 with status ``released``. Estimates use
+    configured rates; this cannot cap spending by other applications or guarantee
+    provider billing.
     """
 
     def __init__(self, config: ModelBudgetConfig):
@@ -88,6 +91,14 @@ class UsageLedger:
                 (amount, input_tokens, cached_tokens, output_tokens, response_id, reservation),
             )
         return amount
+
+    def release(self, reservation: str) -> None:
+        """Settle a still-open reservation at 0 because the provider certainly did not bill it."""
+        with self.db:
+            self.db.execute(
+                "UPDATE model_usage SET charged_usd=0, status='released' WHERE id=? AND status='reserved'",
+                (reservation,),
+            )
 
     def close(self):
         self.db.close()
@@ -177,25 +188,10 @@ class OpenAIProvider:
             deadline = min(cfg.timeout_seconds, timeout_seconds if timeout_seconds is not None else cfg.timeout_seconds)
             async with asyncio.timeout(deadline):
                 response = await self.client.responses.create(**payload)
-        except openai.AuthenticationError:
-            raise ClassificationError("OpenAI rejected the key. Check the dedicated project's API key.") from None
-        except openai.PermissionDeniedError:
-            raise ClassificationError("OpenAI access denied. Check project model and Responses permissions.") from None
-        except openai.RateLimitError as exc:
-            if exc.code in {"insufficient_quota", "credit_balance_exhausted"}:
-                message = "OpenAI credit/quota exhausted. Check API billing; classification is paused."
-            elif exc.code in {"organization_spend_limit_exceeded", "project_spend_limit_exceeded"}:
-                message = "OpenAI monthly spending limit reached. Classification is paused until the limit resets."
-            elif exc.code == "organization_usage_limit_exceeded":
-                message = "OpenAI-assigned usage limit reached. Review the account usage tier; articles remain pending."
-            else:
-                message = "OpenAI rate limit reached. Articles remain pending for a later retry."
-            raise ClassificationError(message) from None
-        except (openai.APIError, TimeoutError):
-            raise ClassificationError(
-                "OpenAI request failed or timed out. Article remains pending; possible charge reserved. "
-                "Check API availability, model access and billing."
-            ) from None
+        except (openai.APIError, TimeoutError) as exc:
+            if _certainly_unbilled(exc):
+                self._release(reservation, bound, purpose, exc)
+            raise ClassificationError(_failure_message(exc)) from None
         usage = response.usage
         if usage is None:
             raise ClassificationError("OpenAI omitted usage; reservation retained and article remains pending")
@@ -236,8 +232,71 @@ class OpenAIProvider:
         )
         return StructuredReply(data, incoming, cached, outgoing, cost, request_hash, response.id)
 
+    def _release(self, reservation: str, bound: float, purpose: str, exc: BaseException) -> None:
+        """Release the reservation of a request the provider certainly did not bill."""
+        try:
+            self.ledger.release(reservation)
+        except sqlite3.Error:
+            # The reservation stays counted; the caller still gets the request failure.
+            self.logger.exception("Could not release the OpenAI %s reservation; it stays counted", purpose)
+            return
+        if self.session_remaining is not None:
+            self.session_remaining += bound
+        self.logger.info("OpenAI %s not billed (%s); reservation released", purpose, type(exc).__name__)
+
     async def aclose(self):
         try:
             await self.client.close()
         finally:
             self.ledger.close()
+
+
+def _never_connected(exc: BaseException) -> bool:
+    """True when the transport error behind ``exc`` shows that no connection was ever made.
+
+    The SDK wraps every non-timeout transport failure in ``APIConnectionError`` (raised
+    from the httpx error), and it reads a non-streaming response body inside the same
+    call. A read or protocol error can therefore follow a request the provider already
+    received, or a status line it already sent. Only a failure to connect proves that
+    nothing reached the provider.
+    """
+    return isinstance(exc.__cause__, httpx.ConnectError)
+
+
+def _certainly_unbilled(exc: BaseException) -> bool:
+    """True only for a failure the provider certainly did not bill.
+
+    HTTP 401, 403 and 429 come with a response that rejects the request before any
+    model work, and a connection that was never made sent nothing. A timeout, a 5xx
+    or any other error after the request was sent may have been billed.
+    """
+    if isinstance(exc, (openai.AuthenticationError, openai.PermissionDeniedError, openai.RateLimitError)):
+        return True
+    if isinstance(exc, openai.APITimeoutError):
+        return False
+    return isinstance(exc, openai.APIConnectionError) and _never_connected(exc)
+
+
+def _failure_message(exc: BaseException) -> str:
+    """Operator-facing reason for a failed request; never includes provider response text."""
+    if isinstance(exc, openai.AuthenticationError):
+        return "OpenAI rejected the key. Check the dedicated project's API key."
+    if isinstance(exc, openai.PermissionDeniedError):
+        return "OpenAI access denied. Check project model and Responses permissions."
+    if isinstance(exc, openai.RateLimitError):
+        if exc.code in {"insufficient_quota", "credit_balance_exhausted"}:
+            return "OpenAI credit/quota exhausted. Check API billing; classification is paused."
+        if exc.code in {"organization_spend_limit_exceeded", "project_spend_limit_exceeded"}:
+            return "OpenAI monthly spending limit reached. Classification is paused until the limit resets."
+        if exc.code == "organization_usage_limit_exceeded":
+            return "OpenAI-assigned usage limit reached. Review the account usage tier; articles remain pending."
+        return "OpenAI rate limit reached. Articles remain pending for a later retry."
+    if _certainly_unbilled(exc):
+        return (
+            "OpenAI could not be reached; the request never left this server. "
+            "Article remains pending. Check the network and API availability."
+        )
+    return (
+        "OpenAI request failed or timed out. Article remains pending; possible charge reserved. "
+        "Check API availability, model access and billing."
+    )

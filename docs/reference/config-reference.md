@@ -146,10 +146,10 @@ The countries the classifier monitors are set by `classification.policy.monitore
 
 **Keyword matching rules:**
 - `critical` keywords: case-insensitive; override `exclude_keywords` (article passes even if both match).
-- `high` keywords: case-insensitive; do NOT override `exclude_keywords`.
-- PL/UK/RU: substring matching (handles inflection). EN and every other language: word-boundary matching.
+- `high` keywords: case-insensitive; do NOT override `exclude_keywords`. Exception: the high keywords `GRU` and `ГРУ` match only as a whole word in exactly that case, checked against the original-case title and summary (so `grupa`, `grudnia` or `Группа` do not match).
+- `critical` and `high` keywords, PL/UK/RU: substring matching (handles inflection). EN and every other language: word-boundary matching.
 - An article in a language with no keyword set uses the `en` keyword set and word-boundary matching.
-- `exclude_keywords` are checked only when no `critical` keyword matches. A non-English article is checked against its own language's list plus the `en` list; for pl/uk/ru the `en` excludes also match as substrings.
+- `exclude_keywords` are checked only when no `critical` keyword matches, and they match whole words only, in every language (`gra` does not match `granicy` or `Kaliningrad`). A non-English article is checked against its own language's list plus the `en` list.
 - Articles from `keyword_bypass` sources skip the filter entirely.
 
 Live keyword languages: `en`, `pl`, `uk`, `ru`. Live `exclude_keywords` languages: `en`, `pl` (so uk/ru articles are checked against the `en` list only).
@@ -436,7 +436,7 @@ is disabled (`sources.gdelt.enabled: false`), and its fetcher is only instantiat
 
 ## `processing` — `ProcessingConfig` / `ProcessingDedup`
 
-Consumed by: `sentinel/processing/deduplicator.py`
+Consumed by: `sentinel/processing/deduplicator.py` (`dedup.*`) and `sentinel/processing/enricher.py` (`url_decode_timeout_seconds`, also the deadline that `sentinel/processing/fulltext.py` uses).
 
 These fuzzy title thresholds are skipped while `classification.incident_memory.enabled` is `true` (live), so they are inert in production. Exact URL dedup runs on both paths.
 
@@ -445,6 +445,7 @@ These fuzzy title thresholds are skipped while `classification.incident_memory.e
 | `processing.dedup.same_source_title_threshold` | int | `85` | `85` | Fuzzy match % to deduplicate same-source articles |
 | `processing.dedup.cross_source_title_threshold` | int | `95` | `95` | Fuzzy match % to deduplicate cross-source articles |
 | `processing.dedup.lookback_minutes` | int | `60` | `60` | How far back to scan for fuzzy duplicates |
+| `processing.url_decode_timeout_seconds` | float (> 0) | (omitted → `10`) | `10` | Deadline, in seconds, for decoding one Google News redirect URL to the publisher's URL before a page fetch. The decoder runs off the event loop; when the deadline passes or decoding fails, the original `news.google.com` URL is used. `fetch_full_text` takes the same deadline as its `decode_timeout` argument (default `10`). |
 
 ---
 

@@ -185,11 +185,23 @@ class Classifier:
             )
             data = dict(reply.data)
             facts = data.pop("facts")
-            if not data["summary_pl"].strip():
-                raise ClassificationError("Empty classification summary; article remains pending")
-            data["summary_pl"], summary_processing, repair = await ensure_polish(
-                data["summary_pl"], self.provider, cfg.summary_language
-            )
+            if data["summary_pl"].strip():
+                data["summary_pl"], summary_processing, repair = await ensure_polish(
+                    data["summary_pl"], self.provider, cfg.summary_language
+                )
+            else:
+                # The danger assessment is valid; a missing summary must not suppress the alert.
+                summary_processing = {
+                    "version": GUARD_VERSION,
+                    "original_summary": data["summary_pl"],
+                    "action": "fallback",
+                    "repair_error": "Empty model summary",
+                }
+                data["summary_pl"] = cfg.summary_language.fallback_pl
+                repair = None
+                self.logger.warning(
+                    "Empty classification summary for article %s; using the Polish fallback summary", article.id
+                )
             calls = [reply] + ([repair] if repair is not None else [])
             input_tokens = sum(call.input_tokens for call in calls)
             output_tokens = sum(call.output_tokens for call in calls)
