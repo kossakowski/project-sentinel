@@ -206,9 +206,8 @@ async def test_malformed_memory_row_does_not_block_a_critical_alert(
 ):
     """One corrupt row inside the lookback window used to fail every article until it aged out.
 
-    The row's timestamp is corrupt. (A corrupt ``article_ids`` JSON is skipped by
-    incident memory too, see above, but the corroborator's article-replay query
-    reads that column with SQLite's ``json_each`` as well.)
+    Here the row's timestamp is corrupt; the next test corrupts its
+    ``article_ids`` JSON instead.
     """
     db = Database(prod_config.database.path)
     try:
@@ -219,6 +218,31 @@ async def test_malformed_memory_row_does_not_block_a_critical_alert(
 
     outcome = await _run_critical_cycle(prod_config, monkeypatch, freeze_time)
 
+    assert outcome.purposes == ["enrichment_quality", "classification"]
+    assert outcome.queue["pending"] == 0
+    assert [event.urgency_score for event in outcome.events] == [10]
+    assert twilio_sdk.calls.create.call_count == prod_config.alerts.acknowledgment.max_call_retries
+    assert expo_send_push.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_malformed_article_ids_row_does_not_block_a_critical_alert(
+    prod_config, monkeypatch, freeze_time, instant_alert_sleep, twilio_sdk, expo_send_push, caplog
+):
+    """A row whose ``article_ids`` is not JSON is skipped by incident memory and by the article-replay lookup."""
+    db = Database(prod_config.database.path)
+    try:
+        corrupt = _store_event(db, "Wcześniejszy incydent.", minutes_ago=30, now=freeze_time)
+        _corrupt(db, corrupt.id, article_ids="not json")
+    finally:
+        db.close()
+
+    with caplog.at_level(logging.WARNING, logger="sentinel.corroborator"):
+        outcome = await _run_critical_cycle(prod_config, monkeypatch, freeze_time)
+
+    replay_warnings = [record.getMessage() for record in caplog.records if record.name == "sentinel.corroborator"]
+    assert len(replay_warnings) == 1
+    assert corrupt.id in replay_warnings[0]
     assert outcome.purposes == ["enrichment_quality", "classification"]
     assert outcome.queue["pending"] == 0
     assert [event.urgency_score for event in outcome.events] == [10]

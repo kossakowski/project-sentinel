@@ -1,6 +1,7 @@
 """Corroborator -- groups classified articles into events and determines alert levels."""
 
 import logging
+import sqlite3
 from datetime import UTC, datetime
 from urllib.parse import urlparse
 
@@ -27,6 +28,18 @@ EVENT_COMPATIBILITY: dict[str, set[str]] = {
 # Minimum urgency to create an event
 _MIN_EVENT_URGENCY = 5
 
+# Article replay: the event that already holds an article. SQLite's json_each
+# raises "malformed JSON" for the whole query when any event row's article_ids
+# is not valid JSON, so the lookup falls back to a query that reads only valid
+# rows (json_each(NULL) yields nothing) and names the skipped rows once.
+_ARTICLE_REPLAY_QUERY = "SELECT events.id FROM events, json_each(events.article_ids) a WHERE a.value = ? LIMIT 1"
+_ARTICLE_REPLAY_SKIPPING_MALFORMED_QUERY = (
+    "SELECT events.id FROM events,"
+    " json_each(CASE WHEN json_valid(events.article_ids) THEN events.article_ids END) a"
+    " WHERE a.value = ? LIMIT 1"
+)
+_MALFORMED_ARTICLE_IDS_QUERY = "SELECT id FROM events WHERE json_valid(article_ids) = 0"
+
 
 class Corroborator:
     """Groups classifications into events and determines alert levels."""
@@ -44,16 +57,14 @@ class Corroborator:
         Only events with urgency >= 5 are created.
         """
         alertable_events: list[Event] = []
+        skip_malformed_rows = False
 
         for result in results:
             if self.config.classification.incident_memory.enabled:
                 # Article identity is stronger than any fresh model response.
                 # Replaying the same result must not create another incident or
                 # advance its notification revision, even when the decision is new.
-                linked = self.db.conn.execute(
-                    "SELECT events.id FROM events, json_each(events.article_ids) a WHERE a.value = ? LIMIT 1",
-                    (result.article_id,),
-                ).fetchone()
+                linked, skip_malformed_rows = self._find_article_replay(result.article_id, skip_malformed_rows)
                 if linked is not None:
                     existing = self.db.get_event_by_id(linked["id"])
                     if existing is not None:
@@ -94,6 +105,29 @@ class Corroborator:
                 alertable_events.append(new_event)
 
         return alertable_events
+
+    def _find_article_replay(self, article_id: str, skip_malformed_rows: bool) -> tuple[sqlite3.Row | None, bool]:
+        """Return the event row that already holds ``article_id``, and whether malformed rows were found.
+
+        An event row whose ``article_ids`` is not valid JSON would make the
+        lookup raise for every article, and with it block grouping and
+        alerting until the row ages out. Such rows are skipped with one
+        warning per batch; ``skip_malformed_rows`` carries that state between
+        the articles of one batch.
+        """
+        if not skip_malformed_rows:
+            try:
+                return self.db.conn.execute(_ARTICLE_REPLAY_QUERY, (article_id,)).fetchone(), False
+            except sqlite3.OperationalError:
+                malformed = [row["id"] for row in self.db.conn.execute(_MALFORMED_ARTICLE_IDS_QUERY)]
+                if not malformed:
+                    raise
+                self.logger.warning(
+                    "Article-replay lookup skips %d event row(s) with malformed article_ids JSON: %s",
+                    len(malformed),
+                    ", ".join(malformed),
+                )
+        return self.db.conn.execute(_ARTICLE_REPLAY_SKIPPING_MALFORMED_QUERY, (article_id,)).fetchone(), True
 
     def _find_memory_match(self, result: ClassificationResult) -> Event | None:
         """Only explicit, validated incident identity may suppress a new alert.

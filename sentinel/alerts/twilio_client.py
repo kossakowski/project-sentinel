@@ -17,6 +17,59 @@ from sentinel.models import AlertRecord
 # exceptions (connection reset, timeout, DNS failure).
 _TWILIO_REQUEST_ERRORS = (TwilioException, requests.RequestException)
 
+# Twilio rejects a call whose ``twiml`` parameter is longer than 4000
+# characters (Call resource, Create request), so the call would fail to
+# initiate. The spoken message appears twice in the TwiML. Lengths are measured
+# in UTF-8 bytes, which is never less than the character count, so the limit
+# holds however Twilio counts Polish letters or emoji.
+TWIML_MAX_CHARS = 4000
+
+
+def _wire_len(text: str) -> int:
+    return len(text.encode("utf-8"))
+
+
+def _alert_twiml(safe_message: str) -> str:
+    """Build the alert-call TwiML around an already XML-escaped message."""
+    # Simple alert call — no DTMF, no Gather.
+    # The call is just an alarm to wake the user.
+    # Confirmation happens via SMS reply only.
+    return (
+        f"<Response>"
+        f'<Say language="pl-PL" voice="Polly.Ewa">'
+        f"Uwaga! Alert systemu Project Sentinel. {safe_message}"
+        f"</Say>"
+        f'<Pause length="2"/>'
+        f'<Say language="pl-PL" voice="Polly.Ewa">'
+        f"Powtarzam. {safe_message}"
+        f"</Say>"
+        f'<Pause length="1"/>'
+        f'<Say language="pl-PL" voice="Polly.Ewa">'
+        f"Potwierdź odbiór alertu. Odpisz na SMS kodem, który otrzymałeś."
+        f"</Say>"
+        f"</Response>"
+    )
+
+
+def _fit_call_message(message_pl: str) -> str:
+    """Shorten ``message_pl`` only as far as needed for its TwiML to fit ``TWIML_MAX_CHARS``.
+
+    A message that fits is returned unchanged. Otherwise its tail is cut and
+    marked with "…". Every character takes at least one byte after XML
+    escaping, so cutting the excess from the raw text converges in a few steps.
+    """
+    budget = (TWIML_MAX_CHARS - _wire_len(_alert_twiml(""))) // 2
+    if _wire_len(xml_escape(message_pl)) <= budget:
+        return message_pl
+    keep = budget
+    while keep > 0:
+        shortened = message_pl[:keep].rstrip() + "…"
+        excess = _wire_len(xml_escape(shortened)) - budget
+        if excess <= 0:
+            return shortened
+        keep -= excess
+    return "…"
+
 
 class TwilioClient:
     """Wraps the Twilio SDK for outbound calls and SMS.
@@ -43,29 +96,19 @@ class TwilioClient:
     def make_alert_call(self, phone_number: str, message_pl: str, event_id: str) -> AlertRecord | None:
         """Place an outbound call with Polish TTS message.
 
-        The message is spoken twice (for waking the user).
+        The message is spoken twice (for waking the user). A message too long
+        for Twilio's TwiML limit is shortened, so the call is still placed.
         Returns an AlertRecord on success, None on any error.
         """
-        safe_message = xml_escape(message_pl)
-
-        # Simple alert call — no DTMF, no Gather.
-        # The call is just an alarm to wake the user.
-        # Confirmation happens via SMS reply only.
-        twiml = (
-            f"<Response>"
-            f'<Say language="pl-PL" voice="Polly.Ewa">'
-            f"Uwaga! Alert systemu Project Sentinel. {safe_message}"
-            f"</Say>"
-            f'<Pause length="2"/>'
-            f'<Say language="pl-PL" voice="Polly.Ewa">'
-            f"Powtarzam. {safe_message}"
-            f"</Say>"
-            f'<Pause length="1"/>'
-            f'<Say language="pl-PL" voice="Polly.Ewa">'
-            f"Potwierdź odbiór alertu. Odpisz na SMS kodem, który otrzymałeś."
-            f"</Say>"
-            f"</Response>"
-        )
+        spoken = _fit_call_message(message_pl)
+        if spoken != message_pl:
+            self.logger.warning(
+                "Call message for event %s shortened from %d to %d characters to fit the TwiML limit",
+                event_id,
+                len(message_pl),
+                len(spoken),
+            )
+        twiml = _alert_twiml(xml_escape(spoken))
 
         try:
             call = self.client.calls.create(
@@ -89,7 +132,7 @@ class TwilioClient:
             duration_seconds=None,
             attempt_number=1,
             sent_at=datetime.now(UTC),
-            message_body=message_pl,
+            message_body=spoken,
         )
         self.logger.info("Call placed for event %s, SID=%s", event_id, call.sid)
         return record

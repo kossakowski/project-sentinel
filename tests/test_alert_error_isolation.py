@@ -21,8 +21,13 @@ from twilio.http.http_client import TwilioHttpClient
 import sentinel.alerts.twilio_client as twilio_client_module
 from sentinel.alerts.dispatcher import AlertDispatcher
 from sentinel.alerts.push_client import ExpoPushClient
-from sentinel.alerts.state_machine import SMS_SUMMARY_MAX_CHARS, AlertStateMachine
-from sentinel.alerts.twilio_client import TwilioClient
+from sentinel.alerts.state_machine import (
+    CALL_SUMMARY_MAX_CHARS,
+    SMS_SUMMARY_MAX_CHARS,
+    AlertStateMachine,
+    _format_update_sms,
+)
+from sentinel.alerts.twilio_client import TWIML_MAX_CHARS, TwilioClient
 from sentinel.models import AlertRecord, Event
 from sentinel.scheduler import SentinelPipeline
 
@@ -346,6 +351,76 @@ async def test_confirmation_sms_short_summary_unchanged(prod_config, prod_db, tw
 
     (body,) = _sms_bodies(twilio_sdk)
     assert body.split("\n\n")[1] == event.summary_pl
+
+
+# ---------------------------------------------------------------------------
+# A long summary cannot push the call or the update SMS over Twilio's limits
+# ---------------------------------------------------------------------------
+
+_LONG_SUMMARY = "Rosyjskie wojska atakują. " * 80  # about 2000 characters
+
+
+def _twiml_sent(twilio_sdk) -> list[str]:
+    return [call.kwargs["twiml"] for call in twilio_sdk.calls.create.call_args_list]
+
+
+@pytest.mark.asyncio
+async def test_call_with_long_summary_fits_twiml_limit(
+    prod_config, prod_db, store_critical_event, twilio_sdk, expo_send_push, instant_alert_sleep
+):
+    event = store_critical_event()
+    prod_db.update_event(event.id, summary_pl=_LONG_SUMMARY)
+
+    await _state_machine(prod_config, prod_db).process_event(event)
+
+    twiml = _twiml_sent(twilio_sdk)
+    assert len(twiml) == prod_config.alerts.acknowledgment.max_call_retries
+    for document in twiml:
+        assert len(document.encode("utf-8")) <= TWIML_MAX_CHARS
+        # The summary is capped, not the script: the source count and urgency are still spoken twice.
+        assert document.count("Źródła potwierdzające: 1. Pilność: 10 na 10.") == 2
+        assert document.count(_LONG_SUMMARY[: CALL_SUMMARY_MAX_CHARS - 1].rstrip() + "…") == 2
+
+
+@pytest.mark.parametrize(
+    "message",
+    ["&" * 3000, "Atak 🚨 na Polskę <PL> & Litwę. " * 200],
+    ids=["escape-heavy", "emoji-and-markup"],
+)
+def test_twilio_call_message_is_shortened_to_twiml_limit(prod_config, twilio_sdk, message, caplog):
+    with caplog.at_level(logging.WARNING, logger="sentinel.alerts.twilio_client"):
+        record = TwilioClient(prod_config).make_alert_call("+48500100200", message, "evt-1")
+
+    assert record is not None
+    (twiml,) = _twiml_sent(twilio_sdk)
+    assert len(twiml.encode("utf-8")) <= TWIML_MAX_CHARS
+    assert twiml.endswith("Potwierdź odbiór alertu. Odpisz na SMS kodem, który otrzymałeś.</Say></Response>")
+    assert record.message_body.endswith("…")
+    assert message.startswith(record.message_body[:-1])
+    assert "shortened" in caplog.text
+
+
+def test_twilio_call_message_within_limit_is_unchanged(prod_config, twilio_sdk):
+    message = "Inwazja wykryte. Rosyjskie wojska & czołgi <PL>. Pilność: 10 na 10."
+
+    record = TwilioClient(prod_config).make_alert_call("+48500100200", message, "evt-1")
+
+    (twiml,) = _twiml_sent(twilio_sdk)
+    assert twiml.count("Rosyjskie wojska &amp; czołgi &lt;PL&gt;. Pilność: 10 na 10.") == 2
+    assert record.message_body == message
+
+
+def test_update_sms_keeps_source_count_and_urgency_with_long_summary(prod_config, prod_db):
+    event = _event(10)
+    event.summary_pl = _LONG_SUMMARY
+    event.source_count = 3
+
+    body = _format_update_sms(event, prod_db, prod_config)
+
+    assert len(body) <= 1600
+    assert _LONG_SUMMARY[: SMS_SUMMARY_MAX_CHARS - 1].rstrip() + "…" in body
+    assert "Łącznie źródeł: 3" in body
+    assert body.endswith("Pilność: 10/10")
 
 
 # ---------------------------------------------------------------------------

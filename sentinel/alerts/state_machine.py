@@ -44,6 +44,13 @@ SMS_MAX_CHARS = 1500
 # prompted for "1-2 zdania" upstream but is not capped anywhere.
 SMS_SUMMARY_MAX_CHARS = 600
 
+# Bound the summary spoken in the phone call the same way. The call script is
+# embedded twice in the TwiML, and Twilio rejects TwiML over 4000 characters,
+# so an unbounded summary would make the call fail to initiate. With this cap
+# the TwiML of the live template stays far below the limit; TwilioClient
+# guarantees the limit for any template.
+CALL_SUMMARY_MAX_CHARS = 600
+
 # Reserve room for the "- …i N więcej" trailer when trimming sources.
 _SOURCES_TRAILER_RESERVE = 40
 
@@ -74,14 +81,15 @@ PUSH_DATA_MAX_BYTES = 3500
 PUSH_BODY_SUMMARY_MAX_CHARS = 80
 
 
-def _cap_sms_summary(summary_pl: str) -> str:
-    """Bound the classifier summary to ``SMS_SUMMARY_MAX_CHARS`` characters.
+def _cap_summary(summary_pl: str, max_chars: int = SMS_SUMMARY_MAX_CHARS) -> str:
+    """Bound the classifier summary to ``max_chars`` characters.
 
-    The summary is truncated, never the rendered body, so the template text
-    after it (the detection time, or the confirmation code) is always sent.
+    The summary is truncated, never the rendered message, so the template text
+    after it (the detection time, the confirmation code, the source count or
+    the urgency) is always sent. A summary within the bound is returned as is.
     """
-    if len(summary_pl) > SMS_SUMMARY_MAX_CHARS:
-        return summary_pl[: SMS_SUMMARY_MAX_CHARS - 1].rstrip() + "…"
+    if len(summary_pl) > max_chars:
+        return summary_pl[: max_chars - 1].rstrip() + "…"
     return summary_pl
 
 
@@ -158,7 +166,7 @@ def _format_call_message(event: Event, config: SentinelConfig) -> str:
     template = config.alerts.templates.call
     return template.format(
         event_type_pl=event_type_pl,
-        summary_pl=event.summary_pl,
+        summary_pl=_cap_summary(event.summary_pl, CALL_SUMMARY_MAX_CHARS),
         source_count=event.source_count,
         urgency_score=event.urgency_score,
     )
@@ -178,7 +186,7 @@ def _format_sms_message(event: Event, db: Database, config: SentinelConfig) -> s
     # can never alone exceed the budget and re-trigger Twilio's 1600-char
     # rejection. Truncating the summary -- not the rendered body -- preserves
     # trailing template fields like "Wykryto: {first_seen_at_local}".
-    summary_pl = _cap_sms_summary(event.summary_pl)
+    summary_pl = _cap_summary(event.summary_pl)
 
     fields = {
         "event_type_pl": event_type_pl,
@@ -211,7 +219,9 @@ def _format_update_sms(event: Event, db: Database, config: SentinelConfig) -> st
     return template.format(
         event_type_pl=event_type_pl,
         new_source_name=new_source_name,
-        summary_pl=event.summary_pl,
+        # Capped like the alert SMS, so the source count and urgency after the
+        # summary survive the SMS length limit.
+        summary_pl=_cap_summary(event.summary_pl),
         source_count=event.source_count,
         urgency_score=event.urgency_score,
     )
@@ -718,7 +728,7 @@ class AlertStateMachine:
 
         message = (
             f"PROJECT SENTINEL: {event_type_pl}\n\n"
-            f"{_cap_sms_summary(event.summary_pl)}\n\n"
+            f"{_cap_summary(event.summary_pl)}\n\n"
             f"Odpowiedz kodem aby potwierdzic odbior alertu: {self._confirmation_code}\n\n"
             f"Telefon bedzie dzwonil dopoki nie potwierdzisz."
         )
