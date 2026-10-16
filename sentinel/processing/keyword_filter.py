@@ -51,14 +51,10 @@ class KeywordFilter:
         searchable = f"{article.title} {article.summary}".lower()
 
         # Check critical keywords
-        critical_matches = self._find_matches(
-            searchable, keyword_set.critical, lang
-        )
+        critical_matches = self._find_matches(searchable, keyword_set.critical, lang)
 
         # Check high keywords
-        high_matches = self._find_matches(
-            searchable, keyword_set.high, lang
-        )
+        high_matches = self._find_matches(searchable, keyword_set.high, lang)
 
         # Check exclude keywords (only if no critical match)
         if not critical_matches:
@@ -172,9 +168,7 @@ class KeywordFilter:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _find_matches(
-        text: str, keywords: list[str], language: str
-    ) -> list[str]:
+    def _find_matches(text: str, keywords: list[str], language: str) -> list[str]:
         """Find all matching keywords in text.
 
         Uses substring matching for Slavic languages and word-boundary

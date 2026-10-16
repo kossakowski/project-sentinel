@@ -4,7 +4,7 @@ Runs against 25+ real production articles and 25+ synthetic hard cases.
 """
 
 import json
-import os
+
 import anthropic
 
 client = anthropic.Anthropic()
@@ -46,7 +46,7 @@ REAL_ARTICLES = [
         "source_name": "GoogleNews:atak wojskowy Polska",
         "language": "pl",
         "expected": True,
-        "why": "Emotional clickbait, no country specified, summary=title. Actually about Ukraine."
+        "why": "Emotional clickbait, no country specified, summary=title. Actually about Ukraine.",
     },
     {
         "id": "real_02",
@@ -56,27 +56,27 @@ REAL_ARTICLES = [
         "source_name": "GoogleNews:Rosja atak",
         "language": "pl",
         "expected": True,
-        "why": "'kraj NATO' — deliberately vague about which country. summary=title."
+        "why": "'kraj NATO' — deliberately vague about which country. summary=title.",
     },
     {
         "id": "real_03",
-        "title": "Alarm w państwie NATO. Dron naruszył przestrzeń powietrzną. „Znajdźcie ochronę\" - Radio Zet",
-        "summary": "Alarm w państwie NATO. Dron naruszył przestrzeń powietrzną. „Znajdźcie ochronę\" Radio Zet",
+        "title": 'Alarm w państwie NATO. Dron naruszył przestrzeń powietrzną. „Znajdźcie ochronę" - Radio Zet',
+        "summary": 'Alarm w państwie NATO. Dron naruszył przestrzeń powietrzną. „Znajdźcie ochronę" Radio Zet',
         "source_type": "google_news",
         "source_name": "GoogleNews:rosyjskie drony Polska",
         "language": "pl",
         "expected": True,
-        "why": "'państwo NATO' — vague country. summary=title."
+        "why": "'państwo NATO' — vague country. summary=title.",
     },
     {
         "id": "real_04",
-        "title": "\"Shahedy\" nad wschodnią Polską. Prawda wyszła na jaw - WP Tech",
-        "summary": "\"Shahedy\" nad wschodnią Polską. Prawda wyszła na jaw WP Tech",
+        "title": '"Shahedy" nad wschodnią Polską. Prawda wyszła na jaw - WP Tech',
+        "summary": '"Shahedy" nad wschodnią Polską. Prawda wyszła na jaw WP Tech',
         "source_type": "google_news",
         "source_name": "GoogleNews:rosyjskie drony Polska",
         "language": "pl",
         "expected": True,
-        "why": "Debunking article ('prawda wyszła na jaw'). summary=title."
+        "why": "Debunking article ('prawda wyszła na jaw'). summary=title.",
     },
     {
         "id": "real_05",
@@ -86,7 +86,7 @@ REAL_ARTICLES = [
         "source_name": "GoogleNews:rosyjskie drony Polska",
         "language": "pl",
         "expected": True,
-        "why": "Names Latvia but summary=title, no details on what happened beyond 'army alarmed'."
+        "why": "Names Latvia but summary=title, no details on what happened beyond 'army alarmed'.",
     },
     {
         "id": "real_06",
@@ -96,17 +96,17 @@ REAL_ARTICLES = [
         "source_name": "GoogleNews:rosyjskie drony Polska",
         "language": "pl",
         "expected": True,
-        "why": "Political aftermath framed as ongoing concern. summary=title."
+        "why": "Political aftermath framed as ongoing concern. summary=title.",
     },
     {
         "id": "real_07",
-        "title": "DRONE ALERT IN VILNIUS Lithuania Fears Provocations and \"False Flag\" Attacks That Could Pull the Baltic States Into a Crisis - The Baltic Sentinel",
-        "summary": "DRONE ALERT IN VILNIUS Lithuania Fears Provocations and \"False Flag\" Attacks That Could Pull the Baltic States Into a Crisis The Baltic Sentinel",
+        "title": 'DRONE ALERT IN VILNIUS Lithuania Fears Provocations and "False Flag" Attacks That Could Pull the Baltic States Into a Crisis - The Baltic Sentinel',
+        "summary": 'DRONE ALERT IN VILNIUS Lithuania Fears Provocations and "False Flag" Attacks That Could Pull the Baltic States Into a Crisis The Baltic Sentinel',
         "source_type": "google_news",
         "source_name": "GoogleNews:Russia attack NATO",
         "language": "en",
         "expected": True,
-        "why": "Analysis/speculation ('fears', 'could pull'), not reporting a specific event. summary=title."
+        "why": "Analysis/speculation ('fears', 'could pull'), not reporting a specific event. summary=title.",
     },
     {
         "id": "real_08",
@@ -116,7 +116,7 @@ REAL_ARTICLES = [
         "source_name": "GoogleNews:Russia attack NATO",
         "language": "en",
         "expected": True,
-        "why": "Russian accusation/propaganda, not a confirmed event. summary=title."
+        "why": "Russian accusation/propaganda, not a confirmed event. summary=title.",
     },
     {
         "id": "real_09",
@@ -126,7 +126,7 @@ REAL_ARTICLES = [
         "source_name": "GoogleNews:site:pap.pl",
         "language": "pl",
         "expected": True,
-        "why": "Names Lithuania, describes specific actions — BUT summary=title, no detail on what caused the alarm."
+        "why": "Names Lithuania, describes specific actions — BUT summary=title, no detail on what caused the alarm.",
     },
     {
         "id": "real_10",
@@ -136,9 +136,8 @@ REAL_ARTICLES = [
         "source_name": "GoogleNews:naruszenie przestrzeni powietrznej",
         "language": "pl",
         "expected": True,
-        "why": "Names Vilnius, specific actions — but summary=title, no detail on the drone itself."
+        "why": "Names Vilnius, specific actions — but summary=title, no detail on the drone itself.",
     },
-
     # --- GOOGLE NEWS: CLEAR/FACTUAL (but still summary=title — borderline) ---
     {
         "id": "real_11",
@@ -148,7 +147,7 @@ REAL_ARTICLES = [
         "source_name": "GoogleNews:Russia attack NATO",
         "language": "en",
         "expected": True,
-        "why": "Specific country + event BUT summary=title, no additional detail on location/damage/type."
+        "why": "Specific country + event BUT summary=title, no additional detail on location/damage/type.",
     },
     {
         "id": "real_12",
@@ -158,7 +157,7 @@ REAL_ARTICLES = [
         "source_name": "GoogleNews:Russia attack NATO",
         "language": "en",
         "expected": True,
-        "why": "Specific event but summary=title — unknown drone origin, no detail on type/intent."
+        "why": "Specific event but summary=title — unknown drone origin, no detail on type/intent.",
     },
     {
         "id": "real_13",
@@ -168,7 +167,7 @@ REAL_ARTICLES = [
         "source_name": "GoogleNews:Russia attack NATO",
         "language": "en",
         "expected": True,
-        "why": "Political aftermath headline. Complex: govt collapse + drone + AI. summary=title."
+        "why": "Political aftermath headline. Complex: govt collapse + drone + AI. summary=title.",
     },
     {
         "id": "real_14",
@@ -178,9 +177,8 @@ REAL_ARTICLES = [
         "source_name": "GoogleNews:site:pap.pl",
         "language": "pl",
         "expected": True,
-        "why": "Names Lithuania, specific detail (explosives) — but summary=title."
+        "why": "Names Lithuania, specific detail (explosives) — but summary=title.",
     },
-
     # --- GOOGLE NEWS: LOW URGENCY (correctly handled, should NOT need enrichment) ---
     {
         "id": "real_15",
@@ -190,7 +188,7 @@ REAL_ARTICLES = [
         "source_name": "GoogleNews:Rosja atak",
         "language": "pl",
         "expected": False,
-        "why": "Specific country (Ukraine), specific event (430 drones, 68 missiles). Title is self-sufficient."
+        "why": "Specific country (Ukraine), specific event (430 drones, 68 missiles). Title is self-sufficient.",
     },
     {
         "id": "real_16",
@@ -200,7 +198,7 @@ REAL_ARTICLES = [
         "source_name": "GoogleNews:Russia attack NATO",
         "language": "en",
         "expected": False,
-        "why": "Clear geopolitical report, not a threat to monitored countries."
+        "why": "Clear geopolitical report, not a threat to monitored countries.",
     },
     {
         "id": "real_17",
@@ -210,7 +208,7 @@ REAL_ARTICLES = [
         "source_name": "GoogleNews:Rosja atak",
         "language": "pl",
         "expected": False,
-        "why": "About attacks on Russia's oil exports. Clear what and where."
+        "why": "About attacks on Russia's oil exports. Clear what and where.",
     },
     {
         "id": "real_18",
@@ -220,9 +218,8 @@ REAL_ARTICLES = [
         "source_name": "GoogleNews:дрони Польща",
         "language": "uk",
         "expected": False,
-        "why": "EU funding for drones. Economic/policy, not a military event."
+        "why": "EU funding for drones. Economic/policy, not a military event.",
     },
-
     # --- RSS: GOOD SUMMARIES (should NOT flag) ---
     {
         "id": "real_19",
@@ -232,7 +229,7 @@ REAL_ARTICLES = [
         "source_name": "Onet Wiadomości",
         "language": "pl",
         "expected": False,
-        "why": "Summary adds real context: Vilnius, air threat, public transport stopped, AFP source."
+        "why": "Summary adds real context: Vilnius, air threat, public transport stopped, AFP source.",
     },
     {
         "id": "real_20",
@@ -242,7 +239,7 @@ REAL_ARTICLES = [
         "source_name": "Defence24",
         "language": "pl",
         "expected": False,
-        "why": "Rich summary: Latvia, from Russia, oil depot hit, 40km from border, Reuters source."
+        "why": "Rich summary: Latvia, from Russia, oil depot hit, 40km from border, Reuters source.",
     },
     {
         "id": "real_21",
@@ -252,9 +249,8 @@ REAL_ARTICLES = [
         "source_name": "Defence24",
         "language": "pl",
         "expected": False,
-        "why": "Economic/policy article, no military threat. Clear what and where."
+        "why": "Economic/policy article, no military threat. Clear what and where.",
     },
-
     # --- RSS: BAD SUMMARIES (should flag) ---
     {
         "id": "real_22",
@@ -264,7 +260,7 @@ REAL_ARTICLES = [
         "source_name": "RMF24",
         "language": "pl",
         "expected": True,
-        "why": "Summary is one sentence that partially repeats title. No detail on cause of alarm."
+        "why": "Summary is one sentence that partially repeats title. No detail on cause of alarm.",
     },
     {
         "id": "real_23",
@@ -274,7 +270,7 @@ REAL_ARTICLES = [
         "source_name": "TASS",
         "language": "en",
         "expected": False,
-        "why": "Title + summary together: Latvia, oil depot, 4 tanks damaged. Enough for classification."
+        "why": "Title + summary together: Latvia, oil depot, 4 tanks damaged. Enough for classification.",
     },
     {
         "id": "real_24",
@@ -284,7 +280,7 @@ REAL_ARTICLES = [
         "source_name": "RMF24",
         "language": "pl",
         "expected": True,
-        "why": "Summary repeats part of title. No country in summary, 'Łotewska' only in title."
+        "why": "Summary repeats part of title. No country in summary, 'Łotewska' only in title.",
     },
     {
         "id": "real_25",
@@ -294,9 +290,8 @@ REAL_ARTICLES = [
         "source_name": "Kyiv Independent",
         "language": "en",
         "expected": False,
-        "why": "Title has Latvia + specific event. Summary adds shelter orders. Borderline but enough."
+        "why": "Title has Latvia + specific event. Summary adds shelter orders. Borderline but enough.",
     },
-
     # --- TELEGRAM (good content, should NOT flag) ---
     {
         "id": "real_26",
@@ -306,7 +301,7 @@ REAL_ARTICLES = [
         "source_name": "Ukrainian Air Force",
         "language": "uk",
         "expected": False,
-        "why": "Detailed message about tribunal, lists countries. Not a military event."
+        "why": "Detailed message about tribunal, lists countries. Not a military event.",
     },
     {
         "id": "real_27",
@@ -316,7 +311,7 @@ REAL_ARTICLES = [
         "source_name": "Ukrainian Air Force",
         "language": "uk",
         "expected": False,
-        "why": "Not military. Clear topic. Detailed summary."
+        "why": "Not military. Clear topic. Detailed summary.",
     },
 ]
 
@@ -330,7 +325,7 @@ SYNTHETIC_ARTICLES = [
         "source_name": "GoogleNews:atak wojskowy Polska",
         "language": "pl",
         "expected": True,
-        "why": "No country, no specifics. 'Strategic object' and 'key infrastructure' are meaningless without location."
+        "why": "No country, no specifics. 'Strategic object' and 'key infrastructure' are meaningless without location.",
     },
     {
         "id": "synth_02",
@@ -340,7 +335,7 @@ SYNTHETIC_ARTICLES = [
         "source_name": "GoogleNews:atak wojskowy Polska",
         "language": "pl",
         "expected": True,
-        "why": "Which border? Which country? 'Near the border' is deliberately vague."
+        "why": "Which border? Which country? 'Near the border' is deliberately vague.",
     },
     {
         "id": "synth_03",
@@ -350,7 +345,7 @@ SYNTHETIC_ARTICLES = [
         "source_name": "GoogleNews:rosyjskie drony Polska",
         "language": "pl",
         "expected": True,
-        "why": "Emotional clickbait ('not exercises', 'powerful explosion'). No location, no event type."
+        "why": "Emotional clickbait ('not exercises', 'powerful explosion'). No location, no event type.",
     },
     {
         "id": "synth_04",
@@ -360,7 +355,7 @@ SYNTHETIC_ARTICLES = [
         "source_name": "GoogleNews:naruszenie przestrzeni powietrznej",
         "language": "pl",
         "expected": True,
-        "why": "'Eastern Europe' — could be any of 15 countries. 'Pilne!' is emotional."
+        "why": "'Eastern Europe' — could be any of 15 countries. 'Pilne!' is emotional.",
     },
     {
         "id": "synth_05",
@@ -370,7 +365,7 @@ SYNTHETIC_ARTICLES = [
         "source_name": "GoogleNews:Rosja atak",
         "language": "pl",
         "expected": True,
-        "why": "Pure rhetoric/analysis. No event, no location. 'This is just the beginning' is empty."
+        "why": "Pure rhetoric/analysis. No event, no location. 'This is just the beginning' is empty.",
     },
     # --- TRICKY: Specific but sounds vague ---
     {
@@ -381,7 +376,7 @@ SYNTHETIC_ARTICLES = [
         "source_name": "GoogleNews:Rosja atak",
         "language": "pl",
         "expected": False,
-        "why": "Specific: Russian cruise missile, Rzeszów (Poland), 3 dead. Title is self-sufficient even without summary."
+        "why": "Specific: Russian cruise missile, Rzeszów (Poland), 3 dead. Title is self-sufficient even without summary.",
     },
     {
         "id": "synth_07",
@@ -391,7 +386,7 @@ SYNTHETIC_ARTICLES = [
         "source_name": "GoogleNews:rosyjskie drony Polska",
         "language": "pl",
         "expected": False,
-        "why": "Specific: 2 Shaheds, Lubaczów (Poland), debris on field. Clear factual headline."
+        "why": "Specific: 2 Shaheds, Lubaczów (Poland), debris on field. Clear factual headline.",
     },
     {
         "id": "synth_08",
@@ -401,7 +396,7 @@ SYNTHETIC_ARTICLES = [
         "source_name": "GoogleNews:Russia attack NATO",
         "language": "en",
         "expected": False,
-        "why": "Extremely specific: aircraft type, weapon, city (Tallinn, Estonia), casualties."
+        "why": "Extremely specific: aircraft type, weapon, city (Tallinn, Estonia), casualties.",
     },
     {
         "id": "synth_09",
@@ -411,7 +406,7 @@ SYNTHETIC_ARTICLES = [
         "source_name": "GoogleNews:atak wojskowy Polska",
         "language": "pl",
         "expected": False,
-        "why": "Specific: 3 Iskander missiles, NATO base, Łask (Poland). Self-sufficient."
+        "why": "Specific: 3 Iskander missiles, NATO base, Łask (Poland). Self-sufficient.",
     },
     # --- TRICKY: Debunking/explainer with alarming keywords ---
     {
@@ -422,7 +417,7 @@ SYNTHETIC_ARTICLES = [
         "source_name": "GoogleNews:atak wojskowy Polska",
         "language": "pl",
         "expected": True,
-        "why": "Explainer/debunking ('experts explain what really happened'). Question mark = uncertainty."
+        "why": "Explainer/debunking ('experts explain what really happened'). Question mark = uncertainty.",
     },
     {
         "id": "synth_11",
@@ -432,7 +427,7 @@ SYNTHETIC_ARTICLES = [
         "source_name": "GoogleNews:atak wojskowy Polska",
         "language": "pl",
         "expected": True,
-        "why": "Explicit denial ('No, Poland was not attacked'). Debunking."
+        "why": "Explicit denial ('No, Poland was not attacked'). Debunking.",
     },
     {
         "id": "synth_12",
@@ -442,7 +437,7 @@ SYNTHETIC_ARTICLES = [
         "source_name": "GoogleNews:rosyjskie drony Polska",
         "language": "pl",
         "expected": True,
-        "why": "MON denies rumors. Debunking article with scary keywords."
+        "why": "MON denies rumors. Debunking article with scary keywords.",
     },
     # --- TRICKY: Emotional but actually informative ---
     {
@@ -453,7 +448,7 @@ SYNTHETIC_ARTICLES = [
         "source_name": "GoogleNews:atak wojskowy Polska",
         "language": "pl",
         "expected": False,
-        "why": "Despite 'PILNE', has all facts: Shahed-136, Przewodów (Poland), 2 dead."
+        "why": "Despite 'PILNE', has all facts: Shahed-136, Przewodów (Poland), 2 dead.",
     },
     {
         "id": "synth_14",
@@ -463,7 +458,7 @@ SYNTHETIC_ARTICLES = [
         "source_name": "GoogleNews:Russia attack NATO",
         "language": "en",
         "expected": False,
-        "why": "Despite 'BREAKING', has specifics: Klaipeda, Lithuania, missile strike, military confirmed."
+        "why": "Despite 'BREAKING', has specifics: Klaipeda, Lithuania, missile strike, military confirmed.",
     },
     # --- TRICKY: Ukraine events with Poland-adjacent language ---
     {
@@ -474,7 +469,7 @@ SYNTHETIC_ARTICLES = [
         "source_name": "GoogleNews:Rosja atak",
         "language": "pl",
         "expected": True,
-        "why": "'Places important for Poland' — culturally, not territorially. Actually about Lviv, Ukraine."
+        "why": "'Places important for Poland' — culturally, not territorially. Actually about Lviv, Ukraine.",
     },
     {
         "id": "synth_16",
@@ -484,7 +479,7 @@ SYNTHETIC_ARTICLES = [
         "source_name": "GoogleNews:atak wojskowy Polska",
         "language": "pl",
         "expected": True,
-        "why": "'Near Polish border' but event is in Lviv, Ukraine. Misleading framing. Summary=title."
+        "why": "'Near Polish border' but event is in Lviv, Ukraine. Misleading framing. Summary=title.",
     },
     {
         "id": "synth_17",
@@ -494,7 +489,7 @@ SYNTHETIC_ARTICLES = [
         "source_name": "GoogleNews:Russia attack NATO",
         "language": "en",
         "expected": True,
-        "why": "Doesn't name the city (Lviv). '70km from Polish border' implies Poland threat but event is Ukraine."
+        "why": "Doesn't name the city (Lviv). '70km from Polish border' implies Poland threat but event is Ukraine.",
     },
     # --- TRICKY: Source credibility baked into headline ---
     {
@@ -505,7 +500,7 @@ SYNTHETIC_ARTICLES = [
         "source_name": "GoogleNews:atak wojskowy Polska",
         "language": "pl",
         "expected": True,
-        "why": "From a hyperlocal blog. Extraordinary claim (whole Poland on alert) from unreliable source. Summary=title."
+        "why": "From a hyperlocal blog. Extraordinary claim (whole Poland on alert) from unreliable source. Summary=title.",
     },
     {
         "id": "synth_19",
@@ -515,7 +510,7 @@ SYNTHETIC_ARTICLES = [
         "source_name": "GoogleNews:Russia attack NATO",
         "language": "en",
         "expected": True,
-        "why": "Tabloid rhetoric. 'Claim' and 'threatens' — this is posturing, not an event. Summary=title."
+        "why": "Tabloid rhetoric. 'Claim' and 'threatens' — this is posturing, not an event. Summary=title.",
     },
     # --- TRICKY: Non-military with military keywords ---
     {
@@ -526,7 +521,7 @@ SYNTHETIC_ARTICLES = [
         "source_name": "GoogleNews:NATO Article 5",
         "language": "en",
         "expected": False,
-        "why": "Budget/economic news. Clear what it's about despite military keywords."
+        "why": "Budget/economic news. Clear what it's about despite military keywords.",
     },
     {
         "id": "synth_21",
@@ -536,7 +531,7 @@ SYNTHETIC_ARTICLES = [
         "source_name": "GoogleNews:rosyjskie drony Polska",
         "language": "pl",
         "expected": False,
-        "why": "Military exercises/testing at Drawsko range. Clear, non-threatening."
+        "why": "Military exercises/testing at Drawsko range. Clear, non-threatening.",
     },
     # --- TRICKY: Multiple countries, ambiguous ---
     {
@@ -547,7 +542,7 @@ SYNTHETIC_ARTICLES = [
         "source_name": "GoogleNews:rosyjskie drony Polska",
         "language": "pl",
         "expected": True,
-        "why": "'Baltic countries' — which ones? All three? One? Summary=title."
+        "why": "'Baltic countries' — which ones? All three? One? Summary=title.",
     },
     {
         "id": "synth_23",
@@ -557,7 +552,7 @@ SYNTHETIC_ARTICLES = [
         "source_name": "GoogleNews:Russia attack NATO",
         "language": "en",
         "expected": False,
-        "why": "Specific: Baltic Sea, near Gotland (Sweden). Interception, not attack."
+        "why": "Specific: Baltic Sea, near Gotland (Sweden). Interception, not attack.",
     },
     # --- TRICKY: Past tense / aftermath phrased as present danger ---
     {
@@ -568,7 +563,7 @@ SYNTHETIC_ARTICLES = [
         "source_name": "GoogleNews:atak wojskowy Polska",
         "language": "pl",
         "expected": True,
-        "why": "'After the attack' — aftermath, not active threat. Which attack? No detail."
+        "why": "'After the attack' — aftermath, not active threat. Which attack? No detail.",
     },
     {
         "id": "synth_25",
@@ -578,7 +573,7 @@ SYNTHETIC_ARTICLES = [
         "source_name": "GoogleNews:Rosja atak",
         "language": "pl",
         "expected": True,
-        "why": "Analysis piece ('how Lithuania changed'). Past tense framed dramatically."
+        "why": "Analysis piece ('how Lithuania changed'). Past tense framed dramatically.",
     },
     # --- RSS with good summary (should NOT flag) ---
     {
@@ -589,7 +584,7 @@ SYNTHETIC_ARTICLES = [
         "source_name": "Defence24 EN",
         "language": "en",
         "expected": False,
-        "why": "Detailed summary: drone type, location, duration, no interception, context."
+        "why": "Detailed summary: drone type, location, duration, no interception, context.",
     },
     {
         "id": "synth_27",
@@ -599,7 +594,7 @@ SYNTHETIC_ARTICLES = [
         "source_name": "Polsat News",
         "language": "pl",
         "expected": False,
-        "why": "Vague TITLE ('NATO city') but rich SUMMARY: Riga, port district, 3000 evacuated, LNG terminal."
+        "why": "Vague TITLE ('NATO city') but rich SUMMARY: Riga, port district, 3000 evacuated, LNG terminal.",
     },
     {
         "id": "synth_28",
@@ -609,13 +604,14 @@ SYNTHETIC_ARTICLES = [
         "source_name": "Fakt",
         "language": "pl",
         "expected": False,
-        "why": "Clickbait TITLE but detailed SUMMARY: Latvia, Daugavpils, Shahed, specific damage."
+        "why": "Clickbait TITLE but detailed SUMMARY: Latvia, Daugavpils, Shahed, specific damage.",
     },
 ]
 
 
 def run_check(article, max_retries=5):
     import time
+
     user_msg = (
         f"Source: {article['source_name']} ({article['source_type']})\n"
         f"Language: {article['language']}\n"
@@ -645,7 +641,7 @@ def run_check(article, max_retries=5):
             }
         except anthropic.APIStatusError as e:
             if e.status_code == 529 and attempt < max_retries - 1:
-                time.sleep(2 ** attempt)
+                time.sleep(2**attempt)
                 continue
             return {"needs_enrichment": None, "reason": f"ERROR: {e}", "input_tokens": 0, "output_tokens": 0}
         except Exception as e:
@@ -697,11 +693,11 @@ def main():
 
     print("\n" + "=" * 120)
     print(f"\nRESULTS: {correct}/{len(all_articles)} correct, {wrong} wrong, {errors} errors")
-    print(f"Accuracy: {correct/(correct+wrong)*100:.1f}%" if (correct+wrong) > 0 else "N/A")
+    print(f"Accuracy: {correct / (correct + wrong) * 100:.1f}%" if (correct + wrong) > 0 else "N/A")
 
     # Breakdown by category
-    real_correct = sum(1 for r in results[:len(REAL_ARTICLES)] if r["match"])
-    synth_correct = sum(1 for r in results[len(REAL_ARTICLES):] if r["match"])
+    real_correct = sum(1 for r in results[: len(REAL_ARTICLES)] if r["match"])
+    synth_correct = sum(1 for r in results[len(REAL_ARTICLES) :] if r["match"])
     print(f"  Real: {real_correct}/{len(REAL_ARTICLES)}")
     print(f"  Synthetic: {synth_correct}/{len(SYNTHETIC_ARTICLES)}")
 
@@ -713,13 +709,15 @@ def main():
 
     # Token stats
     n = len(all_articles)
-    print(f"\nTOKEN USAGE:")
+    print("\nTOKEN USAGE:")
     print(f"  Total: {total_input_tokens} input, {total_output_tokens} output")
-    print(f"  Average per article: {total_input_tokens/n:.0f} input, {total_output_tokens/n:.0f} output")
+    print(f"  Average per article: {total_input_tokens / n:.0f} input, {total_output_tokens / n:.0f} output")
 
     haiku_input_cost = 0.80  # per MTok
     haiku_output_cost = 4.00  # per MTok
-    cost_per_article = (total_input_tokens/n * haiku_input_cost + total_output_tokens/n * haiku_output_cost) / 1_000_000
+    cost_per_article = (
+        total_input_tokens / n * haiku_input_cost + total_output_tokens / n * haiku_output_cost
+    ) / 1_000_000
     print(f"  Cost per article: ${cost_per_article:.6f}")
     print(f"  Cost per cycle (10 articles): ${cost_per_article * 10:.5f}")
     print(f"  Cost per day (480 cycles × 10): ${cost_per_article * 10 * 480:.2f}")
@@ -727,12 +725,14 @@ def main():
     # Show all misses in detail
     misses = [r for r in results if not r["match"] and r.get("needs_enrichment") is not None]
     if misses:
-        print(f"\n{'='*120}")
+        print(f"\n{'=' * 120}")
         print("DETAILED MISSES:")
         for r in misses:
             print(f"\n  {r['id']}: {r['title'][:90]}")
             print(f"    Summary: {r['summary'][:90]}")
-            print(f"    Expected: {'ENRICH' if r['expected'] else 'PASS'} | Got: {'ENRICH' if r['needs_enrichment'] else 'PASS'}")
+            print(
+                f"    Expected: {'ENRICH' if r['expected'] else 'PASS'} | Got: {'ENRICH' if r['needs_enrichment'] else 'PASS'}"
+            )
             print(f"    LLM reason: {r['reason']}")
             print(f"    Ground truth: {r['why']}")
 

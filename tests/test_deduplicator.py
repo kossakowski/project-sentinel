@@ -1,6 +1,6 @@
 """Tests for sentinel.processing.deduplicator."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sentinel.models import Article
 from sentinel.processing.deduplicator import Deduplicator
@@ -15,8 +15,8 @@ def _make_article(**overrides) -> Article:
         "title": "Russia launches military operation near Polish border",
         "summary": "Russian forces have begun operations.",
         "language": "en",
-        "published_at": datetime.now(timezone.utc),
-        "fetched_at": datetime.now(timezone.utc),
+        "published_at": datetime.now(UTC),
+        "fetched_at": datetime.now(UTC),
     }
     defaults.update(overrides)
     return Article(**defaults)

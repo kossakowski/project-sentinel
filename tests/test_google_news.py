@@ -1,7 +1,5 @@
 """Tests for the Google News fetcher."""
 
-import json
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -9,7 +7,6 @@ import pytest
 
 from sentinel.config import GoogleNewsQuery
 from sentinel.fetchers.google_news import GoogleNewsFetcher
-
 
 SAMPLE_GNEWS_RSS = """\
 <?xml version="1.0" encoding="UTF-8"?>

@@ -76,17 +76,12 @@ def main(argv: list[str] | None = None) -> int:
         print("Syncing production database...")
         result = sync_db(db_path=args.db, fts_db_path=fts_db_path)
         if result.success:
-            print(
-                f"Sync OK: {result.article_count} articles, "
-                f"{result.file_size:,} bytes, {result.duration:.1f}s"
-            )
+            print(f"Sync OK: {result.article_count} articles, {result.file_size:,} bytes, {result.duration:.1f}s")
         else:
             print(f"Sync FAILED: {result.error}", file=sys.stderr)
             return 1
 
-    app = create_app(
-        db_path=args.db, tunnel=args.tunnel, fts_db_path=fts_db_path
-    )
+    app = create_app(db_path=args.db, tunnel=args.tunnel, fts_db_path=fts_db_path)
     print(f"Starting dashboard on http://127.0.0.1:{args.port}")
     # threaded=True so per-request SQLite connections run on worker threads;
     # this is a single-user localhost tool, so the dev server is sufficient.

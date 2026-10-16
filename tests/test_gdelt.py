@@ -1,14 +1,13 @@
 """Tests for the GDELT fetcher."""
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
 
-from sentinel.fetchers.gdelt import GDELTFetcher, GDELT_LANGUAGE_MAP
-
+from sentinel.fetchers.gdelt import GDELT_LANGUAGE_MAP, GDELTFetcher
 
 SAMPLE_GDELT_RESPONSE = {
     "articles": [
@@ -35,10 +34,7 @@ SAMPLE_GDELT_RESPONSE = {
 
 def _make_response(data: dict | str, status_code: int = 200):
     """Create a mock httpx.Response with JSON body."""
-    if isinstance(data, str):
-        content = data
-    else:
-        content = json.dumps(data)
+    content = data if isinstance(data, str) else json.dumps(data)
     return httpx.Response(
         status_code=status_code,
         text=content,
@@ -70,7 +66,7 @@ async def test_parse_valid_response(config):
     assert art1.source_name == "GDELT:reuters.com"
     assert art1.source_url == "https://reuters.com/article/123"
     assert art1.language == "en"
-    assert art1.published_at == datetime(2025, 9, 10, 3, 48, 0, tzinfo=timezone.utc)
+    assert art1.published_at == datetime(2025, 9, 10, 3, 48, 0, tzinfo=UTC)
     assert art1.raw_metadata == SAMPLE_GDELT_RESPONSE["articles"][0]
 
     art2 = articles[1]
@@ -104,7 +100,7 @@ def test_date_parsing(config):
     assert dt.hour == 3
     assert dt.minute == 48
     assert dt.second == 0
-    assert dt.tzinfo == timezone.utc
+    assert dt.tzinfo == UTC
 
 
 @pytest.mark.asyncio
@@ -132,9 +128,7 @@ async def test_network_error(config):
 
     with patch("sentinel.fetchers.gdelt.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(
-            side_effect=httpx.ConnectError("connection refused")
-        )
+        mock_client.get = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client

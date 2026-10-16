@@ -1,6 +1,6 @@
 """Tests for sentinel.processing.normalizer."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sentinel.models import Article
 from sentinel.processing.normalizer import Normalizer
@@ -15,8 +15,8 @@ def _make_article(**overrides) -> Article:
         "title": "Test Title",
         "summary": "Test summary.",
         "language": "en",
-        "published_at": datetime.now(timezone.utc),
-        "fetched_at": datetime.now(timezone.utc),
+        "published_at": datetime.now(UTC),
+        "fetched_at": datetime.now(UTC),
     }
     defaults.update(overrides)
     return Article(**defaults)
@@ -75,15 +75,15 @@ class TestNormalizer:
 
     def test_timestamp_future_capped(self):
         """Future timestamp is capped to current UTC time."""
-        future = datetime.now(timezone.utc) + timedelta(hours=2)
+        future = datetime.now(UTC) + timedelta(hours=2)
         article = _make_article(published_at=future)
         result = self.normalizer.normalize(article)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         assert result.published_at <= now + timedelta(seconds=5)
 
     def test_timestamp_missing_uses_fetched(self):
         """When published_at is None, fetched_at is used."""
-        fetched = datetime(2025, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
+        fetched = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
         article = _make_article(published_at=None, fetched_at=fetched)
         result = self.normalizer.normalize(article)
         assert result.published_at == fetched
@@ -101,7 +101,7 @@ class TestNormalizer:
         article = _make_article(title="BREAKING NEWS")
         result = self.normalizer.normalize(article)
         assert result.title_normalized == result.title_normalized.lower()
-        assert "breaking news" == result.title_normalized
+        assert result.title_normalized == "breaking news"
 
     def test_title_normalized_no_accents(self):
         """Accented characters are decomposed (o-acute -> o, a-ogonek stripped)."""

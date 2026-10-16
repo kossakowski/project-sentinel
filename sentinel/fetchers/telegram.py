@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sentinel.config import SentinelConfig
 from sentinel.fetchers.base import BaseFetcher
@@ -38,9 +38,7 @@ class TelegramFetcher(BaseFetcher):
         try:
             from telethon import TelegramClient, events
         except ImportError:
-            self.logger.error(
-                "telethon not installed; Telegram fetcher cannot start"
-            )
+            self.logger.error("telethon not installed; Telegram fetcher cannot start")
             return
 
         tg_config = self.config.sources.telegram
@@ -122,9 +120,9 @@ class TelegramFetcher(BaseFetcher):
             # Published time from message date
             published_at = message.date
             if published_at and published_at.tzinfo is None:
-                published_at = published_at.replace(tzinfo=timezone.utc)
+                published_at = published_at.replace(tzinfo=UTC)
             if published_at is None:
-                published_at = datetime.now(timezone.utc)
+                published_at = datetime.now(UTC)
 
             raw_metadata = {
                 "channel_id": channel_config.channel_id,
@@ -141,7 +139,7 @@ class TelegramFetcher(BaseFetcher):
                 summary=summary,
                 language=channel_config.language,
                 published_at=published_at,
-                fetched_at=datetime.now(timezone.utc),
+                fetched_at=datetime.now(UTC),
                 raw_metadata=raw_metadata,
             )
 

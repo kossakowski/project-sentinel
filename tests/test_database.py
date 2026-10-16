@@ -1,6 +1,6 @@
 """Tests for sentinel.database Database access layer."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sentinel.database import Database
 from sentinel.models import Article, ClassificationResult, Event
@@ -11,9 +11,7 @@ def test_create_tables(tmp_path):
     db_path = str(tmp_path / "test_idempotent.db")
     db1 = Database(db_path)
     # Verify tables exist by querying sqlite_master
-    cursor = db1.conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-    )
+    cursor = db1.conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
     tables = {row["name"] for row in cursor.fetchall()}
     assert "articles" in tables
     assert "classifications" in tables
@@ -25,9 +23,7 @@ def test_create_tables(tmp_path):
 
     # Opening a second connection to the same DB should also work
     db2 = Database(db_path)
-    cursor2 = db2.conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-    )
+    cursor2 = db2.conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
     tables2 = {row["name"] for row in cursor2.fetchall()}
     assert tables2 == tables
 
@@ -52,7 +48,7 @@ def test_duplicate_article_rejected(db, sample_article):
 
 def test_get_recent_titles(db):
     """Insert articles with different timestamps, verify only recent ones returned."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Insert a recent article
     recent = Article(
@@ -148,7 +144,7 @@ def test_update_event(db, sample_event):
 
 def test_get_active_events(db):
     """Insert events with different statuses and times, verify filtering."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Active pending event (recent)
     active = Event(
@@ -213,7 +209,7 @@ def test_get_active_events(db):
 
 def test_cleanup_old_records(db):
     """Insert old articles/events, run cleanup, verify deleted."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old_date = now - timedelta(days=60)
 
     # Insert an old article
@@ -296,8 +292,8 @@ def test_concurrent_access(db):
             title=f"Article number {i}",
             summary="",
             language="en",
-            published_at=datetime.now(timezone.utc),
-            fetched_at=datetime.now(timezone.utc),
+            published_at=datetime.now(UTC),
+            fetched_at=datetime.now(UTC),
         )
         if db.insert_article(article):
             inserted_count += 1

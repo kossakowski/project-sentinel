@@ -1,7 +1,7 @@
 """Tests for the content enrichment module."""
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -10,8 +10,13 @@ from sentinel.models import Article
 from sentinel.processing.enricher import ArticleEnricher
 
 
-def _make_article(title: str, summary: str, source_type: str = "google_news",
-                  source_name: str = "GoogleNews:test", url: str = "https://example.com") -> Article:
+def _make_article(
+    title: str,
+    summary: str,
+    source_type: str = "google_news",
+    source_name: str = "GoogleNews:test",
+    url: str = "https://example.com",
+) -> Article:
     return Article(
         source_name=source_name,
         source_url=url,
@@ -19,14 +24,15 @@ def _make_article(title: str, summary: str, source_type: str = "google_news",
         title=title,
         summary=summary,
         language="pl",
-        published_at=datetime.now(timezone.utc),
-        fetched_at=datetime.now(timezone.utc),
+        published_at=datetime.now(UTC),
+        fetched_at=datetime.now(UTC),
     )
 
 
 # ------------------------------------------------------------------
 # Heuristic gate tests
 # ------------------------------------------------------------------
+
 
 class TestIsGarbageSummary:
     """Test the heuristic gate for detecting summary ≈ title."""
@@ -134,8 +140,8 @@ class TestIsGarbageSummary:
 # enrich_batch integration tests (mocked LLM + HTTP)
 # ------------------------------------------------------------------
 
-class TestEnrichBatch:
 
+class TestEnrichBatch:
     @pytest.fixture
     def enricher(self):
         config = MagicMock()
@@ -147,10 +153,13 @@ class TestEnrichBatch:
             "Alarm w kraju NATO - Radio Zet",
             "Alarm w kraju NATO Radio Zet",
         )
-        with patch.object(enricher, '_fetch_body', new_callable=AsyncMock, return_value="Real body text here with lots of details about what happened in Latvia."):
-            result = asyncio.get_event_loop().run_until_complete(
-                enricher.enrich_batch([article])
-            )
+        with patch.object(
+            enricher,
+            "_fetch_body",
+            new_callable=AsyncMock,
+            return_value="Real body text here with lots of details about what happened in Latvia.",
+        ):
+            result = asyncio.get_event_loop().run_until_complete(enricher.enrich_batch([article]))
         assert result[0].raw_metadata["enrichment"]["method"] == "heuristic"
         assert result[0].raw_metadata["enrichment"]["fetched"] is True
         assert "Real body text" in result[0].summary
@@ -163,10 +172,8 @@ class TestEnrichBatch:
             source_type="rss",
             source_name="Defence24",
         )
-        with patch.object(enricher, '_check_vagueness_llm', return_value=False):
-            result = asyncio.get_event_loop().run_until_complete(
-                enricher.enrich_batch([article])
-            )
+        with patch.object(enricher, "_check_vagueness_llm", return_value=False):
+            result = asyncio.get_event_loop().run_until_complete(enricher.enrich_batch([article]))
         assert result[0].raw_metadata["enrichment"]["method"] == "none"
         assert "agencja Reutera" in result[0].summary
 
@@ -177,11 +184,16 @@ class TestEnrichBatch:
             source_type="rss",
             source_name="RMF24",
         )
-        with patch.object(enricher, '_check_vagueness_llm', return_value=True), \
-             patch.object(enricher, '_fetch_body', new_callable=AsyncMock, return_value="Detailed body about Lithuania drone alert with specific details."):
-            result = asyncio.get_event_loop().run_until_complete(
-                enricher.enrich_batch([article])
-            )
+        with (
+            patch.object(enricher, "_check_vagueness_llm", return_value=True),
+            patch.object(
+                enricher,
+                "_fetch_body",
+                new_callable=AsyncMock,
+                return_value="Detailed body about Lithuania drone alert with specific details.",
+            ),
+        ):
+            result = asyncio.get_event_loop().run_until_complete(enricher.enrich_batch([article]))
         assert result[0].raw_metadata["enrichment"]["method"] == "llm"
         assert result[0].raw_metadata["enrichment"]["fetched"] is True
 
@@ -191,17 +203,13 @@ class TestEnrichBatch:
             "Alarm w kraju NATO Radio Zet",
         )
         original_summary = article.summary
-        with patch.object(enricher, '_fetch_body', new_callable=AsyncMock, return_value=None):
-            result = asyncio.get_event_loop().run_until_complete(
-                enricher.enrich_batch([article])
-            )
+        with patch.object(enricher, "_fetch_body", new_callable=AsyncMock, return_value=None):
+            result = asyncio.get_event_loop().run_until_complete(enricher.enrich_batch([article]))
         assert result[0].summary == original_summary
         assert result[0].raw_metadata["enrichment"]["fetched"] is False
 
     def test_empty_list_returns_empty(self, enricher):
-        result = asyncio.get_event_loop().run_until_complete(
-            enricher.enrich_batch([])
-        )
+        result = asyncio.get_event_loop().run_until_complete(enricher.enrich_batch([]))
         assert result == []
 
     def test_mixed_batch(self, enricher):
@@ -216,10 +224,10 @@ class TestEnrichBatch:
             source_type="rss",
             source_name="Defence24 EN",
         )
-        with patch.object(enricher, '_check_vagueness_llm', return_value=False), \
-             patch.object(enricher, '_fetch_body', new_callable=AsyncMock, return_value="Body of the garbage article."):
-            result = asyncio.get_event_loop().run_until_complete(
-                enricher.enrich_batch([garbage, good])
-            )
+        with (
+            patch.object(enricher, "_check_vagueness_llm", return_value=False),
+            patch.object(enricher, "_fetch_body", new_callable=AsyncMock, return_value="Body of the garbage article."),
+        ):
+            result = asyncio.get_event_loop().run_until_complete(enricher.enrich_batch([garbage, good]))
         assert result[0].raw_metadata["enrichment"]["method"] == "heuristic"
         assert result[1].raw_metadata["enrichment"]["method"] == "none"

@@ -2,22 +2,23 @@
 
 import html
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from sentinel.models import Article
 
-
 # Tracking query parameters to strip from URLs
-_TRACKING_PARAMS = frozenset({
-    "utm_source",
-    "utm_medium",
-    "utm_campaign",
-    "utm_content",
-    "utm_term",
-    "fbclid",
-    "gclid",
-})
+_TRACKING_PARAMS = frozenset(
+    {
+        "utm_source",
+        "utm_medium",
+        "utm_campaign",
+        "utm_content",
+        "utm_term",
+        "fbclid",
+        "gclid",
+    }
+)
 
 # Language name -> ISO 639-1 code
 _LANGUAGE_MAP = {
@@ -47,9 +48,7 @@ class Normalizer:
             summary = title
 
         source_url = self._normalize_url(article.source_url)
-        published_at = self._normalize_timestamp(
-            article.published_at, article.fetched_at
-        )
+        published_at = self._normalize_timestamp(article.published_at, article.fetched_at)
         language = self._normalize_language(article.language)
 
         return Article(
@@ -103,37 +102,35 @@ class Normalizer:
 
         # Strip tracking query parameters
         query_params = parse_qs(parsed.query, keep_blank_values=True)
-        filtered_params = {
-            k: v for k, v in query_params.items() if k.lower() not in _TRACKING_PARAMS
-        }
+        filtered_params = {k: v for k, v in query_params.items() if k.lower() not in _TRACKING_PARAMS}
         new_query = urlencode(filtered_params, doseq=True)
 
         # Strip trailing slash from path
         path = parsed.path.rstrip("/")
 
-        normalized = urlunparse((
-            parsed.scheme,
-            netloc,
-            path,
-            parsed.params,
-            new_query,
-            "",  # drop fragment
-        ))
+        normalized = urlunparse(
+            (
+                parsed.scheme,
+                netloc,
+                path,
+                parsed.params,
+                new_query,
+                "",  # drop fragment
+            )
+        )
         return normalized
 
     @staticmethod
-    def _normalize_timestamp(
-        published_at: datetime | None, fetched_at: datetime
-    ) -> datetime:
+    def _normalize_timestamp(published_at: datetime | None, fetched_at: datetime) -> datetime:
         """Ensure UTC, cap future timestamps, fallback to fetched_at."""
         if published_at is None:
             return fetched_at
 
         # Ensure timezone-aware (assume UTC if naive)
         if published_at.tzinfo is None:
-            published_at = published_at.replace(tzinfo=timezone.utc)
+            published_at = published_at.replace(tzinfo=UTC)
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if published_at > now:
             return now
 

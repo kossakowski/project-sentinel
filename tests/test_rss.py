@@ -1,14 +1,12 @@
 """Tests for the RSS fetcher."""
 
-import time
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
 
 from sentinel.fetchers.rss import RSSFetcher, strip_html
-
 
 SAMPLE_RSS_XML = """\
 <?xml version="1.0" encoding="UTF-8"?>
@@ -162,9 +160,9 @@ async def test_handle_missing_date(config):
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client
 
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
         articles = await fetcher.fetch()
-        after = datetime.now(timezone.utc)
+        after = datetime.now(UTC)
 
     assert len(articles) == 1
     # published_at should be approximately now since no date was provided
@@ -195,9 +193,7 @@ async def test_conditional_get_304(config):
     fetcher = RSSFetcher(config)
 
     # First: prime the cache with an ETag
-    first_resp = _make_response(
-        SAMPLE_RSS_XML, headers={"etag": '"abc123"'}
-    )
+    first_resp = _make_response(SAMPLE_RSS_XML, headers={"etag": '"abc123"'})
     second_resp = _make_response("", status_code=304)
 
     call_count = 0
@@ -266,8 +262,20 @@ async def test_disabled_feed_skipped(config):
 
     config_dict = config.model_dump()
     config_dict["sources"]["rss"] = [
-        {"name": "EnabledFeed", "url": "https://example.com/enabled.xml", "language": "en", "enabled": True, "priority": 1},
-        {"name": "DisabledFeed", "url": "https://example.com/disabled.xml", "language": "en", "enabled": False, "priority": 1},
+        {
+            "name": "EnabledFeed",
+            "url": "https://example.com/enabled.xml",
+            "language": "en",
+            "enabled": True,
+            "priority": 1,
+        },
+        {
+            "name": "DisabledFeed",
+            "url": "https://example.com/disabled.xml",
+            "language": "en",
+            "enabled": False,
+            "priority": 1,
+        },
     ]
     multi_config = SentinelConfig(**config_dict)
     fetcher = RSSFetcher(multi_config)

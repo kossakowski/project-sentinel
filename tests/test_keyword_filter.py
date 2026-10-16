@@ -1,6 +1,6 @@
 """Tests for sentinel.processing.keyword_filter."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sentinel.models import Article
 from sentinel.processing.keyword_filter import KeywordFilter
@@ -15,8 +15,8 @@ def _make_article(**overrides) -> Article:
         "title": "Test Title",
         "summary": "Test summary.",
         "language": "en",
-        "published_at": datetime.now(timezone.utc),
-        "fetched_at": datetime.now(timezone.utc),
+        "published_at": datetime.now(UTC),
+        "fetched_at": datetime.now(UTC),
     }
     defaults.update(overrides)
     return Article(**defaults)
@@ -250,7 +250,6 @@ class TestKeywordFilter:
                 "keyword_bypass": True,
             },
         ]
-        from sentinel.config import SentinelConfig
 
         config = _make_config_with_keywords(cfg)
         kf = KeywordFilter(config)
@@ -285,7 +284,6 @@ class TestKeywordFilter:
                 "priority": 2,
             },
         ]
-        from sentinel.config import SentinelConfig
 
         config = _make_config_with_keywords(cfg)
         kf = KeywordFilter(config)
@@ -312,7 +310,6 @@ class TestKeywordFilter:
                 "keyword_bypass": True,
             },
         ]
-        from sentinel.config import SentinelConfig
 
         config = _make_config_with_keywords(cfg)
         kf = KeywordFilter(config)

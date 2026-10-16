@@ -1,6 +1,6 @@
 """Tests for sentinel.models data classes."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sentinel.models import AlertRecord, Article, ClassificationResult, Event
 
@@ -59,8 +59,8 @@ def test_article_url_hash_deterministic():
         title="Title A",
         summary="",
         language="en",
-        published_at=datetime.now(timezone.utc),
-        fetched_at=datetime.now(timezone.utc),
+        published_at=datetime.now(UTC),
+        fetched_at=datetime.now(UTC),
     )
     a2 = Article(
         source_name="S2",
@@ -69,8 +69,8 @@ def test_article_url_hash_deterministic():
         title="Title B",
         summary="",
         language="en",
-        published_at=datetime.now(timezone.utc),
-        fetched_at=datetime.now(timezone.utc),
+        published_at=datetime.now(UTC),
+        fetched_at=datetime.now(UTC),
     )
     assert a1.url_hash == a2.url_hash
 
@@ -84,8 +84,8 @@ def test_article_title_normalized():
         title="Wóżki Łódź -- Kraków!!! Über Test",
         summary="",
         language="pl",
-        published_at=datetime.now(timezone.utc),
-        fetched_at=datetime.now(timezone.utc),
+        published_at=datetime.now(UTC),
+        fetched_at=datetime.now(UTC),
     )
     norm = article.title_normalized
     # Should be lowercase
@@ -110,8 +110,8 @@ def test_article_default_id_generated():
         title="Test",
         summary="",
         language="en",
-        published_at=datetime.now(timezone.utc),
-        fetched_at=datetime.now(timezone.utc),
+        published_at=datetime.now(UTC),
+        fetched_at=datetime.now(UTC),
     )
     a2 = Article(
         source_name="S2",
@@ -120,8 +120,8 @@ def test_article_default_id_generated():
         title="Test 2",
         summary="",
         language="en",
-        published_at=datetime.now(timezone.utc),
-        fetched_at=datetime.now(timezone.utc),
+        published_at=datetime.now(UTC),
+        fetched_at=datetime.now(UTC),
     )
     # Both should have non-empty IDs
     assert a1.id
