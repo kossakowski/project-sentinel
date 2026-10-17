@@ -1,48 +1,26 @@
-import asyncio
-import json
-import logging
-import secrets
-import uuid
-from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+"""The alert lifecycle of an event: routing, delivery and the pending-call check.
 
+``AlertStateMachine.process_event`` takes the channel from the urgency tiers
+(``routing.resolve_action``), checks the event's alert records for what was
+already delivered (``ledger``), sends the push and SMS and hands a 9-10 call
+to a per-event ``CallRound``. The texts come from ``formatting``.
+"""
+
+import asyncio
+import logging
+from collections.abc import Callable
+from datetime import UTC, datetime
+
+from sentinel.alerts.call_round import CallRound, generate_confirmation_code, record_call_result
+from sentinel.alerts.formatting import SMS_SUMMARY_MAX_CHARS as SMS_SUMMARY_MAX_CHARS  # re-exported
+from sentinel.alerts.formatting import build_push_data, format_push, format_sms_message, format_update_sms
+from sentinel.alerts.ledger import channel_delivered, has_new_delivered_revision, has_pending_call, is_acknowledged
 from sentinel.alerts.push_client import ExpoPushClient
+from sentinel.alerts.routing import Action, resolve_action
 from sentinel.alerts.twilio_client import TwilioClient
 from sentinel.config import SentinelConfig
 from sentinel.database import Database
-from sentinel.models import AlertRecord, Event
-from sentinel.utils.datetime import format_warsaw
-
-# Event type translations for Polish alert messages
-EVENT_TYPE_PL = {
-    "invasion": "Inwazja",
-    "airstrike": "Nalot powietrzny",
-    "missile_strike": "Uderzenie rakietowe",
-    "border_crossing": "Przekroczenie granicy",
-    "airspace_violation": "Naruszenie przestrzeni powietrznej",
-    "naval_blockade": "Blokada morska",
-    "cyber_attack": "Atak cybernetyczny",
-    "troop_movement": "Ruchy wojsk",
-    "artillery_shelling": "Ostrzał artyleryjski",
-    "drone_attack": "Atak dronów",
-    # Fallback enum values from the classifier (classifier.py) that lack a specific
-    # category. Without these, EVENT_TYPE_PL.get(type, type) leaks the raw English
-    # token ("other"/"none") into the push title, SMS body, and call script.
-    "other": "Inny incydent",
-    "none": "Brak zagrożenia",
-}
-
-# Twilio rejects a concatenated SMS body over 1600 characters. Cap below that
-# with a margin; the source list is trimmed to fit so heavily-corroborated
-# events (many long Google News redirect URLs) don't blow past the limit and
-# silently fail to send.
-SMS_MAX_CHARS = 1500
-
-# Bound the (otherwise unbounded) classifier summary so the fixed template
-# overhead can never alone exceed SMS_MAX_CHARS and re-trigger Twilio's
-# rejection, while leaving real budget for the source list. summary_pl is
-# prompted for "1-2 zdania" upstream but is not capped anywhere.
-SMS_SUMMARY_MAX_CHARS = 600
+from sentinel.models import AlertRecord, AlertStatus, Event
 
 # Row-by-row reads of alert_records. Database.get_alert_records and
 # get_pending_call_records parse every row in one go, so a single row whose
@@ -53,356 +31,6 @@ _EVENT_ALERT_RECORDS_SQL = "SELECT * FROM alert_records WHERE event_id = ? ORDER
 _PENDING_CALL_RECORDS_SQL = (
     "SELECT * FROM alert_records WHERE alert_type = 'phone_call' AND status IN ('initiated', 'ringing')"
 )
-
-# Reserve room for the "- …i N więcej" trailer when trimming sources.
-_SOURCES_TRAILER_RESERVE = 40
-
-# Maximum serialized size of the push `data` dict, in UTF-8 bytes. APNs caps the
-# whole notification payload at ~4096 bytes; this budget reserves headroom for
-# the visible title/body and the aps overhead. `data` is measured with
-# json.dumps(..., ensure_ascii=False) so Polish letters and emoji count as their
-# real wire bytes, not as 6-char ASCII escapes. The builder trims its content
-# (sources -> sms_body -> summary_pl) to stay within this limit.
-PUSH_DATA_MAX_BYTES = 3500
-
-# Maximum number of summary characters embedded in the *visible* push `body`
-# (1.3b). The notification banner only needs a short snippet; capping it here
-# keeps the TOTAL Expo/APNs payload (title + body + the <=3500-byte `data` +
-# aps overhead) comfortably under APNs' ~4096-byte limit, so a long-summary
-# event can't push the whole message past the limit and get rejected. The cap
-# is on the body only — `data.summary_pl` still carries the full, untrimmed
-# summary (the inbox renders the full text from `data`, never from `body`), so
-# bounding the body loses no content.
-#
-# Value: 80. The hard worst case is an all-emoji summary (each 🚨 is 4 UTF-8
-# bytes) while `data` sits at the full 3500-byte budget. At 80 chars the body's
-# summary portion is <=320 bytes; the assembled Expo message (excluding the
-# per-recipient `to`) then measures ~3999 bytes — ~97 bytes under the 4096
-# limit. 120 left no margin in that case (it overshot 4096), so the cap was
-# lowered to 80 for comfortable headroom; for normal Polish prose the margin is
-# far larger.
-PUSH_BODY_SUMMARY_MAX_CHARS = 80
-
-
-def _as_utc(value: datetime) -> datetime:
-    """Read a timestamp without a time zone as UTC, the zone every writer stores."""
-    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
-
-
-def _cap_sms_summary(summary_pl: str) -> str:
-    """Bound the classifier summary to ``SMS_SUMMARY_MAX_CHARS`` characters.
-
-    The summary is truncated, never the rendered body, so the template text
-    after it (the detection time, or the confirmation code) is always sent.
-    """
-    if len(summary_pl) > SMS_SUMMARY_MAX_CHARS:
-        return summary_pl[: SMS_SUMMARY_MAX_CHARS - 1].rstrip() + "…"
-    return summary_pl
-
-
-def _build_sources_list(event: Event, db: Database, max_chars: int | None = None) -> str:
-    """Build a formatted source list from event article_ids.
-
-    Looks up each article in the database to get source_name, title,
-    and source_url.  Each source is rendered as a title line followed
-    by a clickable URL line so the recipient can immediately verify
-    the article.
-
-    When ``max_chars`` is given the list is bounded to that budget: as many
-    whole source entries as fit are included, then a "- …i N innych źródeł"
-    trailer accounts for the omitted ones. This keeps the SMS body under
-    Twilio's limit even when an event carries many long URLs.
-    """
-    entries: list[str] = []
-    for article_id in event.article_ids:
-        article = db.get_article_by_id(article_id)
-        if article is not None:
-            entry = f"- {article.source_name}: {article.title}"
-            if article.source_url:
-                entry += f"\n  {article.source_url}"
-            entries.append(entry)
-        else:
-            entries.append(f"- (źródło {article_id[:8]})")
-
-    if not entries:
-        return f"- {event.source_count} źródeł"
-
-    if max_chars is None:
-        return "\n".join(entries)
-
-    full = "\n".join(entries)
-    if len(full) <= max_chars:
-        return full
-
-    # Greedily include whole entries within budget, leaving room for the trailer.
-    budget = max(0, max_chars - _SOURCES_TRAILER_RESERVE)
-    included: list[str] = []
-    used = 0
-    for entry in entries:
-        add_cost = len(entry) + (1 if included else 0)  # +1 for the joining newline
-        if used + add_cost > budget:
-            break
-        included.append(entry)
-        used += add_cost
-
-    omitted = len(entries) - len(included)
-    body = "\n".join(included)
-    if omitted > 0:
-        trailer = f"- …i {omitted} więcej"
-        body = f"{body}\n{trailer}" if body else trailer
-    # Hard clamp as a final guarantee (e.g. a single oversized entry).
-    return body[:max_chars]
-
-
-def _get_latest_source_name(event: Event, db: Database) -> str:
-    """Get the source_name of the most recently added article in the event.
-
-    Uses the last article_id in the list (most recent).
-    Falls back to 'nowe źródło' if not found.
-    """
-    if event.article_ids:
-        article = db.get_article_by_id(event.article_ids[-1])
-        if article is not None:
-            return article.source_name
-    return "nowe źródło"
-
-
-def _format_call_message(event: Event, config: SentinelConfig) -> str:
-    """Format the phone call TTS message in Polish using config template."""
-    event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
-    template = config.alerts.templates.call
-    return template.format(
-        event_type_pl=event_type_pl,
-        summary_pl=event.summary_pl,
-        source_count=event.source_count,
-        urgency_score=event.urgency_score,
-    )
-
-
-def _format_sms_message(event: Event, db: Database, config: SentinelConfig) -> str:
-    """Format the SMS alert message in Polish using config template.
-
-    Includes per-source detail lines by looking up articles from the DB.
-    """
-    event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
-    countries_str = ", ".join(event.affected_countries)
-    first_seen_local = format_warsaw(event.first_seen_at)
-    template = config.alerts.templates.sms
-
-    # Bound the otherwise-unbounded classifier summary so fixed template overhead
-    # can never alone exceed the budget and re-trigger Twilio's 1600-char
-    # rejection. Truncating the summary -- not the rendered body -- preserves
-    # trailing template fields like "Wykryto: {first_seen_at_local}".
-    summary_pl = _cap_sms_summary(event.summary_pl)
-
-    fields = {
-        "event_type_pl": event_type_pl,
-        "urgency_score": event.urgency_score,
-        "affected_countries_str": countries_str,
-        "aggressor": event.aggressor,
-        "summary_pl": summary_pl,
-        "source_count": event.source_count,
-        "first_seen_at_local": first_seen_local,
-    }
-
-    # Measure the fixed overhead (template with an empty source list), then bound
-    # the source list to the remaining budget so the whole body stays under
-    # Twilio's limit. Long Google News URLs used to push corroborated events past
-    # it, failing the send entirely.
-    overhead = len(template.format(sources_list="", **fields))
-    sources_list = _build_sources_list(event, db, max_chars=max(0, SMS_MAX_CHARS - overhead))
-    return template.format(sources_list=sources_list, **fields)
-
-
-def _format_update_sms(event: Event, db: Database, config: SentinelConfig) -> str:
-    """Format SMS update for an already-acknowledged event.
-
-    Includes the name of the most recent source.
-    """
-    event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
-    new_source_name = _get_latest_source_name(event, db)
-
-    template = config.alerts.templates.sms_update
-    return template.format(
-        event_type_pl=event_type_pl,
-        new_source_name=new_source_name,
-        summary_pl=event.summary_pl,
-        source_count=event.source_count,
-        urgency_score=event.urgency_score,
-    )
-
-
-def _format_push(event: Event, is_update: bool = False) -> tuple[str, str]:
-    """Format a short push notification title + body in Polish.
-
-    The visible ``body`` embeds only a bounded snippet of ``summary_pl`` —
-    head-sliced to ``PUSH_BODY_SUMMARY_MAX_CHARS`` codepoints (1.3b) so the
-    total Expo/APNs payload stays under the ~4096-byte limit. The slice is on
-    the Python ``str`` (never the encoded bytes), so a multibyte UTF-8 character
-    is never split; a trailing ``…`` is appended only when the summary was
-    actually truncated. The full untrimmed summary still travels in
-    ``data.summary_pl`` (the inbox renders from ``data``, not ``body``).
-    """
-    event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
-    title = (
-        f"ℹ️ SENTINEL — aktualizacja: {event_type_pl}" if is_update else f"\U0001f6a8 PROJECT SENTINEL: {event_type_pl}"
-    )
-    summary = event.summary_pl or ""
-    if len(summary) > PUSH_BODY_SUMMARY_MAX_CHARS:
-        summary = summary[:PUSH_BODY_SUMMARY_MAX_CHARS].rstrip() + "…"
-    body = f"{summary}\nPilność {event.urgency_score}/10 · źródła: {event.source_count}"
-    return title, body
-
-
-def _build_sources_payload(event: Event, db: Database) -> list[dict]:
-    """Build the structured source list carried inside the push ``data`` dict.
-
-    Mirrors the article ordering of ``_build_sources_list`` (the SMS string
-    builder): iterates ``event.article_ids`` in order and looks each one up via
-    ``db.get_article_by_id``. Each item is ``{"name", "title", "url"}`` where
-    ``url`` is the article's ``source_url`` or ``None`` when absent/falsy. An
-    article id that misses the DB lookup yields a placeholder entry mirroring the
-    SMS ``- (źródło {id[:8]})`` fallback, so the count stays consistent and the
-    builder never crashes.
-    """
-    sources: list[dict] = []
-    for article_id in event.article_ids:
-        article = db.get_article_by_id(article_id)
-        if article is not None:
-            sources.append(
-                {
-                    "name": article.source_name,
-                    "title": article.title,
-                    "url": article.source_url if article.source_url else None,
-                }
-            )
-        else:
-            sources.append(
-                {
-                    "name": "źródło",
-                    "title": f"(źródło {article_id[:8]})",
-                    "url": None,
-                }
-            )
-    return sources
-
-
-def _data_byte_size(data: dict) -> int:
-    """Serialized UTF-8 byte size of the push ``data`` dict (the 1.2 budget metric)."""
-    return len(json.dumps(data, ensure_ascii=False).encode("utf-8"))
-
-
-def _truncate_to_byte_budget(data: dict, field: str) -> None:
-    """Codepoint-safe head-truncate ``data[field]`` until the whole dict fits.
-
-    Slices the Python ``str`` by characters (never by encoded bytes, so a
-    multibyte UTF-8 character is never split) and re-measures the entire
-    serialized ``data`` after each shrink, since JSON escaping plus the rest of
-    the dict count toward ``PUSH_DATA_MAX_BYTES``. A trailing ``…`` is appended
-    when content is dropped. Binary-searches the codepoint length for speed.
-    """
-    text = data[field]
-    if not text or _data_byte_size(data) <= PUSH_DATA_MAX_BYTES:
-        return
-
-    ellipsis = "…"
-
-    def fits(n: int) -> bool:
-        data[field] = (text[:n].rstrip() + ellipsis) if n > 0 else ""
-        return _data_byte_size(data) <= PUSH_DATA_MAX_BYTES
-
-    # Find the largest head length n (in codepoints) that still fits.
-    lo, hi, best = 0, len(text), 0
-    while lo <= hi:
-        mid = (lo + hi) // 2
-        if fits(mid):
-            best = mid
-            lo = mid + 1
-        else:
-            hi = mid - 1
-    fits(best)
-
-
-def _build_push_data(event: Event, db: Database, config: SentinelConfig, is_update: bool) -> dict:
-    """Assemble the enriched Expo push ``data`` dict for one send (Phase 1).
-
-    A pure, returnable builder (not inlined into the send call) so tests can
-    build the dict directly. It stamps a fresh ``message_id`` per call, preserves
-    the legacy scalars (``event_id``/``urgency_score``/``event_type``), carries
-    the full untrimmed structured content plus ``event_type_pl``, the structured
-    ``sources`` list, the UTC ISO ``first_seen_at``, and ``sms_body`` — the exact
-    SMS string the server produces for this send (``_format_sms_message`` for an
-    event, ``_format_update_sms`` for an update) — then trims the serialized dict
-    to ``PUSH_DATA_MAX_BYTES`` (1.2): sources from the end, then ``sms_body``,
-    then ``summary_pl``; the scalars and ``kind`` are never dropped or truncated.
-    """
-    sms_body = _format_update_sms(event, db, config) if is_update else _format_sms_message(event, db, config)
-
-    first_seen_at = event.first_seen_at
-    first_seen_at = first_seen_at.replace(tzinfo=UTC) if first_seen_at.tzinfo is None else first_seen_at.astimezone(UTC)
-
-    data: dict = {
-        "message_id": uuid.uuid4().hex,
-        "event_id": event.id,
-        "kind": "update" if is_update else "event",
-        "event_type": event.event_type,
-        "event_type_pl": EVENT_TYPE_PL.get(event.event_type, event.event_type),
-        "urgency_score": event.urgency_score,
-        "affected_countries": list(event.affected_countries),
-        # 1.1d/1.1: these two fields are typed str and default to "" in the
-        # model, so this coercion is a no-op for all real data. It only hardens
-        # the contract (aggressor/summary_pl are never None on the wire) against
-        # a malformed Event reaching this life-safety push path.
-        "aggressor": event.aggressor or "",
-        "summary_pl": event.summary_pl or "",
-        "sources": _build_sources_payload(event, db),
-        "sms_body": sms_body,
-        "first_seen_at": first_seen_at.isoformat(),
-    }
-
-    # Byte-budget trim (1.2), in the mandated order. message_id/event_id/
-    # urgency_score/event_type/kind are never dropped or truncated.
-    # (1) Drop trailing source entries one at a time until it fits.
-    while data["sources"] and _data_byte_size(data) > PUSH_DATA_MAX_BYTES:
-        data["sources"].pop()
-    # (2) Truncate sms_body (head-slice) if still over with no sources left.
-    # Order rationale (DO NOT reorder): sms_body is a redundant *fallback*
-    # mirror of the SMS text — it is only rendered when the structured fields
-    # are missing, so it is sacrificed *before* summary_pl, which is the inbox
-    # Detail screen's primary rendered content. Sacrificing summary_pl first
-    # would silently shorten what the user actually reads.
-    if _data_byte_size(data) > PUSH_DATA_MAX_BYTES:
-        _truncate_to_byte_budget(data, "sms_body")
-    # (3) Truncate summary_pl (head-slice) as the last resort.
-    if _data_byte_size(data) > PUSH_DATA_MAX_BYTES:
-        _truncate_to_byte_budget(data, "summary_pl")
-
-    # No-silent-overflow guard (1.2 honesty). After all three trim stages, the
-    # only remaining content is the undroppable protected scalars (message_id/
-    # event_id/event_type/kind/urgency_score/affected_countries/aggressor). The
-    # spec forbids dropping or truncating those, so in the (unreachable with a
-    # normal UUID event id) degenerate case where they alone exceed the budget,
-    # we must not ship over budget *silently*: log loudly, but still return the
-    # dict unchanged so a real send is never crashed by an adversarial input.
-    final_size = _data_byte_size(data)
-    if final_size > PUSH_DATA_MAX_BYTES:
-        logging.getLogger("sentinel.alerts.state_machine").warning(
-            "Push data for event %s is %d bytes after trimming, over the %d-byte budget; "
-            "protected scalars alone exceed the limit and cannot be dropped, shipping over budget.",
-            event.id,
-            final_size,
-            PUSH_DATA_MAX_BYTES,
-        )
-
-    return data
-
-
-def generate_confirmation_code() -> str:
-    """Return a random 6-digit SMS confirmation code (100000-999999).
-
-    Uses ``secrets`` so the code is not predictable from other random output.
-    """
-    return str(100000 + secrets.randbelow(900000))
 
 
 class AlertStateMachine:
@@ -452,26 +80,26 @@ class AlertStateMachine:
             event = persisted_event
         existing_alerts = self._read_alert_records(event.id)
 
-        if self._is_acknowledged(existing_alerts) or event.acknowledged_at is not None:
+        if is_acknowledged(existing_alerts) or event.acknowledged_at is not None:
             # An acknowledgement stops further calls, but it must not hide a
             # genuine escalation.  Only the incident grouper increments this
             # revision; source-count and timestamp changes therefore cannot
             # manufacture an update.  Cooldown intentionally does not apply to
             # a new revision.
-            if self._has_new_delivered_revision(event, existing_alerts):
-                if not self._channel_delivered(existing_alerts, "sms", event.notification_revision):
+            if has_new_delivered_revision(event, existing_alerts):
+                if not channel_delivered(existing_alerts, "sms", event.notification_revision):
                     await self._send_update_sms(event)
-                if not self._channel_delivered(existing_alerts, "push", event.notification_revision):
+                if not channel_delivered(existing_alerts, "push", event.notification_revision):
                     await self._maybe_send_push(event, existing_alerts, is_update=True)
             return
 
         # If there are pending call records (initiated but not yet resolved),
         # don't send another alert — the call check cycle will handle it
-        if any(a.alert_type == "phone_call" and a.status in ("initiated", "ringing") for a in existing_alerts):
+        if has_pending_call(existing_alerts):
             self.logger.debug("Event %s has a pending call, skipping", event.id)
             return
 
-        action = self._determine_action(event)
+        action = resolve_action(self.config.alerts.urgency_levels, event.urgency_score, event.source_count)
         self.logger.info(
             "Event %s: urgency=%d, sources=%d, action=%s",
             event.id,
@@ -484,13 +112,13 @@ class AlertStateMachine:
         # (5-8) resolve to "sms" / "push" / "both" via each level's `channel`;
         # 9-10 resolves to "phone_call" (call + confirmation SMS plus an additive
         # Expo push, AD-2) and 1-4 to "log_only".
-        send_push = action in ("push", "both", "phone_call")
-        send_sms = action in ("sms", "both")
+        send_push = action in (Action.PUSH, Action.BOTH, Action.PHONE_CALL)
+        send_sms = action in (Action.SMS, Action.BOTH)
 
         # SMS and push are each suppressed only after *that channel* has
         # successfully delivered this notification revision.  A failed attempt
         # stays retryable, and a real revision increment can notify again.
-        if send_sms and self._channel_delivered(existing_alerts, "sms", event.notification_revision):
+        if send_sms and channel_delivered(existing_alerts, "sms", event.notification_revision):
             self.logger.debug(
                 "Event %s already has SMS delivery for revision %d; suppressing re-SMS",
                 event.id,
@@ -513,7 +141,7 @@ class AlertStateMachine:
                     action,
                 )
 
-        if action == "phone_call":
+        if action == Action.PHONE_CALL:
             await self._execute_phone_call(event, existing_alerts)
         elif send_sms:
             await self._execute_sms(event)
@@ -545,7 +173,7 @@ class AlertStateMachine:
             try:
                 status = await asyncio.to_thread(self.twilio.get_call_status, record.twilio_sid)
                 if status is not None:
-                    await self._handle_call_result(record, status)
+                    await record_call_result(self, record, status)
             except Exception:
                 self.logger.critical(
                     "Pending-call check failed for alert record %s (event %s); continuing with the remaining records",
@@ -556,79 +184,25 @@ class AlertStateMachine:
                 failed_record_ids.append(record.id)
         return failed_record_ids
 
-    def _determine_action(self, event: Event) -> str:
-        """Resolve the delivery action for an event from the urgency tiers.
+    def _determine_action(self, event: Event) -> Action:
+        """Kept for tests: ``resolve_action`` for ``event`` on this machine's tiers.
 
-        Returns one of: "phone_call", "sms", "push", "both", "log_only".
-
-        Decision matrix (from config urgency_levels):
-          9-10 + 2+ sources -> phone_call          (never push/both — AD-2)
-          9-10 + 1 source   -> sms                 (existing fallback)
-          7-8               -> high.channel         (sms | push | both)
-          5-6               -> medium.channel       (sms | push | both)
-          1-4               -> log_only
-
-        For the SMS-action tiers (5-8) the matched level's `channel` is returned
-        so the operator can route that tier to SMS, push, or both. The 9-10
-        phone_call path ignores `channel` entirely; log_only is returned as-is.
-
-        Urgency levels are sorted by min_score descending to avoid
-        dependency on dict insertion order.
+        Production code calls ``resolve_action`` itself.
         """
-        score = event.urgency_score
-        source_count = event.source_count
+        return resolve_action(self.config.alerts.urgency_levels, event.urgency_score, event.source_count)
 
-        sorted_levels = sorted(
-            self.config.alerts.urgency_levels.items(),
-            key=lambda kv: kv[1].min_score,
-            reverse=True,
-        )
+    def _now(self) -> datetime:
+        """The current UTC time on the alert path.
 
-        for _level_name, level in sorted_levels:
-            if score >= level.min_score:
-                if level.action == "phone_call":
-                    if source_count >= level.corroboration_required:
-                        return "phone_call"
-                    else:
-                        return "sms"
-                if level.action == "sms":
-                    return level.channel  # "sms" | "push" | "both"
-                return level.action  # e.g. "log_only"
-
-        return "log_only"
-
-    # ``sms_update`` is accepted for historical/operational compatibility even
-    # though the current transport returns ``sms`` for both bodies.
-    _SMS_ALERT_TYPES = ("sms", "sms_update")
-    _SUCCESSFUL_DELIVERY_STATUSES = ("sent", "delivered", "acknowledged")
-
-    def _channel_delivered(self, alerts: list[AlertRecord], channel: str, revision: int) -> bool:
-        """Return whether a channel successfully delivered ``revision``.
-
-        A database migration gives legacy records revision 1.  Looking at both
-        type and successful status is important: a retained failed push/SMS
-        attempt must never suppress the next retry.
+        Call rounds read the clock here too, so pinning this module's
+        ``datetime`` (as the frozen-clock tests and the eval replays do) pins
+        the whole round.
         """
-        alert_types = self._SMS_ALERT_TYPES if channel == "sms" else ("push",)
-        return any(
-            alert.alert_type in alert_types
-            and alert.status in self._SUCCESSFUL_DELIVERY_STATUSES
-            and alert.event_revision == revision
-            for alert in alerts
-        )
+        return datetime.now(UTC)
 
-    def _has_new_delivered_revision(self, event: Event, alerts: list[AlertRecord]) -> bool:
-        """True when the event advanced beyond a previously delivered revision.
-
-        Do not compare only against the maximum delivery revision: after the
-        SMS half of a revision succeeds, a failed push half still needs a retry.
-        Any earlier successful revision establishes that this is an update;
-        per-channel checks above decide which outstanding half to send.
-        """
-        return any(
-            alert.status in self._SUCCESSFUL_DELIVERY_STATUSES and alert.event_revision < event.notification_revision
-            for alert in alerts
-        )
+    async def _sleep(self, seconds: float) -> None:
+        """Wait without blocking the event loop; call rounds wait here too, for the same reason as ``_now``."""
+        await asyncio.sleep(seconds)
 
     def _read_alert_records(self, event_id: str) -> list[AlertRecord]:
         """Return the alert records of ``event_id``, leaving out rows that cannot be parsed.
@@ -702,114 +276,22 @@ class AlertStateMachine:
                 unreadable.append(str(row["id"]))
         return records, unreadable
 
-    def _is_acknowledged(self, alerts: list[AlertRecord]) -> bool:
-        """Check if any alert for this event was acknowledged."""
-        return any(a.status == "acknowledged" for a in alerts)
-
     async def _execute_phone_call(self, event: Event, existing_alerts: list[AlertRecord] | None = None) -> None:
-        """Place a phone call alert with aggressive immediate retries.
+        """Run one call round for ``event`` (see ``CallRound.run``).
 
-        Calls up to max_call_retries times in a tight loop, polling Twilio
-        for call status between attempts. If the entire round fails, sends
-        an SMS and sets status to retry_pending so the next pipeline cycle
-        triggers another round. Never stops until acknowledged.
+        Called without ``existing_alerts`` (the ``--test-alert`` path), it reads
+        the event's records itself, so the retry interval still applies.
         """
         if existing_alerts is None:
             existing_alerts = self._read_alert_records(event.id)
-
-        # Enforce retry interval: if there was a previous call from a prior
-        # cycle, check that enough time has elapsed
-        call_records = [a for a in existing_alerts if a.alert_type == "phone_call"]
-        if call_records:
-            last_call_time = max(_as_utc(a.sent_at) for a in call_records)
-            retry_interval = timedelta(minutes=self.config.alerts.acknowledgment.retry_interval_minutes)
-            if datetime.now(UTC) < last_call_time + retry_interval:
-                self.logger.debug(
-                    "Event %s: retry interval not elapsed, skipping call",
-                    event.id,
-                )
-                return
-
-        phone_number = self.config.alerts.phone_number
-        message = _format_call_message(event, self.config)
-        max_per_round = self.config.alerts.acknowledgment.max_call_retries
-        total_attempts = len(call_records)
-        call_placed_at = datetime.now(UTC)
-
-        # Send SMS confirmation code — this is the ONLY confirmation mechanism.
-        # A failure here must not stop the call: the call is the alarm.
-        await self._send_confirmation_sms_guarded(event)
-
-        retry_pause = self.config.alerts.acknowledgment.call_retry_pause_seconds
-
-        # Call loop — calls are alarms only, not confirmation
-        for attempt in range(1, max_per_round + 1):
-            # Check SMS reply before each call
-            if await self._check_sms_confirmation(call_placed_at):
-                await self._acknowledge_event(event, total_attempts)
-                return
-
-            total_attempts += 1
-            self.logger.info(
-                "Event %s: calling %s (round attempt %d/%d, total %d)",
-                event.id[:8],
-                phone_number,
-                attempt,
-                max_per_round,
-                total_attempts,
-            )
-
-            record = await asyncio.to_thread(self.twilio.make_alert_call, phone_number, message, event.id)
-            if record is None:
-                self.logger.error("Event %s: Twilio call failed to initiate", event.id[:8])
-                continue
-
-            record.attempt_number = total_attempts
-            self._record_alert(record, event)
-            self.db.update_event(event.id, alert_status="call_placed")
-
-            # Wait for call to finish, polling SMS in the meantime
-            await self._wait_for_call_and_check_sms(record, call_placed_at)
-
-            # Check SMS reply after call ends
-            if await self._check_sms_confirmation(call_placed_at):
-                await self._acknowledge_event(event, total_attempts)
-                return
-
-            # After first call, verify confirmation SMS was delivered; resend if failed
-            if attempt == 1:
-                delivery = await self._check_confirmation_sms_delivered()
-                if delivery is False:
-                    self.logger.warning(
-                        "Event %s: confirmation SMS failed to deliver, resending",
-                        event.id[:8],
-                    )
-                    await self._send_confirmation_sms_guarded(event, new_code=False)
-
-            # Brief pause between retries
-            if attempt < max_per_round:
-                await asyncio.sleep(retry_pause)
-
-        # Round exhausted — check SMS one more time
-        if await self._check_sms_confirmation(call_placed_at):
-            await self._acknowledge_event(event, total_attempts)
-            return
-
-        # Still not confirmed — mark for retry on next cycle
-        self.logger.warning(
-            "Event %s: %d calls this round, no SMS confirmation, retry in %d min",
-            event.id[:8],
-            max_per_round,
-            self.config.alerts.acknowledgment.retry_interval_minutes,
-        )
-        self.db.update_event(event.id, alert_status="retry_pending")
+        await CallRound(self, event).run(existing_alerts)
 
     async def _acknowledge_event(self, event: Event, total_attempts: int) -> None:
         """Mark event as acknowledged and send follow-ups."""
         self.db.update_event(
             event.id,
-            alert_status="acknowledged",
-            acknowledged_at=datetime.now(UTC).isoformat(),
+            alert_status=AlertStatus.ACKNOWLEDGED,
+            acknowledged_at=self._now().isoformat(),
         )
         self.logger.info(
             "Event %s: confirmed via SMS after %d call attempts",
@@ -818,192 +300,11 @@ class AlertStateMachine:
         )
         await self._send_followup_sms(event)
 
-    async def _send_confirmation_sms_guarded(self, event: Event, *, new_code: bool = True) -> None:
-        """Send the confirmation SMS; log any error instead of raising it.
-
-        The call round goes on without the SMS: the call is the alarm, and an
-        error in its confirmation message must never prevent it.
-        """
-        try:
-            await self._send_confirmation_sms(event, new_code=new_code)
-        except Exception:
-            self.logger.exception("Event %s: confirmation SMS failed; placing the call anyway", event.id[:8])
-
-    async def _send_confirmation_sms(self, event: Event, *, new_code: bool = True) -> None:
-        """Send an SMS with the round's confirmation code.
-
-        A round draws a fresh code from ``code_factory``.  A resend within the
-        round (``new_code=False``) repeats that code: a send that timed out can
-        still have reached the owner, who may already reply with it.  The
-        summary is capped like the alert SMS, so a long summary can never push
-        the code out of the transport's length limit.
-        """
-        phone_number = self.config.alerts.phone_number
-        event_type_pl = EVENT_TYPE_PL.get(event.event_type, event.event_type)
-
-        # Forget the previous confirmation SMS, so a send that fails leaves no
-        # SID behind and the delivery check reports it as failed.
-        self._confirmation_sms_sid = None
-
-        # Generate the confirmation code and store it for verification
-        if new_code or not getattr(self, "_confirmation_code", None):
-            self._confirmation_code = self._code_factory()
-
-        message = (
-            f"PROJECT SENTINEL: {event_type_pl}\n\n"
-            f"{_cap_sms_summary(event.summary_pl)}\n\n"
-            f"Odpowiedz kodem aby potwierdzic odbior alertu: {self._confirmation_code}\n\n"
-            f"Telefon bedzie dzwonil dopoki nie potwierdzisz."
-        )
-        record = await asyncio.to_thread(self.twilio.send_sms, phone_number, message, event.id)
-        if record is not None:
-            self._confirmation_sms_sid = record.twilio_sid
-            self._record_alert(record, event)
-            self.logger.info(
-                "SMS confirmation request sent for event %s (code=%s, SID=%s)",
-                event.id[:8],
-                self._confirmation_code,
-                record.twilio_sid,
-            )
-
-    async def _check_sms_confirmation(self, since: datetime) -> bool:
-        """Check if the user replied with the correct 6-digit code via SMS."""
-        phone_number = self.config.alerts.phone_number
-        code = getattr(self, "_confirmation_code", None)
-        if not code:
-            return False
-
-        try:
-            # Check inbound SMS from the user's phone to our Twilio number.
-            # The synchronous Twilio SDK call is offloaded to a thread so it does
-            # not block the event loop; the kwargs are passed via a lambda.
-            messages = await asyncio.to_thread(
-                lambda: self.twilio.client.messages.list(
-                    to=self.twilio.twilio_phone,
-                    from_=phone_number,
-                    date_sent_after=since,
-                    limit=10,
-                )
-            )
-            for msg in messages:
-                body = msg.body.strip() if msg.body else ""
-                if code in body:
-                    self.logger.info(
-                        "SMS confirmation received (code=%s) from %s",
-                        code,
-                        phone_number,
-                    )
-                    return True
-        except Exception as exc:
-            self.logger.warning("Failed to check SMS confirmations: %s", exc)
-        return False
-
-    async def _check_confirmation_sms_delivered(self) -> bool | None:
-        """Check if the confirmation SMS was delivered.
-
-        Returns True if delivered, None if still pending, and False if it
-        failed, was undelivered, or was never accepted by Twilio (no SID).
-        """
-        sid = getattr(self, "_confirmation_sms_sid", None)
-        if not sid:
-            self.logger.warning("Confirmation SMS was not sent; no message to check")
-            return False
-        try:
-            msg = await asyncio.to_thread(lambda: self.twilio.client.messages(sid).fetch())
-            if msg.status == "delivered":
-                return True
-            if msg.status in ("failed", "undelivered"):
-                self.logger.warning(
-                    "Confirmation SMS %s status: %s (error=%s)",
-                    sid,
-                    msg.status,
-                    msg.error_code,
-                )
-                return False
-            return None  # still queued/sending/sent
-        except Exception as exc:
-            self.logger.warning("Failed to check SMS delivery status: %s", exc)
-            return None
-
-    async def _wait_for_call_and_check_sms(self, record: AlertRecord, sms_since: datetime) -> None:
-        """Wait for a call to finish, checking SMS confirmation in the meantime."""
-        max_wait = self.config.alerts.acknowledgment.call_poll_timeout_seconds
-        poll_interval = self.config.alerts.acknowledgment.call_poll_interval_seconds
-        waited = 0
-
-        while waited < max_wait:
-            await asyncio.sleep(poll_interval)
-            waited += poll_interval
-
-            # Check SMS while call is in progress
-            if await self._check_sms_confirmation(sms_since):
-                return
-
-            # Check if call is done
-            status = await asyncio.to_thread(self.twilio.get_call_status, record.twilio_sid)
-            if status is None:
-                continue
-
-            call_status = status["status"]
-            if call_status not in ("queued", "ringing", "in-progress"):
-                # Call finished
-                self._update_alert_record(
-                    record,
-                    status=call_status,
-                    duration_seconds=status.get("duration", 0),
-                )
-                return
-
     async def _execute_sms(self, event: Event) -> None:
         """Send an SMS alert."""
-        phone_number = self.config.alerts.phone_number
-        message = _format_sms_message(event, self.db, self.config)
-
-        record = await asyncio.to_thread(self.twilio.send_sms, phone_number, message, event.id)
+        record = await self._send_sms(event, format_sms_message(event, self.db, self.config))
         if record is not None:
-            self._record_alert(record, event)
-            self.db.update_event(event.id, alert_status="sms_sent")
-
-    async def _handle_call_result(self, record: AlertRecord, status: dict) -> None:
-        """Handle the result of a previously placed phone call.
-
-        If the call was answered (duration > threshold), mark as acknowledged.
-        Otherwise, retry or fall back to SMS.
-        """
-        call_status = status["status"]
-        duration = status["duration"]
-        if call_status in ("completed", "busy", "no-answer", "canceled", "failed"):
-            # Call was not properly answered
-            self._update_alert_record(record, status=call_status, duration_seconds=duration)
-            if call_status in ("failed", "canceled"):
-                self.logger.warning(
-                    "Event %s call %s (duration=%ds), terminal status — moving to retry/fallback",
-                    record.event_id,
-                    call_status,
-                    duration,
-                )
-            else:
-                self.logger.info(
-                    "Event %s call result: %s (duration=%ds), will retry",
-                    record.event_id,
-                    call_status,
-                    duration,
-                )
-            # An SMS-code reply can arrive while the call is still running; the
-            # event is then already acknowledged and keeps that label. A row that
-            # cannot be read raises before the label is written, so the label is
-            # kept; check_pending_calls logs it and checks the remaining records.
-            event = self.db.get_event_by_id(record.event_id)
-            if event is not None and event.acknowledged_at is not None:
-                self.logger.debug(
-                    "Event %s is acknowledged; keeping its alert_status after call result %s",
-                    record.event_id,
-                    call_status,
-                )
-                return
-            # Retry logic is handled by process_event on next cycle
-            self.db.update_event(record.event_id, alert_status="retry_pending")
-        # If still in-progress/queued/ringing, leave as-is
+            self.db.update_event(event.id, alert_status=AlertStatus.SMS_SENT)
 
     async def _send_followup_sms(self, event: Event) -> None:
         """Send a follow-up SMS after a call is acknowledged.
@@ -1022,29 +323,31 @@ class AlertStateMachine:
             stored = event
         if stored is None:
             return
-        event = stored
-
-        phone_number = self.config.alerts.phone_number
-        message = _format_sms_message(event, self.db, self.config)
-        record = await asyncio.to_thread(self.twilio.send_sms, phone_number, message, event.id)
-        if record is not None:
-            self._record_alert(record, event)
+        await self._send_sms(stored, format_sms_message(stored, self.db, self.config))
 
     async def _send_update_sms(self, event: Event) -> None:
         """Send an SMS update for an event that was already acknowledged."""
-        phone_number = self.config.alerts.phone_number
-        message = _format_update_sms(event, self.db, self.config)
-        record = await asyncio.to_thread(self.twilio.send_sms, phone_number, message, event.id)
+        record = await self._send_sms(event, format_update_sms(event, self.db, self.config))
         if record is not None:
-            self._record_alert(record, event)
             self.logger.info("Update SMS sent for acknowledged event %s", event.id)
 
-    async def _maybe_send_push(
-        self,
-        event: Event,
-        existing_alerts: list[AlertRecord],
-        is_update: bool = False,
-    ) -> None:
+    async def _send_sms(
+        self, event: Event, body: str, accepted: Callable[[AlertRecord], None] | None = None
+    ) -> AlertRecord | None:
+        """Send ``body`` to the owner's phone and record it under ``event``.
+
+        Returns the record, or None when Twilio did not accept the SMS.
+        ``accepted`` sees the record as soon as Twilio accepted it, before it is
+        saved, so an error while saving cannot hide an SMS that did go out.
+        """
+        record = await asyncio.to_thread(self.twilio.send_sms, self.config.alerts.phone_number, body, event.id)
+        if record is not None:
+            if accepted is not None:
+                accepted(record)
+            self._record_alert(record, event)
+        return record
+
+    async def _maybe_send_push(self, event: Event, existing_alerts: list[AlertRecord], is_update: bool = False) -> None:
         """Send an Expo push for the resolved channel, recording it as a 'push' alert.
 
         Invoked by process_event when the resolved tier channel is "push" or
@@ -1058,18 +361,12 @@ class AlertStateMachine:
         push_cfg = self.config.alerts.push
         if not push_cfg.enabled or not push_cfg.tokens:
             return
-        if self._channel_delivered(existing_alerts, "push", event.notification_revision):
+        if channel_delivered(existing_alerts, "push", event.notification_revision):
             return
 
-        title, body = _format_push(event, is_update=is_update)
-        data = _build_push_data(event, self.db, self.config, is_update)
-        record = await asyncio.to_thread(
-            self.push.send_push,
-            title,
-            body,
-            event.id,
-            data,
-        )
+        title, body = format_push(event, is_update=is_update)
+        data = build_push_data(event, self.db, self.config, is_update)
+        record = await asyncio.to_thread(self.push.send_push, title, body, event.id, data)
         if record is not None:
             try:
                 self._record_alert(record, event)
@@ -1093,11 +390,6 @@ class AlertStateMachine:
         record.event_revision = event.notification_revision
         self.db.insert_alert_record(record)
 
-    def _update_alert_record(
-        self,
-        record: AlertRecord,
-        status: str,
-        duration_seconds: int | None = None,
-    ) -> None:
+    def _update_alert_record(self, record: AlertRecord, status: str, duration_seconds: int | None = None) -> None:
         """Update an existing alert record's status and duration in the DB."""
         self.db.update_alert_record(record.id, status=status, duration_seconds=duration_seconds)

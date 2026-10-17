@@ -3,7 +3,7 @@
 The dispatch path is async (SPEC_ASYNC_REFACTOR.md Phase 3): ``dispatch`` is a
 coroutine that awaits ``state_machine.process_event`` for each non-dry-run event
 SEQUENTIALLY (no gather/TaskGroup), preserving urgency-descending order. The
-dry-run path stays synchronous (it only calls the sync ``_determine_action``).
+dry-run path stays synchronous (it only calls the sync ``resolve_action``).
 """
 
 import asyncio
@@ -51,14 +51,19 @@ def mock_state_machine(config):
 
     ``process_event`` is now a coroutine, so it must be awaitable; ``spec``
     autospecs it as an AsyncMock, but we set it explicitly for clarity.
-    ``_determine_action`` stays a plain (sync) MagicMock for the dry-run path.
     """
     sm = MagicMock(spec=AlertStateMachine)
     sm.config = config
     sm.process_event = AsyncMock()
-    # _determine_action needs to work for dry run tests
-    sm._determine_action = MagicMock(return_value="phone_call")
     return sm
+
+
+@pytest.fixture
+def mock_resolve_action(monkeypatch):
+    """The dispatcher's ``resolve_action``, a plain (sync) MagicMock for the dry-run path."""
+    resolve = MagicMock(return_value="phone_call")
+    monkeypatch.setattr("sentinel.alerts.dispatcher.resolve_action", resolve)
+    return resolve
 
 
 @pytest.fixture
@@ -84,14 +89,14 @@ def dry_run_dispatcher(mock_state_machine, dry_run_config):
 # 1. test_dispatch_dry_run_logs_without_alerting  [3.3b]
 # --------------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_dispatch_dry_run_logs_without_alerting(dry_run_dispatcher, mock_state_machine):
+async def test_dispatch_dry_run_logs_without_alerting(dry_run_dispatcher, mock_state_machine, mock_resolve_action):
     """Dry run mode logs but doesn't call process_event (no Twilio)."""
     events = [_make_event(urgency_score=10, source_count=2)]
 
     await dry_run_dispatcher.dispatch(events)
 
     mock_state_machine.process_event.assert_not_called()
-    mock_state_machine._determine_action.assert_called_once()
+    mock_resolve_action.assert_called_once()
 
 
 # --------------------------------------------------------------------------
@@ -132,14 +137,14 @@ async def test_events_sorted_by_urgency(dispatcher, mock_state_machine):
 # 4. test_dry_run_log_format
 # --------------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_dry_run_log_format(dry_run_dispatcher, mock_state_machine, caplog):
+async def test_dry_run_log_format(dry_run_dispatcher, mock_state_machine, mock_resolve_action, caplog):
     """Dry run log contains urgency, action, summary."""
     event = _make_event(
         urgency_score=9,
         source_count=2,
         summary_pl="Test summary in Polish",
     )
-    mock_state_machine._determine_action.return_value = "phone_call"
+    mock_resolve_action.return_value = "phone_call"
 
     with caplog.at_level(logging.INFO, logger="sentinel.alerts.dispatcher"):
         await dry_run_dispatcher.dispatch([event])

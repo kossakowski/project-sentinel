@@ -2,7 +2,11 @@
 
 import asyncio
 import json
+import re
+import subprocess
+import sys
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -10,7 +14,20 @@ import anthropic
 import pytest
 
 from sentinel.classification.classifier import Classifier
-from sentinel.models import Article
+from sentinel.classification.legacy_anthropic import (
+    MEMORY_INSTRUCTIONS,
+    SYSTEM_PROMPT,
+    LegacyAnthropicBackend,
+    build_user_prompt,
+)
+from sentinel.models import Article, ClassificationResult
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+# ``prompt_version`` of the legacy path as master wrote it: "legacy:" + sha256 of
+# the system prompt, plus the incident-memory instructions when memory is on.
+LEGACY_PROMPT_VERSION = "legacy:b7a817a4389b9120aa20dc4c189e708fda0dd5ee259f57a93fdfdcbdc44adb06"
+LEGACY_MEMORY_PROMPT_VERSION = "legacy:be399586ba207457109a0aef63234791c0bb96a1088b51c776a585f4b2a599eb"
 
 
 def _make_article(**overrides) -> Article:
@@ -66,7 +83,7 @@ class TestClassifier:
     """Acceptance tests for the Classifier."""
 
     @pytest.mark.asyncio
-    @patch("sentinel.classification.classifier.anthropic.AsyncAnthropic")
+    @patch("anthropic.AsyncAnthropic")
     async def test_classify_invasion_headline(self, mock_anthropic_cls, config):
         """'Russia invades Poland' -> urgency 10, event_type 'invasion'."""
         mock_client = MagicMock()
@@ -74,7 +91,7 @@ class TestClassifier:
         mock_client.messages.create = AsyncMock(return_value=_mock_response(_invasion_response()))
 
         classifier = Classifier(config)
-        classifier.client = mock_client
+        classifier.backend.client = mock_client
 
         article = _make_article(
             title="Russia invades Poland",
@@ -87,7 +104,7 @@ class TestClassifier:
         assert result.is_military_event is True
 
     @pytest.mark.asyncio
-    @patch("sentinel.classification.classifier.anthropic.AsyncAnthropic")
+    @patch("anthropic.AsyncAnthropic")
     async def test_classify_exercise_headline(self, mock_anthropic_cls, config):
         """'NATO conducts military exercises in Poland' -> not military event, urgency 1-2."""
         mock_client = MagicMock()
@@ -95,7 +112,7 @@ class TestClassifier:
         mock_client.messages.create = AsyncMock(return_value=_mock_response(_exercise_response()))
 
         classifier = Classifier(config)
-        classifier.client = mock_client
+        classifier.backend.client = mock_client
 
         article = _make_article(
             title="NATO conducts military exercises in Poland",
@@ -107,7 +124,7 @@ class TestClassifier:
         assert 1 <= result.urgency_score <= 2
 
     @pytest.mark.asyncio
-    @patch("sentinel.classification.classifier.anthropic.AsyncAnthropic")
+    @patch("anthropic.AsyncAnthropic")
     async def test_classify_airspace_violation(self, mock_anthropic_cls, config):
         """'Russian drone violates Polish airspace' -> urgency 6-8."""
         mock_client = MagicMock()
@@ -128,7 +145,7 @@ class TestClassifier:
         )
 
         classifier = Classifier(config)
-        classifier.client = mock_client
+        classifier.backend.client = mock_client
 
         article = _make_article(
             title="Russian drone violates Polish airspace",
@@ -140,7 +157,7 @@ class TestClassifier:
         assert result.event_type == "airspace_violation"
 
     @pytest.mark.asyncio
-    @patch("sentinel.classification.classifier.anthropic.AsyncAnthropic")
+    @patch("anthropic.AsyncAnthropic")
     async def test_classify_historical(self, mock_anthropic_cls, config):
         """'Anniversary of WWII invasion of Poland' -> not military event, urgency 1."""
         mock_client = MagicMock()
@@ -161,7 +178,7 @@ class TestClassifier:
         )
 
         classifier = Classifier(config)
-        classifier.client = mock_client
+        classifier.backend.client = mock_client
 
         article = _make_article(
             title="Anniversary of WWII invasion of Poland",
@@ -173,7 +190,7 @@ class TestClassifier:
         assert result.urgency_score == 1
 
     @pytest.mark.asyncio
-    @patch("sentinel.classification.classifier.anthropic.AsyncAnthropic")
+    @patch("anthropic.AsyncAnthropic")
     async def test_classify_opinion_piece(self, mock_anthropic_cls, config):
         """'Analysis: Could Russia attack the Baltics?' -> not military event, urgency 2-3."""
         mock_client = MagicMock()
@@ -194,7 +211,7 @@ class TestClassifier:
         )
 
         classifier = Classifier(config)
-        classifier.client = mock_client
+        classifier.backend.client = mock_client
 
         article = _make_article(
             title="Analysis: Could Russia attack the Baltics?",
@@ -206,7 +223,7 @@ class TestClassifier:
         assert 2 <= result.urgency_score <= 3
 
     @pytest.mark.asyncio
-    @patch("sentinel.classification.classifier.anthropic.AsyncAnthropic")
+    @patch("anthropic.AsyncAnthropic")
     async def test_classify_polish_headline(self, mock_anthropic_cls, config):
         """'Rosja zaatakowala Polske' -> urgency 10, summary_pl in Polish."""
         mock_client = MagicMock()
@@ -227,7 +244,7 @@ class TestClassifier:
         )
 
         classifier = Classifier(config)
-        classifier.client = mock_client
+        classifier.backend.client = mock_client
 
         article = _make_article(
             title="Rosja zaatakowala Polske",
@@ -240,7 +257,7 @@ class TestClassifier:
         assert len(result.summary_pl) > 0
 
     @pytest.mark.asyncio
-    @patch("sentinel.classification.classifier.anthropic.AsyncAnthropic")
+    @patch("anthropic.AsyncAnthropic")
     async def test_classify_ukrainian_headline(self, mock_anthropic_cls, config):
         """Ukrainian headline about invasion -> urgency 10."""
         mock_client = MagicMock()
@@ -248,7 +265,7 @@ class TestClassifier:
         mock_client.messages.create = AsyncMock(return_value=_mock_response(_invasion_response()))
 
         classifier = Classifier(config)
-        classifier.client = mock_client
+        classifier.backend.client = mock_client
 
         article = _make_article(
             title="\u0420\u043e\u0441\u0456\u044f \u0432\u0442\u043e\u0440\u0433\u043b\u0430\u0441\u044f \u0432 \u041f\u043e\u043b\u044c\u0449\u0443",
@@ -260,7 +277,7 @@ class TestClassifier:
         assert result.urgency_score == 10
 
     @pytest.mark.asyncio
-    @patch("sentinel.classification.classifier.anthropic.AsyncAnthropic")
+    @patch("anthropic.AsyncAnthropic")
     async def test_classify_russian_provocation_framing(self, mock_anthropic_cls, config):
         """Russian media framing -> urgency 7+."""
         mock_client = MagicMock()
@@ -281,7 +298,7 @@ class TestClassifier:
         )
 
         classifier = Classifier(config)
-        classifier.client = mock_client
+        classifier.backend.client = mock_client
 
         article = _make_article(
             title="Polska provocirovala Rossiju",
@@ -293,7 +310,7 @@ class TestClassifier:
         assert result.urgency_score >= 7
 
     @pytest.mark.asyncio
-    @patch("sentinel.classification.classifier.anthropic.AsyncAnthropic")
+    @patch("anthropic.AsyncAnthropic")
     async def test_classify_ambiguous(self, mock_anthropic_cls, config):
         """'Troops seen near Polish border' -> urgency 4-6, confidence < 0.7."""
         mock_client = MagicMock()
@@ -314,7 +331,7 @@ class TestClassifier:
         )
 
         classifier = Classifier(config)
-        classifier.client = mock_client
+        classifier.backend.client = mock_client
 
         article = _make_article(
             title="Troops seen near Polish border",
@@ -326,7 +343,7 @@ class TestClassifier:
         assert result.confidence < 0.7
 
     @pytest.mark.asyncio
-    @patch("sentinel.classification.classifier.anthropic.AsyncAnthropic")
+    @patch("anthropic.AsyncAnthropic")
     async def test_json_parse_recovery(self, mock_anthropic_cls, config):
         """LLM returns JSON wrapped in markdown -> extracted successfully."""
         mock_client = MagicMock()
@@ -340,7 +357,7 @@ class TestClassifier:
         mock_client.messages.create = AsyncMock(return_value=SimpleNamespace(content=[content_block], usage=usage))
 
         classifier = Classifier(config)
-        classifier.client = mock_client
+        classifier.backend.client = mock_client
 
         article = _make_article(title="Russia invades Poland")
         result = await classifier.classify(article)
@@ -349,8 +366,8 @@ class TestClassifier:
         assert result.urgency_score == 10
 
     @pytest.mark.asyncio
-    @patch("sentinel.classification.classifier.asyncio.sleep", new_callable=AsyncMock)
-    @patch("sentinel.classification.classifier.anthropic.AsyncAnthropic")
+    @patch("sentinel.classification.legacy_anthropic.asyncio.sleep", new_callable=AsyncMock)
+    @patch("anthropic.AsyncAnthropic")
     async def test_api_error_handled(self, mock_anthropic_cls, mock_sleep, config):
         """API returns 500 -> logged, article skipped in batch."""
         mock_client = MagicMock()
@@ -366,7 +383,7 @@ class TestClassifier:
         )
 
         classifier = Classifier(config)
-        classifier.client = mock_client
+        classifier.backend.client = mock_client
 
         article = _make_article(title="Russia invades Poland")
         results = await classifier.classify_batch([article])
@@ -375,7 +392,7 @@ class TestClassifier:
         mock_sleep.assert_awaited_once_with(5)
 
     @pytest.mark.asyncio
-    @patch("sentinel.classification.classifier.anthropic.AsyncAnthropic")
+    @patch("anthropic.AsyncAnthropic")
     async def test_token_usage_logged(self, mock_anthropic_cls, config):
         """Input/output tokens are recorded in the result."""
         mock_client = MagicMock()
@@ -385,7 +402,7 @@ class TestClassifier:
         )
 
         classifier = Classifier(config)
-        classifier.client = mock_client
+        classifier.backend.client = mock_client
 
         article = _make_article(title="Russia invades Poland")
         result = await classifier.classify(article)
@@ -394,7 +411,7 @@ class TestClassifier:
         assert result.output_tokens == 94
 
     @pytest.mark.asyncio
-    @patch("sentinel.classification.classifier.anthropic.AsyncAnthropic")
+    @patch("anthropic.AsyncAnthropic")
     async def test_classify_batch_is_sequential(self, mock_anthropic_cls, config):
         """classify_batch awaits one article at a time (no concurrency) and preserves order."""
         mock_anthropic_cls.return_value = MagicMock()
@@ -433,7 +450,7 @@ class TestClassifier:
         assert call_order == ["first", "second", "third"]
 
     @pytest.mark.asyncio
-    @patch("sentinel.classification.classifier.anthropic.AsyncAnthropic")
+    @patch("anthropic.AsyncAnthropic")
     async def test_classify_batch_skips_failures(self, mock_anthropic_cls, config):
         """A failing article (APIError / JSONDecodeError) is skipped; others kept in order."""
         mock_anthropic_cls.return_value = MagicMock()
@@ -465,7 +482,7 @@ class TestClassifier:
         assert results == [ok_result]
 
     @pytest.mark.asyncio
-    @patch("sentinel.classification.classifier.anthropic.AsyncAnthropic")
+    @patch("anthropic.AsyncAnthropic")
     async def test_classifier_aclose(self, mock_anthropic_cls, config):
         """aclose() awaits the underlying async client's close() exactly once."""
         mock_client = MagicMock()
@@ -473,8 +490,75 @@ class TestClassifier:
         mock_client.close = AsyncMock()
 
         classifier = Classifier(config)
-        classifier.client = mock_client
+        classifier.backend.client = mock_client
 
         await classifier.aclose()
 
         mock_client.close.assert_awaited_once_with()
+
+
+def test_classifier_does_not_import_anthropic():
+    """The classifier module loads in a fresh interpreter in which ``anthropic`` cannot be imported."""
+    probe = (
+        "import sys\n"
+        "sys.modules['anthropic'] = None\n"  # every `import anthropic` now raises ImportError
+        "import sentinel.classification.classifier as classifier\n"
+        "assert 'anthropic' not in vars(classifier)\n"
+        "print('loaded')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe], cwd=REPO_ROOT, capture_output=True, text=True, timeout=120, check=False
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "loaded"
+    import sentinel.classification.classifier as classifier_module
+
+    assert "anthropic" not in vars(classifier_module)
+    source = Path(classifier_module.__file__).read_text(encoding="utf-8")
+    assert not re.search(r"^\s*(?:import\s+anthropic|from\s+anthropic\b)", source, re.MULTILINE)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("with_memory", [False, True], ids=["no-memory", "memory"])
+async def test_legacy_backend_still_classifies(config, monkeypatch, with_memory):
+    """With ``provider: anthropic`` the Classifier sends the legacy request and returns a full result."""
+    config.classification.provider = "anthropic"
+    mock_client = MagicMock()
+    reply = {**_invasion_response(), "incident_memory": {"decision": "new", "matched_event_id": None}}
+    mock_client.messages.create = AsyncMock(return_value=_mock_response(reply, input_tokens=321, output_tokens=45))
+    monkeypatch.setattr("anthropic.AsyncAnthropic", MagicMock(return_value=mock_client))
+
+    classifier = Classifier(config)
+    assert isinstance(classifier.backend, LegacyAnthropicBackend)
+    assert classifier.provider is None
+    article = _make_article(title="Russia invades Poland", summary="Russian forces crossed the Polish border.")
+    incident_context = [{"id": "event-1"}] if with_memory else None
+
+    result = await classifier.classify(article, incident_context=incident_context)
+
+    assert isinstance(result, ClassificationResult)
+    assert result.article_id == article.id
+    assert result.is_military_event is True
+    assert result.event_type == "invasion"
+    assert result.urgency_score == 10
+    assert result.affected_countries == ["PL"]
+    assert result.aggressor == "RU"
+    assert result.is_new_event is True
+    assert result.confidence == 0.95
+    assert result.summary_pl == "Rosja dokonala inwazji na Polske."
+    assert result.incident_memory == {"decision": "new", "matched_event_id": None}
+    assert result.model_used == config.classification.model
+    assert result.provider_used == "anthropic"
+    assert result.prompt_version == (LEGACY_MEMORY_PROMPT_VERSION if with_memory else LEGACY_PROMPT_VERSION)
+    assert (result.input_tokens, result.output_tokens) == (321, 45)
+    # The daily token counters still see the request.
+    assert (classifier._daily_input_tokens, classifier._daily_output_tokens) == (321, 45)
+
+    request = mock_client.messages.create.await_args.kwargs
+    extra_tokens = config.classification.incident_memory.extra_output_tokens if with_memory else 0
+    assert request["model"] == config.classification.model
+    assert request["temperature"] == config.classification.temperature
+    assert request["max_tokens"] == config.classification.max_tokens + extra_tokens
+    assert request["system"] == SYSTEM_PROMPT + (MEMORY_INSTRUCTIONS if with_memory else "")
+    assert request["messages"] == [{"role": "user", "content": build_user_prompt(article, incident_context)}]

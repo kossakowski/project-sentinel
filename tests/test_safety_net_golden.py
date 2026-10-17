@@ -33,15 +33,14 @@ import socket
 from dataclasses import dataclass
 from datetime import UTC, timedelta
 from pathlib import Path
-from unittest.mock import create_autospec
 
 import httpx
 import openai
 import pytest
 
 from sentinel.alerts.push_client import ExpoPushClient
+from sentinel.alerts.routing import resolve_action
 from sentinel.alerts.state_machine import SMS_SUMMARY_MAX_CHARS, AlertStateMachine
-from sentinel.alerts.twilio_client import TwilioClient
 from sentinel.database import Database
 from sentinel.fetchers.base import BaseFetcher
 from sentinel.models import AlertRecord, Article, Event
@@ -417,30 +416,13 @@ def test_freeze_time_pins_python_and_sqlite_clock(freeze_time, tmp_path):
 
 
 def _routing_table_csv(config) -> str:
-    """``_determine_action`` over urgency 0-10 x sources 1-3 on the given tiers, as CSV."""
-    state_machine = AlertStateMachine(
-        create_autospec(Database, instance=True),
-        create_autospec(TwilioClient, instance=True),
-        config,
-        push_client=create_autospec(ExpoPushClient, instance=True),
-    )
+    """``resolve_action`` over urgency 0-10 x sources 1-3 on the given tiers, as CSV."""
     buffer = io.StringIO()
     writer = csv.writer(buffer, lineterminator="\n")
     writer.writerow(["urgency_score", "source_count", "action"])
     for score in range(0, 11):
         for source_count in (1, 2, 3):
-            event = Event(
-                event_type="invasion",
-                urgency_score=score,
-                affected_countries=["PL"],
-                aggressor="RU",
-                summary_pl="",
-                first_seen_at=None,
-                last_updated_at=None,
-                source_count=source_count,
-                article_ids=[],
-            )
-            writer.writerow([score, source_count, state_machine._determine_action(event)])
+            writer.writerow([score, source_count, resolve_action(config.alerts.urgency_levels, score, source_count)])
     return buffer.getvalue()
 
 

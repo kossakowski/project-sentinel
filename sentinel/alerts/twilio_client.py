@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import uuid4
 from xml.sax.saxutils import escape as xml_escape
@@ -11,7 +12,7 @@ from twilio.http.http_client import TwilioHttpClient
 from twilio.rest import Client
 
 from sentinel.config import SentinelConfig
-from sentinel.models import AlertRecord
+from sentinel.models import AlertRecord, AlertType, CallStatus
 
 # Errors of a Twilio request: API errors (TwilioRestException is a
 # TwilioException) and transport errors, which the SDK raises as ``requests``
@@ -89,13 +90,24 @@ def _fit_call_message(message_pl: str) -> str:
     return message_pl[:keep].rstrip() + _CUT_MARK
 
 
-class TwilioClient:
-    """Wraps the Twilio SDK for outbound calls and SMS.
+@dataclass(frozen=True)
+class SmsStatus:
+    """The delivery state Twilio reports for one sent SMS."""
 
-    The call, SMS and call-status methods never raise: every failure is logged
-    and reported as ``None``, so a Twilio problem with one message cannot stop
-    the rest of the alert path (for example, the call after a failed
-    confirmation SMS).
+    status: str
+    error_code: int | None
+
+
+class TwilioClient:
+    """Wraps the Twilio SDK for outbound calls and SMS and for reading SMS replies.
+
+    This is the only module that touches the Twilio SDK object (``client``);
+    the alert path works only through these methods and their plain return
+    values. None of the methods raises: every failure is logged and reported
+    as ``None``, so a Twilio problem with one message cannot stop the rest of
+    the alert path (for example, the call after a failed confirmation SMS).
+    The methods are synchronous; the state machine runs them in a worker
+    thread.
     """
 
     def __init__(self, config: SentinelConfig) -> None:
@@ -146,9 +158,9 @@ class TwilioClient:
         record = AlertRecord(
             id=str(uuid4()),
             event_id=event_id,
-            alert_type="phone_call",
+            alert_type=AlertType.PHONE_CALL,
             twilio_sid=call.sid,
-            status="initiated",
+            status=CallStatus.INITIATED,
             duration_seconds=None,
             attempt_number=1,
             sent_at=datetime.now(UTC),
@@ -182,7 +194,7 @@ class TwilioClient:
         record = AlertRecord(
             id=str(uuid4()),
             event_id=event_id,
-            alert_type="sms",
+            alert_type=AlertType.SMS,
             twilio_sid=msg.sid,
             status="sent",
             duration_seconds=None,
@@ -214,4 +226,32 @@ class TwilioClient:
             return None
         except Exception:
             self.logger.exception("Twilio call status fetch failed for SID %s with an unexpected error", twilio_sid)
+            return None
+
+    def list_inbound_sms(self, since: datetime) -> list[str] | None:
+        """Return the bodies of the SMS the owner sent to the Twilio number after ``since``.
+
+        Reads at most 10 messages from ``alerts.phone_number`` to the Twilio
+        number. Each body is stripped of surrounding whitespace; a message
+        without a body is returned as "". Returns None on any error.
+        """
+        try:
+            messages = self.client.messages.list(
+                to=self.twilio_phone,
+                from_=self.config.alerts.phone_number,
+                date_sent_after=since,
+                limit=10,
+            )
+            return [msg.body.strip() if msg.body else "" for msg in messages]
+        except Exception as exc:
+            self.logger.warning("Failed to check SMS confirmations: %s", exc)
+            return None
+
+    def get_sms_status(self, twilio_sid: str) -> SmsStatus | None:
+        """Return the delivery status of a sent SMS, or None on any error."""
+        try:
+            msg = self.client.messages(twilio_sid).fetch()
+            return SmsStatus(status=msg.status, error_code=msg.error_code)
+        except Exception as exc:
+            self.logger.warning("Failed to check SMS delivery status: %s", exc)
             return None

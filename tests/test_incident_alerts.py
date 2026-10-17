@@ -46,7 +46,7 @@ def _twilio() -> MagicMock:
     client.send_sms.side_effect = lambda _phone, _body, event_id: _record(event_id, "sms")
     client.make_alert_call.side_effect = lambda _phone, _body, event_id: _record(event_id, "phone_call", "initiated")
     client.get_call_status.return_value = {"status": "no-answer", "duration": 0}
-    client.client.messages.list.return_value = []
+    client.list_inbound_sms.return_value = []
     client.twilio_phone = "+15550000000"
     return client
 

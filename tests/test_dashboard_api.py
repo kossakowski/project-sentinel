@@ -419,7 +419,7 @@ def _extract_per_article_block(article: dict) -> str:
     the real template, so any drift in classifier.py's per-article format
     fails the test.
     """
-    from sentinel.classification.classifier import USER_PROMPT_TEMPLATE
+    from sentinel.classification.legacy_anthropic import USER_PROMPT_TEMPLATE
 
     rendered = USER_PROMPT_TEMPLATE.format(
         source_name=article["source_name"],
@@ -529,9 +529,9 @@ def test_enrichment_note_matches_classifier_source():
     import inspect
     import re
 
-    from sentinel.classification.classifier import Classifier
+    from sentinel.classification.legacy_anthropic import build_user_prompt
 
-    source = inspect.getsource(Classifier._build_user_prompt)
+    source = inspect.getsource(build_user_prompt)
     # Find the consecutive string literals starting with the note prefix.
     # The source looks like:
     #   "Note: Article body could not be fetched. The summary above may just be "

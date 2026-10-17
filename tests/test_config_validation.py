@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from sentinel.alerts.state_machine import _format_call_message, _format_sms_message, _format_update_sms
+from sentinel.alerts.formatting import format_call_message, format_sms_message, format_update_sms
 from sentinel.config import (
     ALERT_TEMPLATE_FIELDS,
     AlertTemplates,
@@ -160,9 +160,9 @@ def test_formatters_accept_every_known_template_field(config, db, template_name)
     template = " | ".join(f"{name}={{{name}}}" for name in fields)
     config.alerts.templates = AlertTemplates(**{template_name: template})
     formatters = {
-        "call": lambda event: _format_call_message(event, config),
-        "sms": lambda event: _format_sms_message(event, db, config),
-        "sms_update": lambda event: _format_update_sms(event, db, config),
+        "call": lambda event: format_call_message(event, config),
+        "sms": lambda event: format_sms_message(event, db, config),
+        "sms_update": lambda event: format_update_sms(event, db, config),
     }
 
     rendered = formatters[template_name](_event())

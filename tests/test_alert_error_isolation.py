@@ -23,13 +23,11 @@ from twilio.base.exceptions import TwilioException, TwilioRestException
 from twilio.http.http_client import TwilioHttpClient
 
 import sentinel.alerts.twilio_client as twilio_client_module
+from sentinel.alerts.call_round import CallRound
 from sentinel.alerts.dispatcher import AlertDispatcher
+from sentinel.alerts.formatting import SMS_SUMMARY_MAX_CHARS, format_update_sms
 from sentinel.alerts.push_client import ExpoPushClient
-from sentinel.alerts.state_machine import (
-    SMS_SUMMARY_MAX_CHARS,
-    AlertStateMachine,
-    _format_update_sms,
-)
+from sentinel.alerts.state_machine import AlertStateMachine
 from sentinel.alerts.twilio_client import TWIML_MAX_CHARS, TwilioClient
 from sentinel.models import AlertRecord, Event
 from sentinel.scheduler import CycleResult, PipelineStats, SentinelPipeline, SentinelScheduler
@@ -80,7 +78,7 @@ async def test_push_build_error_is_logged_and_call_still_placed(
     def broken_builder(*args, **kwargs):
         raise KeyError("typo_field")
 
-    monkeypatch.setattr("sentinel.alerts.state_machine._build_push_data", broken_builder)
+    monkeypatch.setattr("sentinel.alerts.state_machine.build_push_data", broken_builder)
 
     with caplog.at_level(logging.ERROR, logger="sentinel.alerts.state_machine"):
         await _state_machine(prod_config, prod_db).process_event(event)
@@ -556,7 +554,7 @@ async def test_confirmation_sms_keeps_code_with_long_summary(prod_config, prod_d
     event.summary_pl = "Rosyjskie wojska atakują. " * 80  # about 2000 characters
     assert len(event.summary_pl) > 1600
 
-    await _state_machine(prod_config, prod_db)._send_confirmation_sms(event)
+    await CallRound(_state_machine(prod_config, prod_db), event).send_confirmation_sms()
 
     (body,) = _sms_bodies(twilio_sdk)
     assert f"Odpowiedz kodem aby potwierdzic odbior alertu: {CODE}" in body
@@ -571,7 +569,7 @@ async def test_confirmation_sms_keeps_code_with_long_summary(prod_config, prod_d
 async def test_confirmation_sms_short_summary_unchanged(prod_config, prod_db, twilio_sdk):
     event = _event(10)
 
-    await _state_machine(prod_config, prod_db)._send_confirmation_sms(event)
+    await CallRound(_state_machine(prod_config, prod_db), event).send_confirmation_sms()
 
     (body,) = _sms_bodies(twilio_sdk)
     assert body.split("\n\n")[1] == event.summary_pl
@@ -692,7 +690,7 @@ def test_update_sms_carries_summary_beyond_sms_cap_in_full(prod_config, prod_db)
     event.summary_pl = _MEDIUM_SUMMARY
     event.source_count = 3
 
-    body = _format_update_sms(event, prod_db, prod_config)
+    body = format_update_sms(event, prod_db, prod_config)
 
     assert f"\n{_MEDIUM_SUMMARY}\n" in body
     assert "Łącznie źródeł: 3" in body

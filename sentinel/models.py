@@ -5,6 +5,7 @@ import sqlite3
 import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import StrEnum
 from uuid import uuid4
 
 
@@ -59,6 +60,63 @@ def _json_to_dict(value: str | dict | None) -> dict:
 
     parsed = json.loads(value)
     return parsed if isinstance(parsed, dict) else {}
+
+
+class AlertStatus(StrEnum):
+    """Values of ``Event.alert_status``, stored as these strings."""
+
+    # Set by the corroborator from the urgency and source count.
+    PENDING = "pending"
+    PHONE_CALL = "phone_call"
+    SMS = "sms"
+    DRY_RUN = "dry_run"
+    # Set by the alert state machine as the event is alerted.
+    SMS_SENT = "sms_sent"
+    CALL_PLACED = "call_placed"
+    RETRY_PENDING = "retry_pending"
+    ACKNOWLEDGED = "acknowledged"
+    # No code sets it today; the active-event query skips such rows.
+    EXPIRED = "expired"
+    # Written only by ``sentinel.py --test-alert push`` on its synthetic event.
+    PUSH = "push"
+
+
+class AlertType(StrEnum):
+    """Values of ``AlertRecord.alert_type``, stored as these strings."""
+
+    PHONE_CALL = "phone_call"
+    SMS = "sms"
+    # No transport writes it today; older records may carry it and count as SMS.
+    SMS_UPDATE = "sms_update"
+    PUSH = "push"
+
+
+class CallStatus(StrEnum):
+    """Statuses of a phone call: ours right after placing it, then Twilio's."""
+
+    INITIATED = "initiated"
+    QUEUED = "queued"
+    RINGING = "ringing"
+    IN_PROGRESS = "in-progress"
+    COMPLETED = "completed"
+    BUSY = "busy"
+    NO_ANSWER = "no-answer"
+    CANCELED = "canceled"
+    FAILED = "failed"
+
+
+# A placed call whose result is not known yet; the pending-call check polls these records.
+PENDING_CALL_STATUSES = (CallStatus.INITIATED, CallStatus.RINGING)
+# A call that is still going on while the call round waits for it.
+ACTIVE_CALL_STATUSES = (CallStatus.QUEUED, CallStatus.RINGING, CallStatus.IN_PROGRESS)
+# Twilio statuses of a call that has ended.
+FINISHED_CALL_STATUSES = (
+    CallStatus.COMPLETED,
+    CallStatus.BUSY,
+    CallStatus.NO_ANSWER,
+    CallStatus.CANCELED,
+    CallStatus.FAILED,
+)
 
 
 @dataclass

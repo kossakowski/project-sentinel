@@ -16,6 +16,7 @@ import pytest
 from sentinel.classification.classifier import Classifier
 from sentinel.classification.corroborator import Corroborator
 from sentinel.classification.incident_memory import IncidentMemory
+from sentinel.classification.legacy_anthropic import LegacyAnthropicBackend
 from sentinel.database import Database
 from sentinel.models import Article, ClassificationResult, Event
 from sentinel.scheduler import SentinelPipeline
@@ -406,8 +407,10 @@ async def test_classifier_uses_one_fake_provider_request_with_memory_context(con
     classifier = Classifier.__new__(Classifier)
     classifier.config = config
     classifier.provider = None
-    classifier.client = SimpleNamespace(messages=SimpleNamespace(create=create))
     classifier.logger = logging.getLogger("test.incident_memory.classifier")
+    classifier.backend = LegacyAnthropicBackend(
+        config, classifier.logger, client=SimpleNamespace(messages=SimpleNamespace(create=create))
+    )
     classifier._daily_input_tokens = 0
     classifier._daily_output_tokens = 0
     classifier._daily_date = None

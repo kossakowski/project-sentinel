@@ -10,11 +10,13 @@ through ``code_factory``. Inbound replies are what the SDK's
 import logging
 import os
 import secrets
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
 from twilio.base.exceptions import TwilioRestException
 
+from sentinel.alerts.call_round import CallRound
 from sentinel.alerts.push_client import ExpoPushClient
 from sentinel.alerts.state_machine import AlertStateMachine, generate_confirmation_code
 from sentinel.alerts.twilio_client import TwilioClient
@@ -132,3 +134,58 @@ def test_default_confirmation_code_is_six_secret_digits(prod_config, prod_db, mo
     assert generate_confirmation_code() == "100000"
     monkeypatch.setattr(secrets, "randbelow", lambda bound: bound - 1)
     assert generate_confirmation_code() == "999999"
+
+
+@pytest.mark.asyncio
+async def test_confirmation_code_not_logged(
+    prod_config, prod_db, store_critical_event, twilio_sdk, expo_send_push, instant_alert_sleep, caplog
+):
+    """A full call round, with a resent confirmation SMS and the owner's reply, never logs the code."""
+    event = store_critical_event()
+    # The first confirmation SMS is reported undelivered, so the round resends it;
+    # the owner replies with the code once the resent SMS is out.
+    twilio_sdk.messages.return_value.fetch.return_value = SimpleNamespace(status="undelivered", error_code=30003)
+
+    def inbound_replies(**kwargs):
+        if twilio_sdk.messages.create.call_count < 2:
+            return []
+        return [SimpleNamespace(body=CODE)]
+
+    twilio_sdk.messages.list.side_effect = inbound_replies
+
+    with caplog.at_level(logging.DEBUG):
+        await _state_machine(prod_config, prod_db).process_event(event)
+
+    assert prod_db.get_event_by_id(event.id).alert_status == "acknowledged"
+    confirmation, resent, followup = _sms_bodies(twilio_sdk)
+    assert CODE in confirmation and CODE in resent and CODE not in followup
+    messages = [record.getMessage() for record in caplog.records]
+    assert any("SMS confirmation request sent" in message for message in messages)
+    assert any("confirmation SMS failed to deliver, resending" in message for message in messages)
+    assert any("SMS confirmation received" in message for message in messages)
+    assert [message for message in messages if CODE in message] == []
+
+
+@pytest.mark.asyncio
+async def test_each_round_checks_only_its_own_code(prod_config, prod_db, store_critical_event, twilio_sdk):
+    """Two rounds on one state machine keep their own codes; a reply with one code acknowledges only its round."""
+    codes = iter(["111111", "222222"])
+    state_machine = AlertStateMachine(
+        prod_db,
+        TwilioClient(prod_config),
+        prod_config,
+        push_client=ExpoPushClient(prod_config),
+        code_factory=lambda: next(codes),
+    )
+    first = CallRound(state_machine, store_critical_event())
+    second = CallRound(state_machine, store_critical_event(title="Uderzenie rakietowe na Rzeszów"))
+    since = datetime.now(UTC)
+
+    await first.send_confirmation_sms()
+    await second.send_confirmation_sms()
+    twilio_sdk.messages.list.return_value = [SimpleNamespace(body="111111")]
+
+    assert (first.code, second.code) == ("111111", "222222")
+    assert first.sms_sid != second.sms_sid
+    assert await first.reply_received(since) is True
+    assert await second.reply_received(since) is False

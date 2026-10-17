@@ -14,10 +14,16 @@ from unittest.mock import patch
 
 import yaml
 
+from sentinel.alerts.call_round import CallRound
 from sentinel.alerts.state_machine import AlertStateMachine
-from sentinel.classification.classifier import SYSTEM_PROMPT, USER_PROMPT_TEMPLATE, Classifier
 from sentinel.classification.corroborator import Corroborator
-from sentinel.classification.incident_memory import MEMORY_INSTRUCTIONS, IncidentMemory
+from sentinel.classification.incident_memory import IncidentMemory
+from sentinel.classification.legacy_anthropic import (
+    MEMORY_INSTRUCTIONS,
+    SYSTEM_PROMPT,
+    USER_PROMPT_TEMPLATE,
+    build_user_prompt,
+)
 from sentinel.config import SentinelConfig
 from sentinel.database import Database
 from sentinel.eval.clarified_policy import FACT_SCHEMA, load_policy, prompt_hash
@@ -138,7 +144,7 @@ def request_messages(article: Article, candidates: list[dict], policy: dict | No
     if policy is not None:
         return clarified_messages(article, candidates, policy)
     # Reuse the exact runtime builder without constructing an Anthropic client.
-    prompt = Classifier._build_user_prompt(None, article, candidates)
+    prompt = build_user_prompt(article, candidates)
     return [{"role": "system", "content": SYSTEM_PROMPT + MEMORY_INSTRUCTIONS}, {"role": "user", "content": prompt}]
 
 
@@ -191,7 +197,7 @@ class RecordingAlerts(AlertStateMachine):
         # telephony SDK or inbound SMS polling. Keep the production confirmation
         # and follow-up SMS bookkeeping: otherwise a later same-revision article
         # incorrectly looks like it still owes an SMS after the acknowledged call.
-        await self._send_confirmation_sms(event)
+        await CallRound(self, event).send_confirmation_sms()
         record = RecordingTransport.record(event.id, "phone_call", event.summary_pl)
         record.status = "acknowledged"
         self._record_alert(record, event)

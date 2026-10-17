@@ -13,12 +13,12 @@ EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 class ExpoPushClient:
     """Sends push notifications to the companion mobile app via the Expo Push Service.
 
-    One of the per-tier delivery channels for the SMS-action urgency tiers (5-8):
-    a level's `channel` (sms | push | both) selects whether that tier is delivered
-    by Twilio SMS, this Expo push, or both. No account or secret is required for
-    basic sends; an optional EXPO_ACCESS_TOKEN (set only when "Enhanced Security
-    for Push Notifications" is turned on in the Expo project) is forwarded as a
-    bearer token when present.
+    The state machine pushes on three paths: a 5-8 tier whose `channel` is
+    `push` or `both`, a 9-10 phone-call alert (in addition to the call and its SMS),
+    and the update for an escalation of an acknowledged event. EXPO_ACCESS_TOKEN
+    is forwarded as a bearer token when it is set. Expo requires it once
+    "Enhanced Security for Push Notifications" is turned on in the Expo
+    project, as it is in production.
     """
 
     def __init__(self, config: SentinelConfig) -> None:

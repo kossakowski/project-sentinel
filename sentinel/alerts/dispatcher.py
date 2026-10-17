@@ -1,5 +1,6 @@
 import logging
 
+from sentinel.alerts.routing import resolve_action
 from sentinel.alerts.state_machine import AlertStateMachine
 from sentinel.config import SentinelConfig
 from sentinel.database import Database
@@ -19,10 +20,11 @@ class AlertDispatcher:
         """Process all events that need alerting.
 
         Events are sorted by urgency (highest first) and processed
-        sequentially (each ``process_event`` is awaited before the next),
-        so per-event confirmation state on the shared state machine is not
-        clobbered by concurrent events.
-        In dry_run mode, logs the intended action without sending anything.
+        sequentially (each ``process_event`` is awaited before the next), so
+        one call round ends before the next event's round starts. Each round
+        keeps its own confirmation code (``CallRound``).
+        In dry_run mode, logs the intended action (``resolve_action`` on the
+        configured tiers) without sending anything.
 
         Events are isolated from each other: an exception while one event is
         alerted is logged and the remaining events are still processed, so a
@@ -82,7 +84,7 @@ class AlertDispatcher:
 
     def _log_dry_run(self, event: Event) -> None:
         """Log what would happen without actually sending alerts."""
-        action = self.state_machine._determine_action(event)
+        action = resolve_action(self.config.alerts.urgency_levels, event.urgency_score, event.source_count)
         self.logger.info(
             "[DRY RUN] Event %s: urgency=%d, sources=%d, would_trigger=%s, summary=%s",
             event.id,

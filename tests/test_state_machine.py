@@ -18,17 +18,18 @@ from uuid import uuid4
 
 import pytest
 
-from sentinel.alerts.state_machine import (
+from sentinel.alerts.call_round import CallRound
+from sentinel.alerts.formatting import (
     EVENT_TYPE_PL,
     PUSH_BODY_SUMMARY_MAX_CHARS,
     PUSH_DATA_MAX_BYTES,
     SMS_MAX_CHARS,
-    AlertStateMachine,
-    _build_push_data,
-    _format_push,
-    _format_sms_message,
-    _format_update_sms,
+    build_push_data,
+    format_push,
+    format_sms_message,
+    format_update_sms,
 )
+from sentinel.alerts.state_machine import AlertStateMachine
 from sentinel.database import Database
 from sentinel.models import AlertRecord, Article, Event
 
@@ -100,7 +101,7 @@ def mock_twilio():
     # Default: calls are not answered (no-answer on first poll)
     twilio.get_call_status.return_value = {"status": "no-answer", "duration": 0}
     # SMS confirmation check reads inbound messages — default to empty
-    twilio.client.messages.list.return_value = []
+    twilio.list_inbound_sms.return_value = []
     twilio.twilio_phone = "+15551234567"
     return twilio
 
@@ -560,7 +561,7 @@ def test_sms_format_includes_source_details(db, config):
         article_ids=[article1.id, article2.id],
     )
 
-    message = _format_sms_message(event, db, config)
+    message = format_sms_message(event, db, config)
 
     # Verify per-source lines are present
     assert "- PAP: Atak rakietowy na Polskę" in message
@@ -602,7 +603,7 @@ def test_sms_body_capped_for_many_long_url_sources(db, config):
         article_ids=article_ids,
     )
 
-    message = _format_sms_message(event, db, config)
+    message = format_sms_message(event, db, config)
 
     # Stays under Twilio's concatenated-message limit (the bug was HTTP 400 >1600).
     assert len(message) <= SMS_MAX_CHARS
@@ -631,7 +632,7 @@ def test_sms_body_capped_when_summary_is_huge(db, config):
         article_ids=[],
     )
 
-    message = _format_sms_message(event, db, config)
+    message = format_sms_message(event, db, config)
 
     assert len(message) <= SMS_MAX_CHARS
     # The trailing detection-time field must NOT be truncated away.
@@ -668,7 +669,7 @@ def test_update_sms_includes_source_name(db, config):
         article_ids=["old-id-1", "old-id-2", article.id],
     )
 
-    message = _format_update_sms(event, db, config)
+    message = format_update_sms(event, db, config)
 
     assert "Defence24" in message
     assert "Nowe informacje (Defence24):" in message
@@ -704,27 +705,25 @@ async def test_api_call_retry_pause_is_awaited(mock_sleep, state_machine, db, mo
 @pytest.mark.asyncio
 @patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
 async def test_twilio_calls_routed_through_to_thread(mock_sleep, state_machine, db, mock_twilio):
-    """Every Twilio SDK call on the alert path goes through asyncio.to_thread.
+    """Every Twilio call on the alert path goes through asyncio.to_thread.
 
-    There are five Twilio touch points the state machine offloads:
-      1. ``self.twilio.make_alert_call`` (bound wrapper)
-      2. ``self.twilio.send_sms`` (bound wrapper)
-      3. ``self.twilio.get_call_status`` (bound wrapper)
-      4. a lambda wrapping ``self.twilio.client.messages.list(...)``
-         (``_check_sms_confirmation``)
-      5. a lambda wrapping ``self.twilio.client.messages(sid).fetch()``
-         (``_check_confirmation_sms_delivered``)
+    There are five Twilio touch points the state machine offloads, all bound
+    ``TwilioClient`` wrapper methods:
+      1. ``self.twilio.make_alert_call``
+      2. ``self.twilio.send_sms``
+      3. ``self.twilio.get_call_status``
+      4. ``self.twilio.list_inbound_sms`` (``CallRound.reply_received``)
+      5. ``self.twilio.get_sms_status`` (``CallRound.confirmation_sms_delivered``)
 
-    The three bound wrappers can be asserted by identity, but #4 and #5 are
-    anonymous lambdas, so identity can't catch them. Instead we prove the
-    *direct-SDK* calls are reached ONLY through ``to_thread`` by a count
-    argument: re-running the recorded callables in isolation must reproduce
-    EXACTLY the number of ``messages.list`` / ``messages(sid).fetch``
-    invocations that the live run produced. If a regression un-offloaded
-    either direct-SDK call (calling ``messages.list`` / ``.fetch`` directly
-    instead of via ``to_thread``), that invocation would still happen during
-    the live run but would NOT be among the recorded callables — so the
-    reproduced count would fall short of the live count and this test fails.
+    #1-#3 are asserted by identity among the offloaded callables. For #4
+    and #5 a single recorded offload would not prove that no other call of
+    them skipped the thread. Instead we prove they are reached ONLY through
+    ``to_thread`` by a count argument: the number of recorded offloads of
+    each wrapper must equal EXACTLY the number of times it was called during
+    the live run. If a regression un-offloaded either call (calling it
+    directly instead of via ``to_thread``), that invocation would still be
+    counted on the mock but would NOT be among the recorded callables, so the
+    offload count would fall short of the call count and this test fails.
 
     The no-answer phone-call path reaches all five touch points: each retry
     polls inbound SMS (#4) and call status (#3), the round opens with a
@@ -735,16 +734,13 @@ async def test_twilio_calls_routed_through_to_thread(mock_sleep, state_machine, 
     event = _make_event(urgency_score=10, source_count=2)
     db.insert_event(event)
 
-    # The fetch mock for touch point #5: messages(sid).fetch() always returns
-    # twilio.client.messages.return_value (regardless of sid), and .fetch is a
-    # child mock on it. Capture it so we can count fetch() invocations.
-    fetch_mock = mock_twilio.client.messages.return_value.fetch
-    list_mock = mock_twilio.client.messages.list
+    list_mock = mock_twilio.list_inbound_sms
+    fetch_mock = mock_twilio.get_sms_status
 
     recorded = []
 
     # AsyncMock whose side effect both RECORDS func and CALLS THROUGH, so the
-    # real lambdas execute their wrapped SDK calls against the MagicMock.
+    # real wrappers execute against the MagicMock.
     async def fake_to_thread(func, *args, **kwargs):
         recorded.append(func)
         return func(*args, **kwargs)
@@ -758,46 +754,30 @@ async def test_twilio_calls_routed_through_to_thread(mock_sleep, state_machine, 
 
     assert mock_tt.await_count >= 1
 
-    # (a) The three bound wrappers used on the phone-call path were offloaded
+    # (a) The three wrappers used on the phone-call path were offloaded
     #     (assertable by identity).
     assert mock_twilio.make_alert_call in recorded
     assert mock_twilio.get_call_status in recorded
     assert mock_twilio.send_sms in recorded  # confirmation SMS
 
-    # (b) The two direct-SDK lambdas were actually exercised during the live
-    #     run — the path really did reach messages.list (#4) and the
-    #     confirmation-SMS delivery fetch (#5).
+    # (b) The two SMS-check wrappers were actually exercised during the live
+    #     run — the path really did reach the reply check (#4) and the
+    #     confirmation-SMS delivery check (#5).
     live_list_calls = list_mock.call_count
     live_fetch_calls = fetch_mock.call_count
-    assert live_list_calls >= 1, "expected _check_sms_confirmation to call messages.list"
-    assert live_fetch_calls >= 1, "expected _check_confirmation_sms_delivered to call messages(sid).fetch()"
+    assert live_list_calls >= 1, "expected CallRound.reply_received to call list_inbound_sms"
+    assert live_fetch_calls >= 1, "expected CallRound.confirmation_sms_delivered to call get_sms_status"
 
-    # (c) Linchpin: the direct-SDK calls were reached ONLY through to_thread.
-    #     Reset the two SDK mocks, re-execute the recorded callables in
-    #     isolation, and require the reproduced counts to equal the live
-    #     counts exactly. A direct (un-offloaded) call would not be recorded,
-    #     so its touch could not be reproduced -> counts diverge -> failure.
-    bound_wrappers = {
-        mock_twilio.make_alert_call,
-        mock_twilio.send_sms,
-        mock_twilio.get_call_status,
-    }
-    list_mock.reset_mock()
-    fetch_mock.reset_mock()
-    for func in recorded:
-        if func in bound_wrappers:
-            # Bound wrappers expect positional args (phone, message, event_id /
-            # sid); skip executing them here — they're already proven by
-            # identity in (a) and don't touch the direct-SDK mocks.
-            continue
-        func()  # a recorded lambda -> re-touches messages.list or fetch
-    assert list_mock.call_count == live_list_calls, (
-        "messages.list reached outside to_thread: "
-        f"live={live_list_calls} but only {list_mock.call_count} reproduced from recorded offloads"
+    # (c) Linchpin: both were reached ONLY through to_thread. Every live call
+    #     must be matched by one recorded offload; a direct (un-offloaded)
+    #     call would not be recorded -> counts diverge -> failure.
+    offloaded_list_calls = sum(1 for func in recorded if func is list_mock)
+    offloaded_fetch_calls = sum(1 for func in recorded if func is fetch_mock)
+    assert offloaded_list_calls == live_list_calls, (
+        f"list_inbound_sms reached outside to_thread: live={live_list_calls} but only {offloaded_list_calls} offloaded"
     )
-    assert fetch_mock.call_count == live_fetch_calls, (
-        "messages(sid).fetch reached outside to_thread: "
-        f"live={live_fetch_calls} but only {fetch_mock.call_count} reproduced from recorded offloads"
+    assert offloaded_fetch_calls == live_fetch_calls, (
+        f"get_sms_status reached outside to_thread: live={live_fetch_calls} but only {offloaded_fetch_calls} offloaded"
     )
 
 
@@ -817,7 +797,7 @@ async def test_db_calls_not_offloaded_to_thread(mock_sleep, state_machine, db, m
     slip past an ``isinstance(func.__self__, Database)`` test. Every offloaded
     callable must be either one of the known bound Twilio wrappers (by
     identity), OR a lambda that, when executed, touches ONLY
-    ``self.twilio.client...`` and never ``self.db`` / ``Database``. A future
+    ``self.twilio`` and never ``self.db`` / ``Database``. A future
     ``to_thread(lambda: self.db.update_event(...))`` regression would therefore
     fail here: the lambda is not a known wrapper and, when re-executed against a
     tripwire DB, would raise.
@@ -846,9 +826,9 @@ async def test_db_calls_not_offloaded_to_thread(mock_sleep, state_machine, db, m
         owner = getattr(func, "__self__", None)
         assert not isinstance(owner, Database), f"Database call {func!r} must not be offloaded to a thread"
 
-    # Positive allowlist. The three bound Twilio wrappers are accepted by
+    # Positive allowlist. The five bound Twilio wrappers are accepted by
     # identity; everything else must be a lambda that touches only
-    # self.twilio.client and never the DB. We prove the latter by re-executing
+    # self.twilio and never the DB. We prove the latter by re-executing
     # each non-wrapper callable with self.db swapped for a tripwire that raises
     # on ANY attribute access. The real lambdas close over `self`, so they see
     # the swapped db; a hypothetical `lambda: self.db.update_event(...)` would
@@ -857,6 +837,8 @@ async def test_db_calls_not_offloaded_to_thread(mock_sleep, state_machine, db, m
         mock_twilio.make_alert_call,
         mock_twilio.send_sms,
         mock_twilio.get_call_status,
+        mock_twilio.list_inbound_sms,
+        mock_twilio.get_sms_status,
     }
 
     class _DBTripwire:
@@ -874,8 +856,8 @@ async def test_db_calls_not_offloaded_to_thread(mock_sleep, state_machine, db, m
             if func in bound_wrappers:
                 continue  # known-good Twilio wrapper, asserted by identity
             # A non-wrapper offload must be a Twilio-client lambda. Re-running
-            # it must not touch the DB tripwire. (It re-touches messages.list /
-            # messages(sid).fetch, which is fine — those are Twilio, not DB.)
+            # it must not touch the DB tripwire. (Touching Twilio is fine;
+            # that is not the DB.)
             func()
     finally:
         state_machine.db = saved_db
@@ -887,7 +869,7 @@ async def test_db_calls_not_offloaded_to_thread(mock_sleep, state_machine, db, m
 @pytest.mark.asyncio
 @patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
 async def test_poll_durations_from_config(mock_sleep, state_machine, db, mock_twilio, config):
-    """_wait_for_call_and_check_sms reads poll timeout/interval from config (defaults 90/5)."""
+    """CallRound.wait_for_call reads poll timeout/interval from config (defaults 90/5)."""
     # Defaults preserve the original hardcoded behavior.
     assert config.alerts.acknowledgment.call_poll_timeout_seconds == 90
     assert config.alerts.acknowledgment.call_poll_interval_seconds == 5
@@ -902,7 +884,7 @@ async def test_poll_durations_from_config(mock_sleep, state_machine, db, mock_tw
     record = _make_alert_record(str(uuid4()), status="initiated")
     sms_since = datetime.now(UTC)
 
-    await state_machine._wait_for_call_and_check_sms(record, sms_since)
+    await CallRound(state_machine, _make_event()).wait_for_call(record, sms_since)
 
     # First poll: sleep(5) awaited once, then the call is "completed" so we return.
     mock_sleep.assert_awaited_once_with(5)
@@ -1264,7 +1246,7 @@ async def test_low_urgency_sends_no_push(db, mock_twilio, config):
 
 
 # --------------------------------------------------------------------------
-# Phase 1 — Enriched push payload: _build_push_data + _content_available
+# Phase 1 — Enriched push payload: build_push_data + _content_available
 # --------------------------------------------------------------------------
 def _make_event_with_sources(db, *, summary_pl="Rosja wystrzeliła rakiety w kierunku Polski.", aggressor="RU"):
     """Insert two real articles (one with a URL, one without) and return an Event
@@ -1313,7 +1295,7 @@ def test_build_push_data_includes_full_content(db, config):
     """[1.1, 1.1d, 1.1e, 1.6] The builder returns the full enriched data dict."""
     event, _a1, _a2 = _make_event_with_sources(db)
 
-    data = _build_push_data(event, db, config, is_update=False)
+    data = build_push_data(event, db, config, is_update=False)
 
     expected_keys = {
         "message_id",
@@ -1363,7 +1345,7 @@ def test_push_event_type_pl_unknown_passthrough(db, config):
     event, _a1, _a2 = _make_event_with_sources(db)
     event.event_type = "totally_unknown_type"
 
-    data = _build_push_data(event, db, config, is_update=False)
+    data = build_push_data(event, db, config, is_update=False)
 
     assert "totally_unknown_type" not in EVENT_TYPE_PL
     assert data["event_type"] == "totally_unknown_type"
@@ -1377,7 +1359,7 @@ def test_push_sources_carry_urls(db, config):
     """
     event, a1, _a2 = _make_event_with_sources(db)
 
-    data = _build_push_data(event, db, config, is_update=False)
+    data = build_push_data(event, db, config, is_update=False)
     sources = data["sources"]
 
     assert len(sources) == len(event.article_ids)
@@ -1425,7 +1407,7 @@ def test_push_sources_db_miss_yields_null_url_and_preserves_length(db, config):
         article_ids=[real.id, missing_id],
     )
 
-    data = _build_push_data(event, db, config, is_update=False)
+    data = build_push_data(event, db, config, is_update=False)
     sources = data["sources"]
 
     # Length preserved: one entry per article_id even though one missed the DB.
@@ -1439,41 +1421,41 @@ def test_push_sms_body_equals_sms_message(db, config):
     """[1.1c] sms_body equals the exact SMS the server produces for this send."""
     event, _a1, _a2 = _make_event_with_sources(db)
 
-    data_event = _build_push_data(event, db, config, is_update=False)
-    assert data_event["sms_body"] == _format_sms_message(event, db, config)
+    data_event = build_push_data(event, db, config, is_update=False)
+    assert data_event["sms_body"] == format_sms_message(event, db, config)
 
-    data_update = _build_push_data(event, db, config, is_update=True)
-    assert data_update["sms_body"] == _format_update_sms(event, db, config)
+    data_update = build_push_data(event, db, config, is_update=True)
+    assert data_update["sms_body"] == format_update_sms(event, db, config)
 
 
 def test_push_message_id_unique_per_send(db, config):
     """[1.1a] Two builds yield different, non-empty message_id values."""
     event, _a1, _a2 = _make_event_with_sources(db)
 
-    d1 = _build_push_data(event, db, config, is_update=False)
-    d2 = _build_push_data(event, db, config, is_update=False)
+    d1 = build_push_data(event, db, config, is_update=False)
+    d2 = build_push_data(event, db, config, is_update=False)
 
     assert d1["message_id"] and d2["message_id"]
     assert d1["message_id"] != d2["message_id"]
 
 
 def test_push_update_kind_and_title(db, config):
-    """[1.1f] kind + the push title bind to _format_push for both directions."""
+    """[1.1f] kind + the push title bind to format_push for both directions."""
     event, _a1, _a2 = _make_event_with_sources(db)
 
-    data_update = _build_push_data(event, db, config, is_update=True)
+    data_update = build_push_data(event, db, config, is_update=True)
     assert data_update["kind"] == "update"
-    assert _format_push(event, True)[0] == "ℹ️ SENTINEL — aktualizacja: Uderzenie rakietowe"
+    assert format_push(event, True)[0] == "ℹ️ SENTINEL — aktualizacja: Uderzenie rakietowe"
 
-    data_event = _build_push_data(event, db, config, is_update=False)
+    data_event = build_push_data(event, db, config, is_update=False)
     assert data_event["kind"] == "event"
-    assert _format_push(event, False)[0].startswith("🚨 PROJECT SENTINEL: ")
+    assert format_push(event, False)[0].startswith("🚨 PROJECT SENTINEL: ")
 
 
 @pytest.mark.asyncio
 async def test_maybe_send_push_delivers_format_push_title(db, mock_twilio, config):
     """[1.1f] The title _maybe_send_push hands to send_push is exactly
-    _format_push(event, is_update)[0] — captured at the boundary, not self-tested.
+    format_push(event, is_update)[0] — captured at the boundary, not self-tested.
     """
     _enable_push(config)
     captured: list[str] = []
@@ -1490,13 +1472,13 @@ async def test_maybe_send_push_delivers_format_push_title(db, mock_twilio, confi
     event = _make_event(urgency_score=9, source_count=2)
     db.insert_event(event)
     await sm._maybe_send_push(event, [], is_update=False)
-    assert captured[-1] == _format_push(event, False)[0]
+    assert captured[-1] == format_push(event, False)[0]
 
     # is_update=True: delivered title binds to the update-format title.
     event_u = _make_event(urgency_score=9, source_count=2)
     db.insert_event(event_u)
     await sm._maybe_send_push(event_u, [], is_update=True)
-    assert captured[-1] == _format_push(event_u, True)[0]
+    assert captured[-1] == format_push(event_u, True)[0]
 
 
 def test_push_data_within_byte_budget_and_trims(db, config):
@@ -1531,7 +1513,7 @@ def test_push_data_within_byte_budget_and_trims(db, config):
         article_ids=article_ids,
     )
 
-    data = _build_push_data(big_event, db, config, is_update=False)
+    data = build_push_data(big_event, db, config, is_update=False)
     size = len(json.dumps(data, ensure_ascii=False).encode("utf-8"))
     assert size <= PUSH_DATA_MAX_BYTES
     # Sources were trimmed below the full count, but the scalars survive.
@@ -1554,7 +1536,7 @@ def test_push_data_within_byte_budget_and_trims(db, config):
         article_ids=[],
     )
 
-    data2 = _build_push_data(huge_event, db, config, is_update=False)
+    data2 = build_push_data(huge_event, db, config, is_update=False)
     size2 = len(json.dumps(data2, ensure_ascii=False).encode("utf-8"))
     assert size2 <= PUSH_DATA_MAX_BYTES
     assert data2["sources"] == []
@@ -1567,7 +1549,7 @@ def test_push_data_within_byte_budget_and_trims(db, config):
 
 def test_format_push_tolerates_none_summary():
     """Hardening: a malformed Event with summary_pl=None must not crash
-    _format_push (len(None) would raise TypeError); it returns a (title, body)
+    format_push (len(None) would raise TypeError); it returns a (title, body)
     pair of strings. summary_pl is typed str (defaults to "") so this is an
     off-nominal input on a life-safety push path.
     """
@@ -1584,7 +1566,7 @@ def test_format_push_tolerates_none_summary():
         article_ids=[str(uuid4())],
     )
 
-    result = _format_push(event)
+    result = format_push(event)
 
     assert isinstance(result, tuple)
     title, body = result
@@ -1613,7 +1595,7 @@ def test_build_push_data_logs_and_returns_when_scalars_exceed_budget(db, config,
     )
 
     with caplog.at_level(logging.WARNING, logger="sentinel.alerts.state_machine"):
-        data = _build_push_data(event, db, config, is_update=False)
+        data = build_push_data(event, db, config, is_update=False)
 
     # (a) returns a dict without raising
     assert isinstance(data, dict)
@@ -1641,7 +1623,7 @@ def _fresh_twilio() -> MagicMock:
     twilio.make_alert_call.side_effect = _make_call_record
     twilio.send_sms.side_effect = _make_sms_record
     twilio.get_call_status.return_value = {"status": "no-answer", "duration": 0}
-    twilio.client.messages.list.return_value = []
+    twilio.list_inbound_sms.return_value = []
     twilio.twilio_phone = "+15551234567"
     return twilio
 
@@ -1698,7 +1680,7 @@ async def test_push_behavior_preserved(config):
 
     # ---- (b) enabled + action both -> exactly one push; SMS path UNCHANGED in
     # content/identity (not merely call count): the SMS the operator receives is
-    # byte-identical to _format_sms_message and addressed to the configured phone.
+    # byte-identical to format_sms_message and addressed to the configured phone.
     _enable_push(config)
     db_b = Database(":memory:")
     twilio_b = _fresh_twilio()
@@ -1714,7 +1696,7 @@ async def test_push_behavior_preserved(config):
     sms_phone, sms_body, sms_event_id = twilio_b.send_sms.call_args.args
     assert sms_phone == config.alerts.phone_number
     assert sms_event_id == event_b.id
-    assert sms_body == _format_sms_message(event_b, db_b, config)
+    assert sms_body == format_sms_message(event_b, db_b, config)
     # The enriched data dict was delivered to push (carries the new keys).
     assert captured_b[-1]["data"] is not None
     assert {"message_id", "sources", "sms_body"} <= captured_b[-1]["data"].keys()
@@ -1760,11 +1742,11 @@ async def test_push_behavior_preserved(config):
 def test_push_aggressor_is_string(db, config):
     """[1.1d] aggressor is the event's string; '' stays '' (never None)."""
     event, _a1, _a2 = _make_event_with_sources(db, aggressor="Rosja")
-    data = _build_push_data(event, db, config, is_update=False)
+    data = build_push_data(event, db, config, is_update=False)
     assert data["aggressor"] == "Rosja"
 
     event_empty, _b1, _b2 = _make_event_with_sources(db, aggressor="")
-    data_empty = _build_push_data(event_empty, db, config, is_update=False)
+    data_empty = build_push_data(event_empty, db, config, is_update=False)
     assert data_empty["aggressor"] == ""
     assert data_empty["aggressor"] is not None
 
@@ -1776,7 +1758,7 @@ def test_push_summary_pl_is_full(db, config):
     long_summary = "Z" * 800
     event, _a1, _a2 = _make_event_with_sources(db, summary_pl=long_summary)
 
-    data = _build_push_data(event, db, config, is_update=False)
+    data = build_push_data(event, db, config, is_update=False)
 
     # 1.2 must not fire here (well under budget), so summary_pl is intact.
     size = len(json.dumps(data, ensure_ascii=False).encode("utf-8"))
@@ -1817,7 +1799,7 @@ def test_push_body_bounded_total_payload_fits(db, config):
         article_ids=[],
     )
 
-    data = _build_push_data(event, db, config, is_update=False)
+    data = build_push_data(event, db, config, is_update=False)
     data_size = len(json.dumps(data, ensure_ascii=False).encode("utf-8"))
 
     # The data is genuinely near the budget and summary_pl is NOT trimmed by 1.2.
@@ -1825,7 +1807,7 @@ def test_push_body_bounded_total_payload_fits(db, config):
     assert data_size >= PUSH_DATA_MAX_BYTES - 64, f"data not near budget: {data_size}"
     assert data["summary_pl"] == emoji_summary  # full, untrimmed (1.3b)
 
-    title, body = _format_push(event)
+    title, body = format_push(event)
 
     # The body's summary portion is bounded to PUSH_BODY_SUMMARY_MAX_CHARS.
     # The body is "{summary_snippet}\nPilność N/10 · źródła: M"; the snippet is
@@ -1902,8 +1884,8 @@ def test_push_data_trim_order_and_stages(db, config):
         source_count=15,
         article_ids=a_ids,
     )
-    untrimmed_sms_a = _format_sms_message(event_a, db, config)
-    data_a = _build_push_data(event_a, db, config, is_update=False)
+    untrimmed_sms_a = format_sms_message(event_a, db, config)
+    data_a = build_push_data(event_a, db, config, is_update=False)
 
     assert len(json.dumps(data_a, ensure_ascii=False).encode("utf-8")) <= PUSH_DATA_MAX_BYTES
     # Some — but not all — sources were dropped from the end.
@@ -1933,8 +1915,8 @@ def test_push_data_trim_order_and_stages(db, config):
         source_count=10,
         article_ids=b_ids,
     )
-    untrimmed_sms_b = _format_sms_message(event_b, db, config)
-    data_b = _build_push_data(event_b, db, config, is_update=False)
+    untrimmed_sms_b = format_sms_message(event_b, db, config)
+    data_b = build_push_data(event_b, db, config, is_update=False)
 
     assert len(json.dumps(data_b, ensure_ascii=False).encode("utf-8")) <= PUSH_DATA_MAX_BYTES
     # Stage 1 exhausted all sources...
@@ -1960,7 +1942,7 @@ def test_push_data_trim_order_and_stages(db, config):
         source_count=0,
         article_ids=[],
     )
-    data_c = _build_push_data(event_c, db, config, is_update=False)
+    data_c = build_push_data(event_c, db, config, is_update=False)
 
     assert len(json.dumps(data_c, ensure_ascii=False).encode("utf-8")) <= PUSH_DATA_MAX_BYTES
     assert data_c["sources"] == []
@@ -1989,7 +1971,7 @@ def test_push_data_trim_order_and_stages(db, config):
         source_count=0,
         article_ids=[],
     )
-    data_d = _build_push_data(event_d, db, config, is_update=False)
+    data_d = build_push_data(event_d, db, config, is_update=False)
 
     assert len(json.dumps(data_d, ensure_ascii=False).encode("utf-8")) <= PUSH_DATA_MAX_BYTES
     truncated = data_d["summary_pl"]
