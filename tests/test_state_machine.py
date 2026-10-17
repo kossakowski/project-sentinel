@@ -264,12 +264,16 @@ async def test_no_answer_retry(state_machine, db, mock_twilio):
 
 
 # --------------------------------------------------------------------------
-# 9. test_max_retries_sms_fallback
+# 9. test_round_exhausted_marks_retry_pending
 # --------------------------------------------------------------------------
 @pytest.mark.asyncio
 @patch("sentinel.alerts.state_machine.asyncio.sleep", new_callable=AsyncMock)
-async def test_round_exhausted_sends_sms_and_retries(_sleep, state_machine, db, mock_twilio):
-    """5 failed calls in a round -> SMS sent, status retry_pending (will retry next cycle)."""
+async def test_round_exhausted_marks_retry_pending(_sleep, state_machine, db, mock_twilio):
+    """5 failed calls in a round -> status retry_pending.
+
+    An exhausted round sends no fallback SMS. The SMS asserted here is the
+    confirmation code sent when the round starts.
+    """
     event = _make_event(urgency_score=10, source_count=2)
     db.insert_event(event)
 
@@ -281,7 +285,7 @@ async def test_round_exhausted_sends_sms_and_retries(_sleep, state_machine, db, 
     # 1 SMS confirmation code sent at start
     assert mock_twilio.send_sms.call_count >= 1
 
-    # Status should be retry_pending, not sms_fallback (will retry next cycle)
+    # Status should be retry_pending (no SMS fallback exists)
     updated = db.get_event_by_id(event.id)
     assert updated.alert_status == "retry_pending"
 
