@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import re
+import time
 from datetime import UTC, datetime
 
 from sentinel.config import SentinelConfig, TelegramChannel
@@ -16,7 +19,8 @@ class TelegramFetcher(BaseFetcher):
     Unlike other fetchers, Telegram works via a persistent connection:
     1. On startup: connects to Telegram, monitors configured channels
     2. Runs a background listener that buffers incoming messages
-    3. On fetch() call: returns and clears the buffer
+    3. On fetch() call: returns and clears the buffer, and retries in the
+       background any channel that could not be resolved so far
     """
 
     def __init__(self, config: SentinelConfig):
@@ -24,8 +28,13 @@ class TelegramFetcher(BaseFetcher):
         self.buffer: list[Article] = []
         self.client = None  # TelegramClient, set in start()
         self._running = False
-        # Numeric peer id (as in ``message.chat_id``) -> channel config, resolved in start().
+        # Numeric peer id (as in ``message.chat_id``) -> channel config, resolved in start()
+        # and, for channels that failed there, by the retry that fetch() schedules.
         self.channels_by_peer: dict[int, TelegramChannel] = {}
+        self._unresolved: list[TelegramChannel] = []
+        self._new_message_event = None  # telethon.events.NewMessage, set in start()
+        self._retry_task: asyncio.Task | None = None
+        self._retry_not_before = 0.0  # time.monotonic() value; set from a Telegram flood wait
 
     @property
     def name(self) -> str:
@@ -54,33 +63,35 @@ class TelegramFetcher(BaseFetcher):
             api_hash=tg_config.api_hash,
         )
         await self.client.start()
+        self._new_message_event = events.NewMessage
+        self._unresolved = list(tg_config.channels)
 
-        channel_map = await self._resolve_channels(tg_config.channels)
-        self.channels_by_peer = channel_map
-        if not channel_map:
-            self.logger.error("No Telegram channel could be resolved; the listener is not started")
-            return
-
-        @self.client.on(events.NewMessage(chats=list(channel_map)))
-        async def handler(event):
-            article = self._message_to_article(event.message, channel_map)
-            if article:
-                self.buffer.append(article)
+        await self._resolve_pending(retry=False)
+        if not self.channels_by_peer:
+            self.logger.error("No Telegram channel could be resolved yet; retrying on each fetch")
 
         self._running = True
         self.logger.info(
             "Telegram fetcher started, monitoring %d of %d channels",
-            len(channel_map),
+            len(self.channels_by_peer),
             len(tg_config.channels),
         )
 
-    async def _resolve_channels(self, channels: list[TelegramChannel]) -> dict[int, TelegramChannel]:
-        """Map each channel's numeric peer id (the value of ``message.chat_id``) to its config.
+    async def _on_new_message(self, event) -> None:
+        article = self._message_to_article(event.message, self.channels_by_peer)
+        if article:
+            self.buffer.append(article)
 
-        A channel that cannot be resolved is logged and left out, so its messages are dropped.
+    async def _resolve_pending(self, *, retry: bool) -> None:
+        """Resolve every channel not resolved yet and start listening to the ones that resolve.
+
+        Each resolved channel's numeric peer id (the value of ``message.chat_id``) maps
+        to its config in ``channels_by_peer``. A channel that cannot be resolved stays
+        pending for the next retry, so its messages are dropped until it resolves. A
+        Telegram flood wait stops this attempt and delays the next one by the wait.
         """
-        channel_map: dict[int, TelegramChannel] = {}
-        for channel in channels:
+        newly_resolved: list[int] = []
+        for channel in list(self._unresolved):
             # A numeric channel_id is a peer id already; a string of digits would be
             # read as a phone number.
             target = (
@@ -89,30 +100,75 @@ class TelegramFetcher(BaseFetcher):
             try:
                 peer_id = await self.client.get_peer_id(target)
             except Exception as exc:
-                self.logger.error("Cannot resolve Telegram channel %s (%s): %s", channel.name, channel.channel_id, exc)
+                log = self.logger.warning if retry else self.logger.error
+                log("Cannot resolve Telegram channel %s (%s): %s", channel.name, channel.channel_id, exc)
+                flood_wait = getattr(exc, "seconds", None)
+                if isinstance(flood_wait, int | float) and flood_wait > 0:
+                    self._retry_not_before = time.monotonic() + flood_wait
+                    break
                 continue
-            if peer_id in channel_map:
+            self._unresolved.remove(channel)
+            if peer_id in self.channels_by_peer:
                 self.logger.error(
                     "Telegram channels %s and %s resolve to the same peer id; keeping %s",
-                    channel_map[peer_id].name,
+                    self.channels_by_peer[peer_id].name,
                     channel.name,
-                    channel_map[peer_id].name,
+                    self.channels_by_peer[peer_id].name,
                 )
                 continue
-            channel_map[peer_id] = channel
-        return channel_map
+            self.channels_by_peer[peer_id] = channel
+            newly_resolved.append(peer_id)
+            if retry:
+                self.logger.info("Telegram channel %s (%s) resolved on retry", channel.name, channel.channel_id)
+
+        if not newly_resolved:
+            return
+        # One more handler for the new peers only: no peer id is in two handlers,
+        # and the handlers already registered keep running untouched.
+        try:
+            self.client.add_event_handler(self._on_new_message, self._new_message_event(chats=newly_resolved))
+        except Exception:
+            # Not listened to means not resolved: keep these channels for the next retry.
+            for peer_id in newly_resolved:
+                self._unresolved.append(self.channels_by_peer.pop(peer_id))
+            raise
+
+    def _schedule_channel_retry(self) -> None:
+        """Start one background attempt to resolve the channels still pending.
+
+        It runs off the fetch path, so a slow lookup (or a flood wait Telethon
+        sleeps through) never delays the cycle. At most one attempt runs at a time.
+        """
+        if not self._unresolved or self.client is None or self._new_message_event is None:
+            return
+        if self._retry_task is not None and not self._retry_task.done():
+            return
+        if time.monotonic() < self._retry_not_before:
+            return
+        self._retry_task = asyncio.create_task(self._retry_unresolved())
+
+    async def _retry_unresolved(self) -> None:
+        try:
+            await self._resolve_pending(retry=True)
+        except Exception as exc:
+            self.logger.error("Telegram channel retry failed: %s", exc, exc_info=True)
 
     async def fetch(self) -> list[Article]:
         """Return buffered messages and clear buffer."""
         if not self.is_enabled():
             return []
 
+        self._schedule_channel_retry()
         articles = self.buffer.copy()
         self.buffer.clear()
         return articles
 
     async def stop(self) -> None:
         """Disconnect from Telegram."""
+        if self._retry_task is not None and not self._retry_task.done():
+            self._retry_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._retry_task
         if self.client:
             try:
                 await self.client.disconnect()
@@ -123,7 +179,7 @@ class TelegramFetcher(BaseFetcher):
     def _message_to_article(self, message, channel_map: dict[int, TelegramChannel]) -> Article | None:
         """Convert a Telegram message to an Article of the channel it was posted in.
 
-        ``channel_map`` is keyed by numeric peer id (see ``_resolve_channels``). A
+        ``channel_map`` is keyed by numeric peer id (see ``_resolve_pending``). A
         message from any other chat is logged and dropped, never attributed to
         another channel.
         """
