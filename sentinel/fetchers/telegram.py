@@ -88,7 +88,10 @@ class TelegramFetcher(BaseFetcher):
         Each resolved channel's numeric peer id (the value of ``message.chat_id``) maps
         to its config in ``channels_by_peer``. A channel that cannot be resolved stays
         pending for the next retry, so its messages are dropped until it resolves. A
-        Telegram flood wait stops this attempt and delays the next one by the wait.
+        Telegram flood wait on one channel delays the next retry by the longest wait
+        seen, but the remaining channels are still tried in this attempt: numeric ids
+        and session-cached usernames resolve without a request, and Telethon refuses a
+        request type that is still flood-waited locally, without sending it.
         """
         newly_resolved: list[int] = []
         for channel in list(self._unresolved):
@@ -104,8 +107,7 @@ class TelegramFetcher(BaseFetcher):
                 log("Cannot resolve Telegram channel %s (%s): %s", channel.name, channel.channel_id, exc)
                 flood_wait = getattr(exc, "seconds", None)
                 if isinstance(flood_wait, int | float) and flood_wait > 0:
-                    self._retry_not_before = time.monotonic() + flood_wait
-                    break
+                    self._retry_not_before = max(self._retry_not_before, time.monotonic() + flood_wait)
                 continue
             self._unresolved.remove(channel)
             if peer_id in self.channels_by_peer:

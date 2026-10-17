@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -417,6 +418,58 @@ async def test_channel_retry_honours_flood_wait(monkeypatch):
     fetcher._retry_not_before = 0.0
     await _drain_with_retry(fetcher)
     assert fetcher.channels_by_peer[GONE_PEER_ID].name == "Gone Channel"
+
+
+class _FloodWaitedLookupClient(_FakeTelegramClient):
+    """Answers a lookup of each username in ``flood_waits`` with a Telegram flood wait of that many seconds."""
+
+    def __init__(self, session, api_id, api_hash):
+        super().__init__(session, api_id, api_hash)
+        self.flood_waits = {"@gone_channel": 7200, "@second_channel": 60}
+
+    async def get_peer_id(self, peer):
+        if peer in self.flood_waits:
+            self.resolved.append(peer)
+            raise FloodWaitError(request=None, capture=self.flood_waits[peer])
+        return await super().get_peer_id(peer)
+
+
+@pytest.mark.asyncio
+async def test_flood_wait_on_one_channel_does_not_stop_the_others(monkeypatch):
+    config_dict = _make_telegram_config(enabled=True)
+    config_dict["sources"]["telegram"]["channels"] = [
+        GONE_CHANNEL,
+        {"name": "Test Channel", "channel_id": "@test_channel", "language": "uk", "priority": 1},
+        {"name": "Second Channel", "channel_id": "@second_channel", "language": "ru", "priority": 1},
+        {"name": "Numeric Channel", "channel_id": "-1003333333333", "language": "uk", "priority": 1},
+    ]
+    monkeypatch.setattr(telethon, "TelegramClient", _FloodWaitedLookupClient)
+    fetcher = TelegramFetcher(SentinelConfig(**config_dict))
+    await fetcher.start()
+
+    # The flood wait on the first channel does not keep the channels after it from resolving.
+    assert fetcher.client.resolved == ["@gone_channel", "@test_channel", "@second_channel", -1003333333333]
+    assert sorted(ch.name for ch in fetcher.channels_by_peer.values()) == ["Numeric Channel", "Test Channel"]
+    [(event, _callback)] = fetcher.client.handlers
+    assert sorted(event.chats) == sorted([-1001111111111, -1003333333333])
+    await _deliver_to_matching(fetcher, _make_mock_message("Monitored despite the wait", chat_id=-1003333333333))
+    [article] = await fetcher.fetch()
+    assert article.source_name == "Numeric Channel"
+
+    # The next retry waits for the longest flood wait seen, not the last one.
+    assert fetcher._retry_not_before > time.monotonic() + 7000
+    lookups = len(fetcher.client.resolved)
+    await _drain_with_retry(fetcher)
+    assert len(fetcher.client.resolved) == lookups
+
+    # Once the wait has passed, the flood-waited channels join.
+    fetcher.client.flood_waits = {}
+    fetcher.client.peer_ids["@gone_channel"] = GONE_PEER_ID
+    fetcher._retry_not_before = 0.0
+    await _drain_with_retry(fetcher)
+    assert fetcher.channels_by_peer[GONE_PEER_ID].name == "Gone Channel"
+    assert fetcher.channels_by_peer[-1002222222222].name == "Second Channel"
+    assert fetcher._unresolved == []
 
 
 @pytest.mark.asyncio
