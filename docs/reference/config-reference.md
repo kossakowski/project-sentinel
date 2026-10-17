@@ -436,7 +436,7 @@ is disabled (`sources.gdelt.enabled: false`), and its fetcher is only instantiat
 
 ## `processing` — `ProcessingConfig` / `ProcessingDedup`
 
-Consumed by: `sentinel/processing/deduplicator.py` (`dedup.*`) and `sentinel/processing/enricher.py` (`url_decode_timeout_seconds`, also the deadline that `sentinel/processing/fulltext.py` uses).
+Consumed by: `sentinel/processing/deduplicator.py` (`dedup.*`) and `sentinel/processing/enricher.py` (`url_decode_timeout_seconds`). `sentinel/processing/fulltext.py` does not read this key: it takes the deadline as its `decode_timeout` argument and uses the code default `10` when the caller passes none, as its only caller today (the eval snapshot tool) does.
 
 These fuzzy title thresholds are skipped while `classification.incident_memory.enabled` is `true` (live), so they are inert in production. Exact URL dedup runs on both paths.
 

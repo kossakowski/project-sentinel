@@ -168,6 +168,23 @@ async def test_unbilled_failures_release_reservation(direct_config, monkeypatch,
 
 
 @pytest.mark.asyncio
+async def test_connect_error_through_the_sdk_releases_reservation(direct_config, monkeypatch):
+    """The real SDK chains the transport error that the release decision reads."""
+
+    def refuse(request):
+        raise httpx.ConnectError("[Errno 111] Connection refused", request=request)
+
+    provider = await _provider_on_transport(direct_config, monkeypatch, refuse)
+    try:
+        with pytest.raises(ClassificationError, match="could not be reached"):
+            await provider.request(MESSAGES, SCHEMA, purpose="classification", max_tokens=256)
+        assert _rows(provider) == [(0, "released")]
+        assert provider.ledger.total() == 0
+    finally:
+        await provider.aclose()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "kind",
     ["sdk_timeout", "deadline"],

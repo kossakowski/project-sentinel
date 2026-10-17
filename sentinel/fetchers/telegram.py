@@ -65,12 +65,16 @@ class TelegramFetcher(BaseFetcher):
         await self.client.start()
         self._new_message_event = events.NewMessage
         self._unresolved = list(tg_config.channels)
+        self.channels_by_peer = {}
+        self._retry_not_before = 0.0
+        # Running from here on, so fetch() retries the pending channels even when the
+        # first attempt below raises.
+        self._running = True
 
         await self._resolve_pending(retry=False)
         if not self.channels_by_peer:
-            self.logger.error("No Telegram channel could be resolved yet; retrying on each fetch")
+            self.logger.error("No Telegram channel could be resolved yet; later fetches retry them in the background")
 
-        self._running = True
         self.logger.info(
             "Telegram fetcher started, monitoring %d of %d channels",
             len(self.channels_by_peer),
@@ -90,8 +94,11 @@ class TelegramFetcher(BaseFetcher):
         pending for the next retry, so its messages are dropped until it resolves. A
         Telegram flood wait on one channel delays the next retry by the longest wait
         seen, but the remaining channels are still tried in this attempt: numeric ids
-        and session-cached usernames resolve without a request, and Telethon refuses a
-        request type that is still flood-waited locally, without sending it.
+        and session-cached usernames resolve without a request. For a request type that
+        is still flood-waited, Telethon sleeps inside the call when the remaining wait is
+        at most its ``flood_sleep_threshold`` (60 s by default) and refuses it locally,
+        without sending it, only when the wait is longer. So a later uncached lookup in
+        the same attempt can take up to that threshold.
         """
         newly_resolved: list[int] = []
         for channel in list(self._unresolved):
@@ -141,7 +148,7 @@ class TelegramFetcher(BaseFetcher):
         It runs off the fetch path, so a slow lookup (or a flood wait Telethon
         sleeps through) never delays the cycle. At most one attempt runs at a time.
         """
-        if not self._unresolved or self.client is None or self._new_message_event is None:
+        if not self._running or not self._unresolved or self.client is None or self._new_message_event is None:
             return
         if self._retry_task is not None and not self._retry_task.done():
             return
@@ -156,7 +163,11 @@ class TelegramFetcher(BaseFetcher):
             self.logger.error("Telegram channel retry failed: %s", exc, exc_info=True)
 
     async def fetch(self) -> list[Article]:
-        """Return buffered messages and clear buffer."""
+        """Return buffered messages and clear the buffer.
+
+        Also starts the background retry of channels not resolved yet, unless one is
+        running or a Telegram flood wait is still in force.
+        """
         if not self.is_enabled():
             return []
 
@@ -167,6 +178,7 @@ class TelegramFetcher(BaseFetcher):
 
     async def stop(self) -> None:
         """Disconnect from Telegram."""
+        self._running = False
         if self._retry_task is not None and not self._retry_task.done():
             self._retry_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -176,7 +188,6 @@ class TelegramFetcher(BaseFetcher):
                 await self.client.disconnect()
             except Exception as exc:
                 self.logger.error("Error disconnecting Telegram client: %s", exc)
-        self._running = False
 
     def _message_to_article(self, message, channel_map: dict[int, TelegramChannel]) -> Article | None:
         """Convert a Telegram message to an Article of the channel it was posted in.

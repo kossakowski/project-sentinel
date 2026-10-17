@@ -159,7 +159,9 @@ class KeywordFilter:
         searchable = original.lower()
 
         critical = self._find_matches(searchable, keyword_set.critical, lang)
-        high = self._find_matches(searchable, keyword_set.high, lang, original_text=original)
+        high = self._find_matches(
+            searchable, keyword_set.high, lang, exact_case=_CASE_SENSITIVE_HIGH_KEYWORDS, original_text=original
+        )
 
         excluded_by: list[str] = []
         if not critical:
@@ -173,17 +175,24 @@ class KeywordFilter:
         return lang, critical, high, excluded_by
 
     @staticmethod
-    def _find_matches(text: str, keywords: list[str], language: str, *, original_text: str | None = None) -> list[str]:
+    def _find_matches(
+        text: str,
+        keywords: list[str],
+        language: str,
+        *,
+        exact_case: frozenset[str] = frozenset(),
+        original_text: str = "",
+    ) -> list[str]:
         """Find the critical or high keywords that occur in ``text`` (lowercased).
 
         Uses substring matching for Slavic languages and word-boundary matching
-        for English and other languages. When ``original_text`` is given (high
-        keywords), a keyword in ``_CASE_SENSITIVE_HIGH_KEYWORDS`` matches only as
-        a whole word in its exact case in ``original_text``.
+        for English and other languages. A keyword in ``exact_case`` (the high
+        list passes ``_CASE_SENSITIVE_HIGH_KEYWORDS``) matches only as a whole
+        word in its exact case in ``original_text``.
         """
         matched: list[str] = []
         for keyword in keywords:
-            if original_text is not None and keyword in _CASE_SENSITIVE_HIGH_KEYWORDS:
+            if keyword in exact_case:
                 if _whole_word(keyword).search(original_text):
                     matched.append(keyword)
                 continue

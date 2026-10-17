@@ -64,6 +64,32 @@ async def test_telegram_article_not_enriched(prod_config):
     assert headline_only.raw_metadata["enrichment"]["fetched"] is True
 
 
+@pytest.mark.asyncio
+async def test_long_telegram_post_skips_the_paid_gate(prod_config):
+    # Title is the first 200 characters and the summary the first 500, as the fetcher
+    # builds them: the heuristic gate passes it, so without the skip it would reach the
+    # paid vagueness check.
+    text = " ".join(f"Повідомлення {n} про рух ворожих дронів у напрямку кордону." for n in range(12))
+    telegram = _article(
+        text[:200], text[:500], source_type="telegram", source_name="Ukrainian Air Force", url="https://t.me/kpszsu/9"
+    )
+    enricher = ArticleEnricher(prod_config)
+    assert not enricher.is_garbage_summary(telegram)
+
+    with (
+        patch.object(enricher, "_fetch_body", new_callable=AsyncMock, return_value="Treść.") as body,
+        patch.object(enricher, "_check_vagueness_direct", new_callable=AsyncMock, return_value=True) as direct,
+        patch.object(enricher, "_check_vagueness_llm", MagicMock(return_value=True)) as legacy,
+    ):
+        assert await enricher.enrich_batch([telegram]) == [telegram]
+
+    assert telegram.raw_metadata["enrichment"] == {"method": "none", "reason": "full_text_source"}
+    assert telegram.summary == text[:500]
+    body.assert_not_awaited()
+    direct.assert_not_awaited()
+    legacy.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # 3.7: the Google News decoder runs off the event loop, under a deadline
 # ---------------------------------------------------------------------------
@@ -81,6 +107,12 @@ def stalled_decoder(monkeypatch):
         return {"status": True, "decoded_url": "https://publisher.example/too-late"}
 
     monkeypatch.setattr(enricher_module, "new_decoderv1", decode)
+    # A pool of its own, so the threads this fixture blocks never reach the module's pool.
+    monkeypatch.setattr(
+        enricher_module,
+        "_decoder_pool",
+        enricher_module._DecoderPool(enricher_module._DECODER_WORKERS, enricher_module._DECODER_MAX_THREADS),
+    )
     yield calls
     release.set()
 
@@ -121,7 +153,10 @@ async def test_decoder_stall_respects_deadline(prod_config, monkeypatch, stalled
 
         monkeypatch.setattr(enricher_module.httpx, "AsyncClient", recording_client)
         ticks_before = ticks
+        started = loop.time()
         assert await ArticleEnricher(prod_config)._fetch_body(article) is None
+        # Bounded by the configured deadline, not the 10 s code default.
+        assert loop.time() - started < deadline + 1
         assert requested == [GOOGLE_NEWS_URL]
         assert ticks - ticks_before >= 10
 

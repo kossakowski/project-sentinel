@@ -12,6 +12,7 @@ import telethon
 from telethon.errors import FloodWaitError
 
 from sentinel.config import SentinelConfig
+from sentinel.fetchers import telegram as telegram_module
 from sentinel.fetchers.telegram import TelegramFetcher
 from sentinel.models import Article
 
@@ -346,10 +347,11 @@ async def test_unresolved_channel_is_retried_on_fetch(monkeypatch, caplog):
     assert GONE_PEER_ID not in fetcher.channels_by_peer
 
     # Still not resolvable: the retry logs it and keeps it pending.
+    caplog.clear()
     with caplog.at_level(logging.WARNING):
         assert await _drain_with_retry(fetcher) == []
     assert fetcher.client.resolved.count("@gone_channel") == 2
-    assert "Gone Channel" in caplog.text
+    assert any(r.levelno == logging.WARNING and "Gone Channel" in r.getMessage() for r in caplog.records)
     assert GONE_PEER_ID not in fetcher.channels_by_peer
 
     # The lookup succeeds on a later fetch: the channel joins and its messages map to it.
@@ -402,6 +404,9 @@ async def test_listener_starts_once_a_channel_resolves_after_start(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_channel_retry_honours_flood_wait(monkeypatch):
+    # The fetcher's own clock only; the event loop keeps the real one.
+    now = [1000.0]
+    monkeypatch.setattr(telegram_module, "time", SimpleNamespace(monotonic=lambda: now[0]))
     fetcher = await _started_fetcher(monkeypatch, _two_channel_config(GONE_CHANNEL))
     fetcher.client.failure = FloodWaitError(request=None, capture=3600)
     await _drain_with_retry(fetcher)
@@ -410,12 +415,13 @@ async def test_channel_retry_honours_flood_wait(monkeypatch):
     # Inside the wait Telegram asked for, no lookup is attempted.
     fetcher.client.failure = None
     fetcher.client.peer_ids["@gone_channel"] = GONE_PEER_ID
+    now[0] += 3599
     await _drain_with_retry(fetcher)
     assert len(fetcher.client.resolved) == lookups
     assert GONE_PEER_ID not in fetcher.channels_by_peer
 
     # Once the wait has passed, the next fetch resolves the channel.
-    fetcher._retry_not_before = 0.0
+    now[0] += 1
     await _drain_with_retry(fetcher)
     assert fetcher.channels_by_peer[GONE_PEER_ID].name == "Gone Channel"
 
@@ -495,3 +501,57 @@ async def test_slow_channel_retry_does_not_block_fetch_and_stops_cleanly(monkeyp
 
     await asyncio.wait_for(fetcher.stop(), timeout=1)
     assert retry_task.cancelled()
+
+
+class _HandlerFailsOnceClient(_FakeTelegramClient):
+    """Resolves every channel, but the first handler registration raises."""
+
+    def __init__(self, session, api_id, api_hash):
+        super().__init__(session, api_id, api_hash)
+        self.handler_failures = 1
+
+    def add_event_handler(self, callback, event):
+        if self.handler_failures:
+            self.handler_failures -= 1
+            raise RuntimeError("handler registration failed")
+        super().add_event_handler(callback, event)
+
+
+@pytest.mark.asyncio
+async def test_failed_handler_registration_keeps_channels_pending(monkeypatch):
+    monkeypatch.setattr(telethon, "TelegramClient", _HandlerFailsOnceClient)
+    fetcher = TelegramFetcher(_two_channel_config())
+    with pytest.raises(RuntimeError, match="handler registration failed"):
+        await fetcher.start()
+    # Not listened to means not resolved: both channels wait for the next retry.
+    assert fetcher.channels_by_peer == {}
+    assert sorted(ch.name for ch in fetcher._unresolved) == ["Second Channel", "Test Channel"]
+    assert fetcher.client.handlers == []
+
+    await _drain_with_retry(fetcher)
+    [(event, _callback)] = fetcher.client.handlers
+    assert sorted(event.chats) == sorted([-1001111111111, -1002222222222])
+    assert fetcher._unresolved == []
+
+
+@pytest.mark.asyncio
+async def test_restart_listens_to_every_channel_again(monkeypatch):
+    fetcher = await _started_fetcher(monkeypatch, _two_channel_config())
+    await fetcher.stop()
+    await fetcher.start()
+    [(event, _callback)] = fetcher.client.handlers
+    assert sorted(event.chats) == sorted([-1001111111111, -1002222222222])
+
+    await _deliver_to_matching(fetcher, _make_mock_message("After the restart", chat_id=-1002222222222))
+    [article] = await fetcher.fetch()
+    assert article.source_name == "Second Channel"
+
+
+@pytest.mark.asyncio
+async def test_no_channel_retry_after_stop(monkeypatch):
+    fetcher = await _started_fetcher(monkeypatch, _two_channel_config(GONE_CHANNEL))
+    await fetcher.stop()
+    lookups = len(fetcher.client.resolved)
+    assert await fetcher.fetch() == []
+    assert fetcher._retry_task is None
+    assert len(fetcher.client.resolved) == lookups
