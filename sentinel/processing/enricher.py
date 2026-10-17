@@ -12,7 +12,9 @@ import logging
 import queue
 import re
 import threading
+import time
 from concurrent.futures import Future
+from dataclasses import dataclass
 from difflib import SequenceMatcher
 
 import anthropic
@@ -69,64 +71,116 @@ _OUTLET_SUFFIXES_RE = re.compile(
 _FULL_TEXT_SOURCE_TYPES = frozenset({"telegram"})
 
 _GOOGLE_NEWS_ARTICLE_PATH = "news.google.com/rss/articles/"
-# Worker threads for the Google News decoder. A call that passed its deadline keeps
-# its worker until the decoder returns, so this also bounds the threads that a
-# stalled Google News can hold.
+# Healthy worker threads for the Google News decoder.
 _DECODER_WORKERS = 4
+# Hard cap on decoder threads, stuck ones included. A thread whose caller passed its
+# deadline is stuck: it is replaced and retires once the decoder returns. When every
+# thread up to this cap is stuck, resolution is skipped instead of waiting.
+_DECODER_MAX_THREADS = 8
 
 _logger = logging.getLogger("sentinel.enricher")
 
 
-class _DecoderPool:
-    """A few daemon threads that run the synchronous Google News decoder.
+@dataclass
+class _DecoderThread:
+    # Monotonic time at which the caller of the running job gives up; None when idle.
+    deadline: float | None = None
+    # Set once the thread is counted as stuck: it exits when its decoder returns.
+    retiring: bool = False
 
-    ``new_decoderv1`` makes HTTP requests with no timeout. The threads are daemons
-    (unlike ``ThreadPoolExecutor`` workers, which are joined at exit), so a decoder
-    stuck on a network read never holds up process exit. A queued job whose caller
-    already gave up is cancelled and never runs.
+
+class _DecoderPool:
+    """Daemon threads that run the synchronous Google News decoder.
+
+    ``new_decoderv1`` makes HTTP requests with no timeout, so a decode can hang
+    forever. The threads are daemons (unlike ``ThreadPoolExecutor`` workers, which
+    are joined at exit), so a stuck decoder never holds up process exit. A queued
+    job whose caller already gave up is cancelled and never runs.
+
+    A thread still running a job after that job's deadline is stuck. ``submit``
+    retires it and starts a replacement, so stuck threads never make later decodes
+    wait. At most ``max_threads`` threads exist; when all of them are stuck,
+    ``submit`` returns None and the caller skips resolution.
     """
 
-    def __init__(self, workers: int) -> None:
-        self._jobs: queue.SimpleQueue[tuple[str, Future]] = queue.SimpleQueue()
+    def __init__(self, workers: int, max_threads: int) -> None:
+        self._jobs: queue.SimpleQueue[tuple[str, Future, float]] = queue.SimpleQueue()
         self._workers = workers
-        self._started = 0
+        self._max_threads = max_threads
+        self._threads: list[_DecoderThread] = []
+        self._saturated = False
         self._lock = threading.Lock()
 
-    def submit(self, url: str) -> Future:
-        job: Future = Future()
+    def submit(self, url: str, timeout_seconds: float) -> Future | None:
+        """Queue ``url`` for decoding; None when every allowed thread is stuck."""
+        now = time.monotonic()
         with self._lock:
-            while self._started < self._workers:
-                threading.Thread(target=self._work, name="google-news-decoder", daemon=True).start()
-                self._started += 1
-        self._jobs.put((url, job))
+            healthy = 0
+            for thread in self._threads:
+                if thread.deadline is not None and thread.deadline <= now:
+                    thread.retiring = True
+                else:
+                    healthy += 1
+            while healthy < self._workers and len(self._threads) < self._max_threads:
+                self._start_thread()
+                healthy += 1
+            if healthy == 0:
+                if not self._saturated:
+                    self._saturated = True
+                    _logger.warning(
+                        "All %d Google News decoder threads are stuck; using original URLs until one returns",
+                        len(self._threads),
+                    )
+                return None
+            if self._saturated:
+                self._saturated = False
+                _logger.info("Google News decoder threads are available again")
+            job: Future = Future()
+            self._jobs.put((url, job, now + timeout_seconds))
         return job
 
-    def _work(self) -> None:
+    def _start_thread(self) -> None:
+        state = _DecoderThread()
+        self._threads.append(state)
+        threading.Thread(target=self._work, args=(state,), name="google-news-decoder", daemon=True).start()
+
+    def _work(self, state: _DecoderThread) -> None:
         while True:
-            url, job = self._jobs.get()
+            url, job, deadline = self._jobs.get()
             if not job.set_running_or_notify_cancel():
                 continue
+            with self._lock:
+                state.deadline = deadline
             try:
                 job.set_result(new_decoderv1(url))
             except Exception as exc:
                 job.set_exception(exc)
+            with self._lock:
+                state.deadline = None
+                if state.retiring:
+                    self._threads.remove(state)
+                    return
 
 
-_decoder_pool = _DecoderPool(_DECODER_WORKERS)
+_decoder_pool = _DecoderPool(_DECODER_WORKERS, _DECODER_MAX_THREADS)
 
 
 async def resolve_article_url(article: Article, timeout_seconds: float) -> str:
     """Return the publisher URL behind a Google News redirect, or the article's own URL.
 
     The decoder runs off the event loop, and the caller waits at most
-    ``timeout_seconds`` (queueing included). When the deadline passes or the decoder
-    fails, the original URL is used. Never raises.
+    ``timeout_seconds`` (queueing included). When the deadline passes, the decoder
+    fails, or every decoder thread is stuck, the original URL is used. Never raises.
     """
     url = article.source_url
     if _GOOGLE_NEWS_ARTICLE_PATH not in url:
         return url
+    job = _decoder_pool.submit(url, timeout_seconds)
+    if job is None:
+        _logger.debug("Google News decoder unavailable; using the original URL for '%s'", article.title[:60])
+        return url
     try:
-        result = await asyncio.wait_for(asyncio.wrap_future(_decoder_pool.submit(url)), timeout_seconds)
+        result = await asyncio.wait_for(asyncio.wrap_future(job), timeout_seconds)
     except TimeoutError:
         _logger.warning(
             "Google News URL decoding passed its %.1f s deadline; using the original URL for '%s'",
@@ -140,6 +194,12 @@ async def resolve_article_url(article: Article, timeout_seconds: float) -> str:
     if isinstance(result, dict) and result.get("decoded_url"):
         return result["decoded_url"]
     return url
+
+
+def _is_google_page(url: httpx.URL) -> bool:
+    """True for a page served by Google itself (the Google News wrapper), not a publisher."""
+    host = url.host
+    return host == "google.com" or host.endswith(".google.com")
 
 
 class ArticleEnricher:
@@ -281,6 +341,12 @@ class ArticleEnricher:
             ) as client:
                 resp = await client.get(real_url)
                 resp.raise_for_status()
+
+                # An undecoded Google News link serves Google's own page, whose
+                # description is generic boilerplate, not the article.
+                if _is_google_page(resp.url):
+                    self.logger.debug("Body fetch for '%s' reached a Google page, not the article", article.title[:60])
+                    return None
 
                 # Primary: og:description (concise, high quality)
                 text = self._extract_og_description(resp.text)

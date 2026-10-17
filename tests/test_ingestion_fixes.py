@@ -156,6 +156,110 @@ async def test_decoder_saturation_still_meets_deadline(stalled_decoder):
 
 
 @pytest.mark.asyncio
+async def test_stuck_decoder_threads_are_replaced_then_skipped(monkeypatch):
+    """Stuck threads are replaced up to the cap; past it, resolution is skipped without waiting."""
+    pool = enricher_module._DecoderPool(workers=2, max_threads=3)
+    monkeypatch.setattr(enricher_module, "_decoder_pool", pool)
+    release = threading.Event()
+    calls: list[str] = []
+    decoded = "https://publisher.example/a"
+
+    def decode(url):
+        calls.append(url.rsplit("&", 1)[-1])
+        if "hang" in url:
+            release.wait(30)
+        return {"status": True, "decoded_url": decoded}
+
+    monkeypatch.setattr(enricher_module, "new_decoderv1", decode)
+    deadline = 0.4
+    loop = asyncio.get_running_loop()
+
+    def google_news(tag):
+        return _article(tag, tag, source_type="google_news", url=f"{GOOGLE_NEWS_URL}&{tag}")
+
+    async def timed(tag):
+        article = google_news(tag)
+        started = loop.time()
+        resolved = await resolve_article_url(article, deadline)
+        return article, resolved, loop.time() - started
+
+    try:
+        # Both workers stall past the deadline.
+        hung = [google_news("hang1"), google_news("hang2")]
+        assert await asyncio.gather(*(resolve_article_url(a, deadline) for a in hung)) == [a.source_url for a in hung]
+
+        # A replacement thread decodes the next link at once instead of waiting out the deadline.
+        _, resolved, elapsed = await timed("fast1")
+        assert resolved == decoded and elapsed < deadline / 2
+
+        # The replacement stalls too: all three allowed threads are now stuck.
+        article, resolved, _ = await timed("hang3")
+        assert resolved == article.source_url
+
+        # Past the cap the original URL comes back at once and the decoder is not called.
+        article, resolved, elapsed = await timed("fast2")
+        assert resolved == article.source_url and elapsed < deadline / 2
+        assert sorted(calls[:2]) == ["hang1", "hang2"] and calls[2:] == ["fast1", "hang3"]
+
+        # Once the stuck decoders return, their threads retire and decoding resumes.
+        release.set()
+        for _ in range(200):
+            _, resolved, _ = await timed("fast3")
+            if resolved == decoded:
+                break
+            await asyncio.sleep(0.01)
+        assert resolved == decoded
+        assert calls[-1] == "fast3" and "fast2" not in calls
+    finally:
+        release.set()
+
+
+@pytest.mark.asyncio
+async def test_google_news_page_is_not_used_as_the_body(prod_config, monkeypatch):
+    """An undecoded link serves Google's own page: its description is not taken as the article."""
+
+    def broken(url):
+        raise ValueError("unexpected page layout")
+
+    monkeypatch.setattr(enricher_module, "new_decoderv1", broken)
+    google_page = (
+        '<html><head><meta property="og:description" content="Comprehensive up-to-date news coverage, '
+        'aggregated from sources all over the world by Google News."></head><body></body></html>'
+    )
+    publisher_page = (
+        '<html><head><meta property="og:description" content="Rosyjskie drony naruszyły polską przestrzeń '
+        'powietrzną nad Lubelszczyzną, poinformowało Dowództwo Operacyjne."></head><body></body></html>'
+    )
+    requested = []
+    real_async_client = httpx.AsyncClient
+
+    def respond(request):
+        requested.append(str(request.url))
+        return httpx.Response(200, text=google_page if request.url.host == "news.google.com" else publisher_page)
+
+    def mock_client(**kwargs):
+        kwargs["transport"] = httpx.MockTransport(respond)
+        return real_async_client(**kwargs)
+
+    monkeypatch.setattr(enricher_module.httpx, "AsyncClient", mock_client)
+    google_news = _article(
+        "Alarm w kraju NATO - Radio Zet", "Alarm w kraju NATO Radio Zet", source_type="google_news", url=GOOGLE_NEWS_URL
+    )
+    publisher = _article("Drony nad Lubelszczyzną", "Drony nad Lubelszczyzną")
+
+    await ArticleEnricher(prod_config).enrich_batch([google_news, publisher])
+
+    assert sorted(requested) == sorted([GOOGLE_NEWS_URL, "https://example.test/news/1"])
+    # The Google News article keeps its headline and stays marked as not fetched,
+    # so the classifier still gets its headline-only caution.
+    assert google_news.summary == "Alarm w kraju NATO Radio Zet"
+    assert google_news.raw_metadata["enrichment"]["fetched"] is False
+    # The same extraction still works for a publisher page.
+    assert publisher.summary.startswith("Rosyjskie drony naruszyły")
+    assert publisher.raw_metadata["enrichment"]["fetched"] is True
+
+
+@pytest.mark.asyncio
 async def test_decoded_url_is_used_within_deadline(monkeypatch):
     monkeypatch.setattr(
         enricher_module, "new_decoderv1", lambda url: {"status": True, "decoded_url": "https://publisher.example/a"}
