@@ -472,7 +472,7 @@ def test_classifier_input_reconstruction():
 
 def test_classifier_input_with_enrichment_note():
     """[1.5a] An enrichment-flagged article whose body fetch failed gets the
-    caution note appended -- matching ``Classifier._build_user_prompt``.
+    caution note appended -- matching ``legacy_anthropic.build_user_prompt``.
 
     The classifier appends a note after the Summary line when
     ``raw_metadata.enrichment.method`` is in {heuristic, llm} AND
@@ -499,7 +499,7 @@ def test_classifier_input_with_enrichment_note():
 
     # Reconstruction equals the 5-line block plus the note appended on a new
     # line right after the Summary -- byte-for-byte the same shape the
-    # classifier produces (see classifier.py:_build_user_prompt).
+    # classifier produces (see legacy_anthropic.py:build_user_prompt).
     expected = (
         "Source: Google News (google_news)\n"
         "Language: en\n"
@@ -517,7 +517,7 @@ def test_classifier_input_with_enrichment_note():
 
 def test_enrichment_note_matches_classifier_source():
     """[1.5a] The dashboard's enrichment caution note is byte-identical to the
-    string the classifier appends in ``_build_user_prompt``.
+    string the classifier appends in ``legacy_anthropic.build_user_prompt``.
 
     Reads the classifier source via ``inspect.getsource`` and reconstructs the
     note from the Python string literals there (one literal per line via
@@ -596,7 +596,7 @@ def test_classifier_input_without_enrichment_note():
 def test_classifier_input_missing_published():
     """[1.5a] A missing published_at renders as the literal 'unknown'.
 
-    This matches `Classifier._build_user_prompt`, which uses 'unknown' when
+    This matches `legacy_anthropic.build_user_prompt`, which uses 'unknown' when
     the article has no published_at.
     """
     article = {
@@ -880,7 +880,7 @@ def test_api_tunnel_scp_once_per_startup(sentinel_db_path, monkeypatch):
 def test_api_article_detail_null_summary_renders_as_none_literal(client):
     """[1.5a] An article with NULL summary in DB renders ``Summary: None``.
 
-    The production classifier's ``_build_user_prompt`` passes the article's
+    The classifier's ``legacy_anthropic.build_user_prompt`` passes the article's
     summary straight to ``str.format``, which coerces a None value to the
     literal string ``"None"``. The dashboard reconstruction must do the same
     so byte-for-byte parity holds even on the (rare) NULL-summary edge case.

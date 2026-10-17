@@ -17,7 +17,7 @@ and the SQLite database are all real. Only the edges are fakes:
 The urgency-10 scenario writes nothing: it compares the exact push ``data``,
 SMS bodies and TwiML against the files in ``tests/golden/``. Run pytest with
 ``--update-golden`` to rewrite them after an intended change, and review the
-diff. The routing table golden pins ``_determine_action`` over urgency 0-10 and
+diff. The routing table golden pins ``resolve_action`` over urgency 0-10 and
 1-3 sources on the live tiers; it is frozen, and ``--update-golden`` does not
 rewrite it.
 """

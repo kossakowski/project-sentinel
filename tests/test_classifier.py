@@ -519,6 +519,33 @@ def test_classifier_does_not_import_anthropic():
     assert not re.search(r"^\s*(?:import\s+anthropic|from\s+anthropic\b)", source, re.MULTILINE)
 
 
+def test_openai_classifier_builds_without_anthropic(prod_config, monkeypatch):
+    """On the live config (``provider: openai``) a Classifier is built where ``anthropic`` cannot be imported."""
+    assert prod_config.classification.provider == "openai"
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-not-a-real-key")
+    probe = (
+        "import sys\n"
+        "sys.modules['anthropic'] = None\n"  # every `import anthropic` now raises ImportError
+        "from sentinel.classification.classifier import Classifier, OpenAIBackend\n"
+        "from sentinel.config import load_config\n"
+        "config = load_config(sys.argv[1])\n"
+        "config.classification.budget.ledger_path = ':memory:'\n"
+        "assert isinstance(Classifier(config).backend, OpenAIBackend)\n"
+        "print('built')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe, str(REPO_ROOT / "config" / "config.yaml")],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "built"
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("with_memory", [False, True], ids=["no-memory", "memory"])
 async def test_legacy_backend_still_classifies(config, monkeypatch, with_memory):

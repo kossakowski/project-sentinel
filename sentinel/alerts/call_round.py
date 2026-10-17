@@ -201,28 +201,41 @@ class CallRound:
         self.sms_sid = record.twilio_sid
 
     async def reply_received(self, since: datetime) -> bool:
-        """Check if the owner replied by SMS with this round's code since ``since``."""
+        """Check if the owner replied by SMS with this round's code since ``since``.
+
+        An error while reading the replies counts as no reply, so the round goes on.
+        """
         if not self.code:
             return False
-        # The synchronous Twilio call runs in a thread so it does not block the event loop.
-        bodies = await asyncio.to_thread(self.machine.twilio.list_inbound_sms, since)
-        for body in bodies or ():
-            if self.code in body:
-                self.machine.logger.info("SMS confirmation received from %s", self.machine.config.alerts.phone_number)
-                return True
+        try:
+            # The synchronous Twilio call runs in a thread so it does not block the event loop.
+            bodies = await asyncio.to_thread(self.machine.twilio.list_inbound_sms, since)
+            for body in bodies or ():
+                if self.code in body:
+                    self.machine.logger.info(
+                        "SMS confirmation received from %s", self.machine.config.alerts.phone_number
+                    )
+                    return True
+        except Exception as exc:
+            self.machine.logger.warning("Failed to check SMS confirmations: %s", exc)
         return False
 
     async def confirmation_sms_delivered(self) -> bool | None:
         """Check if the confirmation SMS was delivered.
 
-        Returns True if delivered, None if still pending or unknown, and False
-        if it failed, was undelivered, or was never accepted by Twilio (no SID).
+        Returns True if delivered, None if still pending or unknown (also when
+        the status cannot be read), and False if it failed, was undelivered,
+        or was never accepted by Twilio (no SID).
         """
         sid = self.sms_sid
         if not sid:
             self.machine.logger.warning("Confirmation SMS was not sent; no message to check")
             return False
-        status = await asyncio.to_thread(self.machine.twilio.get_sms_status, sid)
+        try:
+            status = await asyncio.to_thread(self.machine.twilio.get_sms_status, sid)
+        except Exception as exc:
+            self.machine.logger.warning("Failed to check SMS delivery status: %s", exc)
+            return None
         if status is None:
             return None
         if status.status == "delivered":
@@ -285,7 +298,7 @@ async def record_call_result(machine: "AlertStateMachine", record: AlertRecord, 
     machine._update_alert_record(record, status=call_status, duration_seconds=duration)
     if call_status in (CallStatus.FAILED, CallStatus.CANCELED):
         machine.logger.warning(
-            "Event %s call %s (duration=%ds), terminal status — moving to retry/fallback",
+            "Event %s call %s (duration=%ds), terminal status — moving to retry_pending",
             record.event_id,
             call_status,
             duration,

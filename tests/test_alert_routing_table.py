@@ -4,6 +4,7 @@
 - Only ``TwilioClient`` touches the Twilio SDK object.
 - The status and type enums keep the strings stored in the database.
 - The split alert modules stay small, and a push reads each article once.
+- The delivery ledger reads an event's alert records by type, status and revision.
 """
 
 import csv
@@ -20,6 +21,7 @@ import requests
 from twilio.base.exceptions import TwilioRestException
 
 from sentinel.alerts.formatting import build_push_data, format_sms_message, format_update_sms
+from sentinel.alerts.ledger import channel_delivered, has_new_delivered_revision, has_pending_call, is_acknowledged
 from sentinel.alerts.routing import Action, resolve_action
 from sentinel.alerts.twilio_client import SmsStatus, TwilioClient
 from sentinel.database import Database
@@ -59,10 +61,13 @@ def test_production_code_routes_through_resolve_action():
 
 _TWILIO_SDK_USE = re.compile(
     r"^\s*(?:from|import)\s+twilio\b"  # importing the SDK
-    r"|\btwilio\w*\.client\b"  # reaching through a TwilioClient into its SDK object
+    r"|\b_*twilio\w*\.client\b"  # reaching through a TwilioClient into its SDK object
     r"|\.client\.calls\b"  # the SDK's call resource
     r"|\.client\.messages\s*\("  # messages(sid).fetch()
-    r"|\.client\.messages\.list\b",  # the inbound-message query
+    r"|\.client\.messages\.list\b"  # the inbound-message query
+    # Sending an SMS under any receiver name: only Twilio's messages.create
+    # takes ``from_``, so the Anthropic SDK's messages.create does not match.
+    r"|\.messages\.create\((?:[^()]|\([^()]*\))*?\bfrom_\s*=",
     re.MULTILINE,
 )
 
@@ -78,6 +83,30 @@ def test_twilio_sdk_used_only_in_client():
     assert offenders == {}
     # The pattern does find the SDK where it legitimately lives.
     assert _TWILIO_SDK_USE.search(client_module.read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "from twilio.rest import Client",
+        "sdk = self._twilio.client",
+        "sdk = machine.twilio.client",
+        "self.sms.client.messages.create(\n    from_=self.sender,\n    to=to,\n    body=str(body),\n)",
+        "gateway.messages.create(to=to, from_=sender, body=body)",
+        "tc.client.messages.list(to=sender, limit=10)",
+        "tc.client.messages(sid).fetch()",
+    ],
+)
+def test_twilio_sdk_pattern_finds_sdk_use(line):
+    """The pattern finds the SDK also when the client or the SDK object is held under another name."""
+    assert _TWILIO_SDK_USE.search(line)
+
+
+def test_twilio_sdk_pattern_ignores_the_anthropic_messages_call():
+    """The Anthropic SDK's ``client.messages.create(...)`` has the same shape but is not the Twilio SDK."""
+    source = (SENTINEL_DIR / "classification" / "legacy_anthropic.py").read_text(encoding="utf-8")
+    assert ".client.messages.create(" in source
+    assert not _TWILIO_SDK_USE.search(source)
 
 
 def test_twilio_client_reads_inbound_sms_and_sms_status(prod_config, twilio_sdk):
@@ -252,3 +281,85 @@ def test_push_data_reads_each_article_once(db, config, is_update):
     sms_text = format_update_sms if is_update else format_sms_message
     assert data["sms_body"] == sms_text(event, db, config)
     assert [source["name"] for source in data["sources"]] == [article.source_name for article in articles] + ["źródło"]
+
+
+# ---------------------------------------------------------------------------
+# 4.1: the delivery ledger
+# ---------------------------------------------------------------------------
+
+
+def _record(alert_type: str, status: str, revision: int = 1) -> AlertRecord:
+    return AlertRecord(
+        event_id="event-1",
+        alert_type=alert_type,
+        twilio_sid=f"X{uuid4().hex}",
+        status=status,
+        attempt_number=1,
+        sent_at=datetime.now(UTC),
+        message_body="Alarm",
+        event_revision=revision,
+    )
+
+
+@pytest.mark.parametrize(
+    ("records", "channel", "revision", "delivered"),
+    [
+        ([], "sms", 1, False),
+        ([("sms", "sent", 1)], "sms", 1, True),
+        ([("sms_update", "delivered", 2)], "sms", 2, True),
+        ([("sms", "acknowledged", 1)], "sms", 1, True),
+        # A failed attempt never suppresses the retry.
+        ([("sms", "failed", 1)], "sms", 1, False),
+        ([("push", "failed", 1)], "push", 1, False),
+        # Another revision or another channel does not count.
+        ([("sms", "sent", 1)], "sms", 2, False),
+        ([("sms", "sent", 1)], "push", 1, False),
+        ([("phone_call", "acknowledged", 1)], "sms", 1, False),
+        ([("push", "sent", 1)], "push", 1, True),
+        ([("push", "failed", 2), ("push", "sent", 2)], "push", 2, True),
+    ],
+)
+def test_channel_delivered(records, channel, revision, delivered):
+    assert channel_delivered([_record(*record) for record in records], channel, revision) is delivered
+
+
+@pytest.mark.parametrize(
+    ("records", "new_revision"),
+    [
+        ([], False),
+        ([("sms", "sent", 1)], True),
+        ([("push", "delivered", 1)], True),
+        # Only a successful earlier attempt makes the current revision an update.
+        ([("sms", "failed", 1), ("push", "failed", 1)], False),
+        ([("phone_call", "completed", 1)], False),
+        # A delivery of the current revision is not an earlier one.
+        ([("sms", "sent", 2), ("push", "sent", 2)], False),
+    ],
+)
+def test_has_new_delivered_revision(records, new_revision):
+    now = datetime.now(UTC)
+    event = Event(
+        event_type="invasion",
+        urgency_score=10,
+        affected_countries=["PL"],
+        aggressor="RU",
+        summary_pl="Rosyjskie wojska przekroczyły granicę Polski.",
+        first_seen_at=now,
+        last_updated_at=now,
+        source_count=1,
+        article_ids=[],
+        notification_revision=2,
+    )
+    assert has_new_delivered_revision(event, [_record(*record) for record in records]) is new_revision
+
+
+def test_is_acknowledged_and_has_pending_call():
+    assert is_acknowledged([_record("sms", "sent"), _record("phone_call", "acknowledged")]) is True
+    assert is_acknowledged([_record("sms", "delivered"), _record("phone_call", "completed")]) is False
+    assert is_acknowledged([]) is False
+
+    assert has_pending_call([_record("phone_call", "initiated")]) is True
+    assert has_pending_call([_record("phone_call", "ringing")]) is True
+    assert has_pending_call([_record("phone_call", "no-answer"), _record("phone_call", "completed")]) is False
+    assert has_pending_call([_record("sms", "initiated")]) is False
+    assert has_pending_call([]) is False

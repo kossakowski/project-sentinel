@@ -12,6 +12,7 @@ import os
 import secrets
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from unittest.mock import create_autospec
 
 import pytest
 from twilio.base.exceptions import TwilioRestException
@@ -164,6 +165,41 @@ async def test_confirmation_code_not_logged(
     assert any("confirmation SMS failed to deliver, resending" in message for message in messages)
     assert any("SMS confirmation received" in message for message in messages)
     assert [message for message in messages if CODE in message] == []
+    # The formatted log, tracebacks included, does not carry it either.
+    assert CODE not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_confirmation_code_not_logged_when_the_sms_send_raises(
+    prod_config, prod_db, store_critical_event, twilio_sdk, expo_send_push, instant_alert_sleep, caplog
+):
+    """A confirmation SMS whose send raises is logged with its traceback, but not with the code."""
+    event = store_critical_event()
+    accept_sms = twilio_sdk.messages.create.side_effect
+
+    def first_send_raises(**kwargs):
+        if twilio_sdk.messages.create.call_count == 1:
+            raise RuntimeError("SMS gateway error")
+        return accept_sms(**kwargs)
+
+    twilio_sdk.messages.create.side_effect = first_send_raises
+
+    def inbound_replies(**kwargs):
+        if twilio_sdk.messages.create.call_count < 2:
+            return []
+        return [SimpleNamespace(body=CODE)]
+
+    twilio_sdk.messages.list.side_effect = inbound_replies
+
+    with caplog.at_level(logging.DEBUG):
+        await _state_machine(prod_config, prod_db).process_event(event)
+
+    assert prod_db.get_event_by_id(event.id).alert_status == "acknowledged"
+    failed, resent = _sms_bodies(twilio_sdk)[:2]
+    assert CODE in failed and CODE in resent
+    assert any(record.exc_info and "Twilio SMS failed" in record.getMessage() for record in caplog.records)
+    assert "SMS gateway error" in caplog.text
+    assert CODE not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -189,3 +225,23 @@ async def test_each_round_checks_only_its_own_code(prod_config, prod_db, store_c
     assert first.sms_sid != second.sms_sid
     assert await first.reply_received(since) is True
     assert await second.reply_received(since) is False
+
+
+@pytest.mark.asyncio
+async def test_call_round_reads_that_raise_do_not_stop_the_round(prod_config, prod_db, store_critical_event, caplog):
+    """A Twilio read that raises counts as no reply and an unknown delivery status, as one that returns None does."""
+    twilio = create_autospec(TwilioClient, instance=True)
+    twilio.list_inbound_sms.side_effect = RuntimeError("inbound read error")
+    twilio.get_sms_status.side_effect = RuntimeError("status read error")
+    state_machine = AlertStateMachine(
+        prod_db, twilio, prod_config, push_client=ExpoPushClient(prod_config), code_factory=lambda: CODE
+    )
+    call_round = CallRound(state_machine, store_critical_event())
+    call_round.code, call_round.sms_sid = CODE, "SM00000000000000000000000000000001"
+
+    with caplog.at_level(logging.WARNING, logger="sentinel.alerts.state_machine"):
+        assert await call_round.reply_received(datetime.now(UTC)) is False
+        assert await call_round.confirmation_sms_delivered() is None
+
+    assert "Failed to check SMS confirmations: inbound read error" in caplog.text
+    assert "Failed to check SMS delivery status: status read error" in caplog.text

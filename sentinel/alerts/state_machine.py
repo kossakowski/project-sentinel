@@ -20,7 +20,7 @@ from sentinel.alerts.routing import Action, resolve_action
 from sentinel.alerts.twilio_client import TwilioClient
 from sentinel.config import SentinelConfig
 from sentinel.database import Database
-from sentinel.models import AlertRecord, AlertStatus, Event
+from sentinel.models import PENDING_CALL_STATUSES, AlertRecord, AlertStatus, AlertType, Event
 
 # Row-by-row reads of alert_records. Database.get_alert_records and
 # get_pending_call_records parse every row in one go, so a single row whose
@@ -29,8 +29,9 @@ from sentinel.models import AlertRecord, AlertStatus, Event
 # and parses each row on its own, so only the unreadable rows are left out.
 _EVENT_ALERT_RECORDS_SQL = "SELECT * FROM alert_records WHERE event_id = ? ORDER BY sent_at"
 _PENDING_CALL_RECORDS_SQL = (
-    "SELECT * FROM alert_records WHERE alert_type = 'phone_call' AND status IN ('initiated', 'ringing')"
+    f"SELECT * FROM alert_records WHERE alert_type = ? AND status IN ({', '.join('?' * len(PENDING_CALL_STATUSES))})"
 )
+_PENDING_CALL_PARAMS = (AlertType.PHONE_CALL, *PENDING_CALL_STATUSES)
 
 
 class AlertStateMachine:
@@ -166,7 +167,7 @@ class AlertStateMachine:
             pending_calls = self.db.get_pending_call_records()
         except Exception:
             pending_calls, unreadable = self._reread_alert_records(
-                _PENDING_CALL_RECORDS_SQL, (), "Pending call check", "checking the readable ones"
+                _PENDING_CALL_RECORDS_SQL, _PENDING_CALL_PARAMS, "Pending call check", "checking the readable ones"
             )
             failed_record_ids.extend(unreadable)
         for record in pending_calls:
